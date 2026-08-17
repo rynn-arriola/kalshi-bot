@@ -411,6 +411,56 @@ program, far outside the filing's $10–$1,000 per-calendar-day band. Cents and 
 regulatory cap cannot both hold, so the field is either scaled differently or the cap
 is applied in a way not yet understood. **Do not treat 1e-4 as settled.**
 
+## 6f. There is no short on Kalshi — selling YES is executed as buying NO
+
+Decoded from a completed round trip on this account, `KXITFWMATCH-26AUG16DASNEP-DAS`,
+2026-08-16.
+
+```
+15:14:31  action=buy   side=yes  yes_price=0.32  ->  yes_total_cost 14.91 x 0.32 = $4.7712
+15:18:46  action=sell  side=yes  yes_price=0.53  ->  no_total_cost  14.91 x 0.47 = $7.0077
+```
+
+Selling YES at 0.53 did **not** book proceeds of `14.91 x 0.53 = $7.90`. It booked a
+**cost** of `14.91 x 0.47 = $7.0077`, and the settlement carries *both*
+`yes_count_fp: 14.91` and `no_count_fp: 14.91`. Going short YES is buying NO, and the
+venue rewrites the order to say so.
+
+### The same trade is described three ways
+
+| record | fields |
+|---|---|
+| order | `side: yes`, `action: sell`, `outcome_side: no` |
+| fill | `side: no`, `action: sell`, `outcome_side: no` |
+| settlement | both `yes_count_fp` and `no_count_fp` populated |
+
+**The order says `side: yes` while the fill says `side: no` for the same trade.**
+Deriving direction from `action`/`side` books it backwards. This is the same defect
+class as liquidity-bot FINDINGS section 2, where legs priced against the wrong outcome
+made the ledger report +$1.34 on a trade that actually lost $0.30, in the direction
+that hides losses.
+
+### Kalshi gives us the fix Polymarket withheld
+
+Every record carries **both** `yes_price_dollars` and `no_price_dollars`, always summing
+to exactly 1.00. The price frame is therefore never unrecoverable, unlike Polymarket's
+bare `lastPx` with no record of the outcome it was quoted against.
+
+**Design rule: never derive direction from `action`/`side`. Reduce every order, fill and
+position to a signed YES-equivalent from the explicit price pair, in exactly one
+function, with round-trip tests.**
+
+### UNRESOLVED: `revenue: 0` does not reconcile
+
+The settlement reports `market_result: "yes"`, `value: 100`, and `revenue: 0`. Holding
+14.91 YES into a YES resolution should pay $14.91. Either `revenue` excludes settled
+pairs, or the paired position is netted somewhere not visible in this record.
+
+Do not guess this one. `revenue` is the kind of field a P&L breaker reads, and
+liquidity-bot's $40 stop returned **+3.26 for a trade that lost $1.55** because a
+closing fill was never booked. Resolve it against a second settlement before any ledger
+depends on it.
+
 ## 6d. liquidity-bot reference values, corrected 2026-08-16
 
 The reference implementation changed after this file was first written. Current values
