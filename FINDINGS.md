@@ -337,6 +337,80 @@ The fee is parabolic (`0.07·P·(1−P)`), maximal at 50¢ and near zero in the 
 0.74¢ at 12¢ versus 1.75¢ at 50¢. **Tail-priced markets are fee-advantaged**, at the
 cost of tail risk. That is a real selector input.
 
+## 6e. Authenticated account facts, measured 2026-08-17
+
+Signed read-only access working via `scripts/kalshi_auth.py`. RSA-PSS/SHA-256 over
+`timestamp + METHOD + path`, where the signed path **includes** the `/trade-api/v2`
+prefix and **excludes** the query string, and the timestamp is milliseconds as a
+string. Salt length is the digest length. Both mistakes fail identically with
+`token_authentication_failure`, which is why they are written down here.
+
+Balance: **$22.6439**.
+
+### The taker fee formula is CONFIRMED — and my earlier rounding was wrong
+
+Two real taker fills on this account, `KXITFWMATCH-26AUG16DASNEP-DAS`:
+
+| action | C | P | `0.07·C·P·(1−P)` | ceil 4dp | actual `fee_cost` |
+|---|---|---|---|---|---|
+| sell/no | 14.91 | 0.53 | 0.2599857 | 0.2600 | **0.260000** |
+| buy/yes | 14.91 | 0.32 | 0.2271091 | 0.2272 | **0.227200** |
+
+```
+fee = ceil(0.07 × C × P × (1−P) × 10_000) / 10_000
+```
+
+**Ceiling is at four decimal places — one hundredth of a cent — not at whole cents.**
+The second fill disambiguates: ceil-to-cents gives 0.23 and does not match; ceil-to-4dp
+gives 0.2272 and matches exactly. An earlier note in this file said whole cents. It was
+wrong, and it mattered in the pessimistic direction: small orders lose far less to
+rounding than claimed.
+
+The per-contract headline is unchanged: 1.75¢ at 50¢, and the crossing cost of ~2.75¢
+against a 1¢ tick still stands.
+
+**Maker fee remains UNVERIFIED.** Both fills carry `is_taker: true`. The `fee_cost`
+field is reported per fill and `is_taker` distinguishes them, so **one resting fill
+settles the maker rate definitively** — no reward payout needed for this particular
+question.
+
+### Rate limits are ~50× more generous than assumed
+
+`GET /account/limits`, tier `basic`:
+
+```
+read   refill 200/s   bucket 600
+write  refill 100/s   bucket 100
+```
+
+liquidity-bot's entire discovery architecture is shaped by a **4 requests/second**
+governor — invariant 51 (never scan while quoting) exists because a full Polymarket
+metadata pass took 31 minutes. At 200/s a 40-market book sweep costs well under a
+second, so **1-second book resolution is achievable**, matching the rate at which
+Kalshi itself samples. The scan-versus-quote tradeoff that shaped much of the reference
+architecture largely does not exist here.
+
+### Fractional contract sizes exist
+
+`count_fp: "14.91"` on both fills, and `target_size_fp: "1000.00"`. Sizes are not
+integers. Any size model, loss budget, or tick arithmetic that assumes whole contracts
+is wrong. Unresolved: whether a resting order may be placed in fractional size or
+whether this is an artifact of dollar-denominated entry.
+
+### No incentive-earnings endpoint was found
+
+`/portfolio/incentives`, `/incentive_earnings`, `/portfolio/incentive_earnings`, and
+`/incentive_programs/earnings` all return 404. Reward payouts are not obviously exposed
+as their own resource, so **the `period_reward` scale probably cannot be settled without
+actually earning a payout** — unlike the maker fee, which one resting fill answers.
+
+One counter-signal on scale: `/portfolio/balance` returns `balance: 2264` beside
+`balance_dollars: "22.6439"`, so integer money elsewhere in this API is **cents**. If
+`period_reward` were also cents, the observed `800000` would be $8,000 for a one-hour
+program, far outside the filing's $10–$1,000 per-calendar-day band. Cents and the
+regulatory cap cannot both hold, so the field is either scaled differently or the cap
+is applied in a way not yet understood. **Do not treat 1e-4 as settled.**
+
 ## 6d. liquidity-bot reference values, corrected 2026-08-16
 
 The reference implementation changed after this file was first written. Current values

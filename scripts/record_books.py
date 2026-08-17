@@ -72,6 +72,34 @@ CREATE TABLE IF NOT EXISTS market_meta (
 );
 CREATE INDEX IF NOT EXISTS market_meta_run_ticker
     ON market_meta(run_id, market_ticker);
+-- Trades carry `taker_book_side`, which names the side that was RESTING when
+-- the trade happened -- the maker side. That is the only observable signal of
+-- whether a resting order would have been filled, so without it no fill rate
+-- and no markout can be reconstructed afterwards.
+--
+-- `trade_id` is the venue's own identifier and is the dedupe key: sweeps
+-- overlap deliberately (we re-ask from a little before the last seen trade),
+-- because asking only for strictly-newer trades loses anything that landed
+-- between the query and the response.
+CREATE TABLE IF NOT EXISTS trades (
+    trade_id      TEXT PRIMARY KEY,
+    run_id        TEXT NOT NULL,
+    market_ticker TEXT NOT NULL,
+    created_time  TEXT NOT NULL,
+    fetched_at    TEXT NOT NULL,
+    raw_json      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS trades_ticker_time
+    ON trades(market_ticker, created_time);
+-- The reward rules only count a snapshot "if the market is open for trading".
+-- Without this, a closed-market gap reads as a period of zero liquidity and
+-- corrupts the two-sided rate.
+CREATE TABLE IF NOT EXISTS exchange_status (
+    id          INTEGER PRIMARY KEY,
+    run_id      TEXT NOT NULL,
+    fetched_at  TEXT NOT NULL,
+    raw_json    TEXT NOT NULL
+);
 -- Failures are data too. A market that stops responding, or a rate limit we
 -- tripped, changes how the surrounding books should be read.
 CREATE TABLE IF NOT EXISTS errors (
@@ -165,6 +193,29 @@ class Capture:
              None if raw is None else json.dumps(raw, sort_keys=True)))
         self._flush()
 
+    def record_trades(self, ticker: str, rows: list) -> int:
+        """Store trades, ignoring ones already seen. Returns rows newly stored."""
+
+        if not rows:
+            return 0
+        stamp = utc_now()
+        before = self.connection.total_changes
+        self.connection.executemany(
+            "INSERT OR IGNORE INTO trades(trade_id, run_id, market_ticker,"
+            " created_time, fetched_at, raw_json) VALUES(?,?,?,?,?,?)",
+            [(str(row.get("trade_id")), self.run_id, ticker,
+              str(row.get("created_time") or ""), stamp,
+              json.dumps(row, sort_keys=True)) for row in rows
+             if row.get("trade_id")])
+        self._flush(force=True)
+        return self.connection.total_changes - before
+
+    def record_exchange_status(self, raw: object) -> None:
+        self.connection.execute(
+            "INSERT INTO exchange_status(run_id, fetched_at, raw_json) VALUES(?,?,?)",
+            (self.run_id, utc_now(), json.dumps(raw, sort_keys=True)))
+        self._flush(force=True)
+
     def record_market(self, ticker: str, raw: object) -> None:
         self.connection.execute(
             "INSERT INTO market_meta(run_id, market_ticker, fetched_at, raw_json)"
@@ -211,6 +262,29 @@ def fetch_active_programs(limiter: Limiter, capture: Capture) -> list:
         if not cursor:
             break
     return rows
+
+
+def backfill_trades(limiter: Limiter, capture: "Capture", ticker: str,
+                    since: int, max_pages: int = 25) -> int:
+    """Page a ticker's trade history back to `since`. Returns rows stored."""
+
+    stored = 0
+    cursor = None
+    for _ in range(max_pages):
+        url = (f"{BASE}/markets/trades?ticker={ticker}&min_ts={since}&limit=1000"
+               + (f"&cursor={cursor}" if cursor else ""))
+        status, payload = get_json(limiter, url)
+        if status != 200 or payload is None:
+            capture.record_error("backfill_trades", f"{ticker} HTTP {status}")
+            break
+        rows = payload.get("trades", [])
+        stored += capture.record_trades(ticker, rows)
+        cursor = payload.get("next_cursor") or payload.get("cursor")
+        # An empty page still returns a cursor on this endpoint, so stop on the
+        # page contents rather than trusting the cursor to go falsy.
+        if not cursor or not rows:
+            break
+    return stored
 
 
 def rank(rows: list, limit: int, max_per_series: int = 3) -> list[str]:
@@ -280,8 +354,12 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=20.0,
                         help="seconds between book sweeps")
     parser.add_argument("--program-refresh-minutes", type=float, default=15.0)
-    parser.add_argument("--rps", type=float, default=4.0,
-                        help="shared request rate; conservative by default")
+    parser.add_argument("--rps", type=float, default=20.0,
+                        help="shared request rate. /account/limits reports the"
+                             " basic tier refilling reads at 200/s, so this is"
+                             " deliberately far under the ceiling.")
+    parser.add_argument("--trade-backfill-hours", type=float, default=48.0,
+                        help="how far back to page trades on first sight of a market")
     args = parser.parse_args()
 
     if args.markets <= 0 or args.interval <= 0 or args.minutes <= 0:
@@ -296,17 +374,23 @@ def main() -> int:
     next_programs = 0.0
     tickers: list[str] = []
     known_meta: set[str] = set()
+    backfilled: set[str] = set()
+    trade_total = 0
 
     try:
         while time.monotonic() < deadline:
             sweep_started = time.monotonic()
 
             if sweep_started >= next_programs:
+                status, payload = get_json(limiter, f"{BASE}/exchange/status")
+                if status == 200 and payload is not None:
+                    capture.record_exchange_status(payload)
                 rows = fetch_active_programs(limiter, capture)
                 if rows:
                     capture.record_programs(rows)
                     tickers = rank(rows, args.markets)
-                    print(f"[{utc_now()}] programs={len(rows)} tracking={len(tickers)}")
+                    print(f"[{utc_now()}] programs={len(rows)}"
+                          f" tracking={len(tickers)} trades={trade_total}")
                 next_programs = sweep_started + args.program_refresh_minutes * 60.0
 
             for ticker in tickers:
@@ -322,6 +406,37 @@ def main() -> int:
                 capture.record_book(ticker, status, payload)
                 if status != 200:
                     capture.record_error("fetch_book", f"{ticker} HTTP {status}")
+
+                # Trades, in two modes.
+                #
+                # First sight of a ticker: page back `--trade-backfill-hours`.
+                # The markets that rank highest on reward/target are thin by
+                # construction -- that is *why* they rank -- so a short window
+                # returns nothing at all. The first run asked for 45 seconds
+                # and recorded zero trades across 40 markets, which reads as
+                # "no trades exist" rather than "the window was too narrow".
+                # Backfill also means markout is computable immediately
+                # instead of after hours of waiting.
+                #
+                # Afterwards: a deliberately overlapping window. Trades dedupe
+                # on the venue's own trade_id, so overlap costs bandwidth and
+                # nothing else, while a gap loses fill signals permanently.
+                if ticker not in backfilled:
+                    since = int(time.time()) - int(args.trade_backfill_hours * 3600)
+                    trade_total += backfill_trades(limiter, capture, ticker, since)
+                    backfilled.add(ticker)
+                else:
+                    since = int(time.time()) - max(300, int(args.interval * 6))
+                    status, payload = get_json(
+                        limiter,
+                        f"{BASE}/markets/trades?ticker={ticker}"
+                        f"&min_ts={since}&limit=200")
+                    if status == 200 and payload is not None:
+                        trade_total += capture.record_trades(
+                            ticker, payload.get("trades", []))
+                    else:
+                        capture.record_error("fetch_trades", f"{ticker} HTTP {status}")
+
                 if time.monotonic() >= deadline:
                     break
 
