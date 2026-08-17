@@ -1,0 +1,20 @@
+# Credentials. The Kalshi private key lives in this directory as a PEM.
+# `git add -A` was used in this repo before the key arrived; this file is what
+# stops the next one from committing it.
+*.pem
+*.key
+kalshi-bot.txt
+credentials.py
+.env
+
+# Captured data. Raw books grow fast and are reproducible by re-running the
+# recorder; the analysis derived from them is what belongs in git.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+__pycache__/
+*.pyc
+.venv/
