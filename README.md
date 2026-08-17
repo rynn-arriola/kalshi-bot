@@ -11,6 +11,7 @@ a strategy is not written until the facts it would depend on are confirmed.
 | file | what it is |
 |---|---|
 | `NEXT.md` | **Start here.** Current state, what is running, what to do next. |
+| `BUILT.md` | Inventory of what exists, what it does, and how it was verified. |
 | `FINDINGS.md` | Established facts, each with the measurement that produced it. |
 | `docs/PLAN.md` | The approved end-to-end plan. |
 | `BUGFIXES.md` | Bugs that reached a running instrument: symptom, mechanism, fix. |

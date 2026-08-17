@@ -40,6 +40,12 @@ rather than measured. No capital has been committed and no order has been placed
 4. **Post-only support.** Structural: without it there is no venue primitive for
    a building quote.
 
+## What already exists
+
+See `BUILT.md` for the full inventory. In short: three working instruments
+(`record_books.py`, `kalshi_auth.py`, `analyze_capture.py`) and the docs. No
+package, no bot code, no tests, no order has ever been placed.
+
 ## What is running
 
 A capture may be in progress. Check and stop:
