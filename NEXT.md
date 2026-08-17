@@ -26,6 +26,9 @@ rather than measured. No capital has been committed and no order has been placed
   DF is 0.50 in 99.96% of live programs.
 - **There is no short.** Selling YES is executed as buying NO, and the order and
   fill records disagree about `side` for the same trade. See FINDINGS 6f.
+- **The pair trade is a second revenue source.** Both sides filled at the touch
+  nets a median **$0.0379** on 5 contracts, positive in **98.2%** of 22,030
+  snapshots — and it does not depend on the reward scale. See FINDINGS 6g.
 
 ## Still unknown, and blocking
 
@@ -60,11 +63,15 @@ retroactively; trades and 1-minute candlesticks **can** be backfilled.
 
 ## Next actions, in order
 
-1. Finish the two-sided spread analysis: measure `1 - (yes_touch + no_touch)`
-   across captured books. If both quoted sides fill, that difference is locked
-   profit — this is the actual market-making trade, with reward as a bonus.
-2. Markout from the backfilled trades at 60/300/900s, to find whether adverse
-   selection swamps the reward.
+1. ~~Two-sided spread analysis~~ **done** — see FINDINGS 6g. It surfaced a
+   policy conflict: median pair edge is exactly one tick, so stepping one tick
+   inside to double the reward share consumes the entire typical edge, and 71%
+   of the time there is not even room to do it on both sides. **Which lever wins
+   is decided by the `period_reward` scale**, which is still unconfirmed. That
+   promotes blocker 1 from an accounting question to a policy question.
+2. Fill rates and markout from the backfilled trades at 60/300/900s. The pair
+   edge is only captured on a *completed* pair; one side filling alone is
+   directional risk. This is the missing half of 6g.
 3. Check whether reward concentrates near a program's `end_date`, the analogue
    of liquidity-bot's measured 6h -> 2h narrowing.
 4. Only then: the one-contract evidence run, which **the operator arms**. Claude

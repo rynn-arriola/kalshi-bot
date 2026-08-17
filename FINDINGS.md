@@ -285,6 +285,62 @@ HTTP 429; retry and pin the real numbers before sizing anything.
 
 ---
 
+## 6g. The pair trade is a second revenue source, independent of the reward
+
+Measured over 22,030 usable book snapshots, 44 markets, 2026-08-17.
+
+A YES and a NO contract on the same market always settle to exactly $1.00
+between them. So a maker resting a bid on both sides and getting **both** filled
+has bought a guaranteed dollar for `yes_bid + no_bid`:
+
+```
+pair edge = 1.00 - (yes_bid + no_bid) - fees
+```
+
+This is the classic market-making trade, and it matters more than it first looks:
+it is a return that **does not depend on the unresolved `period_reward` scale**.
+
+| measure | value |
+|---|---|
+| gross pair edge, median | **0.0100** per contract — exactly one tick |
+| gross, p10 / p90 | 0.0100 / 0.0500 |
+| net after fees, 5 contracts, median | **$0.0379** |
+| net, p10 / p90 | $0.0078 / $0.2106 |
+| net > 0 | **98.2%** of snapshots |
+| one-sided (unusable) | 3,419 of 25,449 |
+| crossed (edge < 0) | **0** |
+
+Fees are charged at each leg's own touch price. An earlier version of this
+number priced both legs at 0.50 -- the peak of the `0.07·P·(1−P)` curve -- and
+reported net $0.0062, making the pair trade look like it barely cleared its own
+fees. These markets are mostly tail-priced, so that overstated cost by about 6x.
+**Price the fee at the actual price, never at a representative one.**
+
+### This creates a direct policy conflict with the one-tick rule
+
+Section "Stepping one tick inside the touch DOUBLES the share" says to quote one
+tick inside. The pair edge says the opposite:
+
+- **Median pair edge is exactly one tick.** Stepping inside on one side consumes
+  the entire typical edge; on both sides it consumes twice the entire edge.
+- **Only 29.3% of snapshots leave more than 2 cents**, so 71% of the time
+  stepping inside both sides would cross the book and is not even available.
+
+So the two levers are in tension, and **which one wins is decided by the
+`period_reward` scale** — the number that is still unconfirmed. If reward
+dominates, quote inside and pay the spread. If the pair edge dominates, sit at
+the touch and take 1x reward.
+
+This raises the priority of resolving the scale: it is no longer just an
+accounting question, it selects the quoting policy.
+
+### What this does not measure
+
+Whether both sides actually fill. The edge is only captured on a completed pair;
+one side filling alone is directional risk, which is the failure mode
+liquidity-bot spent its whole architecture on. Fill rates come from trades, and
+that analysis has not been done yet.
+
 ## 6b. Program renewal — an earlier expiry scare was wrong
 
 The 2026-02-11 filing sunsets the Program on **2026-09-01**, and an earlier reading of
