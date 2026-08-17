@@ -182,6 +182,49 @@ book is unchanged, you are never filled, and no competitor reacts. A denominator
 adverse. liquidity-bot FINDINGS §6h found the same thing on Polymarket: reward
 concentrates in thin books. Same trap, same mitigation needed.
 
+### Stepping one tick inside the touch DOUBLES the share
+
+Measured 2026-08-16 across 8 series, 15 qualifying sides. Resting 5 contracts at the
+touch versus one tick inside it:
+
+| market | side | at touch | 1 tick in | gain |
+|---|---|---|---|---|
+| KXVOTEPRIMARY-…-12 | yes | 2.64% | 5.14% | 1.95× |
+| KXSHELTERCPI-…-T430.7 | no | 2.87% | 5.59% | 1.94× |
+| KXPOWERKWH-…-T20.4 | no | 0.62% | 1.23% | 1.99× |
+| KXCPICOMBO-26AUG-0503 | no | 0.46% | 0.92% | 1.99× |
+| KXATPRETIRE-27DJO-Y | yes | 82.93% | 90.67% | 1.09× |
+
+**The gain is `1 / DiscountFactor` per tick**, and DF is 0.50 in 99.96% of live
+programs — so one tick is worth exactly 2×.
+
+Mechanism: the Reference Price *is* the best bid (section 2). Becoming the best bid
+puts us at zero ticks with multiplier 1.0 *and simultaneously demotes every other
+resting order one tick*, halving each of their contributions to the denominator. We
+gain nothing and lose nothing on our own numerator; the entire effect is on everyone
+else's. Formally, with our size `q` and competing score `Σ`:
+
+```
+share_at_touch  = q / (q + Σ)
+share_one_in    = q / (q + DF·Σ)
+gain            → 1/DF   when q << Σ
+```
+
+The KXATPRETIRE outlier confirms the model rather than contradicting it: at 82.93% we
+already dominate the denominator, so `q << Σ` fails and the gain collapses toward 1.
+
+**Cost:** one tick. At 5 contracts that is $0.05 of worse entry price, against a
+doubling of reward share.
+
+**Constraint:** we cannot step inside on both sides without eventually crossing.
+`yes_bid + no_bid` must stay below 1.00, exactly the "never price through the opposite
+touch" rule in liquidity-bot's `exit_quote_price` (`reconciler.py`, added 2026-08-16).
+A post-only order that would match is rejected outright.
+
+**UNVERIFIED:** this is a static-book calculation. Being the best bid raises fill
+probability and invites others to step ahead. Whether the 2× survives contact with a
+moving book and reacting competitors is a Phase 2 measurement, not a result.
+
 ### Two-sided failure is common
 
 Of 8 sampled programs, **3 had one side entirely empty** — `KXDIESELD` (yes),
@@ -241,6 +284,87 @@ UNVERIFIED: exact Pro fee schedule. `kalshi.com/docs/kalshi-fee-schedule.pdf` re
 HTTP 429; retry and pin the real numbers before sizing anything.
 
 ---
+
+## 6b. Program renewal — an earlier expiry scare was wrong
+
+The 2026-02-11 filing sunsets the Program on **2026-09-01**, and an earlier reading of
+this file treated that as an imminent shutdown. **That was wrong.** The per-market end
+dates cluster before September 1 because these are short-dated events (a weather market
+for Aug 17 ends Aug 17), not because the program stops.
+
+Evidence pointing to routine renewal:
+
+- Kalshi **refiled its Volume Incentive Program on 2026-08-04, extending to September
+  2027**, in response to CFTC Division of Market Oversight staff asking every DCM to
+  review and amend incentive filings by 2026-09-14. The September dates are a review
+  deadline, not a cliff.
+- Kalshi is already scheduling liquidity programs **past** September 1 — 43 of 2,328,
+  running to September 5.
+- The Program has run continuously since August 2025 and was already extended once.
+
+Not proven: the liquidity refiling itself was not located, only the volume one. Treat
+renewal as likely, not certain. Do not plan around a deadline.
+
+## 6c. Fees — confirmed, and where they actually bite
+
+Kalshi help center, verbatim: *"Maker fees are charged for orders placed that are not
+immediately matched and are instead left as resting orders on the orderbook."* Maker
+fees are real. Fees are charged **only when a trade executes** — cancelling a resting
+order is free.
+
+`kalshi-fee-schedule.pdf` is Cloudflare-blocked (persistent 429 with an HTML body, not
+a real rate limit), so the 25%-of-taker maker rate remains **UNVERIFIED**.
+
+**The maker fee is not the problem.** Reward is earned by resting; fees are paid on
+fills. At 5 contracts and 50¢, a fill costs ~$0.022 — about 0.5% of a $4.31 program
+reward. Noise.
+
+**The taker fee is the problem**, because Kalshi's tick is 1¢ and the taker fee at 50¢
+is 1.75¢ — *larger than the entire spread*:
+
+```
+crossing the spread   1.00¢
+taker fee             1.75¢
+                      -----
+true cost to cross    2.75¢     ≈ 3× the naive spread estimate
+```
+
+The hard-exit path is a taker path, so `cross_exit`, `max_exit_loss` and the stressed
+margin all need a fee term. This compounds section 4's thin-book trap: the markets
+paying the best share are the ones where crossing out is required and most expensive.
+
+The fee is parabolic (`0.07·P·(1−P)`), maximal at 50¢ and near zero in the tails —
+0.74¢ at 12¢ versus 1.75¢ at 50¢. **Tail-priced markets are fee-advantaged**, at the
+cost of tail risk. That is a real selector input.
+
+## 6d. liquidity-bot reference values, corrected 2026-08-16
+
+The reference implementation changed after this file was first written. Current values
+(liquidity-bot `3dca27c`), which supersede anything earlier in this document:
+
+- **Invariant 13**: 5 contracts per quote across 20 markets (was 1 × 8).
+- **Invariant 25**: **$40** loss stop, **$45** hard stop (was $30/$35).
+- **Invariant 57 superseded**: the 8-market private-WebSocket ceiling was *disproved* —
+  29 subscriptions were later sustained. Eight was one connection's cap, not the
+  account's; connections are independent and each carries its own quota. **This removes
+  the main reason to expect a low Kalshi subscription ceiling**, though Kalshi's own
+  limits still must be measured.
+- **New `selection_horizon_seconds = 7200`** (was six hours). Measured: the 120+ minute
+  bucket pays a median projected reward of 0.000022 with only 67% of markets paying
+  anything, against 0.000313 and 100% at 15–30 minutes. **Reward concentrates hard near
+  the event.** Kalshi's analogue — whether reward concentrates near a program's
+  `end_date` or near market close — is a Phase 2 measurement and a likely large win.
+- **New `max_early_exit_loss = 4.0`**, split from `max_exit_loss`. The two shared one
+  number, wired to the $40 session stop, so the exit half *could never fire*: five
+  contracts cannot lose $40. Chosen from 17 observed crossed losses; $4.00 blocks 3 and
+  defers $16.96 of $41.96 — 40% of the damage from 18% of events. **This is exactly the
+  failure mode to avoid in the Kalshi port**: an entry gate and an exit cap that read
+  the same field silently disable one of them.
+- **New `exit_quote_price()`**: a reducing quote steps one tick inside the touch, but
+  only while the improved price still does not lose money. Measured: exits ending in a
+  taker cross were **-$30.22 across 28 markets, ~76% of all real recorded losses**, with
+  losers clustering at 911s and 966s of hold — right on the 900s inventory clock. On
+  Kalshi, where crossing costs ~3×, this is worth more, not less.
 
 ## 7. Open questions
 
