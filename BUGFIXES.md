@@ -72,3 +72,40 @@ it was wrong here in the direction that kills a viable strategy. Note the
 asymmetry with liquidity-bot's habits: there, conservative stand-ins are correct
 because they bound *risk*. Here the stand-in was applied to a *cost*, where the
 same instinct destroys the result instead of protecting it.
+
+### Two reported results were artifacts of sample size, not measurements
+
+**Symptom.** Two claims were reported to the operator and one of them was
+written into `FINDINGS.md`: that the pair trade **never** completes (0 in 140
+windows), and that the one-sided markout sign was confirmed by "two independent
+slates that agree exactly".
+
+**Mechanism.** Different for each, same root.
+
+*Zero pairs.* The true completion rate is 0.7%. In 140 windows the expected
+count is 1.0, so observing zero is unremarkable — the sample could not
+distinguish 0.7% from 0%. At 1,064 windows the same code finds 7. An
+intermediate diagnosis, that zero was "a property of the politics slate", was
+also wrong: the original slate produces pairs too once it has enough windows.
+The variable was never the slate.
+
+*Independent slates.* `capture.db` and `capture_wide.db` share **69 markets** —
+88% of the narrow slate — and overlap in time, so some fills are plausibly the
+same event counted twice. Run separately the wide slate does not reach
+significance and its CI includes zero; only pooling produces p=0.0014. The word
+"independent" was assumed from the fact that the databases are separate files,
+which is a property of the storage, not of the sample.
+
+**Fix.** `pooled_markout.py` measures and prints the shared-market count on
+every run, so the overlap cannot be assumed again. FINDINGS 6h and 6i carry both
+corrections in place rather than silently updated numbers.
+
+**The general rule this earns:** *a rate that is indistinguishable from zero at
+the observed n must be reported as an upper bound, never as zero.* "0 pairs in
+140 windows" was arithmetic; "the pair never completes" was an inference the
+arithmetic did not support, and it was load-bearing — 6h used it to resolve the
+6g quoting-policy conflict. The conclusion survived, but only by luck.
+
+Note the pattern shared with the fee-pricing bug above: both took a convenient
+point value — 0.50 for a price, 0 for a rate — and treated it as the measurement
+instead of as one reading with an interval around it.
