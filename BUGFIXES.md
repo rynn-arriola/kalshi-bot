@@ -47,3 +47,28 @@ we would actually hold, not from the raw denominator.
 more than ~10 ticks from the touch worthless, so a book with a thin touch and
 deep liquidity far away yields an enormous share. Those are exactly the books
 where a static-book counterfactual is least trustworthy.
+
+### The pair-trade net edge was understated 6x by pricing fees at 0.50
+
+**Symptom.** `analyze_spread.py` reported a net pair edge of **$0.0062** on five
+contracts against a gross of $0.0500, i.e. fees consuming 88% of the trade. The
+conclusion drawn from that number -- reported to the operator before it was
+checked -- was that the pair trade barely clears its own fees.
+
+**Mechanism.** Both legs were priced at 0.50 as a "representative" price for the
+fee curve. But `0.07·P·(1−P)` is a parabola with its **maximum** at exactly 0.50,
+and the rewarded universe is mostly tail-priced -- KXRAIN's yes side sits at
+0.08. Charging every leg at the single worst point of the curve overstated cost
+by about six times. The correct figure is **$0.0379 net, positive in 98.2% of
+snapshots**.
+
+**Fix.** Charge each leg at its own touch price, per snapshot, rather than at any
+representative value.
+
+**The general rule this earns:** a fee, spread or slippage model must be
+evaluated at the actual price, never at a stand-in. A "representative" value
+sitting at the extremum of a curve is not conservative, it is simply wrong, and
+it was wrong here in the direction that kills a viable strategy. Note the
+asymmetry with liquidity-bot's habits: there, conservative stand-ins are correct
+because they bound *risk*. Here the stand-in was applied to a *cost*, where the
+same instinct destroys the result instead of protecting it.
