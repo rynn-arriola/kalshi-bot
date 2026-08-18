@@ -42,6 +42,20 @@ rather than measured. No capital has been committed and no order has been placed
   **The dominant uncertainty is now the post-fill policy** (`flatten-seconds`),
   which spans the answer by 2.6x and is a design choice, not a market property.
 
+## The largest lever found so far, not yet pulled
+
+**The capture has been ranking markets by a metric anti-correlated with
+revenue.** `reward/target` scores Spearman −0.150 against replayed $/day; its
+top 12 markets earn $24.39/day where `reward/denominator` earns $158.61/day —
+roughly **6.5x**, larger than any size, breadth or policy lever measured. The
+denominator is stable enough to rank on (+0.818 first half to second half),
+which closes open question 6. See FINDINGS 11.
+
+**Nothing captured so far was selected well.** That does not invalidate the
+measurements — share, drag and markout are all replayed per market — but it
+means the 12 markets in every economics table are drawn from a badly chosen
+pool, and the real top 12 has not been looked at yet.
+
 ## Still unknown, and blocking
 
 1. ~~**`period_reward` scale.**~~ **Largely resolved 2026-08-17** — the 1e-4

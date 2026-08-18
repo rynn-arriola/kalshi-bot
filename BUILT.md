@@ -30,7 +30,7 @@ are still inferred, and code written now would bake them in permanently. See
 
 ## Instruments — built and working
 
-### `scripts/record_books.py` — 466 lines
+### `scripts/record_books.py` — 547 lines
 
 Raw capture of liquidity-incentive programs, order books, trades, and exchange
 status. **Interprets nothing**: stores exact venue JSON with a timestamp.
@@ -49,9 +49,25 @@ Selection is capped per series (default 3) — without it the top 40 by
 **Verified:** running now, 40 markets across 18 series, 4,625 books and 2,531
 trades, 1 non-fatal error (a sweep overrun, which is recorded deliberately).
 
-**Known limits:** ranking is the only interpretation in the script, and it is
-scale-invariant so an unconfirmed `period_reward` unit cannot corrupt it. Real
-sample spacing is the sweep duration, not `--interval` — read the timestamps.
+**Revised 2026-08-18**, after two defects were measured (see `BUGFIXES.md`):
+
+- **Sticky selection.** A ticker, once picked, is held until its program's
+  `end_date` passes. Re-ranking from scratch every 15 minutes meant only **19 of
+  82 markets survived a 20-hour run**, so churn was destroying period coverage
+  faster than duration built it — and coverage is the guard that decides whether
+  a market's share is trustworthy at all.
+- **Terminal-state programs are polled too.** `status=active` was hardcoded, so
+  a program's end state and any `paid_out` transition could never be observed.
+  Checked live: `settled`/`ended`/no-filter return a different population.
+- **`market_meta` refreshes** each program cycle instead of once on first sight,
+  so a market settling mid-capture records its result.
+
+**Known limits:** the ranking metric is **wrong and known to be wrong** —
+`reward/target` is anti-correlated with revenue (FINDINGS 11). It is
+scale-invariant, so an unconfirmed `period_reward` unit cannot corrupt it, but
+that was never the problem. Replacing it needs an orderbook call per candidate
+to measure the denominator. Real sample spacing is the sweep duration, not
+`--interval` — read the timestamps.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

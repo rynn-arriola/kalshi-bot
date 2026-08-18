@@ -1072,6 +1072,84 @@ the statistic choice mattered, which is what a correct guard looks like.
 - **Still gross of fees**, still a static book, still shares extrapolated from
   10–33% period coverage, still politics/economics markets only.
 
+## 11. The ranking metric is wrong, and it is the largest lever found so far
+
+Measured 2026-08-18 over 74 markets in `data/capture.db`.
+
+`record_books.py` ranks candidates by `period_reward / target_size`, and
+`docs/PLAN.md` line 212 calls it *"exactly the right Kalshi metric"*. Both
+inherit it from liquidity-bot's `rank_candidates`. **It was ported, not derived,
+and on Kalshi it is worse than useless.**
+
+The justification is stated at `record_books.py:341`: *"Target size is the
+denominator we compete against, so reward/target is the natural density."*
+**That premise is false**, and section 4 already contained the reason without
+anyone connecting it: DiscountFactor 0.50 halves each tick's contribution, so
+the effective competition is the top few ticks, not the full Target Size.
+
+| quantity | spread across our sample |
+|---|---|
+| `target_size` | 3x (300, 500, 1000 — and 1000 in 99.2% of the live universe) |
+| **measured denominator** | **629x** (105.2 to 66,144.5, median 726.8) |
+
+Ranking by a quantity that barely varies, as a proxy for one that varies 629x,
+cannot work.
+
+### What each ranking actually earns
+
+| ranking | Spearman vs measured $/day | $/day from its top 12 |
+|---|---|---|
+| `reward / target_size` (current) | **−0.150** | **$24.39** |
+| pool alone | +0.114 | $74.03 |
+| `reward / measured denominator` | +0.619 | **$158.61** |
+| perfect foresight | — | $225.51 |
+
+**The current metric is negatively correlated with revenue** — it is worse than
+ranking by pool alone, and worse than picking at random. Switching to density is
+worth roughly **6.5x** on the top 12, which is far larger than any size, breadth
+or policy lever measured to date.
+
+**Honest limit on that +0.619.** It is partly circular: our share is
+approximately `q / (q + denominator)`, so revenue is already about
+`pool / denominator` by construction, and the correlation largely confirms the
+formula matches itself. **The non-circular finding is the 629x spread** — that
+is a measurement, and it is what disqualifies `reward/target`. Treat the $158.61
+as an upper bound too, since it ranks and scores on the same books.
+
+### The denominator is stable enough to rank on — OPEN QUESTION 6 ANSWERED
+
+Ranking uses the *past* denominator to earn on the *future* one, so the metric
+is only usable if the denominator persists. Splitting each market's snapshots
+into halves, over 71 markets with at least 200 qualifying snapshots each:
+
+| measure | value |
+|---|---|
+| Spearman, first half vs second half | **+0.818** |
+| per-market ratio second/first, median | 1.19x |
+| within 2x of itself | 52 of 71 (73%) |
+| top 12 that stay top 12 | 8 of 12 |
+
+Section 7 question 6 asked *"whether reward density is stable enough over a Time
+Period to rank on, or whether it must be re-measured continuously."*
+**Answer: stable enough to rank on, but re-measure it** — a quarter of the top
+12 rotates out within hours, and the worst market drifted 76.9x.
+
+**Limit:** both halves come from one ~20h capture, so this establishes stability
+over roughly ten hours, **not across a 7-14 day program period**, which is what
+the question literally asked. A longer capture is needed to close it fully.
+
+### How this was found, and the process point
+
+The claim was inherited from a working implementation, restated in the plan as
+settled, and repeated in the capture script's own docstring — three places, none
+of which tested it. It survived because on Polymarket it is genuinely right:
+there `target_size` ranges 5,000-15,000 and really does measure required
+liquidity. On Kalshi it is a near-constant.
+
+**A ported calibration is a hypothesis, not a fact** — the same rule the top of
+this file already states about liquidity-bot's numbers. It was applied to
+`fill_hazard`, the 900s clock and the 2-cent spread rule, and not to this.
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in
@@ -1086,8 +1164,11 @@ the statistic choice mattered, which is what a correct guard looks like.
    reconciler's `PLACE_POST_ONLY` has no venue primitive.
 5. **Rate limits** — separate read/write token buckets; `GET /account/limits` reports
    live refill rates. Tier-dependent, needs an authenticated read.
-6. Whether reward density (`period_reward / effective_denominator`) is stable enough
-   over a Time Period to rank on, or whether it must be re-measured continuously.
+6. ~~Whether reward density is stable enough over a Time Period to rank on.~~
+   **ANSWERED 2026-08-18 in section 11.** Stable enough to rank on — first-half
+   vs second-half Spearman +0.818, 73% of markets within 2x — but re-measure
+   continuously: a quarter of the top 12 rotates out within hours. Established
+   over ~10 hours only, not over a full 7-14 day period.
 
 ---
 

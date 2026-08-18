@@ -109,3 +109,67 @@ arithmetic did not support, and it was load-bearing — 6h used it to resolve th
 Note the pattern shared with the fee-pricing bug above: both took a convenient
 point value — 0.50 for a price, 0 for a rate — and treated it as the measurement
 instead of as one reading with an interval around it.
+
+
+## 2026-08-18
+
+### The capture ranked candidates by a metric anti-correlated with revenue
+
+**Symptom.** Every market this project has ever recorded was chosen by
+`period_reward / target_size`. Measured against replayed revenue over 74
+markets, that ranking scores **Spearman −0.150** — its top 12 markets earn
+**$24.39/day** where ranking by `reward / measured denominator` earns
+**$158.61/day**.
+
+**Mechanism.** The metric was ported from liquidity-bot's `rank_candidates` and
+restated in `docs/PLAN.md` as *"exactly the right Kalshi metric"*. Its stated
+premise, at `record_books.py:341`, is that *"target size is the denominator we
+compete against"*. On Polymarket that holds — `target_size` runs 5,000-15,000
+and really does measure required liquidity. On Kalshi it is **1000 in 99.2% of
+programs**, so the ratio degenerates to ranking by pool, badly.
+
+Meanwhile the quantity it stands in for varies enormously: the measured
+denominator spans **629x** across the same sample. FINDINGS section 4 had
+already recorded why — DiscountFactor 0.50 collapses the effective competition
+to the top few ticks — and nobody connected it to the ranking.
+
+**Fix.** FINDINGS 11 records the measurement and the replacement metric.
+`docs/PLAN.md` line 212 is corrected in place rather than left to be re-read as
+settled.
+
+**The general rule this earns:** *a ported calibration is a hypothesis, not a
+fact.* The top of `FINDINGS.md` already says liquidity-bot's calibrations "are
+NOT valid here until re-measured", and that discipline was applied to
+`fill_hazard`, the 900s clock and the 2-cent spread rule — but not to the one
+line that decided which markets we looked at for two days. **It survived because
+three documents agreed with each other and none of them tested it.**
+
+### Selection churn was destroying the coverage it was meant to build
+
+**Symptom.** `sizing.py` discards any market observed over less than 10% of its
+program period, and that guard was excluding the large majority — 32 of 52 at
+one point. The obvious reading is "capture for longer".
+
+**Mechanism.** `rank()` re-picked the top N from scratch every 15 minutes with
+no memory, so tracked markets rotated out mid-run. Measured across three runs:
+
+| run | tracked | distinct seen | present for the whole run |
+|---|---|---|---|
+| capture.db, 8h | 40 | 44 | 36 |
+| capture.db, 20h | 40 | 82 | **19** |
+| capture_wide.db, 4h | 150 | 242 | 82 |
+
+**Only 19 of 82 markets survived the whole 20-hour run.** Duration was building
+coverage and churn was destroying it faster, so a longer capture would not have
+fixed it — the wide run's 214 markets collapsing to 1 trustworthy market was
+partly this, not only its short duration.
+
+**Fix.** Sticky selection: once picked, a ticker is held until its program's
+`end_date` passes. Also fixed while there: program polling was hardcoded to
+`status=active`, so a program's terminal state and any `paid_out` transition
+were never observable — checked against the live API, `status=settled`/`ended`
+and no filter return a different population. And `market_meta` was fetched once
+on first sight, so a market settling mid-capture recorded no result.
+
+**The general rule this earns:** *when a guard rejects most of your data, check
+whether your own collection caused it before concluding the data is thin.*

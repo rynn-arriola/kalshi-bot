@@ -127,6 +127,9 @@ and must run before any economics.
 `GET /trade-api/v2/incentive_programs?status=active&type=liquidity` is **public and
 unauthenticated**, returning every parameter. Ranking the whole universe by
 `period_reward / target_size` costs a handful of requests and accrues no cost.
+**But that ranking is wrong — see FINDINGS 11.** The right metric needs one
+orderbook call per candidate to measure the denominator; at 200 reads/s that is
+still seconds for the whole universe, so discovery stays nearly free.
 
 Liquidity-bot's invariant 51 (never scan while quoting) exists because Polymarket
 discovery cost *31 minutes* for 7,443 markets. That constraint largely dissolves here —
@@ -210,7 +213,14 @@ candidate gate. Add markout recording at 60/300/900s — observable, no inferenc
 `shadow_run.py` — port the run loop. Replace the Polymarket slug archaeology
 (`shadow_run.py:35-45`, `WINNER_SUFFIXES` / `is_two_way_slug`) with the Kalshi program
 filter. `rank_candidates` (`:48-71`) already ranks by `reward_pool / target_size` —
-that is exactly the right Kalshi metric and ports directly.
+~~that is exactly the right Kalshi metric and ports directly.~~
+
+> **WRONG, corrected 2026-08-18. See FINDINGS 11.** That metric is
+> **anti-correlated** with revenue on Kalshi (Spearman −0.150) because
+> `target_size` is 1000 in 99.2% of programs while the denominator we actually
+> compete against spans 629x. Rank by `period_reward / measured denominator`
+> instead — worth ~6.5x on the top 12. It ports *syntactically* and loses all
+> its discriminating power, which is the most dangerous kind of port.
 
 New `shadow_report.py` output must separate:
 - **computed** (reward share, denominator, two-sided rate, markout) — trustworthy

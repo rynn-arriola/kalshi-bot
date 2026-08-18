@@ -116,6 +116,26 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def still_open(end_date: str | None) -> bool:
+    """Is this program's end_date in the future?
+
+    Parsed rather than string-compared. `end_date` arrives as '...Z' while
+    `utc_now()` renders '+00:00', so a lexicographic test only works by
+    accident of where the two formats first differ -- and would invert
+    silently if either format ever changed. An unparseable or missing date
+    returns False so the ticker is re-ranked normally rather than pinned
+    forever by a bad value.
+    """
+
+    if not end_date:
+        return False
+    try:
+        return datetime.fromisoformat(
+            str(end_date).replace("Z", "+00:00")) > datetime.now(timezone.utc)
+    except (TypeError, ValueError):
+        return False
+
+
 class Limiter:
     """One shared request gate.
 
@@ -247,21 +267,45 @@ def get_json(limiter: Limiter, url: str, timeout: float = 30.0):
         return exc.code, None
 
 
-def fetch_active_programs(limiter: Limiter, capture: Capture) -> list:
+def fetch_programs(limiter: Limiter, capture: Capture,
+                   status_filter: str | None) -> list:
+    """Page every liquidity program under one status filter.
+
+    `status_filter=None` omits the parameter entirely, which returns a
+    different set from `status=active` -- checked against the live API
+    2026-08-18: active/closed give one population, settled/ended/no-filter
+    another with later end dates. Polling only `active` therefore never
+    observes a program AFTER it ends, and `paid_out` is the field that would
+    corroborate the `period_reward` scale (FINDINGS 3). A program that leaves
+    the active list takes its terminal state with it, permanently.
+    """
+
     rows: list = []
     cursor = None
+    base = f"{BASE}/incentive_programs?type=liquidity&limit=200" + (
+        f"&status={status_filter}" if status_filter else "")
     for _ in range(80):
-        url = (f"{BASE}/incentive_programs?status=active&type=liquidity&limit=200"
-               + (f"&cursor={cursor}" if cursor else ""))
+        url = base + (f"&cursor={cursor}" if cursor else "")
         status, payload = get_json(limiter, url)
         if status != 200 or payload is None:
-            capture.record_error("fetch_programs", f"HTTP {status}")
+            capture.record_error(
+                "fetch_programs", f"status={status_filter} HTTP {status}")
             break
         rows.extend(payload.get("incentive_programs", []))
         cursor = payload.get("next_cursor")
         if not cursor:
             break
     return rows
+
+
+def fetch_active_programs(limiter: Limiter, capture: Capture) -> list:
+    """Active programs -- the set that drives ranking.
+
+    Everything fetched under other filters is recorded too, but ranking uses
+    the active set so we never quote a program that has already ended.
+    """
+
+    return fetch_programs(limiter, capture, "active")
 
 
 def backfill_trades(limiter: Limiter, capture: "Capture", ticker: str,
@@ -374,6 +418,7 @@ def main() -> int:
     next_programs = 0.0
     tickers: list[str] = []
     known_meta: set[str] = set()
+    program_end: dict[str, str] = {}
     backfilled: set[str] = set()
     trade_total = 0
 
@@ -386,11 +431,46 @@ def main() -> int:
                 if status == 200 and payload is not None:
                     capture.record_exchange_status(payload)
                 rows = fetch_active_programs(limiter, capture)
+                # Record the terminal-state population too. It is not used for
+                # ranking -- we never quote an ended program -- but it is the
+                # only way to observe `paid_out` after a program closes, and
+                # that observation cannot be made retrospectively.
+                for extra in ("settled", None):
+                    other = fetch_programs(limiter, capture, extra)
+                    if other:
+                        capture.record_programs(other)
+                        for row in other:
+                            ticker = str(row.get("market_ticker") or "").strip()
+                            if ticker:
+                                program_end[ticker] = str(
+                                    row.get("end_date") or "")
                 if rows:
                     capture.record_programs(rows)
-                    tickers = rank(rows, args.markets)
-                    print(f"[{utc_now()}] programs={len(rows)}"
-                          f" tracking={len(tickers)} trades={trade_total}")
+                    for row in rows:
+                        ticker = str(row.get("market_ticker") or "").strip()
+                        if ticker:
+                            program_end[ticker] = str(row.get("end_date") or "")
+                    fresh = rank(rows, args.markets)
+                    # STICKY SELECTION. Re-ranking from scratch every refresh
+                    # lets a market we have watched for twenty hours fall out
+                    # of the top N and take its end-window with it. Coverage --
+                    # observed span over program period -- is the guard that
+                    # decides whether a market's share is trustworthy at all
+                    # (FINDINGS 9), so churn actively destroys the thing this
+                    # capture exists to produce. Once picked, a ticker is held
+                    # until its program's end_date passes.
+                    now_iso = utc_now()
+                    held = [t for t in tickers if still_open(program_end.get(t))]
+                    tickers = held + [t for t in fresh if t not in held]
+                    if len(tickers) > args.markets:
+                        tickers = tickers[:args.markets]
+                    print(f"[{now_iso}] programs={len(rows)}"
+                          f" tracking={len(tickers)} held={len(held)}"
+                          f" trades={trade_total}")
+                # Market metadata is refreshed here rather than only on first
+                # sight: a market that settles mid-capture changes status and
+                # gains a result, and fetching once would record neither.
+                known_meta.clear()
                 next_programs = sweep_started + args.program_refresh_minutes * 60.0
 
             for ticker in tickers:
