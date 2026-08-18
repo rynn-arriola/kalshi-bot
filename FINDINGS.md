@@ -910,6 +910,11 @@ that net revenue is unknown within a factor of four.
 > factor-of-four uncertainty is gone at that size; it survives at 100, where
 > the interval straddles zero. The two missing effects listed below are still
 > missing, and item 2 is now the largest unmeasured term in the economics.
+>
+> **SUPERSEDED AGAIN by section 10.** Adding a reward line that assumes
+> continuous resting to a drag line that assumes fills double-counts our
+> presence. Simulated together, net falls ~40% to **$10-$26/day** on $300 at 12
+> markets. Both tables above are upper bounds; use section 10.
 
 **Two effects are missing, and both make it worse:**
 
@@ -979,6 +984,93 @@ reported **$2,175/day and 9,779%/day** before they were added:
 - **Reward only — gross.** See "These are GROSS" above: the trading drag is the
   same order of magnitude and cannot currently be bounded. Fees are additional
   again on top, and the maker rate is still unmeasured (6e).
+
+## 10. Reward and fills in one simulation — the estimate falls ~40%
+
+`scripts/net_sizing.py`, 2026-08-17. Sections 9 and 6i computed reward and drag
+under **contradictory assumptions and then added them**: `sizing.py` never reads
+the trade tape at all and assumes we rest continuously for the whole period,
+while 6i's drag assumes we are filled and flattening. Both cannot be true of the
+same minute.
+
+This runs one clock per market. A fill takes our quotes down, and because the
+filing excludes snapshots without two-sided liquidity (section 2), the reward
+integral stops on **both** sides for as long as we are flat.
+
+### The result at 25 contracts on $300, 12 markets
+
+| flatten after fill | uptime | fills/day | reward/day | drag/day | **net/day** |
+|---|---|---|---|---|---|
+| 0s (never pull) | 100% | 45.1 | $38.98 | −$13.02 | **$25.96** |
+| 300s | 98.0% | 36.9 | $37.53 | −$18.48 | **$19.05** |
+| 900s | 95.2% | 30.0 | $35.22 | −$23.51 | **$11.71** |
+| 3600s | 87.9% | 22.7 | $29.60 | −$11.16 | **$18.45** |
+
+**Net is $10–$26/day, against the $31.76 that adding sections 9 and 6i
+produced.** The integrated number is roughly 40% lower, and the honest range now
+spans a factor of 2.6 driven by `--flatten-seconds`, which is unmeasured.
+
+The non-monotonicity at 3600s is real but not a signal: pulling for an hour
+avoids more fills than it forfeits reward, and the surviving fills are a
+different sample. It is sample composition, not an optimum. Do not read
+"flatten longer" as a policy from this table.
+
+### Two model corrections, both of which make the answer worse
+
+**1. Queue position persists, and that quadruples the fill rate.** `markout.py`
+treats every snapshot as an independent experiment and puts us at the back of
+the queue each time. A real quoter holds its place while its price is still the
+one it wants, and volume trading through eats the queue ahead. Modelling that
+gives **37 fills/day across 12 markets against the ~11/day** implied by 6i's
+0.0385 fills/market-hour.
+
+Fill cost is therefore a much larger line than 6i suggested, and 6i's fill rate
+should be read as a **lower bound** produced by a deliberately pessimistic queue
+assumption, not as a measurement of how often we get hit.
+
+**2. Partial fills barely matter here.** Under `--fill-model partial` the fill
+rate rises (45.1 vs 40-ish whole-order at 0s flatten) but net moves by under a
+dollar. The concern recorded in 9 and 6i was correct in direction and small in
+magnitude once the queue is modelled properly.
+
+### The share statistic moved the answer more than anything else measured
+
+`sizing.py` reduces per-snapshot share to a period fraction with the **median**.
+Reward is a time integral, so the **mean** is the formally correct statistic —
+and switching to it raised reward from $37.44 to $53.98, a **44% swing from a
+one-line choice**, larger than the entire drag uncertainty in 6i.
+
+Neither statistic is simply right. Measured across 77 markets:
+
+- The typical market is **not** concentrated: its best 10% of snapshots carry a
+  median of **16%** of its total reward score (uniform would be 10%), and the
+  median mean/median ratio is **1.04x**. For most markets the choice is
+  irrelevant.
+- But the markets that **rank highest by mean are disproportionately the skewed
+  ones** — `KXBILZERIANCONCEDE-26AUG18-SEP01` runs 42% in its top decile with a
+  5.2x mean/median gap, `KXFISHBACKCONCEDE-26SEP01-AUG19` a 3.0x gap.
+
+**Ranking by the mean selects markets whose mean is inflated by a minority of
+snapshots** — the thin-touch books where section 4 already warns the
+static-book counterfactual is least trustworthy. This is the same failure mode
+as `sizing.py`'s first version reporting $2,175/day: a statistic choosing its
+own outliers.
+
+**Fix: a concentration guard.** Drop any market whose best 10% of snapshots
+carry more than 30% of its reward score. With it, mean and median agree to
+within $3/day ($38.98 vs $35.98) — the guard removes exactly the markets where
+the statistic choice mattered, which is what a correct guard looks like.
+
+### What this does and does not change
+
+- **The strategy is unchanged.** Still positive, still 12 markets at 25
+  contracts on $300, still capacity-limited.
+- **The magnitude is 40% lower** and the dominant uncertainty is no longer the
+  markout sign (6i settled that) but `--flatten-seconds`: the post-fill policy.
+  That is a design choice, not a market property, so it is ours to pick — and
+  picking it needs the exit-cost model that does not exist yet (NEXT item 4).
+- **Still gross of fees**, still a static book, still shares extrapolated from
+  10–33% period coverage, still politics/economics markets only.
 
 ## 7. Open questions
 

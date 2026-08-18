@@ -34,9 +34,13 @@ rather than measured. No capital has been committed and no order has been placed
   from 140 windows was a sampling limit read as a fact — 6h records why.)
 - **One-sided fills are adverse, and the drag is bounded.** Sign test
   p=0.0014 at 300s, mean −$0.1271 per fill at 5 contracts, 95% CI
-  [−$0.2374, −$0.0369]. Net is **positive across the whole interval at 25
-  contracts — $11.30 to $21.49/day** on $243 of collateral — and straddles zero
-  at 100. See FINDINGS 6i. This was the blocker; it is cleared.
+  [−$0.2374, −$0.0369]. See FINDINGS 6i. This was the blocker; it is cleared.
+- **Simulated together rather than added, net is $10–$26/day** at 25 contracts
+  on $300 across 12 markets — roughly **40% below** what adding the reward and
+  drag lines gave. Reward and fills were computed under contradictory
+  assumptions; `net_sizing.py` runs them on one clock. See FINDINGS 10.
+  **The dominant uncertainty is now the post-fill policy** (`flatten-seconds`),
+  which spans the answer by 2.6x and is a design choice, not a market property.
 
 ## Still unknown, and blocking
 

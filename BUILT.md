@@ -157,6 +157,34 @@ overlap — the wide slate alone does not reach significance and its CI includes
 zero. Reward per size is imported from FINDINGS 9 as a constant, not recomputed,
 so the seam between the two measurements stays visible.
 
+### `scripts/net_sizing.py` — 340 lines
+
+Reward accrual and fill simulation on **one clock**, so the two stop
+contradicting each other. `sizing.py` never reads the trade tape and assumes we
+rest continuously; `markout.py` assumes we are filled. Adding their outputs
+double-counts our presence during exactly the minutes a fill has our quotes
+down. Here a fill takes the quotes down and the reward integral stops on both
+sides, which is what section 2's two-sided rule requires.
+
+Models two things `markout.py` deliberately did not: **queue position persists**
+across snapshots while our price is unchanged (a real quoter holds its place),
+and **partial fills** under `--fill-model partial`.
+
+**Verified:** produced FINDINGS 10 — net **$10-$26/day** at 25 contracts on
+$300 across 12 markets, roughly **40% below** the $31.76 that adding sections 9
+and 6i gave. Persistent queue raises the fill rate to ~37/day against the ~11/day
+6i implied, so 6i's rate is a lower bound from a pessimistic queue assumption.
+
+Carries a **concentration guard**: drop a market whose best 10% of snapshots
+carry over 30% of its reward score. Without it, switching from `sizing.py`'s
+median to the formally-correct mean moved reward 44% ($37.44 to $53.98) — because
+ranking by mean selects markets whose mean is inflated by a few thin-touch
+snapshots. With the guard, mean and median agree within $3.
+
+**Known limits:** `--flatten-seconds` is unmeasured and spans the answer by a
+factor of 2.6, so the post-fill policy is now the dominant uncertainty. Gross of
+fees, static book, shares extrapolated from 10-33% period coverage.
+
 ---
 
 ## Documentation — built
