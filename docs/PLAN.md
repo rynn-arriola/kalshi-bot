@@ -228,11 +228,18 @@ New `shadow_report.py` output must separate:
 - **untrusted** — markets where our hypothetical size is a large fraction of the
   denominator (decision: the §6e blind spot)
 
-## Phase 3 — one-contract evidence run
+## Phase 3 — evidence run
 
 Explicitly non-scalable, modelled on liquidity-bot's commissioning exception.
 
-**Account: $23 available. Target exposure ≈ $1.00 — roughly 4% of balance.**
+> **REVISED 2026-08-18. This section said "one-contract" and "$23 available";
+> both are stale.** FINDINGS 9 measured that at one contract only 1 of 10
+> markets clears the $1.00 minimum payout — and a payout below it is
+> **forfeited, not deferred** — so a one-contract run would very likely produce
+> $0.00 of reward and could not distinguish "the scale is wrong" from "we were
+> under the threshold". **Size the run from the program**, not from a habit of
+> starting at one. Operator capital is now **$300**, and FINDINGS 10 puts the
+> efficient unit at **25 contracts across ~12 markets** (~$25 collateral each).
 
 **Operator-armed.** Claude builds the tooling, selects and justifies the candidate
 market, and analyses the resulting data. **The operator runs the arming command and
@@ -240,9 +247,11 @@ places the order.** This mirrors liquidity-bot, where `live_commissioning.py` re
 four explicit acknowledgements and the operator runs `start_commissioning.sh` — the
 human is already in the arming loop by design, not by exception.
 
-Hard limits: **1 contract, 1 market, both sides already qualifying without us**, a
-market chosen for *low* fee (tail-priced) and *adequate* exit depth — deliberately not
-the highest-share thin book. Total exposure ≈ $1.00.
+Hard limits: **enough size to clear the $1.00 minimum over the program period,
+1 market, both sides already qualifying without us**, a market chosen for *low*
+fee (tail-priced) and *adequate* exit depth — deliberately not the highest-share
+thin book. On measured pools that means roughly 5-25 contracts and a program
+short enough to pay out inside the run.
 
 Deliverables Claude produces for this phase:
 - a ranked candidate list with the exact reason each market was chosen or rejected
@@ -293,7 +302,7 @@ are reproducible from stored books, (b) the two-sided rate matches the ~60% seen
 8-market sample, (c) markout is populated at all three horizons, (d) fill intervals are
 reported as intervals.
 
-**Phase 3** — one contract rests, is observed in `GET /portfolio/orders`, is cancelled
+**Phase 3** — the order rests, is observed in `GET /portfolio/orders`, is cancelled
 cleanly, and a reward payout appears. Compare the paid amount against the Tier-1
 computed share to **confirm or refute the 1e-4 scale**.
 

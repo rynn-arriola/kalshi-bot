@@ -16,7 +16,9 @@ Last updated 2026-08-17.
 |---|---|---|
 | Research | Reward rules, fee model, universe shape | **done, ongoing refinement** |
 | Instruments | Raw capture, signed reads, formula replay | **done** |
-| Analysis | Reward share, two-sided rate, tick effect | **partial** |
+| Analysis | Reward share, two-sided rate, tick effect | **done** |
+| Analysis | Fill cost, integrated net, ranking metric | **done** |
+| Analysis | Exit cost, end-date concentration | **not started** |
 | Phase 0 | Pure core (models, rewards, risk, fees) | **not started, deliberately** |
 | Phase 1 | Read-only adapters + streams | not started |
 | Phase 2 | Shadow measurement harness | not started |

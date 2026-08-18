@@ -152,14 +152,58 @@ Three things make this decisive:
 The cents hypothesis is dead: it puts the median at $357/market/day and breaks
 the cap constantly.
 
+### Tested against 11 698 programs the venue says it PAID, 2026-08-18
+
+The argument above runs over *active* programs. Once `record_books.py` began
+polling terminal-state programs too (it had `status=active` hardcoded, see
+`BUGFIXES.md`), the paid population jumped from **28 to 11 698** — and those
+are programs Kalshi asserts it actually paid out on, which is a much sharper
+test than an active-program band argument.
+
+Every paid program must sit inside the filing's reward bound. Measured:
+
+| scale | max $/calendar-day | paid programs breaching the $1 000 cap |
+|---|---|---|
+| **1e-4** | $345.00 | **0 of 11 698** |
+| cents | $34 500 | **10 235 of 11 698** |
+| whole dollars | $3 450 000 | all 11 698 |
+
+**The cents hypothesis is refuted by the venue's own payout data**, not merely
+made implausible. Under 1e-4 the median paid program is $20.00/calendar-day,
+p10 $6.67, p90 $100.00, across 37 distinct `period_reward` values.
+
+**One anomaly, recorded rather than explained away.** Under 1e-4, **1 218 of
+11 698 paid programs fall BELOW the filing's $10/calendar-day floor** (minimum
+$2.78). These are long multi-day programs with modest pools — e.g. $25 spread
+over 9 calendar days. The most likely reading is that the $10–$1 000 bound
+applies to the **Time Period Reward total**, not per calendar day, in which
+case every paid program is comfortably inside it and the maximum total under
+1e-4 is $100. That reading also happens to be what the filing's phrase
+"per calendar day encompassed" was interpreted *away from* earlier in this
+section. **Either reading refutes cents**, so the scale conclusion is
+unaffected — but the floor discrepancy means our reading of the bound itself is
+not settled, and section 9's cap arithmetic leans on it.
+
+**What this is still not.** It remains inference from the venue's own
+arithmetic and its own `paid_out` flag. **No payout amount is exposed
+anywhere** — a paid program carries exactly the same eleven fields as an unpaid
+one, with no earnings figure. So this cannot be reconciled against a number we
+were actually paid.
+
 **What this is not.** It is inference from the venue's own arithmetic, not a
-confirmed payout — `paid_out` is `True` on only 28 of 2 940 programs and carries
-no amount. It is now strong enough to size the business and to write economics
+confirmed payout — no program row carries an amount. It is now strong enough to size the business and to write economics
 against, which it was not before. **A real payout still settles it**, and the
 `revenue: 0` discrepancy in 6f is a standing reminder of what an unverified
 money field costs.
 
-**The number that matters: the median program pays a $1.10/day pool per
+**UNRECONCILED:** a recount on 2026-08-18 over 3 255 programs gave a median of
+**$3.12/calendar-day**, not $1.10, and the paid-program population above gives
+$20.00. The three differ by program set and by how days are counted (elapsed vs
+distinct calendar dates). Nothing downstream uses the median — `sizing.py` reads
+each program's own pool — but two measurements of one quantity disagreeing 3x
+is recorded, not averaged.
+
+**The number that matters: the median program pays a roughly $1-$3/day pool per
 market**, and we earn a *share* of that, not the pool. Section 4's share
 measurements are what turn this into revenue.
 

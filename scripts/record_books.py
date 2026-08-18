@@ -169,6 +169,8 @@ class Capture:
         self.connection.commit()
         self.run_id = f"cap-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
         self._pending = 0
+        # Last stored JSON per program, so only changes are written.
+        self._program_state: dict[str, str] = {}
 
     def start(self, args: dict) -> None:
         self.connection.execute(
@@ -199,11 +201,33 @@ class Capture:
         self._flush(force=True)
 
     def record_programs(self, raw: list) -> None:
+        """Store program rows, but only when one has actually changed.
+
+        Three poll passes now run per cycle (active, settled, unfiltered) and
+        they overlap heavily -- a smoke test produced 35,033 rows for 16,027
+        distinct programs in a single cycle. At a 15-minute cadence that is
+        ~3.4M near-identical rows a day, which buries the transitions we are
+        actually here for: `paid_out` flipping, and a program leaving the
+        active set.
+
+        Storing on change keeps every transition and drops the repetition. The
+        first sighting of a program is always stored, so nothing is lost.
+        """
+
         stamp = utc_now()
-        self.connection.executemany(
-            "INSERT INTO programs(run_id, fetched_at, raw_json) VALUES(?,?,?)",
-            [(self.run_id, stamp, json.dumps(row, sort_keys=True)) for row in raw])
-        self._flush(force=True)
+        pending = []
+        for row in raw:
+            body = json.dumps(row, sort_keys=True)
+            key = str(row.get("id") or row.get("market_ticker") or body)
+            if self._program_state.get(key) == body:
+                continue
+            self._program_state[key] = body
+            pending.append((self.run_id, stamp, body))
+        if pending:
+            self.connection.executemany(
+                "INSERT INTO programs(run_id, fetched_at, raw_json) VALUES(?,?,?)",
+                pending)
+            self._flush(force=True)
 
     def record_book(self, ticker: str, status: int, raw: object | None) -> None:
         self.connection.execute(
@@ -331,7 +355,97 @@ def backfill_trades(limiter: Limiter, capture: "Capture", ticker: str,
     return stored
 
 
-def rank(rows: list, limit: int, max_per_series: int = 3) -> list[str]:
+def scan_density(limiter: Limiter, capture: "Capture", rows: list,
+                 max_candidates: int) -> dict[str, float]:
+    """Measure each candidate's real reward density: pool / competing score.
+
+    Ranking by `period_reward / target_size` is ANTI-CORRELATED with revenue
+    (Spearman -0.150, FINDINGS 11). Its premise -- that target size is the
+    denominator we compete against -- is false: target is 1000 in 99.2% of
+    programs while the score we actually compete against spans 629x. That
+    metric was ported from liquidity-bot, where target really does range
+    5,000-15,000, and it lost all its discriminating power on the way.
+
+    The real denominator needs one orderbook call per candidate. At 200 reads/s
+    the whole live universe costs under three minutes, so this is affordable at
+    an hourly cadence -- and the denominator is stable enough to rank on
+    (first-half/second-half Spearman +0.818, FINDINGS 11).
+
+    Two things fall out for free:
+
+      * the two-sided gate. A market whose either side misses Target Size pays
+        NOTHING regardless of our share (section 2), and the old ranking never
+        checked it at all.
+      * the books themselves are stored, giving universe-wide snapshots rather
+        than only the slate we chose to track.
+
+    Returns {ticker: density}. Markets failing the two-sided gate are absent.
+    """
+
+    density: dict[str, float] = {}
+    seen: set[str] = set()
+    for row in rows[:max_candidates]:
+        ticker = str(row.get("market_ticker") or "").strip()
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        try:
+            target = float(row["target_size_fp"])
+            discount = float(row["discount_factor_bps"]) / 10000.0
+            pool = float(row["period_reward"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if target <= 0:
+            continue
+        status, payload = get_json(
+            limiter, f"{BASE}/markets/{ticker}/orderbook?depth={MAX_BOOK_DEPTH}")
+        capture.record_book(ticker, status, payload)
+        if status != 200 or payload is None:
+            continue
+        book = (payload or {}).get("orderbook_fp") or {}
+        scores = []
+        for name in ("yes", "no"):
+            ladder = [(float(px), float(sz))
+                      for px, sz in (book.get(f"{name}_dollars") or [])]
+            score, reached = qualifying_score(ladder, target, discount)
+            if not reached:
+                scores = []
+                break
+            scores.append(score)
+        if not scores:
+            continue        # one-sided: pays nothing, do not track it
+        competing = sum(scores) / 2.0
+        if competing <= 0:
+            continue
+        density[ticker] = pool / competing
+    return density
+
+
+def qualifying_score(ladder: list[tuple[float, float]], target: float,
+                     discount: float) -> tuple[float, bool]:
+    """Total discount-weighted score of the qualifying bids on one side.
+
+    Mirrors `analyze_capture.qualifying` deliberately -- this script must not
+    import the analysis layer, because the capture has to keep running when the
+    analysis changes. Kept small enough to read side by side.
+    """
+
+    if not ladder:
+        return 0.0, False
+    ordered = sorted(ladder, key=lambda level: -level[0])
+    reference = ordered[0][0]
+    cumulative = 0.0
+    score = 0.0
+    for price, size in ordered:
+        cumulative += size
+        score += (discount ** round((reference - price) * 100)) * size
+        if cumulative >= target:
+            return score, True
+    return score, False
+
+
+def rank(rows: list, limit: int, max_per_series: int = 3,
+         density: dict[str, float] | None = None) -> list[str]:
     """Rank by reward per unit of target size, capped per series.
 
     This is the ONE piece of interpretation in the script, and it only decides
@@ -365,7 +479,15 @@ def rank(rows: list, limit: int, max_per_series: int = 3) -> list[str]:
         if target <= 0:
             continue
         seen.add(ticker)
-        scored.append((reward / target, ticker))
+        if density is not None:
+            # Measured density, and absence means the market failed the
+            # two-sided gate during the scan -- it pays nothing, so it is not
+            # a candidate at all.
+            if ticker not in density:
+                continue
+            scored.append((density[ticker], ticker))
+        else:
+            scored.append((reward / target, ticker))
     scored.sort(key=lambda item: -item[0])
 
     picked: list[str] = []
@@ -402,6 +524,20 @@ def main() -> int:
                         help="shared request rate. /account/limits reports the"
                              " basic tier refilling reads at 200/s, so this is"
                              " deliberately far under the ceiling.")
+    parser.add_argument("--rank-by", choices=("density", "target"),
+                        default="density",
+                        help="'density' measures the real competing score with"
+                             " one orderbook call per candidate and also"
+                             " applies the two-sided gate. 'target' is the old"
+                             " reward/target_size, kept only for reproducing"
+                             " earlier captures -- it is anti-correlated with"
+                             " revenue (FINDINGS 11).")
+    parser.add_argument("--density-refresh-minutes", type=float, default=60.0,
+                        help="how often to re-scan denominators; the"
+                             " denominator is stable enough to rank on"
+                             " (Spearman +0.818) so this need not be frequent")
+    parser.add_argument("--density-candidates", type=int, default=3000,
+                        help="cap on candidates scanned, to bound scan time")
     parser.add_argument("--trade-backfill-hours", type=float, default=48.0,
                         help="how far back to page trades on first sight of a market")
     args = parser.parse_args()
@@ -419,14 +555,18 @@ def main() -> int:
     tickers: list[str] = []
     known_meta: set[str] = set()
     program_end: dict[str, str] = {}
+    density_map: dict[str, float] = {}
+    next_density = 0.0
     backfilled: set[str] = set()
     trade_total = 0
 
     try:
         while time.monotonic() < deadline:
             sweep_started = time.monotonic()
+            overhead = 0.0
 
             if sweep_started >= next_programs:
+                overhead_started = time.monotonic()
                 status, payload = get_json(limiter, f"{BASE}/exchange/status")
                 if status == 200 and payload is not None:
                     capture.record_exchange_status(payload)
@@ -450,7 +590,18 @@ def main() -> int:
                         ticker = str(row.get("market_ticker") or "").strip()
                         if ticker:
                             program_end[ticker] = str(row.get("end_date") or "")
-                    fresh = rank(rows, args.markets)
+                    if args.rank_by == "density" and (
+                            sweep_started >= next_density or not density_map):
+                        before = time.monotonic()
+                        density_map = scan_density(
+                            limiter, capture, rows, args.density_candidates)
+                        print(f"[{utc_now()}] density scan:"
+                              f" {len(density_map)} two-sided of {len(rows)}"
+                              f" in {time.monotonic() - before:.0f}s")
+                        next_density = (sweep_started
+                                        + args.density_refresh_minutes * 60.0)
+                    fresh = rank(rows, args.markets,
+                                 density=density_map or None)
                     # STICKY SELECTION. Re-ranking from scratch every refresh
                     # lets a market we have watched for twenty hours fall out
                     # of the top N and take its end-window with it. Coverage --
@@ -472,6 +623,10 @@ def main() -> int:
                 # gains a result, and fetching once would record neither.
                 known_meta.clear()
                 next_programs = sweep_started + args.program_refresh_minutes * 60.0
+                # Program refresh and the density scan are periodic overhead,
+                # not part of the book sweep. Counting them against --interval
+                # produced a spurious sweep_overrun on every refresh cycle.
+                overhead = time.monotonic() - overhead_started
 
             for ticker in tickers:
                 if ticker not in known_meta:
@@ -520,9 +675,9 @@ def main() -> int:
                 if time.monotonic() >= deadline:
                     break
 
-            elapsed = time.monotonic() - sweep_started
+            elapsed = time.monotonic() - sweep_started - overhead
             if elapsed < args.interval:
-                time.sleep(args.interval - elapsed)
+                time.sleep(max(0.0, args.interval - elapsed))
             else:
                 # The sweep itself outran the interval. That is not an error --
                 # the rate limiter is doing its job -- but it means the real
@@ -531,7 +686,8 @@ def main() -> int:
                 capture.record_error(
                     "sweep_overrun",
                     f"{elapsed:.1f}s for {len(tickers)} markets"
-                    f" exceeds interval {args.interval}s")
+                    f" exceeds interval {args.interval}s"
+                    f" (excluding {overhead:.1f}s of program/density overhead)")
     except KeyboardInterrupt:
         print("\ninterrupted; closing cleanly")
     finally:

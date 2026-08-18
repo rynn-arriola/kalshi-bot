@@ -40,12 +40,22 @@ open P&L bug, and shared code would mean a defect in either breaking both.
 Nothing in `scripts/` places an order. `kalshi_auth.py` signs reads only and has
 no code path to an order endpoint.
 
-```bash
-# Raw capture. Stores exact venue JSON with a timestamp and interprets nothing.
-python -B scripts/record_books.py --minutes 480 --markets 40 --interval 15 --rps 20
+| script | what it answers |
+|---|---|
+| `record_books.py` | raw capture; stores exact venue JSON and interprets nothing |
+| `kalshi_auth.py` | signed read-only account access |
+| `analyze_capture.py` | replays Kalshi's reward formula over captured books |
+| `markout.py` | fill rates and markout for a resting two-sided quote |
+| `sizing.py` | reward-only revenue estimate, with the $1.00 minimum applied |
+| `pooled_markout.py` | sign test and bootstrap CI on one-sided fill cost |
+| `net_sizing.py` | reward and fills on **one clock** — the integrated number |
 
-# Replay Kalshi's published reward formula over captured books.
-python -B scripts/analyze_capture.py --database data/capture.db --size 5
+```bash
+# Raw capture, ranked by measured reward density (see FINDINGS 11).
+python -B scripts/record_books.py --minutes 1440 --markets 250 --interval 60 --rps 20 --database data/capture_long.db
+
+# The integrated economics: reward and fill cost simulated together.
+python -B scripts/net_sizing.py --size 25 --fill-model partial
 ```
 
 ## Credentials
