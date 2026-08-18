@@ -1194,6 +1194,71 @@ liquidity. On Kalshi it is a near-constant.
 this file already states about liquidity-bot's numbers. It was applied to
 `fill_hazard`, the 900s clock and the 2-cent spread rule, and not to this.
 
+## 12. You cannot rest out of these books — the exit is a taker path
+
+`scripts/exit_cost.py`, 2026-08-18, 39 simulated fills at 25 contracts.
+
+Every prior number charged a fill its **markout** — where the mid went
+afterwards — which is a proxy for adverse selection, not a realised cost.
+`net_sizing.py` takes quotes down and then assumes we are flat at **zero exit
+cost**. `docs/REFERENCE_CRITIQUE.md` 4e says that omission is the whole story on
+the only live instance of this strategy: crossed exits −$1.21 median against
+passive −$0.31, five times as many crossed, turning a +$17.24 day into −$7.33.
+
+| passive deadline | exits | passive | crossed | passive $ | crossed $ | blended $ |
+|---|---|---|---|---|---|---|
+| 300s | 39 | **0%** | 100% | — | −$0.2851 | −$0.2851 |
+| 900s | 39 | 3% | 97% | +$0.2500 | −$0.2801 | −$0.2750 |
+| 1800s | 39 | 3% | 97% | +$0.2500 | −$0.2801 | −$0.2750 |
+| 3600s | 39 | **8%** | **92%** | +$0.2500 | −$0.2801 | −$0.2632 |
+
+### This resolves the sharpest open question in the critique
+
+`docs/REFERENCE_CRITIQUE.md` 4e item 4 posed it directly: our books barely trade
+so we fill rarely and should bleed rarely — but thin quiet books are also the
+ones you cannot exit passively, and *"rare fills that are each expensive to exit
+is not obviously better than frequent fills that are cheap to exit."*
+
+**Answer: the exit is a taker path, structurally.** Giving a reducing order a
+full hour still leaves 92% of exits crossing. The same quietness that keeps our
+fill rate low keeps the counter-flow that would let us rest out from ever
+arriving. **The reference's 73% taker share is not a policy failure we can
+avoid by being more patient — on these books it is closer to 100%.**
+
+So the inventory clock is not a real lever. Extending the passive deadline from
+300s to 3600s converts 8% of exits and improves the blended cost by 2.2 cents
+per exit, while holding the position twelve times longer. **Do not port a
+generous inventory clock; there is nothing for it to buy.**
+
+### The cost itself is modest, and smaller than the markout implied
+
+Crossing costs **−$0.28 median per exit** at 25 contracts. Against
+`net_sizing.py`'s ~37 fills/day across 12 markets that is roughly **−$10/day**,
+which lands inside the −$13 to −$24/day drag range section 10 derived from
+markout by a completely independent path. Two different methods agreeing to
+within a factor of two is the strongest consistency check the economics have.
+
+It is far cheaper than the reference's −$1.21 median. The likely reason is
+FINDINGS 6c: the taker fee is parabolic and these markets are tail-priced, so
+the fee is near its minimum, and 'thin' is 0 — the books absorbed 25 contracts
+without walking.
+
+### Limits, and one of them biases the answer
+
+- **n=39.** The fill detector here is stricter than `net_sizing.py`'s (it wants
+  one trade to clear depth plus our size, rather than accumulating volume), so
+  it undercounts fills.
+- **The cross is priced against the book AT FILL TIME**, not at the moment the
+  deadline expires. A real cross after 900s of waiting meets a book that has
+  moved — and moved against us, since that is what adverse selection means.
+  **Crossed cost is therefore understated**, and understated most at the long
+  deadlines that already look best.
+- Passive exits show +$0.25 because `exit_quote_price` only improves the price
+  while it still does not lose money against entry, so a passive fill is
+  profitable by construction. That is the reference's rule, not a discovery.
+- 25 contracts only; the walk cost grows with size and 'thin' would stop being
+  zero.
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in

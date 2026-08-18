@@ -18,7 +18,8 @@ Last updated 2026-08-17.
 | Instruments | Raw capture, signed reads, formula replay | **done** |
 | Analysis | Reward share, two-sided rate, tick effect | **done** |
 | Analysis | Fill cost, integrated net, ranking metric | **done** |
-| Analysis | Exit cost, end-date concentration | **not started** |
+| Analysis | Exit cost | **done** |
+| Analysis | End-date concentration | **not started** |
 | Phase 0 | Pure core (models, rewards, risk, fees) | **not started, deliberately** |
 | Phase 1 | Read-only adapters + streams | not started |
 | Phase 2 | Shadow measurement harness | not started |
@@ -202,6 +203,24 @@ snapshots. With the guard, mean and median agree within $3.
 **Known limits:** `--flatten-seconds` is unmeasured and spans the answer by a
 factor of 2.6, so the post-fill policy is now the dominant uncertainty. Gross of
 fees, static book, shares extrapolated from 10-33% period coverage.
+
+### `scripts/exit_cost.py` — 250 lines
+
+What it costs to get flat after a fill, as realised P&L rather than markout.
+Simulates both paths: a passive reducer priced by the reference's
+`exit_quote_price` rule, and a taker cross that walks the opposite ladder for
+our whole size and pays the proven fee formula at the actual VWAP.
+
+**Verified:** produced FINDINGS 12 — **92% of exits must cross even given a full
+hour**, so the exit is a taker path structurally and the inventory clock is not
+a real lever. Crossing costs −$0.28 median per exit at 25 contracts, which at
+~37 fills/day is ~−$10/day, landing inside the −$13 to −$24/day that section 10
+derived from markout by an independent path.
+
+**Known limits:** n=39, its fill detector is stricter than `net_sizing.py`'s, and
+the cross is priced against the book **at fill time** rather than when the
+deadline expires — so crossed cost is understated, worst at the long deadlines
+that already look best.
 
 ---
 

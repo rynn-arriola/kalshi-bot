@@ -56,6 +56,13 @@ measurements — share, drag and markout are all replayed per market — but it
 means the 12 markets in every economics table are drawn from a badly chosen
 pool, and the real top 12 has not been looked at yet.
 
+## What is running now
+
+**A 24h density-ranked capture into `data/capture_long.db`**, started
+2026-08-18 18:26Z, 250 markets at 60s. First capture to use measured reward
+density and the two-sided gate for selection, sticky tickers, terminal-state
+program polling and change-only program storage. Ends ~18:26Z on 08-19.
+
 ## Still unknown, and blocking
 
 1. ~~**`period_reward` scale.**~~ **Largely resolved 2026-08-17** — the 1e-4
@@ -64,7 +71,13 @@ pool, and the real top 12 has not been looked at yet.
    cap, and no market-day breaches it. Median pool is **$1.10/day per market**.
    Still wants a real payout to confirm, but it no longer blocks sizing or
    economics. See FINDINGS section 3.
-2. **What a fill costs in LOST REWARD — now the critical path.** 6i measured
+2. ~~**What a fill costs in LOST REWARD.**~~ **Largely answered.** FINDINGS 10
+   simulates reward and fills on one clock: uptime stays 88-100%, so the
+   interruption is small; net is $10-$26/day. FINDINGS 12 then measured the
+   exit: **92% of exits must cross**, at −$0.28 each, ~−$10/day — consistent
+   with section 10's drag by an independent path. What remains is that the
+   cross is priced at fill time rather than at deadline, which understates it.
+3. **What a fill costs in LOST REWARD — superseded, kept for the trail.** 6i measured
    the markout half of the cost of being filled and it does not erase the
    revenue at 25 contracts. The other half is unmeasured and structurally
    larger: section 2's two-sided rule means pulling our quotes after a fill
