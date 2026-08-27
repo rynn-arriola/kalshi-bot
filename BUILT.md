@@ -6,7 +6,7 @@ when something is finished — not when it is started.
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-26 22:36 America/New_York.
+Last updated 2026-08-27 06:50 America/New_York.
 
 Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
 `DECISIONS.md`. Reproducing an old table means an instrument is operational; it
@@ -97,6 +97,12 @@ database. The 14-day transient service `kalshi-readonly-capture-14d` then
 started with 75 tracked markets, 60-second sweeps, a 5-read/s limiter, hourly
 density ranking, 20% CPU quota, 256 MB memory maximum, separate data/logs, and
 no authenticated or order endpoint.
+
+At the eight-hour operational checkpoint the service still had zero restarts,
+zero recorder errors, and zero non-200 book responses. It was tracking 75
+markets; the newest book was 30 seconds old. Hourly 1,000-candidate density
+rescans take about 200 seconds and create a measured maximum active-market gap
+of 267 seconds, which downstream reports must treat as missing capture time.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

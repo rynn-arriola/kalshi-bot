@@ -1,6 +1,6 @@
 # Active work queue
 
-Last updated: 2026-08-26 22:36 America/New_York.
+Last updated: 2026-08-27 06:50 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
@@ -14,14 +14,19 @@ complete. The 14-day capture is active as
 
 Tasks:
 
-1. Check the service, error count, database integrity, disk, and Polymarket
-   process identity after the initial density scan completes.
+1. Let the daily read-only capacity heartbeat check service health, newest-data
+   age, errors, projected disk, memory, OOM events, and Polymarket process
+   identity. It must alert rather than restart or modify either process.
 2. At the seven-day checkpoint on 2026-09-03, preserve the exact capture window,
    row counts, error/gap rates, tracked universe, and resource use.
 3. Do not treat partial data as profitability. Run current-rule reward, fill,
    and later-book exit analysis only over named complete windows.
 4. Let the run finish on 2026-09-10 unless errors, disk pressure, or production
    interference require the documented stop command.
+5. Quantify the hourly density-scan gaps in downstream analysis. The first
+   eight hours showed a 60-second median sample gap, 108-second p95, and
+   267-second maximum because each hourly candidate scan takes about 200
+   seconds. Do not count the missing intervals as observed qualification.
 
 Done when the 14-day dataset is closed cleanly or an evidence-backed stop is
 recorded in `STATUS.md` and `FINDINGS.md`.

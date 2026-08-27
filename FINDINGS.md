@@ -1899,6 +1899,36 @@ five public reads per second, and hourly density scans. Planned checkpoints are
 with one process and about 16 MB memory. This is an operational observation,
 not evidence that the strategy is profitable.
 
+### MEASURED — eight-hour operational checkpoint
+
+Dataset `data/shadow-14d-20260827.db`, run
+`cap-20260827T023541Z-dcee8aea`, observation window 2026-08-27
+02:36:20–10:49:22 UTC:
+
+- 41,501 raw book rows across 1,262 density-candidate tickers;
+- 75 active tickers in the preceding five minutes and 5,241 captured trades;
+- zero non-200 book responses and zero recorded errors;
+- 60.0-second median active-market sample gap, 107.9-second p95, and
+  267.1-second maximum over the preceding two hours;
+- database plus WAL about 58 MB after 8.2 hours.
+
+The service had zero restarts and its newest book was 30 seconds old. The
+longer gaps coincide with hourly density scans that take about 200 seconds.
+Those gaps are a known capture bias: downstream reward/fill analysis must mark
+them missing rather than infer continuous qualification or no trades.
+
+**VERIFIED capacity observation:** 461 MB host memory was available; Kalshi
+used 105 MB with a 113 MB peak under its 256 MB cap; the one-core load averages
+were 0.00/0.03/0.00; 19.4 GB disk remained; and the kernel recorded no OOM
+event. Linear storage growth implies roughly 2.4 GB for 14 days. No server
+upgrade is indicated at this checkpoint.
+
+**UNKNOWN process event:** the Polymarket supervisor/trader observed at launch
+were replaced by processes started at 04:02:57 UTC. The Kalshi unit did not
+restart, there was no kernel OOM event, and later host load was low. Those facts
+do not identify the restart's cause, so it must not be attributed to Kalshi
+without additional evidence.
+
 ---
 
 ## 7. Open questions

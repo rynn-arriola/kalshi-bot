@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-26 22:36 (America/New_York).
+Last verified: 2026-08-27 06:50 (America/New_York).
 
 ## Executive state
 
@@ -27,6 +27,7 @@ existing server in the isolated `/root/kalshi-bot` project at commit
 seven-day checkpoint on 2026-09-03. The transient unit is
 `kalshi-readonly-capture-14d`; its database is
 `data/shadow-14d-20260827.db` and log is `logs/capture-20260827.log`.
+At the eight-hour checkpoint the unit remained active with zero restarts.
 
 ## What is verified now
 
@@ -57,6 +58,19 @@ seven-day checkpoint on 2026-09-03. The transient unit is
   candidate markets with zero HTTP failures, zero recorded errors, and a valid
   SQLite integrity check. The Polymarket supervisor/trader PIDs and start times
   were unchanged before and after it.
+- At 2026-08-27 10:49 UTC, the long run contained 41,501 book rows, 5,241
+  trades, 17,597 program rows, zero non-200 books, and zero recorded errors.
+  The latest book was 30 seconds old and all 75 actively tracked tickers had
+  books in the preceding five minutes.
+- Server capacity is adequate for the two current processes: 461 MB memory was
+  available, Kalshi used 105 MB with a 113 MB peak under its 256 MB cap, load
+  averages were 0.00/0.03/0.00 on one core, no OOM event was recorded, and
+  19.4 GB disk remained free. Linear capture growth projects to roughly 2.4 GB
+  over 14 days, so no upgrade is currently indicated.
+- The Polymarket supervisor and trader were restarted at 2026-08-27 04:02:57
+  UTC after the launch check. Kalshi stayed active, no OOM event occurred, and
+  host load was low at inspection. The cause of the Polymarket restart is
+  **UNKNOWN**; do not attribute it to Kalshi without evidence.
 - On thin books, adding size has diminishing marginal reward because our own
   score enters the denominator. This is arithmetic. The portfolio-level optimum
   has not been measured on a fixed universe.
@@ -132,6 +146,10 @@ Not approved now:
   command.
 
 The active work order is `NEXT.md`. Operator authority is in `DECISIONS.md`.
+
+A daily read-only capacity heartbeat is active through the planned run. It
+alerts on stale data, errors, memory/disk pressure, OOM events, or process
+interference and is not authorized to restart anything.
 
 ## Resolved blocker
 
