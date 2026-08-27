@@ -32,6 +32,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from reward_rules import qualify_side, rule_banner
+
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
 
@@ -425,23 +427,12 @@ def qualifying_score(ladder: list[tuple[float, float]], target: float,
                      discount: float) -> tuple[float, bool]:
     """Total discount-weighted score of the qualifying bids on one side.
 
-    Mirrors `analyze_capture.qualifying` deliberately -- this script must not
-    import the analysis layer, because the capture has to keep running when the
-    analysis changes. Kept small enough to read side by side.
+    Uses the same pure, versioned rule module as every report. The capture
+    remains raw; this score affects candidate selection only.
     """
 
-    if not ladder:
-        return 0.0, False
-    ordered = sorted(ladder, key=lambda level: -level[0])
-    reference = ordered[0][0]
-    cumulative = 0.0
-    score = 0.0
-    for price, size in ordered:
-        cumulative += size
-        score += (discount ** round((reference - price) * 100)) * size
-        if cumulative >= target:
-            return score, True
-    return score, False
+    result = qualify_side(ladder, target, discount)
+    return result.total_score, result.reached_target
 
 
 def rank(rows: list, limit: int, max_per_series: int = 3,
@@ -548,6 +539,7 @@ def main() -> int:
     limiter = Limiter(args.rps)
     capture = Capture(Path(args.database), limiter)
     capture.start(vars(args))
+    print(rule_banner())
     print(f"run_id={capture.run_id}  database={args.database}")
 
     deadline = time.monotonic() + args.minutes * 60.0

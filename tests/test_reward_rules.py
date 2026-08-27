@@ -17,6 +17,7 @@ from reward_rules import (  # noqa: E402
     share_with_order,
     snapshot_qualifies,
 )
+from record_books import qualifying_score  # noqa: E402
 
 
 class RewardRuleTests(unittest.TestCase):
@@ -95,6 +96,11 @@ class RewardRuleTests(unittest.TestCase):
     def test_impossible_order_price_fails_loudly(self) -> None:
         with self.assertRaises(ValueError):
             share_with_order(self.ladder, 100, 0.5, 1.0, 5)
+
+    def test_recorder_density_uses_current_rule(self) -> None:
+        score, reached = qualifying_score(self.ladder, 100, 0.5)
+        self.assertTrue(reached)
+        self.assertAlmostEqual(score, 60.0)
 
 
 if __name__ == "__main__":

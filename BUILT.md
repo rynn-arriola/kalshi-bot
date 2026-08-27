@@ -82,12 +82,12 @@ trades, 1 non-fatal error (a sweep overrun, which is recorded deliberately).
 - **`market_meta` refreshes** each program cycle instead of once on first sight,
   so a market settling mid-capture records its result.
 
-**Known limits:** the ranking metric is **wrong and known to be wrong** —
-`reward/target` is anti-correlated with revenue (FINDINGS 11). It is
-scale-invariant, so an unconfirmed `period_reward` unit cannot corrupt it, but
-that was never the problem. Replacing it needs an orderbook call per candidate
-to measure the denominator. Real sample spacing is the sweep duration, not
-`--interval` — read the timestamps.
+**Current selection:** default `--rank-by density` scans books and ranks by
+pool divided by measured competing score. Legacy `--rank-by target` is wrong
+and comparison-only: `reward/target` is anti-correlated with revenue (FINDINGS
+11). Density now uses the July reward reference through `reward_rules.py`; the
+private February scorer was removed before the first server shadow. Real sample
+spacing is the sweep duration, not `--interval` — read the timestamps.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

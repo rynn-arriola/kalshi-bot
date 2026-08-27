@@ -229,3 +229,21 @@ remain unknown and contribute no fake zero.
 **The general rule this earns:** a clock parameter is not modeled merely
 because it appears in a loop. Verify that the data used after the wait actually
 comes from after the wait, and make every unpriced residual visible.
+
+### Recorder selection retained the superseded scorer
+
+**Symptom.** Reports used the corrected July reward module, but
+`record_books.py --rank-by density` still calculated candidate density from a
+private copy of the February best-bid formula.
+
+**Mechanism.** The recorder intentionally duplicated the old scoring helper so
+analysis changes could not break capture. Versioning the governing rule made
+that safety argument backwards: the duplicate silently selected a different
+market sample even though stored books remained raw.
+
+**Fix.** Candidate ranking now calls the pure, network-free current rule module
+and prints its source banner when capture starts. The recorder still stores
+unaltered venue JSON.
+
+**Verification.** A hand fixture that scores 60 under July and 35 under
+February now asserts the recorder returns 60. The full measurement suite passes.
