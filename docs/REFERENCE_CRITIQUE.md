@@ -1,5 +1,12 @@
 # liquidity-bot as a reference: what to copy, what to discard
 
+> **Historical audit, read with `../STATUS.md`.** This was measured on
+> 2026-08-17. Later venue earnings established that the Polymarket reference was
+> profitable under its balanced-leg report for 2026-08-20 through 2026-08-25.
+> Any statement below that the reference is currently loss-making is
+> superseded. Architectural lessons remain useful; economic calibrations do not
+> port without re-measurement.
+
 Read of `D:\polybot\liquidity-bot` on 2026-08-17. Read-only; that repo is never
 modified by this project.
 

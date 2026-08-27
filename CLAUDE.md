@@ -1,22 +1,22 @@
-# kalshi-bot — read this first
+# kalshi-bot — compatibility entry point
+
+**Read `AGENTS.md` first.** It is the authoritative AI operating contract and
+boot sequence. Then read `STATUS.md`, `DECISIONS.md`, `NEXT.md`, and
+`EXPERIMENT.md` in that order.
+
+If older instructions below conflict with those files, follow `AGENTS.md` and
+the accepted operator decisions. The detail below is retained for historical
+context and venue-specific safety reminders.
+
+# Historical project instructions
 
 Research toward a Kalshi liquidity-incentive market maker. **There is no bot
 here yet, and that is deliberate.**
 
-## Before doing anything, read `NEXT.md`
+## Navigation
 
-It carries current state, what is confirmed, what is still blocking, and what
-may be running in the background. Then `BUILT.md` for what already exists —
-several questions are already closed by an existing instrument, and re-deriving
-them wastes hours and usually comes back wrong.
-
-| file | what it is |
-|---|---|
-| `NEXT.md` | current state, blockers, next actions |
-| `BUILT.md` | what exists, what it does, how it was verified |
-| `FINDINGS.md` | established facts, each with its measurement |
-| `BUGFIXES.md` | instrument bugs: symptom, mechanism, fix |
-| `docs/PLAN.md` | the approved end-to-end plan |
+The current boot sequence is at the top of this file and in `AGENTS.md`.
+`docs/PLAN.md` is a paused historical design, not an approved active plan.
 
 ## Standing rules
 

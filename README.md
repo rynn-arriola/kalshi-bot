@@ -1,70 +1,73 @@
 # kalshi-bot
 
-Research toward a Kalshi liquidity-incentive market maker.
+AI-maintained research to determine whether the working Polymarket US
+liquidity-reward strategy can operate profitably on Kalshi.
 
-**There is no bot here yet, and that is deliberate.** This repository currently
-contains measurement instruments and the facts they produced. Code that encodes
-a strategy is not written until the facts it would depend on are confirmed.
+**This is a measurement project. There is no Kalshi bot, and building the full
+bot is not currently approved.**
 
-## Read these in order
+The operator owns strategy, capital, risk, deployment, live-action, and scope
+decisions. AI agents maintain the research, instruments, tests, and continuity
+documents.
 
-| file | what it is |
-|---|---|
-| `NEXT.md` | **Start here.** Current state, what is running, what to do next. |
-| `BUILT.md` | Inventory of what exists, what it does, and how it was verified. |
-| `FINDINGS.md` | Established facts, each with the measurement that produced it. |
-| `docs/PLAN.md` | The approved end-to-end plan. |
-| `BUGFIXES.md` | Bugs that reached a running instrument: symptom, mechanism, fix. |
+## Start every session here
 
-Standing rule, inherited from `D:\polybot\liquidity-bot`: **anything critical we
-establish goes into `FINDINGS.md` immediately** — not at the end of a session, not
-"if it comes up again". A fact that has to be re-derived costs hours and usually
-comes back wrong the second time.
+| Order | File | Purpose |
+|---:|---|---|
+| 1 | `AGENTS.md` | AI operating contract and operator authority |
+| 2 | `STATUS.md` | Current truth, blockers, and scope |
+| 3 | `DECISIONS.md` | Accepted operator decisions |
+| 4 | `NEXT.md` | Ordered active work queue |
+| 5 | `EXPERIMENT.md` | Measurement stages and evidence gates |
+| 6 | `BUILT.md` | What already exists and its verification state |
+| 7 | `FINDINGS.md` | Durable evidence and corrections |
+
+`docs/PLAN.md` is the historical full-build design. It is paused and is not the
+active work queue.
+
+## Current conclusion
+
+Kalshi is **promising but unproven**. Existing replays show nominal headroom,
+but the reward implementation conflicts with Kalshi's current help
+documentation, the sizing sweep is not fixed-universe, and adverse selection is
+not modeled credibly enough to establish live net profitability.
+
+See `STATUS.md` for the bounded version of every current claim.
 
 ## Relationship to liquidity-bot
 
-`D:\polybot\liquidity-bot` is a working Polymarket US liquidity-reward market
-maker and the reference implementation for this project. Its 63 safety invariants
-are venue-independent and are the main thing being carried across.
+`D:\polybot\liquidity-bot` is the working Polymarket US reference strategy.
+This project may reuse its venue-independent safety and accounting concepts.
+Its calibrations—market selection, quote size, qualification behavior, queue,
+fill hazard, exit timing, and fees—are hypotheses on Kalshi until re-measured.
 
-Its *calibrations* are not. `fill_hazard.py`, the 900-second passive wait, the
-2-cent spread rule and the pre-kickoff flatten are all Polymarket measurements
-and are invalid here until re-measured.
+The reference repository is read-only from this project.
 
-**liquidity-bot is never modified by this project.** The decision was to copy
-rather than extract a shared library, because it has a red readiness gate and an
-open P&L bug, and shared code would mean a defect in either breaking both.
+## Existing read-only instruments
 
-## Instruments
+Nothing in `scripts/` is authorized to place an order.
 
-Nothing in `scripts/` places an order. `kalshi_auth.py` signs reads only and has
-no code path to an order endpoint.
-
-| script | what it answers |
+| Script | Purpose |
 |---|---|
-| `record_books.py` | raw capture; stores exact venue JSON and interprets nothing |
-| `kalshi_auth.py` | signed read-only account access |
-| `analyze_capture.py` | replays Kalshi's reward formula over captured books |
-| `markout.py` | fill rates and markout for a resting two-sided quote |
-| `sizing.py` | reward-only revenue estimate, with the $1.00 minimum applied |
-| `pooled_markout.py` | sign test and bootstrap CI on one-sided fill cost |
-| `net_sizing.py` | reward and fills on **one clock** — the integrated number |
+| `record_books.py` | Store raw programs, books, trades, and status |
+| `kalshi_auth.py` | Signed read-only account access |
+| `analyze_capture.py` | Replay a specified reward interpretation |
+| `markout.py` | Estimate fill incidence and post-fill markout |
+| `sizing.py` | Reward-only portfolio replay |
+| `pooled_markout.py` | Sign test and bootstrap on one-sided fills |
+| `net_sizing.py` | Reward interruption and fills on one clock |
+| `exit_cost.py` | Simulated exit path and fee/depth cost |
 
-```bash
-# Raw capture, ranked by measured reward density (see FINDINGS 11).
-python -B scripts/record_books.py --minutes 1440 --markets 250 --interval 60 --rps 20 --database data/capture_long.db
+These scripts reproduce prior results, but several require correction before
+their dollar outputs can drive a decision. Reproducibility is not validation;
+see `STATUS.md` blockers B1–B3.
 
-# The integrated economics: reward and fill cost simulated together.
-python -B scripts/net_sizing.py --size 25 --fill-model partial
-```
+## Data and credentials
 
-## Credentials
+`.env`, private keys, and `data/` are gitignored. Do not display secret values.
+Before broad staging, verify:
 
-`.env` holds `KALSHI_API_KEY_ID`, and `KALSHI_PRIVATE_KEY_FILE` points at an RSA
-private key PEM. Both are gitignored, along with `data/`. Verify before any
-`git add -A`:
-
-```bash
+```powershell
 git check-ignore -v kalshi-bot.txt .env data/capture.db
 ```
 

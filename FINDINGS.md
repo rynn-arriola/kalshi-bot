@@ -1259,6 +1259,530 @@ without walking.
 - 25 contracts only; the walk cost grows with size and 'thin' would stop being
   zero.
 
+## 13. Kalshi fees against Polymarket, priced on the reference's real fills
+
+2026-08-26. Both fee schedules are verified against live fills on their own
+venue, so this is arithmetic, not estimation.
+
+```
+Polymarket   taker  = 0.06   x qty x p x (1-p)   charged, rounds UP to cents
+             maker  = 0.0125 x qty x p x (1-p)   CREDITED (rebate), rounds DOWN
+Kalshi       taker  = ceil(0.07 x qty x p x (1-p) x 10_000) / 10_000   charged
+             maker  ~ 25% of taker, CHARGED       UNVERIFIED (6c)
+```
+
+Applying the Kalshi schedule to `liquidity-bot`'s **1,847 real fills** (772
+taker, 1,075 maker, 12 days to 2026-08-25, median fill price 0.510):
+
+| | taker | maker | net | per day |
+|---|---|---|---|---|
+| Polymarket, actually charged | +$48.36 | **−$17.13** (rebate) | **+$31.23** | +$2.60 |
+| Kalshi schedule, same flow | +$57.01 | **+$23.62** (charged) | **+$80.63** | +$6.72 |
+
+**Kalshi costs 2.58x on identical flow.** The taker line alone is only **1.18x**
+(0.07 versus 0.06) — *the entire gap is the maker side changing sign.*
+
+Robust to the unverified maker rate. Even if Kalshi maker fees were **free**,
+the same flow costs 1.83x, because Polymarket's rebate is a revenue line we lose
+rather than a cost we pay:
+
+| Kalshi maker assumption | net | vs Polymarket |
+|---|---|---|
+| free | $57.01 | 1.83x |
+| 25% of taker (reported) | $80.63 | 2.58x |
+| 50% of taker | $104.19 | 3.34x |
+| maker = taker | $151.32 | 4.85x |
+
+There is no maker rate at which Kalshi is cheaper on this flow.
+
+**One place Kalshi is cheaper: rounding.** Kalshi ceilings at 4 decimals (6e),
+Polymarket at whole cents and asymmetrically — taker up, rebate down. That is
+what makes Polymarket per-contract economics ~37% worse at size 1. Kalshi has no
+such size floor on fees, so small-size experiments are not fee-penalised here.
+
+### The density-ranked pool sits where the fee is most expensive
+
+Measured over the tracked markets of each capture (best bid/ask from
+`orderbook_fp`):
+
+| capture | ranking | median mid | median spread | p(1−p) | taker fee/contract |
+|---|---|---|---|---|---|
+| `capture.db` | reward/target | 0.360 | **1¢** | 0.1744 | $0.0122 |
+| `capture_wide.db` | reward/target | 0.150 | 3¢ | 0.1131 | $0.0079 |
+| `capture_long.db` | **density** | **0.495** | **6¢** | 0.2158 | **$0.0151** |
+
+Section 12 explained its cheap −$0.28 exit partly by "these markets are
+tail-priced, so the fee is near its minimum." **That is a property of the badly
+ranked pool, not of the venue.** Ranking by density — the 6.5x revenue lever of
+section 11 — lands on markets priced at the fee maximum (0.495, where p(1−p) is
+0.216 of a possible 0.25) with spreads six times wider, and trade flow **2.0x
+heavier** (1.49 versus 0.73 trades per market-hour, mean).
+
+Back-of-envelope, the cross therefore costs roughly half-spread plus fee:
+**3.0¢ + 1.5¢ = 4.5¢/contract** against the old pool's 0.5¢ + 1.2¢ = 1.7¢, i.e.
+about **2.6x per exit**, on about **2x as many fills**. So section 11's 6.5x
+revenue gain is bought against a drag that scales roughly 5x. Nominally still a
+large win — $158.61/day of reward against a drag near $50/day rather than $10 —
+but **the multiple is closer to 3x than 6.5x**, and section 12's known bias
+(the cross is priced at fill time, not at deadline) cuts the same direction.
+
+**This is an estimate, and it does not need to stay one.** `exit_cost.py` and
+`net_sizing.py` both take `--database` and `capture_long.db` is on disk.
+
+### The reference's own fee line has gone the wrong way
+
+`docs/REFERENCE_CRITIQUE.md` 4e read the ledger at 203 fills. It now holds
+1,847. Fees paid per day, net of rebate: **+$0.43 on 08-15, +$6.24 on 08-25**.
+Taker fees alone ran $9.02 on 08-25 against $2.78 of maker rebate. The venue
+that was supposed to pay us to make markets is now billing $6/day, and on
+Kalshi's schedule the same flow would bill $12–$15.
+
+---
+
+## 14. The reward systems are the same rule; the venue is Polymarket US
+
+2026-08-26. Confirmed the reference trades **Polymarket US**, the CFTC-regulated
+entity — `api.polymarket.us`, `gateway.polymarket.us`, rules read at
+`docs.polymarket.us/incentives/liquidity`. This matters: `polymarket.com` runs a
+different scheme that is **quadratic in spread**, and liquidity-bot's FINDINGS
+notes explicitly that it "came from the `.com` scheme and does not apply here."
+Both venues in every comparison in this file are CFTC DCMs running the
+discount-factor scheme, so the comparisons are like-for-like.
+
+**Identical on both venues:** `Score = DiscountFactor ^ (ticks from best) × size`;
+linear in size with no per-account cap; walk from the touch outward until
+`targetSize`, beyond which orders score zero however close to the touch; payout
+purely proportional to share of total score; each side normalized independently
+per snapshot; rewards under $1.00 not paid; **spread does not enter the formula.**
+This is why `rewards.py` ports with field renames.
+
+**Four differences that decide the design:**
+
+1. **The two-sided gate.** Kalshi voids the *entire snapshot* if either side
+   lacks `targetSize` (section 2). Polymarket US normalizes each side
+   independently, so one qualifying side still pays. This is why invariant 4
+   cannot port.
+2. **The $1.00 minimum inverts.** Polymarket US's threshold is an **aggregate
+   settlement threshold that accumulates across markets** — their $0.007 per
+   market-period eventually pays. Kalshi's filing reads as per Time Period, which
+   is why section 9 measured one contract paying **$0.00 on 9 of 10 markets**:
+   forfeited, not banked. **UNVERIFIED whether Kalshi aggregates across
+   programs** — and this is exactly the mistake liquidity-bot made in the
+   opposite direction ("applying it per side per market was wrong, and was
+   removed").
+3. **Kalshi is projectable everywhere.** Polymarket US keys early/day_of/live to
+   event start and only `day_of` has a reliable clock; `live` carries 8x the pool
+   and their pregame design forbids it. Every Kalshi program carries explicit
+   `start_date`/`end_date`.
+4. **Different parameter regimes.** Kalshi DF 0.50 (99.96%), target 1000
+   (99.2%), median pool $1.10/day/market. Polymarket US DF 0.30–0.50, target
+   5,000–15,000, pools $30–$200/period. Kalshi's target barely varies while the
+   **measured denominator varies 629x** (section 11) — and Kalshi books are thin
+   enough to own, where Polymarket US has "7,500–15,000 contracts sitting at
+   these touches against our 10."
+
+### Reward rate per contract-hour is WORSE on Kalshi, not better
+
+The reference's realised earnings, size 10, one clean day: **$0.230 per resting
+order-hour** = ~$0.023 per contract-hour. Our best-case Kalshi replay (section
+15) runs 12 markets × 2 sides × 24h at 25 contracts for $87/day = **$0.0060 per
+contract-hour** — roughly **a quarter of Polymarket US's rate**, and that is our
+upper bound against their realised figure.
+
+**Kalshi's advantage is breadth and thin denominators, not rate.** More markets
+whose denominator we can dominate, not more dollars per contract resting.
+
+---
+
+## 15. First profitability estimate on a well-selected pool — and why to halve it twice
+
+2026-08-26, `capture_long.db` (250 density-ranked markets, 3.76h, 46,973 books).
+This is the first economics run on markets chosen by the ranking section 11
+established, rather than the anti-correlated one.
+
+`net_sizing.py --size 25 --fill-model partial`, policy touch, gross of fees:
+
+| flatten | markets | uptime | fills/day | reward$ | collat$ |
+|---|---|---|---|---|---|
+| 0s | 12 | 100.0% | 19.3 | 91.73 | 300 |
+| 900s | 12 | 98.3% | 19.3 | 87.01 | 300 |
+| 3600s | 12 | 93.7% | 21.0 | 102.48 | 300 |
+
+`exit_cost.py --size 25` on the same pool: **59 exits, 92–97% must cross,
+median −$0.4313** including the taker fee at VWAP — against **−$0.28** on the
+old pool, confirming section 13's prediction that density ranking buys more
+expensive exits.
+
+Charging the realised exit rather than the markout proxy (they are two
+accountings of the same fill and must not be added):
+
+```
+reward                    +$87.01/day
+exit cost   19.3 x -0.43   -$8.32/day
+entry maker fee (UNVERIFIED 25% rate)  -$1.82/day
+                          -----------
+net                       ~+$77/day on $300 collateral  =  ~26%/day
+```
+
+**26%/day is not a forecast. It is a measurement of how much the model assumes.**
+
+### The correction that matters: uptime
+
+The simulation rests on 24 quoted sides at **98% uptime**. The only live instance
+of this strategy anywhere achieved **135–187 order-hours/day against ~960
+possible — 14–19%**. Reward pays for resting, and nothing in our capture tests
+whether we can actually hold 24 sides continuously; `record_books.py` itself did
+not survive four hours.
+
+Applying the reference's realised uptime to our own reward line:
+
+```
+$87/day x 0.25  ~  $22/day net on $300  =  ~7%/day
+```
+
+**That lands inside section 10's $10–$26/day**, derived on the old pool by a
+different route. Two independent paths agreeing is the strongest thing this
+estimate has going for it — and it is the number to plan against, not the $77.
+
+### Both instruments disagree with themselves on this pool — do not trust the detail
+
+1. **`--policy inside` reports 0.0 fills/day in `net_sizing.py`** at flatten
+   0/300/900, while `exit_cost.py` finds **156 fills** on the same data and the
+   same policy — 2.6x the touch policy's 59, which is the expected direction. A
+   quote one tick inside the touch cannot fill *less* than one at it. One of the
+   two fill detectors is wrong under `inside`, and `inside` is the policy section
+   4 recommends.
+2. **Markout is POSITIVE on this pool** (+$26.53/day, mean), contradicting
+   section 6i's adverse result (p=0.0014) measured on `capture_wide.db`. Either
+   density-ranked markets have genuinely two-way flow, or the statistic is
+   outlier-driven. Unresolved. The estimate above ignores markout entirely and
+   charges the realised exit instead, which is the conservative choice.
+
+### Everything above still sits on an unconfirmed scale
+
+`period_reward` is inferred at 1e-4 (section 3, corroborated across 2,940
+programs but never confirmed by a payout). If that scale is wrong, every dollar
+figure in this file moves by the same factor. It remains the cheapest single
+thing a real evidence run would settle.
+
+---
+
+## 16. The reference's losses are PRICE, ours are FEE — and that is a warning, not a comfort
+
+2026-08-26. Checking section 15's drag against the only live instance of this
+strategy, and repricing its flow on Kalshi's schedule.
+
+### On Polymarket US, the fee is 5% of a crossed exit
+
+772 real taker fills from the reference ledger, median 5 contracts at p=0.510:
+
+| | median fee per taker fill |
+|---|---|
+| Polymarket US, actually paid | **$0.0600** |
+| same fills on Kalshi's schedule | **$0.0699** |
+
+Against their published median crossed exit of **−$1.21**, the fee is **5%** of
+the loss — **6%** if repriced on Kalshi. Kalshi's 2.58x fee multiple (section 13)
+therefore moves their damage by about **one percent**. Their loss is not fees.
+It is price: the market moved against the position before they got out.
+
+### On our simulated Kalshi exits, the fee is ~90% of the cost
+
+`exit_cost.py` on `capture_long.db`, 900s deadline, crossed path:
+
+| size | n | crossed $ | per contract |
+|---|---|---|---|
+| 5 | 78 | −$0.0810 | **−$0.0162** |
+| 25 | 59 | −$0.4348 | −$0.0174 |
+| 50 | 45 | −$0.9221 | −$0.0184 |
+| 100 | 33 | −$1.8895 | **−$0.0189** |
+
+**Per-contract cost is nearly constant across a 20x size range** (+17% from 5 to
+100). A walk-the-ladder cost grows with size; a fee does not. The Kalshi taker
+fee at this pool's median `p(1−p)` of 0.2158 is **$0.0151/contract** — which
+alone explains **93%** of the size-5 cost. The book absorbs 100 contracts with
+almost no walk (`thin=0` at every size).
+
+So the two venues' exit costs are made of different things:
+
+```
+Polymarket US crossed exit   -$0.242/contract    5% fee,  95% price
+Kalshi simulated exit        -$0.0174/contract  ~90% fee, ~10% price
+```
+
+### Their exit is 14x more expensive per contract, and that is the real finding
+
+−$0.242 against −$0.0174. **This is not evidence that Kalshi is cheaper. It is
+evidence that our model does not contain the term that costs them the money.**
+
+Section 12 already named the mechanism as a known bias: **the cross is priced
+against the book AT FILL TIME, not when the deadline expires.** A real cross
+after 900s of waiting meets a book that has moved, and moved adversely — that
+is what adverse selection means. Our simulation therefore measures the fee
+almost exactly and the adverse move almost not at all, and the reference's data
+says the adverse move is 95% of the damage.
+
+**CORRECTED 2026-08-26.** An earlier version of this section built the bound on
+**−$0.242/contract**, taken from the published *median crossed exit* (−$1.21 at
+median qty 5). That is the median of the **worst subset** — crossed exits only —
+used as if it were the average over all flow. It overstated the drag by 4x.
+
+### The reference's realised economics, by quote-size era
+
+Derived from 1,847 fills with `accounting.py`'s own closed-pair logic (long and
+short legs pair and settle at exactly 1.00; fees tracked separately), on a copy
+of the production ledger. Markets are assigned to the era of their first fill.
+
+| era | days | fills | markets closed | price P&L | fees | net trading | **per contract** |
+|---|---|---|---|---|---|---|---|
+| size 5, 08-14..08-20 | 7 | 742 | 238 | −$49.16 | −$7.76 | −$56.92 (−$8.13/day) | **−$0.0417** |
+| **size 10, 08-21..08-25** | 5 | 1,105 | 313 | −$181.68 | −$23.47 | **−$205.15 (−$41.03/day)** | **−$0.0586** |
+
+**Doubling quote size made per-contract economics 40% worse**, not neutral —
+−$0.0417 to −$0.0586. Their own reasoning was that reward and losses both scale
+with size so the ratio holds; on the loss side it did not hold. Section 4e's
+point 2 predicted this asymmetry for Kalshi and it turns out to be true on
+Polymarket US as well.
+
+**The corrected bound.** Their realised −$0.0586/contract against our modelled
+−$0.0174/contract is a gap of **3.4x**, not 14x:
+
+```
+19.3 fills/day x 25 contracts x -$0.0586  =  -$28.3/day   against reward +$87/day
+                                          =>  net +$59/day
+at the reference's realised uptime (x0.25) =>  net +$15/day
+```
+
+**So the stress case is positive, not negative.** Even if Kalshi flow behaved
+exactly like Polymarket US's at its current size, section 15's estimate survives
+— it falls from ~$22/day to ~$15/day. The earlier "−$117/day, net −$30/day"
+claim was an artifact of the wrong statistic and is withdrawn.
+
+**Repricing their flow on Kalshi's fee schedule**, for completeness: their
+size-10 fees of −$4.69/day become **−$11.81/day** (section 13), so the same
+strategy on Kalshi's schedule loses −$48.15/day rather than −$41.03/day — **17%
+worse**, entirely on the fee line.
+
+### What this does to the estimate
+
+Section 15's $22/day survives only if Kalshi's quiet books really do avoid the
+adverse move. The reference planned for trading losses at 5% of reward and
+measured over 100%. **Our drag is currently 10% of reward.** That is the same
+shape of assumption at the same point in the project, and it is the assumption
+that broke there.
+
+**This is measurable without new data.** Repricing the cross at deadline rather
+than at fill time is a change to `exit_cost.py` against books already captured.
+Until that is run, treat the exit cost as a floor.
+
+---
+
+## 17. The reference is PROFITABLE at size 10 — the pessimistic prior is withdrawn
+
+2026-08-26, operator-supplied venue figures for Polymarket US at `quote_size`
+10, `max_markets` 20 ($200 worst-case exposure). These come from the venue, and
+they supersede every reward figure derived in this file from the repo copy —
+the production ledger available here carries only 13 `execution_reward_earnings`
+rows, and `docs/REFERENCE_CRITIQUE.md` 4e read the trading side at 203 fills.
+
+| date | trading | reward | net |
+|---|---|---|---|
+| 2026-08-20 | −$17.99 | $22.21 | +$4.22 |
+| 2026-08-21 | −$30.52 | $32.79 | +$2.27 |
+| 2026-08-22 | −$24.19 | $25.64 | +$1.45 |
+| 2026-08-23 | −$42.88 | $85.09 | **+$42.21** |
+| 2026-08-24 | −$43.42 | $174.74 | **+$131.32** |
+| 2026-08-25 | −$27.95 | $172.90 | **+$144.95** |
+| 2026-08-26* | −$57.10 | pending | — |
+
+Six complete days: trading −$31.16/day, reward **+$85.56/day**, net **+$54.40/day**.
+Last three days: net **+$106.16/day**.
+
+### Reward scaled 8x while trading losses stayed flat
+
+This is the finding, and it contradicts the reasoning both projects have been
+using ("reward scores `discount^ticks x size` and losses scale with size too, so
+the ratio is unchanged" — 4e point 2):
+
+```
+                    08-20..08-22 mean     08-23..08-26 mean     ratio
+reward                    $26.88               $144.24          5.4x
+trading                  -$24.23               -$42.84          1.8x
+drag as % of reward   81%, 93%, 94%  ->  50%, 25%, 16%
+```
+
+**CORRECTED: the loss line is not flat.** An earlier version of this section
+said trading stayed "flat, inside its own daily noise". It grew **1.8x** while
+reward grew 5.4x. The ratio improved enormously and the conclusion stands, but
+losses track the reward line rather than being independent of it, and 2026-08-26
+posted **-$57.10**, the worst trading day recorded, against a unified daily loss
+limit of $80.
+
+Neither `quote_size` (10 since 08-20) nor `max_markets` (20) changed across this
+window. **The scaling did not come from size or breadth.** The commits landing
+over exactly these days are uptime and slot-utilisation work — `fix live
+resting-hours telemetry`, `Persist daily score hours across restarts`, `Make
+incremental market top-up transactional`, `Fix recovery visibility and slot
+release stalls`. **Hypothesis, from commit titles rather than measurement: the
+8x is recovered resting time.** The operator can confirm or refute this directly.
+
+If that is right it is the most transferable result either project has produced,
+because reward is a time integral over resting orders on **both** venues, and
+resting time is an engineering variable, not a market property.
+
+### What this does to our Kalshi numbers
+
+1. **Section 15's uptime haircut (x0.25) was calibrated on their BROKEN uptime.**
+   It came from 135-187 order-hours/day against ~960 possible. If the fix
+   recovered that, the haircut is too harsh and $22/day is understated.
+2. **The reward-per-fill advantage shrinks.** Their $172.90/day over ~150 maker
+   fills is **$1.15/fill** against our modelled $4.51 — **3.9x**, not the 19x
+   claimed earlier today off the stale $29.54 figure.
+3. **Their drag is now 16-25% of reward.** Ours is modelled at 10% (own exit
+   cost) or 33% (their per-contract rate applied). **We are in the same regime,
+   not a better one.**
+4. **Every argument in this file that leans on "the only live instance is
+   loss-making" is withdrawn.** That includes 4e's instruction to take the
+   pessimistic end when our own range cannot be resolved. The live instance is
+   making money, and the prior should be neutral.
+
+### The strategic question this opens
+
+A working, profitable liquidity-reward market maker exists **today** on
+Polymarket US, earning ~$106/day net over the last three days on 20 markets and
+$200 of worst-case exposure. Kalshi remains unbuilt, has never placed an order,
+and its reward scale is still inferred.
+
+**"Is Kalshi better than scaling what already works?" is now a live decision, and
+nothing in this file answers it.** Kalshi's case was breadth (~10x the
+addressable universe) and a lower qualification bar. Its case was never a better
+reward rate — section 14 measures the rate as *worse* per contract-hour. If the
+reference's constraint was resting time rather than market count, breadth may
+not be the binding lever at all.
+
+---
+
+## 18. Size is the wrong lever on Kalshi — measured, not argued
+
+2026-08-26. `net_sizing.py --fill-model partial`, flatten 900s, on
+`capture_long.db` (density-ranked pool). Contracts resting = markets x size x 2
+sides.
+
+| size | markets | contracts | reward/day | **$/contract** | %/day on collateral |
+|---|---|---|---|---|---|
+| 3 | 6 | 36 | $28.96 | **$0.804** | 185% |
+| 5 | 7 | 70 | $50.77 | $0.725 | 164% |
+| 10 | 11 | 220 | $88.37 | $0.402 | 91% |
+| 15 | 11 | 330 | $55.00 | $0.167 | 43% |
+| 20 | 14 | 560 | $78.19 | $0.140 | 36% |
+| 25 | 12 | 600 | $87.01 | $0.145 | 38% |
+| 40 | 7 | 560 | $58.65 | $0.105 | 36% |
+
+**Reward per contract falls 8x from size 3 to size 40, monotonically.** That is
+the reliable statistic here and it is the saturation of `q / (q + Σ)` showing up
+in dollars: the density ranking selects small denominators, so our own size
+enters its own denominator early.
+
+**Do not read the reward column as a size-response curve.** It is not monotonic
+(size 15 earns less than size 10) because **the funded market set changes with
+size** — collateral guards fund different markets at each size, so each row is a
+different portfolio. Only `$/contract` compares like with like.
+
+### What this means
+
+- **Quantity is not irrelevant.** Total reward does rise with size up to ~10
+  ($28.96 -> $88.37). Below that the `$1.00` minimum payout is a real floor —
+  section 9 measured one contract paying **$0.00 on 9 of 10 markets**.
+- **Past ~10 contracts, additional size buys almost nothing** on this pool while
+  consuming collateral linearly. Return on capital falls from 91%/day at size 10
+  to 36-38% at size 20-25.
+- **The lever is breadth, not depth.** Capital spent on depth in one market is
+  capital not spent on a second market, and share saturates while market count
+  does not.
+- **This is the opposite of the reference's situation.** On Polymarket US their
+  10 contracts sit against 7,500-15,000, so they never saturate and their
+  measured 5->10 doubling returned a clean 1.89x per resting hour (section 17).
+  Same formula, different position in the denominator (section 14).
+
+**Limits.** Static book — our size entering its own denominator is modelled, a
+competitor *reacting* to us is not, and reacting is exactly what a competitor
+does when we take 80% of a side. Small sizes also fund fewer markets, so the
+top rows are not simply "better"; they are a different and narrower portfolio.
+The `%/day` figures are absurd on their face and inherit every caveat in
+section 15, above all the unconfirmed `period_reward` scale.
+
+---
+
+## 19. Audit correction: profitability is promising, but the Kalshi replay is not decision-grade
+
+2026-08-26. Reproduced the reference P&L against its latest production ledger
+and the live Polymarket US earnings endpoint, then checked the Kalshi replay
+against the current first-party rule descriptions.
+
+### The six-day Polymarket result reproduces, under partial trading accounting
+
+For 2026-08-20 through 2026-08-25, `liquidity-bot/scripts/daily_pnl.py`
+reproduces every row in section 17. The arithmetic is exact: trading
+**−$31.16/day**, paid reward **+$85.56/day**, reported net **+$54.40/day**;
+the final three days are **+$106.16/day**.
+
+The qualification matters: `daily_pnl.py` prices balanced-leg markets only. At
+the verification run it excluded 38 unbalanced markets and stated that it
+cannot see positions that settled rather than closing. Section 17's number is
+therefore a **verified report result, not audited full-account daily P&L**.
+
+Reward rose 7.78x from $22.21 to $172.90, but losses were not literally flat.
+The first three complete days averaged −$24.23/day and the last three
+−$38.08/day, a 57% increase. They grew far more slowly than reward. The listed
+August 25 uptime fixes cannot by themselves explain reward that had already
+jumped on August 23–24. `max_markets=20` is a capacity ceiling, not proof that
+twenty markets were occupied and resting. The uptime explanation remains a
+**HYPOTHESIS**.
+
+### First-party Kalshi sources conflict with the implemented replay
+
+The February 2026 CFTC filing used by `analyze_capture.py` assigns the highest
+bid as Reference Price. Kalshi's current Help Center instead describes the
+Reference Price as the first level where cumulative size reaches one fifth of
+Target Size. The Help Center also says the payable reward is multiplied by the
+fraction of non-excluded snapshots.
+
+The current code uses the highest bid and computes `share * pool` without that
+non-excluded-snapshot multiplier. Until a controlling source is identified, or
+both interpretations are implemented and reported as bounds, sections 14–18
+are **INFERRED under a disputed rule model**. "Formula-identical" is too strong;
+the venues share a scoring family but not a verified identical implementation.
+
+### The denominator example has one arithmetic correction
+
+For competing score `Σ=4,703.8`, the exact reward-share multiple from size 5
+to 100 is **19.6x**, not 21x. Under `q/(q+Σ)`, a 20x increase in `q` cannot
+produce more than 20x reward. `Σ` is competing **discounted score**, not raw
+contracts, unless every competing contract has multiplier 1.
+
+### Section 18 reproduces the script but does not identify a size optimum
+
+All seven rows reproduce from `net_sizing.py`. They are not a controlled size
+sweep: the capital and crowding guards fund a different portfolio at each
+size. Consequently neither total reward nor `$ / contract` is a like-for-like
+size response. A fixed market set, selected on an earlier window and evaluated
+on a later one, is required.
+
+The `%/day on collateral` column is also not reward divided by collateral.
+`net_sizing.py` computes `(reward + simulated markout) / collateral`; markout is
+positive on this capture despite contradicting the adverse result on the wider
+capture. At size 10, reward/collateral is 80.3%, not the displayed 91.1%; at
+size 25 it is 29.0%, not 37.8%. Keep reward return and simulated net return in
+separate columns.
+
+**Decision consequence:** none of these corrections proves Kalshi is
+unprofitable. The nominal headroom still justifies measurement. They do mean
+the current tables cannot authorize capital or a full build. The active
+experiment and operator boundary are now recorded in `EXPERIMENT.md` and
+`DECISIONS.md`.
+
+---
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in

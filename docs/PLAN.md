@@ -1,4 +1,11 @@
-# kalshi-bot — end-to-end plan
+# kalshi-bot — historical end-to-end plan
+
+> **PAUSED 2026-08-26 by operator decision D-001.** Do not execute the package,
+> phase, or "first concrete steps" sections in this file. The current objective
+> is to measure whether the Polymarket strategy can work on Kalshi without
+> building the full bot. The active contract is `../EXPERIMENT.md`; current
+> state and work are `../STATUS.md` and `../NEXT.md`. This file remains as design
+> input if the operator later authorizes a full build.
 
 ## Context
 

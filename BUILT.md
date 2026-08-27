@@ -6,7 +6,11 @@ when something is finished — not when it is started.
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-17.
+Last updated 2026-08-26.
+
+Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
+`DECISIONS.md`. Reproducing an old table means an instrument is operational; it
+does not validate the reward-rule interpretation or establish profitability.
 
 ---
 
@@ -14,20 +18,22 @@ Last updated 2026-08-17.
 
 | phase | scope | state |
 |---|---|---|
-| Research | Reward rules, fee model, universe shape | **done, ongoing refinement** |
+| Research | Reward rules | **reopened — official sources conflict** |
+| Research | Fee model, universe shape | measured, with named gaps |
 | Instruments | Raw capture, signed reads, formula replay | **done** |
 | Analysis | Reward share, two-sided rate, tick effect | **done** |
 | Analysis | Fill cost, integrated net, ranking metric | **done** |
 | Analysis | Exit cost | **done** |
 | Analysis | End-date concentration | **not started** |
-| Phase 0 | Pure core (models, rewards, risk, fees) | **not started, deliberately** |
-| Phase 1 | Read-only adapters + streams | not started |
-| Phase 2 | Shadow measurement harness | not started |
-| Phase 3 | One-contract evidence run | not started |
+| Experiment 0 | Rule and accounting audit | **active** |
+| Experiment 1 | Fixed-universe replay | queued |
+| Experiment 2 | Read-only live shadow | gated |
+| Experiment 3 | Minimal live evidence run | **not authorized** |
+| Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
-Phase 0 is deliberately not started. Several numbers the economics depend on
-are still inferred, and code written now would bake them in permanently. See
-`NEXT.md` "Still unknown, and blocking".
+The full-bot phases are deliberately not started. Current work is limited to
+the evidence ladder in `EXPERIMENT.md`. See `STATUS.md` for blockers and
+`NEXT.md` for the active queue.
 
 ---
 
@@ -226,14 +232,18 @@ that already look best.
 
 ## Documentation — built
 
-| file | lines | purpose |
-|---|---|---|
-| `FINDINGS.md` | 950 | established facts, each with its measurement |
-| `docs/PLAN.md` | 299 | the approved end-to-end plan |
-| `docs/REFERENCE_CRITIQUE.md` | 280 | liquidity-bot: what to copy, discard, invert |
-| `NEXT.md` | 130 | session orientation: state, blockers, next actions |
-| `README.md` | 60 | what the project is and what to read first |
-| `BUGFIXES.md` | 110 | instrument bugs: symptom, mechanism, fix |
+| file | purpose |
+|---|---|
+| `AGENTS.md` | authoritative AI contract, boot sequence, and authority boundary |
+| `STATUS.md` | canonical current truth and blockers |
+| `DECISIONS.md` | accepted operator decisions and pending decision requests |
+| `EXPERIMENT.md` | active evidence ladder and reporting contract |
+| `NEXT.md` | ordered executable queue only |
+| `FINDINGS.md` | durable evidence, hypotheses, and corrections |
+| `BUGFIXES.md` | instrument bugs: symptom, mechanism, fix, verification |
+| `docs/PLAN.md` | paused historical full-build design |
+| `docs/REFERENCE_CRITIQUE.md` | dated reference audit; architecture versus calibration |
+| `README.md` | project entry point |
 
 ---
 
