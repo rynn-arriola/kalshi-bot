@@ -14,9 +14,10 @@ complete. The 14-day capture is active as
 
 Tasks:
 
-1. Let the daily read-only capacity heartbeat check service health, newest-data
+1. On each operator-requested manual check, inspect service health, newest-data
    age, errors, projected disk, memory, OOM events, and Polymarket process
-   identity. It must alert rather than restart or modify either process.
+   identity. The automatic heartbeat is paused to conserve Codex usage. A check
+   must alert rather than restart or modify either process.
 2. At the seven-day checkpoint on 2026-09-03, preserve the exact capture window,
    row counts, error/gap rates, tracked universe, and resource use.
 3. Do not treat partial data as profitability. Run current-rule reward, fill,

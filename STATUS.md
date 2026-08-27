@@ -147,9 +147,9 @@ Not approved now:
 
 The active work order is `NEXT.md`. Operator authority is in `DECISIONS.md`.
 
-A daily read-only capacity heartbeat is active through the planned run. It
-alerts on stale data, errors, memory/disk pressure, OOM events, or process
-interference and is not authorized to restart anything.
+The daily capacity heartbeat is paused at the operator's request to conserve
+Codex usage. Capacity checks are manual when the operator opens this task and
+asks for one; they remain read-only and are not authorized to restart anything.
 
 ## Resolved blocker
 
