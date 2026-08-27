@@ -58,9 +58,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from analyze_capture import qualifying, share_with_order  # noqa: E402
 from markout import DEFAULT_TICK, best_level, infer_tick, parse_ts  # noqa: E402
+from reward_rules import (  # noqa: E402
+    DEFAULT_RULE_MODE,
+    RewardRuleMode,
+    calculate_payout,
+    rule_banner,
+)
+from strategy_policy import (  # noqa: E402
+    policy_banner,
+    polymarket_entry_quotes,
+)
 
 REWARD_SCALE = 10000.0
-MINIMUM_PAYOUT = 1.00
 
 
 def load_programs(connection: sqlite3.Connection) -> dict[str, dict]:
@@ -75,7 +84,7 @@ def load_programs(connection: sqlite3.Connection) -> dict[str, dict]:
 
 def load_series(
     connection: sqlite3.Connection, programs: dict[str, dict],
-) -> dict[str, tuple[list[dict], float]]:
+) -> dict[str, tuple[list[dict], float, int]]:
     """Per market, snapshots carrying BOTH representations, plus the tick.
 
     The full ladders drive reward scoring (each side is a walk down from its own
@@ -86,11 +95,13 @@ def load_series(
 
     series: dict[str, list[dict]] = defaultdict(list)
     prices: dict[str, set[float]] = defaultdict(set)
+    total_snapshots: dict[str, int] = defaultdict(int)
     for ticker, fetched_at, raw in connection.execute(
             "SELECT market_ticker, fetched_at, raw_json FROM books"
             " WHERE raw_json IS NOT NULL ORDER BY fetched_at"):
         if ticker not in programs:
             continue
+        total_snapshots[ticker] += 1
         book = (json.loads(raw) or {}).get("orderbook_fp") or {}
         ladders = {
             name: [(float(p), float(s))
@@ -112,7 +123,8 @@ def load_series(
     out = {}
     for ticker, rows in series.items():
         rows.sort(key=lambda r: r["ts"])
-        out[ticker] = (rows, infer_tick(prices[ticker]))
+        out[ticker] = (
+            rows, infer_tick(prices[ticker]), total_snapshots[ticker])
     return out
 
 
@@ -146,7 +158,7 @@ def load_tape(connection: sqlite3.Connection) -> dict[str, list[tuple]]:
 
 def target_quote(
     policy: str, snapshot: dict, tick: float,
-) -> tuple[float, float, float, float]:
+) -> tuple[float, float, float, float] | None:
     """Prices the policy wants now, and the depth resting at each.
 
     Stepping inside needs three ticks of spread so a tick still separates our
@@ -155,6 +167,16 @@ def target_quote(
     """
 
     bid, offer = snapshot["bid"], snapshot["offer"]
+    if policy == "polymarket-current":
+        quotes = polymarket_entry_quotes(bid, offer, tick)
+        if quotes is None:
+            return None
+        bid_depth = (snapshot["bid_size"]
+                     if abs(quotes.yes_bid - bid) <= 1e-9 else 0.0)
+        offer_depth = (snapshot["offer_size"]
+                       if abs(quotes.yes_offer - offer) <= 1e-9 else 0.0)
+        return (quotes.yes_bid, bid_depth,
+                quotes.yes_offer, offer_depth)
     if policy == "inside" and (offer - bid) >= 3 * tick - 1e-9:
         return (round(bid + tick, 6), 0.0, round(offer - tick, 6), 0.0)
     return bid, snapshot["bid_size"], offer, snapshot["offer_size"]
@@ -213,25 +235,31 @@ def simulate(
         ts = snapshot["ts"]
         ladders = snapshot["ladders"]
 
-        # The two-sided gate is a property of the book, not of our order: at 25
-        # contracts against a target of 1000 we cannot rescue a short side.
-        two_sided = all(
-            qualifying(ladders[name], target_size, discount)[2]
+        base_two_sided = all(
+            qualifying(
+                ladders[name], target_size, discount,
+                mode=args.reward_rule, tick_size=tick)[2]
             for name in ("yes", "no"))
-        if two_sided:
-            counting += 1
 
         if ts < flatten_until:
             # Position open, quotes down. This snapshot pays us nothing and
-            # still counts in the denominator -- that is the cost the two
-            # separate scripts both miss.
+            # counts only if the remaining market still meets the filed gate.
             live = None
+            if base_two_sided:
+                counting += 1
             continue
 
-        want_bid, bid_depth, want_offer, offer_depth = target_quote(
-            args.policy, snapshot, tick)
+        wanted = target_quote(args.policy, snapshot, tick)
+        if wanted is None:
+            live = None
+            if base_two_sided:
+                counting += 1
+            continue
+        want_bid, bid_depth, want_offer, offer_depth = wanted
         if want_offer - want_bid < 1e-9:
             live = None
+            if base_two_sided:
+                counting += 1
             continue
 
         # Reprice only when the policy's price moved. Holding a price keeps our
@@ -244,12 +272,28 @@ def simulate(
             if abs(live[2] - want_offer) > 1e-9:
                 live[2], live[3] = want_offer, offer_depth
 
+        # The filed two-sided gate includes our resting orders. Near Target
+        # Size they can turn an otherwise excluded snapshot into a counting
+        # one, so evaluate after inserting both policy prices.
+        own_prices = {
+            "yes": live[0],
+            "no": round(1.0 - live[2], 6),
+        }
+        two_sided = all(
+            qualifying(
+                ladders[name] + [(own_prices[name], args.size)],
+                target_size, discount, mode=args.reward_rule,
+                tick_size=tick)[2]
+            for name in ("yes", "no"))
+
         if two_sided:
+            counting += 1
             resting_counted += 1
             score = 0.0
-            for name, price in (("yes", live[0]), ("no", round(1.0 - live[2], 6))):
+            for name, price in own_prices.items():
                 share = share_with_order(
-                    ladders[name], target_size, discount, price, args.size)
+                    ladders[name], target_size, discount, price, args.size,
+                    mode=args.reward_rule, tick_size=tick)
                 score += share or 0.0
             # Every counting snapshot contributes 2.0 to the global
             # denominator, one per side, so our pool fraction is the mean of
@@ -331,7 +375,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", default="data/capture.db")
     parser.add_argument("--size", type=float, default=25.0)
-    parser.add_argument("--policy", choices=("touch", "inside"), default="touch")
+    parser.add_argument(
+        "--reward-rule", choices=[mode.value for mode in RewardRuleMode],
+        default=DEFAULT_RULE_MODE.value,
+        help="versioned filed reward calculation; July is current")
+    parser.add_argument(
+        "--policy", choices=("polymarket-current", "touch", "inside"),
+        default="polymarket-current",
+        help="current Polymarket entry pricing is the transfer default")
     parser.add_argument("--fill-model", choices=("whole", "partial"),
                         default="whole",
                         help="'whole' matches markout.py for comparability;"
@@ -362,6 +413,9 @@ def main() -> int:
     programs = load_programs(connection)
     series = load_series(connection, programs)
     tape = load_tape(connection)
+    print(rule_banner(args.reward_rule))
+    if args.policy == "polymarket-current":
+        print(policy_banner())
     print(f"markets with books and a program: {len(series)}")
     print(f"statistic {args.statistic}")
     print(f"size {args.size:g}   policy {args.policy}"
@@ -369,14 +423,14 @@ def main() -> int:
           f"   markout +{args.markout_horizon:g}s\n")
 
     header = (f"{'flatten':>8s}{'markets':>9s}{'uptime':>8s}{'fills/day':>11s}"
-              f"{'reward$':>10s}{'drag$':>9s}{'net$':>9s}{'collat$':>9s}"
+              f"{'reward$':>10s}{'markout$':>10s}{'proxy$':>9s}{'collat$':>9s}"
               f"{'%/day':>8s}")
     print(header)
     print("-" * len(header))
 
     for flatten in args.flatten_seconds:
         rows = []
-        for ticker, (snapshots, tick) in series.items():
+        for ticker, (snapshots, tick, total_snapshots) in series.items():
             program = programs[ticker]
             try:
                 target_size = float(program["target_size_fp"])
@@ -411,11 +465,15 @@ def main() -> int:
             if result["concentration"] > args.max_concentration:
                 continue
 
-            payout = result[
+            period_share = result[
                 "fraction_median" if args.statistic == "median"
-                else "fraction"] * pool
-            if payout < MINIMUM_PAYOUT:
+                else "fraction"]
+            payout_result = calculate_payout(
+                period_share, pool, result["counting"], total_snapshots,
+                mode=args.reward_rule)
+            if not payout_result.clears_minimum:
                 continue        # forfeited, not deferred
+            payout = float(payout_result.payable_payout)
             hours = (snapshots[-1]["ts"] - snapshots[0]["ts"]) / 3600.0
             rows.append({
                 "ticker": ticker,
@@ -450,11 +508,11 @@ def main() -> int:
               f"{100 * (reward + drag) / used if used else 0:7.2f}%")
 
     print()
-    print("Reward and drag now come from ONE pass: a fill takes our quotes down")
+    print("Reward and markout now come from ONE pass: a fill takes our quotes down")
     print("and the reward integral stops, so they can no longer be added under")
-    print("contradictory assumptions. Still GROSS of fees (maker rate unmeasured,")
-    print("FINDINGS 6e), still a static book, and shares are still extrapolated")
-    print("from partial period coverage.")
+    print("contradictory assumptions. PROXY is not net P&L: markout is not a")
+    print("realized exit, maker/taker fees are omitted, and the book is static.")
+    print("Shares are also extrapolated from partial period coverage.")
     return 0
 
 

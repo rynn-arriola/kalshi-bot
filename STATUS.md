@@ -28,9 +28,19 @@ write path.
 - The reward rows were reproduced from the live venue earnings endpoint. The
   trading report is partial accounting: it excludes unbalanced markets and
   cannot allocate positions that settle instead of closing.
+- The current reference code was re-audited without a Polymarket API call.
+  Local/GitHub `main` match at `3134678`; its strategy files match reviewed
+  deployed source `5825db8`. Exact behavior is versioned in
+  `docs/POLYMARKET_REFERENCE.md`.
 - Both venues reward resting size through a discounted, normalized share of
-  qualifying book liquidity. The exact rule is **not currently safe to call
-  identical**; see the blocker below.
+  qualifying book liquidity, but their implementations are not identical.
+- Kalshi's July 15 certified filing, effective July 30, governs the August
+  capture. It uses the one-fifth-of-Target-Size reference and scales the pool by
+  the non-excluded snapshot fraction. The current Help Center agrees.
+- On `capture_long.db` at size 10, the current rule gives a median one-tick
+  reward-share multiple of `1.000x` over 112,492 side observations. The
+  superseded February mode gives `1.943x`; prior "inside doubles reward" claims
+  are superseded for this dataset.
 - The existing capture and replay instruments run and reproduce their published
   tables. Reproducible output does not validate an outdated rule or a biased
   counterfactual.
@@ -40,24 +50,15 @@ write path.
 
 ## Active blockers
 
-### B1 — Kalshi rule-source conflict (critical)
-
-The February 2026 CFTC filing used by the code sets the highest bid as Reference
-Price. Kalshi's current Help Center describes Reference Price as the first level
-where cumulative size reaches one fifth of Target Size. The current Help Center
-also says excluded snapshots reduce the payable pool.
-
-`scripts/analyze_capture.py` uses the highest bid, and `scripts/net_sizing.py`
-does not scale the pool by the fraction of non-excluded snapshots. Until this is
-resolved or both interpretations are implemented as bounds, Kalshi reward-dollar
-estimates are **INFERRED under a disputed model**, not verified economics.
-
 ### B2 — Adverse selection is not represented credibly (critical)
 
-The Kalshi exit replay largely prices the exit against the book at fill time.
-The Polymarket reference shows that the adverse move before exit is the dominant
-loss term. A static book can measure fees and immediate depth while missing the
-cost that decides profitability.
+`exit_cost.py` now prices against the first usable book at or after the exit
+deadline and carries missing/thin books as unknown. Under the current
+Polymarket entry policy at size 10 and a 900-second deadline, it fully priced 67
+of 84 simulated fills for total P&L `-$27.85`; 17 remain unknown. This
+corrected loss path is not yet integrated with the
+fixed-universe reward replay, maker fees remain unknown, and missing exposure
+still needs explicit conservative bounds.
 
 ### B3 — Sizing sweep is not like-for-like
 
@@ -83,12 +84,18 @@ strategy on Kalshi.
 - `capture_long.db`: density-selected capture used for the newest replay. It is
   short relative to many program periods and assumes captured competition is
   representative later.
+- `reward_rules.py`: pure, versioned current/legacy reward arithmetic with
+  hand-checkable fixtures and tests. Reports print the rule and source date.
 - `net_sizing.py`: integrates reward interruption and simulated fills on one
-  clock. It is still static-book, gross of maker fees (which remain
-  unconfirmed), and affected by B1–B3.
-- The size table in `FINDINGS.md` section 18 is a faithful report of the current
-  script. Its `%/day` column includes simulated markout as well as reward and
-  must not be described as reward return on collateral.
+  clock. Its `proxy` combines predicted reward with markout; it is not complete
+  net P&L and remains affected by B2–B3.
+- The size table in `FINDINGS.md` section 18 used the superseded reward rule and
+  a portfolio-changing sweep. It is retained as history and must not drive a
+  strategy or sizing decision.
+- Reward-only `sizing.py` under the current rule reports `$7.369/day` after the
+  per-program minimum for seven size-10 markets on `capture_long.db` under the
+  audited entry-price policy. It is not fixed-universe and is not a net-profit
+  result.
 - The hypothesis that Polymarket's reward jump was caused by the listed August
   25 uptime fixes is unproven; the reward increase began on August 23–24.
 
@@ -110,3 +117,11 @@ Not approved now:
   command.
 
 The active work order is `NEXT.md`. Operator authority is in `DECISIONS.md`.
+
+## Resolved blocker
+
+### B1 — Kalshi rule-source conflict
+
+**Resolved 2026-08-26.** The later July filing supersedes the February filing
+effective July 30 and matches the Help Center. Current August analysis defaults
+to `july-2026-one-fifth`; the February mode remains comparison-only.

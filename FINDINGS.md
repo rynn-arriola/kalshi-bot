@@ -1783,6 +1783,81 @@ experiment and operator boundary are now recorded in `EXPERIMENT.md` and
 
 ---
 
+## 20. Current-rule and current-strategy correction
+
+2026-08-26. This section supersedes the reward-rule assumptions behind
+sections 4, 9, 11, 14, 15, and 18. Those sections remain historical evidence
+of why the instruments changed; their reward dollars and one-tick conclusions
+must not drive the current decision.
+
+### VERIFIED — the July filing governs the August capture
+
+Kalshi's July 15 certified filing, effective July 30, supersedes the February
+best-bid rule. It sets Reference Price at the first level where cumulative size
+reaches one fifth of Target Size, gives full weight to better prices, multiplies
+payout by the non-excluded snapshot fraction, rounds down to cents, and retains
+the per-program $1 minimum. The current Help Center describes the same rule.
+
+The implementation defaults to `july-2026-one-fifth`; the February mode is
+explicitly `SUPERSEDED` and exists only to reproduce old output. Independent
+hand fixtures execute in `tests/test_reward_rules.py`.
+
+### MEASURED — stepping inside no longer increases reward share here
+
+Dataset `data/capture_long.db`, August 17–18 capture, size 10, 58,453 usable
+snapshots, 56,246 countable (96.2%), 112,492 side comparisons:
+
+| rule mode | inside/touch median | p10 | p90 |
+|---|---:|---:|---:|
+| July current | **1.000x** | 1.000x | 1.000x |
+| February superseded | 1.943x | 1.557x | 1.986x |
+
+Under the current reference, a price better than Reference Price already gets
+full weight. Moving one more tick toward the market does not improve score on
+these observations. It can still change queue position and fill risk; that is a
+different measurement.
+
+Reward-only `sizing.py`, current July rule, current Polymarket entry-price
+policy, size 10, $300 cap: seven of 36 trustworthy candidates clear the payout
+minimum, modeled reward is **$7.369/day** on $65.20 modeled collateral. The
+legacy mode produced $93.414/day. The current number is still not a
+fixed-universe result and contains no trading P&L, so it is not profitability.
+
+### VERIFIED — the reference strategy was re-read from current code
+
+The Polymarket repository was inspected read-only with no venue API request.
+Local HEAD and GitHub `main` are identical at
+`3134678e9937881a4b890c500fd905efb28abad6`; the working tree was clean and the
+strategy files match reviewed deployed source `5825db8`.
+
+The actual entry policy is size 10 across 20 sports/day-of slots: join both
+touches when spread is at least 2¢, otherwise center an exact 2¢ quote window.
+Entries are post-only, constrained to 10¢–90¢ and a stressed complete exit.
+After a fill, cancel the risk-building side, work a passive reducer, and force
+an IOC after 900 seconds or at T−300 seconds before the event. The reward/cost
+gate is advisory/off. See `docs/POLYMARKET_REFERENCE.md` for source mapping and
+remaining fidelity gaps.
+
+### MEASURED — later-book loss replay is adverse, with material unknowns
+
+`exit_cost.py`, same capture, size 10, audited Polymarket entry-price policy,
+60-second maximum capture gap:
+
+| deadline | fills | passive | timed cross | unknown | priced P&L | mean priced |
+|---:|---:|---:|---:|---:|---:|---:|
+| 300s | 84 | 5 | 65 | 14 | −$30.4411 | −$0.4349 |
+| 900s | 84 | 11 | 56 | 17 | **−$27.8505** | **−$0.4157** |
+| 1800s | 84 | 13 | 52 | 19 | −$26.7601 | −$0.4117 |
+| 3600s | 84 | 17 | 33 | 34 | −$20.8166 | −$0.4163 |
+
+Timed crosses use the first book at or after the deadline and include the
+Kalshi taker fee at actual VWAP. The falling total at longer deadlines is not
+evidence that waiting is safer: priced coverage falls from 83.3% to 59.5%.
+Unknown fills are not assigned zero, and no complete net can be calculated
+until they are bounded and this loss path shares the fixed reward clock.
+
+---
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in

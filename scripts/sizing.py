@@ -1,20 +1,14 @@
-"""What the reward program would actually pay us, from measured inputs.
+"""Modeled reward-only payout from captured Kalshi books.
 
-Every term here is now measured rather than assumed, which was not true before
-2026-08-17:
+This is not paid reward and not net P&L. It replays a named filed rule, inserts
+the hypothetical orders into each ladder, and applies excluded-snapshot pool
+scaling, cent flooring, and the per-program $1 minimum. ``period_reward`` scale
+is strongly corroborated but still awaits reconciliation to an actual payout.
 
-  pool          `period_reward` / 10000, corroborated across 2,940 programs
-  our share     replayed from captured books with our order inserted
-  what counts   the filing's two-sided rule, applied per snapshot
-  revenue       reward only -- FINDINGS 6h showed the pair trade never completes
-
-The payout chain from the CFTC filing (FINDINGS section 1):
-
-    Score(bid)        = DF ^ (Reference - Price) x Size
-    Normalized(bid)   = Score / sum of qualifying scores on that side
-    SnapshotScore     = normalized_yes + normalized_no
-    TimePeriodScore   = sum of our snapshots / sum of ALL users' snapshots
-    Payout            = TimePeriodScore x period_reward, unpaid below $1.00
+Under the current July rule, Reference Price is the level where cumulative
+size first reaches one fifth of Target Size; better prices receive full weight.
+The normalized score on each side is our discounted score divided by all
+qualifying score on that side.
 
 Two consequences that drive the answer and are easy to miss:
 
@@ -22,11 +16,11 @@ Two consequences that drive the answer and are easy to miss:
    counting snapshot contributes exactly 2.0 to the denominator -- one per
    side. **Our fraction of the pool is therefore the mean of our two side
    shares.** Quoting one side only halves it.
-2. A snapshot excluded for one-sidedness pays nobody, so it leaves the
-   numerator AND the denominator. The 85% two-sided rate does not dilute our
-   share; it only means the pool is spread over fewer snapshots.
+2. A snapshot excluded for one-sidedness leaves the score numerator and
+   denominator, and under the current July rule also reduces the payable pool
+   by the non-excluded fraction.
 
-    python -B scripts/sizing.py --size 5 --policy touch
+    python -B scripts/sizing.py --size 10 --policy polymarket-current
 """
 
 from __future__ import annotations
@@ -42,8 +36,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from analyze_capture import qualifying, share_with_order  # noqa: E402
+from reward_rules import (  # noqa: E402
+    DEFAULT_RULE_MODE,
+    MINIMUM_PAYOUT,
+    RewardRuleMode,
+    calculate_payout,
+    rule_banner,
+)
+from strategy_policy import (  # noqa: E402
+    policy_banner,
+    polymarket_entry_quotes,
+)
 
-MINIMUM_PAYOUT = 1.00
 REWARD_SCALE = 10000.0
 
 
@@ -65,8 +69,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", default="data/capture.db")
     parser.add_argument("--size", type=float, default=5.0)
-    parser.add_argument("--policy", choices=("touch", "inside"), default="touch",
-                        help="join both touches, or step one tick inside each")
+    parser.add_argument(
+        "--reward-rule", choices=[mode.value for mode in RewardRuleMode],
+        default=DEFAULT_RULE_MODE.value,
+        help="versioned filed reward calculation; July is current")
+    parser.add_argument(
+        "--policy", choices=("polymarket-current", "touch", "inside"),
+        default="polymarket-current",
+        help="current Polymarket entry pricing is the transfer default")
     parser.add_argument("--markets", type=int, default=40,
                         help="how many markets we could quote at once")
     parser.add_argument("--capital", type=float, default=22.64,
@@ -110,10 +120,30 @@ def main() -> int:
         total[ticker] += 1
         if not all(ladders[name] for name in ("yes", "no")):
             continue
-        # The filing excludes the whole snapshot unless BOTH sides reach the
-        # target. At 5 contracts against a target of 1000 we cannot rescue a
-        # short side, so this is a property of the book, not a choice.
-        if not all(qualifying(ladders[name], target, discount)[2]
+        yes_touch = max(price for price, _ in ladders["yes"])
+        no_touch = max(price for price, _ in ladders["no"])
+        if args.policy == "polymarket-current":
+            quotes = polymarket_entry_quotes(
+                yes_touch, round(1.0 - no_touch, 6), 0.01)
+            if quotes is None:
+                continue
+            order_prices = {
+                "yes": quotes.yes_bid,
+                "no": round(1.0 - quotes.yes_offer, 6),
+            }
+        else:
+            order_prices = {}
+            for name, touch in (("yes", yes_touch), ("no", no_touch)):
+                candidate = (round(touch + 0.01, 2)
+                             if args.policy == "inside" else touch)
+                order_prices[name] = touch if candidate >= 1.0 else candidate
+
+        # Snapshot exclusion is evaluated after inserting our hypothetical
+        # orders. Usually size 10 is far below Target Size, but near the
+        # boundary it can be the quantity that makes a side count.
+        if not all(qualifying(
+                ladders[name] + [(order_prices[name], args.size)],
+                target, discount, mode=args.reward_rule)[2]
                    for name in ("yes", "no")):
             continue
         counted[ticker] += 1
@@ -121,12 +151,10 @@ def main() -> int:
         snapshot = []
         cost = 0.0
         for name in ("yes", "no"):
-            touch = max(price for price, _ in ladders[name])
-            price = round(touch + 0.01, 2) if args.policy == "inside" else touch
-            if price >= 1.0:
-                price = touch
+            price = order_prices[name]
             share = share_with_order(
-                ladders[name], target, discount, price, args.size)
+                ladders[name], target, discount, price, args.size,
+                mode=args.reward_rule)
             snapshot.append(share or 0.0)
             cost += price * args.size
         # SnapshotScore is the SUM of the two normalized shares and every
@@ -147,7 +175,11 @@ def main() -> int:
              - parse_ts(program["start_date"])).total_seconds() / 86400.0,
             1e-9)
         fraction = statistics.median(values)
-        payout = fraction * pool
+        payout_result = calculate_payout(
+            fraction, pool, counted[ticker], total[ticker],
+            mode=args.reward_rule)
+        raw_payout = float(payout_result.raw_payout)
+        payable_payout = float(payout_result.payable_payout)
         observed = span[ticker]
         # How much of the program period we actually watched. A share measured
         # over twenty minutes says nothing about a 1.8-day period: it assumes
@@ -163,12 +195,14 @@ def main() -> int:
             "pool": pool,
             "days": days,
             "fraction": fraction,
-            "payout": payout,
+            "payout": raw_payout,
+            "payable": payable_payout,
             # Only meaningful for a program that lasts at least a day. A
             # one-hour index market has a $285 pool, which annualizes to
             # $7,105/day and is nonsense: the market does not exist for a day.
-            "per_day": payout / days if days >= 1.0 else None,
-            "paid": payout >= MINIMUM_PAYOUT,
+            "per_day": payable_payout / days if days >= 1.0 else None,
+            "raw_per_day": raw_payout / days if days >= 1.0 else None,
+            "paid": payout_result.clears_minimum,
             "collateral": statistics.median(collateral[ticker]),
             # Where our own size dominates the denominator we are not measuring
             # the market, we are measuring ourselves -- the same guard
@@ -189,9 +223,12 @@ def main() -> int:
                  and r["coverage"] >= args.min_coverage]
     sustained.sort(key=lambda r: -r["per_day"])
 
+    print(rule_banner(args.reward_rule))
+    if args.policy == "polymarket-current":
+        print(policy_banner())
     print(f"policy {args.policy}   size {args.size:g}   "
           f"markets with usable data: {len(rows)}")
-    print(f"minimum payout {MINIMUM_PAYOUT:.2f} per program period, "
+    print(f"minimum payout {float(MINIMUM_PAYOUT):.2f} per program period, "
           "below which nothing is paid\n")
 
     print(f"excluded: {len(crowded)} crowded "
@@ -201,14 +238,16 @@ def main() -> int:
           f" period\n")
 
     header = (f"{'ticker':<38s}{'snaps':>6s}{'cov':>5s}{'pool$':>9s}"
-              f"{'days':>7s}{'share':>8s}{'payout$':>9s}{'$/day':>8s}{'paid':>6s}")
+              f"{'days':>7s}{'share':>8s}{'raw$':>9s}{'pay$':>9s}"
+              f"{'$/day':>8s}{'paid':>6s}")
     print(header)
     print("-" * len(header))
     for row in sustained[:20]:
         print(f"{row['ticker'][:38]:<38s}{row['snaps']:6d}"
               f"{100 * row['coverage']:4.0f}%{row['pool']:9.2f}{row['days']:7.1f}"
               f"{100 * row['fraction']:7.2f}%{row['payout']:9.2f}"
-              f"{row['per_day']:8.3f}{'yes' if row['paid'] else 'NO':>6s}")
+              f"{row['payable']:9.2f}{row['per_day']:8.3f}"
+              f"{'yes' if row['paid'] else 'NO':>6s}")
     if len(sustained) > 20:
         print(f"... and {len(sustained) - 20} more")
 
@@ -218,8 +257,8 @@ def main() -> int:
     print(f"\n=== if we quoted the best {min(args.markets, len(sustained))}"
           f" trustworthy markets ===")
     print(f"  markets clearing the $1 minimum   {len(top_paid)} of {len(top)}")
-    print(f"  reward per day, gross             "
-          f"${sum(r['per_day'] for r in top):.3f}")
+    print(f"  modeled reward/day before minimum "
+          f"${sum(r['raw_per_day'] for r in top):.3f}")
     print(f"  reward per day, after $1 minimum  "
           f"${sum(r['per_day'] for r in top_paid):.3f}")
     print(f"  collateral required               "

@@ -27,10 +27,10 @@ active work queue.
 
 ## Current conclusion
 
-Kalshi is **promising but unproven**. Existing replays show nominal headroom,
-but the reward implementation conflicts with Kalshi's current help
-documentation, the sizing sweep is not fixed-universe, and adverse selection is
-not modeled credibly enough to establish live net profitability.
+Kalshi is **promising but unproven**. The current reward rule is now reconciled
+and implemented, but the sizing sweep is not fixed-universe and corrected exit
+losses are not yet integrated tightly enough to establish live net
+profitability.
 
 See `STATUS.md` for the bounded version of every current claim.
 
@@ -51,16 +51,18 @@ Nothing in `scripts/` is authorized to place an order.
 |---|---|
 | `record_books.py` | Store raw programs, books, trades, and status |
 | `kalshi_auth.py` | Signed read-only account access |
+| `reward_rules.py` | Pure, versioned reward scoring and payout arithmetic |
+| `strategy_policy.py` | Audited current Polymarket entry-price policy |
 | `analyze_capture.py` | Replay a specified reward interpretation |
 | `markout.py` | Estimate fill incidence and post-fill markout |
 | `sizing.py` | Reward-only portfolio replay |
 | `pooled_markout.py` | Sign test and bootstrap on one-sided fills |
 | `net_sizing.py` | Reward interruption and fills on one clock |
-| `exit_cost.py` | Simulated exit path and fee/depth cost |
+| `exit_cost.py` | Later-book passive/cross/settlement exit-loss replay |
 
-These scripts reproduce prior results, but several require correction before
-their dollar outputs can drive a decision. Reproducibility is not validation;
-see `STATUS.md` blockers B1–B3.
+These scripts produce measurements, but the fixed-universe net replay is not
+complete. Reproducibility is not validation; see `STATUS.md` blockers B2–B5 and
+the accounting contract in `docs/PNL_ACCOUNTING.md`.
 
 ## Data and credentials
 

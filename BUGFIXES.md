@@ -173,3 +173,59 @@ on first sight, so a market settling mid-capture recorded no result.
 
 **The general rule this earns:** *when a guard rejects most of your data, check
 whether your own collection caused it before concluding the data is thin.*
+
+---
+
+## 2026-08-26
+
+### Reward replay used a superseded filing and omitted current payout scaling
+
+**Symptom.** August analyses treated the best bid as Reference Price, reported
+that stepping one tick inside nearly doubled reward share, and paid
+`share × pool` without reducing the pool for excluded snapshots.
+
+**Mechanism.** The scorer implemented Kalshi's February 11 filing. A later July
+15 certified filing, effective July 30, changed the reference to the first level
+where cumulative size reaches one fifth of Target Size and added the
+non-excluded-snapshot multiplier. The current Help Center matches the later
+filing. The captured books are from August, after the change took effect.
+
+**Fix.** Added pure versioned rules in `scripts/reward_rules.py`, made the July
+mode the default, retained February only as a `SUPERSEDED` comparison, applied
+pool scaling/cent flooring/the $1 minimum, and made every report print the mode
+and source. Eleven unit tests and hand-calculated fixtures cover the divergent
+rules.
+
+**Verification.** Across 58,453 `capture_long.db` snapshots at size 10, current
+mode reports inside/touch median `1.000x` (p10/p90 `1.000x`) over 112,492 sides;
+legacy mode reports median `1.943x` (p10 `1.557x`, p90 `1.986x`). Current
+reward-only portfolio output falls to `$7.369/day` after minimums versus
+`$93.414/day` in legacy mode. The old one-tick and reward-dollar results are
+therefore superseded, not alternative current estimates.
+
+### Forced exits reused the entry book after waiting
+
+**Symptom.** `exit_cost.py` claimed to wait 5–60 minutes before crossing, but
+the deadline changed only the chance of a passive fill. Any forced cross was
+priced from `series[index]`, the book associated with entry.
+
+**Mechanism.** Reusing the entry snapshot erased the price move during the
+holding period—the exact adverse-selection term the instrument was intended to
+measure. Partial depth was also priced while the unfilled remainder silently
+contributed zero.
+
+**Fix.** Timed crosses now use the first captured book at or after the deadline
+within an explicit tolerance. Missing, stale, and insufficient books are
+`UNKNOWN` unless a recorded settlement prices the entire position. Passive
+queue depth is zero when the reducer improves the touch and displayed size only
+when it joins.
+
+**Verification.** Six tests cover later-only selection, stale gaps, both exit
+directions, actual-price fees, settlement signs, and passive pricing. On
+`capture_long.db` at size 10 under the audited Polymarket entry policy and a
+900-second deadline, 67 of 84 fills are priced for total P&L `-$27.8505`; 17
+remain unknown and contribute no fake zero.
+
+**The general rule this earns:** a clock parameter is not modeled merely
+because it appears in a loop. Verify that the data used after the wait actually
+comes from after the wait, and make every unpriced residual visible.

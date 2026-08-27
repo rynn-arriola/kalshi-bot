@@ -80,7 +80,9 @@ them accepted without an explicit operator instruction.
   project folder and never inside the Polymarket folder.
 - **Consequence:** Use a separate top-level directory, environment, process,
   configuration, data, and logs. Do not import from, write inside, restart, or
-  make API calls through the Polymarket project. The boundaries in
+  make API calls through the Polymarket project. Read-only Kalshi API calls are
+  permitted from that isolated project; authenticated writes and all live order
+  actions remain prohibited by D-004. The boundaries in
   `docs/SERVER_MEASUREMENT.md` are mandatory.
 - **Revisit when:** Measurement resource use interferes with production, or the
   operator selects a separate server.

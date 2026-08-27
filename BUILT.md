@@ -18,15 +18,15 @@ does not validate the reward-rule interpretation or establish profitability.
 
 | phase | scope | state |
 |---|---|---|
-| Research | Reward rules | **reopened — official sources conflict** |
+| Research | Reward rules | **resolved — July filing is current** |
 | Research | Fee model, universe shape | measured, with named gaps |
 | Instruments | Raw capture, signed reads, formula replay | **done** |
 | Analysis | Reward share, two-sided rate, tick effect | **done** |
 | Analysis | Fill cost, integrated net, ranking metric | **done** |
-| Analysis | Exit cost | **done** |
+| Analysis | Exit cost | **corrected later-book replay done** |
 | Analysis | End-date concentration | **not started** |
-| Experiment 0 | Rule and accounting audit | **active** |
-| Experiment 1 | Fixed-universe replay | queued |
+| Experiment 0 | Rule and accounting audit | **done** |
+| Experiment 1 | Fixed-universe replay | **active** |
 | Experiment 2 | Read-only live shadow | gated |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
@@ -38,6 +38,17 @@ the evidence ladder in `EXPERIMENT.md`. See `STATUS.md` for blockers and
 ---
 
 ## Instruments — built and working
+
+### `scripts/strategy_policy.py`
+
+Pure implementation of the current Polymarket entry-price rule, pinned to the
+audited local/GitHub commit in `docs/POLYMARKET_REFERENCE.md`. It joins both
+touches at a spread of at least 2¢ and otherwise centers an exact 2¢ window on
+the price grid. No Polymarket API or project import is used at runtime.
+
+**Verified:** seven unit fixtures plus a one-time read-only parity check against
+the current reference function for wide, tight, locked, and half-cent books;
+all quote pairs matched exactly.
 
 ### `scripts/record_books.py` — 547 lines
 
@@ -92,18 +103,23 @@ are documented in the module.
 **Verified:** authenticated against the live account. Balance read, `/account/limits`,
 positions, orders, fills, settlements all returning 200.
 
-### `scripts/analyze_capture.py` — 216 lines
+### `scripts/reward_rules.py` and `scripts/analyze_capture.py`
 
-Replays Kalshi's published reward formula over captured raw books. Pure
-arithmetic on recorded data — the CFTC filing fully determines each order's
-score given the book and the program parameters.
+Pure, versioned reward arithmetic plus replay over captured raw books. The
+default `july-2026-one-fifth` mode follows the July filing effective July 30;
+the February best-bid mode remains for historical reproduction only. The
+module has no network, credential, database, or order path.
 
 Reports per `(ticker, side)`: two-sided rate, denominator, share at the touch,
 share one tick inside, and a crowding flag when our own size would dominate the
 side.
 
-**Verified:** 3,786 snapshots analysed; produced the 85% two-sided rate and the
-1.987x one-tick result. Two reporting bugs found and fixed — see `BUGFIXES.md`.
+**Verified:** 11 hand-checkable unit tests cover both references, better levels,
+Target Size failure, the two-sided gate, proposed-order insertion,
+excluded-snapshot scaling, cent flooring, and the $1 minimum. On 58,453
+`capture_long.db` snapshots, current mode gives a median inside/touch multiple
+of **1.000x** over 112,492 sides; legacy mode gives **1.943x**. Every report
+prints its rule mode, source date, effective date, status, and source URL.
 
 ### `scripts/markout.py` — 320 lines
 
@@ -139,16 +155,15 @@ End-to-end revenue estimate: pool x our share, per market, with the filing's
 two-sided rule and its $1.00 minimum payout applied. Reuses `analyze_capture`'s
 `qualifying` and `share_with_order` rather than reimplementing the formula.
 
-Encodes the payout chain's two non-obvious steps: our fraction of the pool is
-the **mean** of our two side shares (each counting snapshot contributes 2.0 to
-the denominator, one per side), and snapshots excluded for one-sidedness leave
-both numerator and denominator, so the 85% two-sided rate does not scale
-revenue.
+Encodes the payout chain's non-obvious steps: our fraction of the pool is the
+**mean** of our two side shares, excluded snapshots scale down the payable pool
+under the current rule, payout is floored to cents, and the $1 minimum applies
+per program.
 
-**Verified:** produced FINDINGS 9 — roughly $24/day at 25 contracts on $243 of
-collateral, saturating above that. Its first version reported **$2,175/day and
-9,779%/day**; three guards were added after that output was disbelieved and
-traced, and each is documented at its definition.
+**Verified:** current-mode size-10 touch replay on `capture_long.db` reports
+**$7.369/day** after the minimum across seven paid markets and $65.20 modeled
+collateral. The legacy mode reports $93.414/day across 18 paid markets, which
+demonstrates why the old rule cannot drive an August decision.
 
 **Known limits:** only 10 of 52 markets survive the guards, at 10-25% period
 coverage, so share is extrapolated 4-10x. Assumes continuous resting and a
@@ -210,23 +225,25 @@ snapshots. With the guard, mean and median agree within $3.
 factor of 2.6, so the post-fill policy is now the dominant uncertainty. Gross of
 fees, static book, shares extrapolated from 10-33% period coverage.
 
-### `scripts/exit_cost.py` — 250 lines
+### `scripts/exit_cost.py`
 
 What it costs to get flat after a fill, as realised P&L rather than markout.
-Simulates both paths: a passive reducer priced by the reference's
-`exit_quote_price` rule, and a taker cross that walks the opposite ladder for
-our whole size and pays the proven fee formula at the actual VWAP.
+Simulates passive close, timed taker cross, and recorded settlement. A timed
+cross walks the first usable book at or after the deadline for the whole size
+and pays the proven fee formula at actual VWAP. Missing, stale, and thin books
+without settlement are explicit unknown exposure.
 
-**Verified:** produced FINDINGS 12 — **92% of exits must cross even given a full
-hour**, so the exit is a taker path structurally and the inventory clock is not
-a real lever. Crossing costs −$0.28 median per exit at 25 contracts, which at
-~37 fills/day is ~−$10/day, landing inside the −$13 to −$24/day that section 10
-derived from markout by an independent path.
+**Verified:** six unit tests cover later-only book selection, capture-gap
+rejection, YES/NO ladder direction, fee charging, settlement signs, and passive
+pricing. On `capture_long.db`, size 10 under the current Polymarket entry policy
+and a 900-second deadline produced 84 simulated fills: 11 passive, 56 fully
+crossed, 17 unknown, total priced P&L **−$27.8505**, mean **−$0.4157**, median
+**−$0.3070**.
 
-**Known limits:** n=39, its fill detector is stricter than `net_sizing.py`'s, and
-the cross is priced against the book **at fill time** rather than when the
-deadline expires — so crossed cost is understated, worst at the long deadlines
-that already look best.
+**Known limits:** its fill detector requires whole-order tape volume and differs
+from `net_sizing.py` partial mode. Passive maker fees are unmeasured. At 900
+seconds, 20.3% of fills are unknown, so the priced total is not a conservative
+portfolio loss bound until those exposures are bounded.
 
 ---
 
@@ -243,14 +260,18 @@ that already look best.
 | `BUGFIXES.md` | instrument bugs: symptom, mechanism, fix, verification |
 | `docs/PLAN.md` | paused historical full-build design |
 | `docs/REFERENCE_CRITIQUE.md` | dated reference audit; architecture versus calibration |
+| `docs/REWARD_RULES.md` | governing sources and hand-checkable fixtures |
+| `docs/PNL_ACCOUNTING.md` | canonical definition of measured net and unknown exposure |
+| `docs/POLYMARKET_REFERENCE.md` | versioned current reference behavior and fidelity gaps |
 | `README.md` | project entry point |
 
 ---
 
 ## What explicitly does NOT exist
 
-No package, no `pyproject.toml`, no `src/kalshi_bot/`. No models, no reward
-scorer, no risk model, no ledger, no reconciler, no order code, no tests.
+No production package, `pyproject.toml`, or `src/kalshi_bot/`; no live risk
+model, ledger, reconciler, or order code. Tests cover measurement arithmetic
+only.
 
 Nothing has placed an order. Nothing has committed capital. `$22.64` sits
 untouched in the account.
@@ -265,15 +286,16 @@ from the answers.
 - Taker fee formula, proven against two real fills
 - Rate limits — 200/s reads, ~50x the reference implementation's assumption
 - Two-sided rate — 85%, versus ~60% from an 8-market hand sample
-- One tick inside doubles reward share — 6,438 observations, p10 1.916, p90 1.999
+- Under the current July rule, one tick inside adds no reward share on the long
+  capture: median/p10/p90 all 1.000x over 112,492 side observations
 - No short exists: selling YES is executed as buying NO
 - The pair trade effectively does not complete — 7 pairs in 1,064 windows
   (0.7%), so reward is the only established revenue source and quoting one tick
   inside costs nothing realised
 - One-sided fills are adverse — sign test p=0.0014, mean −$0.1271/fill at 5
   contracts with a bootstrap CI excluding zero
-- Net is positive across the whole interval at 25 contracts ($11.30–$21.49/day)
-  and straddles zero at 100
+- A later-book exit replay measures adverse trading losses and preserves
+  missing/thin exits as unknown instead of zero
 
 ## Still unanswered, and why
 

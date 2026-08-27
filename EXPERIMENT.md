@@ -30,29 +30,28 @@ paid liquidity reward
 - Operational resting time may matter, but market selection and pool size can
   dominate it; uptime must not be credited for reward changes without a
   controlled denominator.
-- Kalshi's current help text and filed rule description may imply materially
-  different reward calculations.
+- Kalshi's current rule may make stepping inside economically different from
+  the Polymarket strategy even though both venues use discounted book share.
 
 ## Evidence ladder
 
-### Stage 0 — Rule and accounting audit (current)
+### Stage 0 — Rule and accounting audit (completed 2026-08-26)
 
-Read-only. No strategy code and no live orders.
+Read-only. Measurement-only strategy emulation; no production or live-order
+code.
 
 Deliverables:
 
-- Reconcile the current Kalshi Help Center, governing filing, API fields, and
-  observed UI behavior.
-- If unresolved, implement both reward interpretations and report a range.
-- Correct excluded-snapshot pool scaling under the current-help interpretation.
-- Define complete P&L accounting before using the word `net`.
+- Reconciled the Help Center to the July 15 certified filing effective July 30.
+- Implemented the current and superseded interpretations as named modes.
+- Corrected excluded-snapshot pool scaling under the current rule.
+- Defined complete P&L accounting in `docs/PNL_ACCOUNTING.md`.
 
 Gate:
 
-- Advance only when hand-built book fixtures produce independently checked
-  scores under every retained interpretation.
+- **Passed:** hand-built scoring and payout fixtures execute in the unit suite.
 
-### Stage 1 — Fixed-universe historical replay
+### Stage 1 — Fixed-universe historical replay (current)
 
 Read-only against captured books and trades.
 
@@ -63,7 +62,8 @@ Deliverables:
 - Report per-market marginal reward, qualification fraction, predicted fills,
   and conservative exit-cost bounds.
 - Use time splits: select/rank on the earlier window, score on the later window.
-- Show results under both rule interpretations if B1 remains unresolved.
+- Use the July rule for the decision result and retain the February mode only
+  as a clearly labeled historical comparison.
 
 Gate:
 

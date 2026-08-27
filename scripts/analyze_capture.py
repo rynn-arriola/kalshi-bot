@@ -1,8 +1,7 @@
-"""Replay Kalshi's published reward formula over captured raw books.
+"""Replay a named Kalshi reward rule over captured raw books.
 
-Nothing here is inferred. Given a book and the program's `target_size_fp` and
-`discount_factor_bps`, the CFTC filing of 2026-02-11 fully determines each
-order's score, so this is arithmetic on recorded data rather than a model.
+The default is the July 15, 2026 filing effective July 30.  The superseded
+February rule remains available only to reproduce historical output.
 
 The one thing it cannot know is what our own resting order would have done to
 other participants' behaviour. See `--size`: the counterfactual assumes the
@@ -22,33 +21,34 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
+from reward_rules import (
+    DEFAULT_RULE_MODE,
+    RewardRuleMode,
+    qualify_side,
+    rule_banner,
+    share_with_order as _share_with_order,
+)
+
 
 def qualifying(ladder: list[tuple[float, float]], target: float,
-               discount: float) -> tuple[float, float, bool]:
+               discount: float, *,
+               mode: RewardRuleMode | str = DEFAULT_RULE_MODE,
+               tick_size: float = 0.01) -> tuple[float, float, bool]:
     """Return (reference_price, total_score, reached_target).
 
-    Per the filing: the reference price is the highest bid. Walk down
-    accumulating size; stop once cumulative size reaches the target. If the
-    bids run out first, the whole side is cleared -- no order on it qualifies.
+    Compatibility boundary for the existing analysis scripts. New code should
+    use :func:`reward_rules.qualify_side` so the cutoff is also visible.
     """
 
-    if not ladder:
-        return 0.0, 0.0, False
-    ladder = sorted(ladder, key=lambda level: -level[0])
-    reference = ladder[0][0]
-    cumulative = 0.0
-    score = 0.0
-    for price, size in ladder:
-        cumulative += size
-        ticks = round((reference - price) * 100)
-        score += (discount ** ticks) * size
-        if cumulative >= target:
-            return reference, score, True
-    return reference, score, False
+    result = qualify_side(
+        ladder, target, discount, mode=mode, tick_size=tick_size)
+    return result.reference_price or 0.0, result.total_score, result.reached_target
 
 
 def share_with_order(ladder: list[tuple[float, float]], target: float,
-                     discount: float, price: float, size: float) -> float | None:
+                     discount: float, price: float, size: float, *,
+                     mode: RewardRuleMode | str = DEFAULT_RULE_MODE,
+                     tick_size: float = 0.01) -> float | None:
     """Our normalized share of a side after inserting our own resting order.
 
     Our size is added to the ladder before the walk, because it counts toward
@@ -58,19 +58,9 @@ def share_with_order(ladder: list[tuple[float, float]], target: float,
     in 5.7 hours at one price.
     """
 
-    merged: dict[float, float] = defaultdict(float)
-    for level_price, level_size in ladder:
-        merged[round(level_price, 4)] += level_size
-    merged[round(price, 4)] += size
-    reference, total, reached = qualifying(
-        list(merged.items()), target, discount)
-    if not reached:
-        return None
-    ticks = round((reference - price) * 100)
-    if ticks < 0:
-        return None
-    ours = (discount ** ticks) * size
-    return ours / total if total > 0 else None
+    return _share_with_order(
+        ladder, target, discount, price, size,
+        mode=mode, tick_size=tick_size)
 
 
 def load_programs(connection: sqlite3.Connection) -> dict[str, dict]:
@@ -90,6 +80,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", default="data/capture.db")
     parser.add_argument("--size", type=float, default=5.0)
+    parser.add_argument(
+        "--reward-rule", choices=[mode.value for mode in RewardRuleMode],
+        default=DEFAULT_RULE_MODE.value,
+        help="versioned filed reward calculation; July is current")
     parser.add_argument("--crowded-threshold", type=float, default=0.25,
                         help="flag a market untrusted when our size exceeds"
                              " this fraction of the denominator")
@@ -133,7 +127,8 @@ def main() -> int:
 
         reached = {}
         for name, ladder in sides.items():
-            _, _, ok = qualifying(ladder, target, discount)
+            _, _, ok = qualifying(
+                ladder, target, discount, mode=args.reward_rule)
             reached[name] = ok
         # The filing excludes the whole snapshot unless BOTH sides reach the
         # target. A side that qualifies alone earns nothing.
@@ -148,12 +143,18 @@ def main() -> int:
             stats = per_side[(ticker, name)]
             stats["snaps"] += 1
             touch = max(price for price, _ in ladder)
-            _, denominator, _ = qualifying(ladder, target, discount)
+            _, denominator, _ = qualifying(
+                ladder, target, discount, mode=args.reward_rule)
             stats["denominator"].append(denominator)
             at_touch = share_with_order(
-                ladder, target, discount, touch, args.size)
+                ladder, target, discount, touch, args.size,
+                mode=args.reward_rule)
+            inside_price = round(touch + 0.01, 2)
+            if inside_price >= 1.0:
+                inside_price = touch
             inside = share_with_order(
-                ladder, target, discount, round(touch + 0.01, 2), args.size)
+                ladder, target, discount, inside_price, args.size,
+                mode=args.reward_rule)
             if at_touch:
                 stats["touch"].append(at_touch)
             if inside:
@@ -161,6 +162,7 @@ def main() -> int:
             if at_touch and inside and at_touch > 0:
                 gains.append(inside / at_touch)
 
+    print(rule_banner(args.reward_rule))
     print(f"snapshots analysed      {snapshots}")
     if not snapshots:
         print("no usable snapshots")

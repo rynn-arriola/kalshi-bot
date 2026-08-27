@@ -6,91 +6,69 @@ This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
 `EXPERIMENT.md`.
 
-## 1. Reconcile or bound the Kalshi reward rule
+## 1. Build the fixed-universe size replay
 
-**Why first:** every reward dollar, density ranking, one-tick claim, and sizing
-result depends on it.
-
-Tasks:
-
-1. Archive the exact current Kalshi Help Center language and governing filing
-   date used for analysis.
-2. Confirm whether a newer governing notice supersedes the February 2026 filing.
-3. Write hand-calculated book fixtures covering:
-   - a thin best level below one fifth of Target Size;
-   - several levels above the proposed reference price;
-   - a side that fails Target Size;
-   - a two-sided snapshot and an excluded snapshot;
-   - a payout just below and just above $1.
-4. Implement the filed-best-bid and current-help-one-fifth interpretations as
-   explicit modes if the conflict remains.
-5. Under the current-help mode, scale the payable pool by the fraction of
-   non-excluded snapshots.
-6. Never label one mode `correct` until the source conflict is resolved.
-
-Done when:
-
-- fixtures are independently checkable from the markdown explanation;
-- both modes are tested and produce named, intentionally different results;
-- every report prints its rule mode and source date.
-
-## 2. Replace the portfolio-changing size sweep
-
-**Why second:** section 18 changes markets at every size, so it cannot identify
-the per-market size response or a trustworthy optimum.
+**Why first:** the existing size sweep changes markets at every size, so it
+cannot identify the per-market size response or a trustworthy optimum.
 
 Tasks:
 
-1. Freeze a candidate universe using an earlier selection window.
-2. Evaluate all sizes on the same later snapshots and the same market set.
-3. Report per market:
+1. Split each capture into an earlier selection window and later evaluation
+   window.
+2. Produce two separately labeled universes: exact-transfer sports/day-of
+   markets and an all-category Kalshi adaptation. Do not combine them.
+3. Freeze candidates from the earlier window without future information.
+4. Apply the audited 2¢ entry window, side-specific 10¢–90¢ filter, and
+   stressed-complete-exit admission.
+5. Evaluate every size on the same later snapshots and same market set.
+6. Report per market:
    - competing discounted score;
    - our share and marginal reward at each size;
-   - qualification fraction;
+   - qualification fraction and score concentration;
    - collateral convention;
-   - payout-minimum effect.
-4. Separate reward return from simulated markout return.
-5. Show capacity gained by size versus capacity gained by adding a market.
+   - excluded-snapshot multiplier and payout-minimum effect.
+7. Keep reward, realized/simulated trading P&L, fees, unknown exposure, and
+   collateral in separate columns.
 
 Done when:
 
 - no size row changes the evaluated market set;
-- `$/contract`, `reward/collateral`, and `net/collateral` are separate columns;
-- the result is reported under every retained reward-rule mode.
+- selection and evaluation timestamps print in every report;
+- `$ / contract`, reward/collateral, and bounded net/collateral are separate;
+- `july-2026-one-fifth` and its source date print in the result.
+- the audited Polymarket source commit prints in the result.
 
-## 3. Bound adverse selection using the later book
+## 2. Integrate corrected later-book exits into the same clock
 
-**Why third:** the current exit model captures immediate depth and fees but can
-miss the price move that dominates the reference strategy's loss.
+`exit_cost.py` now prices the first usable book at/after the deadline and labels
+missing or thin books unknown. The final replay must use that path instead of
+five-minute markout.
 
 Tasks:
 
-1. Reprice forced exits using the first usable book at the intended exit time,
-   not the book at fill time.
-2. Report passive close, timed cross, settlement, and unavailable-book outcomes
-   separately.
-3. Carry unpriced outcomes as missing exposure, not zero cost.
-4. Use time splits and bootstrap/sign bounds where sample size permits.
-5. Stress with the Polymarket reference's realized per-contract loss without
-   claiming venue equivalence.
+1. Carry the actual filled quantity and signed YES-equivalent position.
+2. Report passive close, timed cross, settlement, and unknown separately.
+3. Charge known taker fees at VWAP and keep maker fees explicitly unknown.
+4. Stop reward accrual until each position is closed or settled.
+5. Bound every unknown position at maximum loss, a stated central assumption,
+   and zero-loss optimism; never silently drop it.
+6. Add time splits and bootstrap/sign bounds where sample size permits.
 
-Done when:
+Done when every simulated fill is priced, settled, or counted as unknown and
+the conservative result follows `docs/PNL_ACCOUNTING.md`.
 
-- every simulated fill ends in a priced exit, settlement, or explicit unknown;
-- the conservative net bound includes fees and lost reward while unquoted;
-- the direction of static-book bias is stated.
+## 3. Run the corrected read-only decision replay
 
-## 4. Run the corrected read-only decision replay
-
-Combine tasks 1–3 on `capture_long.db` and at least one other capture.
+Combine tasks 1–2 on `capture_long.db` and at least one other capture.
 
 Required report:
 
-- selection window and evaluation window;
-- fixed market universe;
-- result under both rule interpretations if still unresolved;
+- selection and evaluation windows;
+- frozen market universe;
+- current reward rule and source date;
 - conservative, central, and optimistic reward/cost/net;
 - sensitivity to size, qualification uptime, and exit delay;
+- count and contracts for every unknown exit;
 - explicit reasons the result can or cannot support Stage 2.
 
 Decision outcome:
@@ -100,31 +78,34 @@ Decision outcome:
   the read-only live shadow.
 - Otherwise name the cheapest measurement that separates the cases.
 
+## 4. Prepare the isolated server shadow
+
+Only after the historical replay is internally consistent:
+
+1. Use a new standalone Kalshi folder, environment, process, data, and logs.
+2. Connect only to read-only Kalshi endpoints.
+3. Make no Polymarket API call and do not read or write its project directory.
+4. Verify rate/resource limits before leaving the capture running.
+5. Record the exact deployed commit and data timestamps in `STATUS.md`.
+
+No order endpoint or live mutation is authorized.
+
 ## 5. Design—not build—the minimal evidence probe
 
 This task may produce a specification and safety review only. Live order code is
 not authorized by D-004.
 
-The design must fix:
-
-- one market, exact program, rule interpretation, size, and duration;
-- predicted payout above the per-program minimum with margin;
-- maximum capital and maximum loss for operator selection;
-- post-only behavior;
-- durable intent and unknown-order recovery;
-- independent cancel/flatten procedure;
-- complete reward/fill/fee/settlement accounting;
-- success, stop, and inconclusive criteria.
-
-The next operator decision request is created only after the preceding read-only
-gates justify it.
+The design must fix one exact market/program, size, duration, predicted payout
+margin, operator-selected maximum capital/loss, post-only behavior, durable
+intent, unknown-order recovery, cancel/flatten procedure, complete accounting,
+and success/stop/inconclusive criteria.
 
 ## Do not start
 
-- Package skeleton for a production bot.
-- Multi-market scheduler or autonomous selector.
-- Live order adapter or authenticated write endpoint.
-- Deployment/supervision system.
+- Production package or autonomous market selector.
+- Multi-market scheduler or live order adapter.
+- Authenticated write endpoint.
+- Trading deployment/supervision system.
 - Capital sizing or a live candidate recommendation.
 
 Those require a new operator decision after the experiment produces a
