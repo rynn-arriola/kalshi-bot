@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-26 (America/New_York).
+Last verified: 2026-08-26 22:36 (America/New_York).
 
 ## Executive state
 
@@ -19,6 +19,14 @@ Credentials and captured market data remain ignored and local-only.
 **Live state:** no Kalshi strategy order has ever been placed by this project.
 There is no production bot, deployment, scheduler, reconciler, or authorized
 write path.
+
+**Measurement state:** a 14-day read-only Kalshi capture is active on the
+existing server in the isolated `/root/kalshi-bot` project at commit
+`c13524201819c3f771b9b8193e168a9ae85e1372`. It started
+2026-08-27 02:35:41 UTC and is scheduled through 2026-09-10 02:35 UTC, with a
+seven-day checkpoint on 2026-09-03. The transient unit is
+`kalshi-readonly-capture-14d`; its database is
+`data/shadow-14d-20260827.db` and log is `logs/capture-20260827.log`.
 
 ## What is verified now
 
@@ -44,6 +52,11 @@ write path.
 - The existing capture and replay instruments run and reproduce their published
   tables. Reproducible output does not validate an outdated rule or a biased
   counterfactual.
+- The isolated server recorder passed all 25 tests and a two-minute public-API
+  canary before the long run. The canary recorded 65 book rows across 50
+  candidate markets with zero HTTP failures, zero recorded errors, and a valid
+  SQLite integrity check. The Polymarket supervisor/trader PIDs and start times
+  were unchanged before and after it.
 - On thin books, adding size has diminishing marginal reward because our own
   score enters the denominator. This is arithmetic. The portfolio-level optimum
   has not been measured on a fixed universe.
@@ -107,6 +120,8 @@ Approved now:
 - Re-run read-only analysis and produce conservative bounds.
 - Run verified read-only measurement on the existing server under the isolated
   boundaries in `docs/SERVER_MEASUREMENT.md`.
+- Observe and analyze the active read-only server capture; stopping or
+  correcting that measurement remains inside the same safety boundary.
 - Design a minimal one-market evidence probe and its safety case on paper.
 
 Not approved now:

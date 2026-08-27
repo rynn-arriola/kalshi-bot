@@ -1,12 +1,32 @@
 # Active work queue
 
-Last updated: 2026-08-26.
+Last updated: 2026-08-26 22:36 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
 `EXPERIMENT.md`.
 
-## 1. Build the fixed-universe size replay
+## 1. Keep the isolated server shadow healthy
+
+The operator advanced the read-only shadow before the historical replay was
+complete. The 14-day capture is active as
+`kalshi-readonly-capture-14d` in `/root/kalshi-bot` at commit `c135242`.
+
+Tasks:
+
+1. Check the service, error count, database integrity, disk, and Polymarket
+   process identity after the initial density scan completes.
+2. At the seven-day checkpoint on 2026-09-03, preserve the exact capture window,
+   row counts, error/gap rates, tracked universe, and resource use.
+3. Do not treat partial data as profitability. Run current-rule reward, fill,
+   and later-book exit analysis only over named complete windows.
+4. Let the run finish on 2026-09-10 unless errors, disk pressure, or production
+   interference require the documented stop command.
+
+Done when the 14-day dataset is closed cleanly or an evidence-backed stop is
+recorded in `STATUS.md` and `FINDINGS.md`.
+
+## 2. Build the fixed-universe size replay
 
 **Why first:** the existing size sweep changes markets at every size, so it
 cannot identify the per-market size response or a trustworthy optimum.
@@ -38,7 +58,7 @@ Done when:
 - `july-2026-one-fifth` and its source date print in the result.
 - the audited Polymarket source commit prints in the result.
 
-## 2. Integrate corrected later-book exits into the same clock
+## 3. Integrate corrected later-book exits into the same clock
 
 `exit_cost.py` now prices the first usable book at/after the deadline and labels
 missing or thin books unknown. The final replay must use that path instead of
@@ -57,7 +77,7 @@ Tasks:
 Done when every simulated fill is priced, settled, or counted as unknown and
 the conservative result follows `docs/PNL_ACCOUNTING.md`.
 
-## 3. Run the corrected read-only decision replay
+## 4. Run the corrected read-only decision replay
 
 Combine tasks 1–2 on `capture_long.db` and at least one other capture.
 
@@ -77,18 +97,6 @@ Decision outcome:
 - If the conservative bound is positive across time splits, recommend designing
   the read-only live shadow.
 - Otherwise name the cheapest measurement that separates the cases.
-
-## 4. Prepare the isolated server shadow
-
-Only after the historical replay is internally consistent:
-
-1. Use a new standalone Kalshi folder, environment, process, data, and logs.
-2. Connect only to read-only Kalshi endpoints.
-3. Make no Polymarket API call and do not read or write its project directory.
-4. Verify rate/resource limits before leaving the capture running.
-5. Record the exact deployed commit and data timestamps in `STATUS.md`.
-
-No order endpoint or live mutation is authorized.
 
 ## 5. Design—not build—the minimal evidence probe
 

@@ -6,7 +6,7 @@ when something is finished — not when it is started.
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-26.
+Last updated 2026-08-26 22:36 America/New_York.
 
 Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
 `DECISIONS.md`. Reproducing an old table means an instrument is operational; it
@@ -27,7 +27,7 @@ does not validate the reward-rule interpretation or establish profitability.
 | Analysis | End-date concentration | **not started** |
 | Experiment 0 | Rule and accounting audit | **done** |
 | Experiment 1 | Fixed-universe replay | **active** |
-| Experiment 2 | Read-only live shadow | gated |
+| Experiment 2 | Read-only live shadow | **active — 14-day server capture** |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
@@ -88,6 +88,15 @@ and comparison-only: `reward/target` is anti-correlated with revenue (FINDINGS
 11). Density now uses the July reward reference through `reward_rules.py`; the
 private February scorer was removed before the first server shadow. Real sample
 spacing is the sweep duration, not `--interval` — read the timestamps.
+
+**Server verification 2026-08-27 UTC:** deployed tracked commit `c135242` to
+the standalone `/root/kalshi-bot` directory without copying credentials. All 25
+tests passed there. A two-minute canary made public Kalshi reads only and wrote
+65 book snapshots, zero non-200 responses, zero errors, and an integrity-clean
+database. The 14-day transient service `kalshi-readonly-capture-14d` then
+started with 75 tracked markets, 60-second sweeps, a 5-read/s limiter, hourly
+density ranking, 20% CPU quota, 256 MB memory maximum, separate data/logs, and
+no authenticated or order endpoint.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

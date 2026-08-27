@@ -1858,6 +1858,49 @@ until they are bounded and this loss path shares the fixed reward clock.
 
 ---
 
+## 21. The isolated read-only server shadow is operational
+
+### VERIFIED — deployment did not share the Polymarket project or process
+
+On 2026-08-27 UTC, tracked commit
+`c13524201819c3f771b9b8193e168a9ae85e1372` was installed at
+`/root/kalshi-bot` with its own virtual environment, database, logs, and
+transient service. The recorder source scan found only the public
+`api.elections.kalshi.com` base and default-method `urllib` requests; it found
+no order/portfolio endpoint or write HTTP method. All 25 measurement tests
+passed on the server.
+
+The pre-canary and post-canary Polymarket supervisor/trader PIDs and start times
+were identical. This verifies process separation for the deployment/canary; it
+does not prove that future resource use can never interfere, which is why the
+service is capped at 20% CPU and 256 MB RAM and remains monitored.
+
+### MEASURED — two-minute canary, not strategy economics
+
+Dataset `data/canary-20260827.db`, run
+`cap-20260827T023150Z-a419d203`, 2026-08-27 02:31:50–02:34:07 UTC, five tracked
+markets and 50 density candidates:
+
+- 65 raw book snapshots and five market-metadata rows;
+- zero non-200 book responses and zero recorded errors;
+- SQLite integrity check `ok`;
+- 16,371 first-seen program rows and one exchange-status row.
+
+This canary verifies collection mechanics only. It contains no strategy fills
+and cannot support a reward, trading-loss, or profitability claim.
+
+### VERIFIED — 14-day collection started
+
+The read-only service `kalshi-readonly-capture-14d` started at
+2026-08-27 02:35:40 UTC, using run id
+`cap-20260827T023541Z-dcee8aea`, 75 tracked markets, 60-second sweeps, at most
+five public reads per second, and hourly density scans. Planned checkpoints are
+2026-09-03 and completion on 2026-09-10. The initial service state was active
+with one process and about 16 MB memory. This is an operational observation,
+not evidence that the strategy is profitable.
+
+---
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in
