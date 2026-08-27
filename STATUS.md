@@ -98,6 +98,8 @@ Approved now:
 
 - Repair and test measurement instruments.
 - Re-run read-only analysis and produce conservative bounds.
+- Run verified read-only measurement on the existing server under the isolated
+  boundaries in `docs/SERVER_MEASUREMENT.md`.
 - Design a minimal one-market evidence probe and its safety case on paper.
 
 Not approved now:

@@ -77,6 +77,11 @@ Gate:
 
 Observe current eligible markets without placing our orders.
 
+This stage may run on the existing server under D-007, but only from the
+separate project, process, credential, data, and resource boundaries in
+`docs/SERVER_MEASUREMENT.md`. Sharing a host does not authorize touching the
+Polymarket directory, service, credentials, or APIs.
+
 Deliverables:
 
 - Persist raw programs, books, trades, and exchange status.

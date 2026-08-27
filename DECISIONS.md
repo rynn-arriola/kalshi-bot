@@ -70,6 +70,21 @@ them accepted without an explicit operator instruction.
   documentation. Ignored credentials and captured data remain local only.
 - **Revisit when:** The operator names a replacement repository.
 
+### D-007 — Isolated server measurement is allowed
+
+- **Status:** ACCEPTED
+- **Date:** 2026-08-26
+- **Decision owner:** Operator
+- **Decision:** Read-only Kalshi measurement may run on the server that hosts
+  the Polymarket bot, but it must be installed in a new standalone Kalshi
+  project folder and never inside the Polymarket folder.
+- **Consequence:** Use a separate top-level directory, environment, process,
+  configuration, data, and logs. Do not import from, write inside, restart, or
+  make API calls through the Polymarket project. The boundaries in
+  `docs/SERVER_MEASUREMENT.md` are mandatory.
+- **Revisit when:** Measurement resource use interferes with production, or the
+  operator selects a separate server.
+
 ## Pending decisions
 
 None. The next tasks are evidence work already inside D-001 and D-004.
