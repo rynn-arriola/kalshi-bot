@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-27 20:40 (America/New_York).
+Last verified: 2026-08-27 20:45 (America/New_York).
 
 ## Executive state
 
@@ -24,7 +24,8 @@ write path.
 `kalshi-readonly-capture-14d-r2` is active at deployed/tested commit `b970654`.
 It started 2026-08-28 00:34:59 UTC in `/root/kalshi-bot`, writing
 `data/shadow-14d-r2-20260828.db` and `logs/capture-r2-20260828.log`; planned
-seven-day checkpoint is 2026-09-04 and completion is 2026-09-11 UTC. The first
+seven-day checkpoint is 2026-09-04 and completion is 2026-09-11 UTC. At
+2026-08-28 00:45 UTC it remained active as PID 27490 with zero restarts. The first
 run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC (9h51m) at
 commit `c135242` before a transient TLS EOF ended it. An integrity-clean local
 copy is `data/server-shadow-20260827-closed.db`. At replacement launch no
@@ -64,11 +65,14 @@ the cause is **UNKNOWN**; this project did not and must not restart it.
   trades, 17,597 program rows, zero non-200 books, and zero recorded errors.
   The latest book was 30 seconds old and all 75 actively tracked tickers had
   books in the preceding five minutes.
-- Server capacity is adequate for the two current processes: 461 MB memory was
-  available, Kalshi used 105 MB with a 113 MB peak under its 256 MB cap, load
-  averages were 0.00/0.03/0.00 on one core, no OOM event was recorded, and
-  19.4 GB disk remained free. Linear capture growth projects to roughly 2.4 GB
-  over 14 days, so no upgrade is currently indicated.
+- Server capacity remains adequate for Kalshi and for the previously observed
+  Kalshi-plus-Polymarket combination. At 2026-08-28 00:45 UTC, with only the
+  Kalshi capture present, 572 MB memory was available, Kalshi used about 92 MB,
+  load averages were 0.02/0.01/0.00 on one core, 19 GB disk remained free, and
+  no OOM event was recorded. During the earlier period when both were present,
+  461 MB remained available and host load was also low. No upgrade is currently
+  indicated, but capacity should be rechecked after Polymarket is actually
+  running again.
 - The Polymarket supervisor and trader were restarted at 2026-08-27 04:02:57
   UTC after the launch check. Kalshi stayed active, no OOM event occurred, and
   host load was low at inspection. The cause of the Polymarket restart is
