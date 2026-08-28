@@ -57,6 +57,11 @@ Tasks:
 8. Report pure spread scalping separately: completed-pair spread, one-sided
    inventory, passive/crossed exit, fees, unknowns, and net. Then report the
    combined reward-plus-scalping strategy without mixing clocks or universes.
+9. Within the pure-scalping report, compare join-the-touch and feasible 1¢,
+   2¢, 3¢, 4¢, and 5¢ quote gaps on identical evaluation data. Print pair
+   completion, one-sided fills, holding time, gross spread capture, maker/taker
+   fees, realized or bounded exit loss, unknown exposure, net dollars, and
+   net/collateral for every width. Do not include reward dollars.
 
 Done when:
 
@@ -65,6 +70,10 @@ Done when:
 - `$ / contract`, reward/collateral, and bounded net/collateral are separate;
 - `july-2026-one-fifth` and its source date print in the result.
 - the audited Polymarket source commit prints in the result.
+- the recommended pure-scalping width, if any, remains positive under the
+  conservative unknown-exit bound and across multiple time splits; otherwise
+  the result says no tested spread is profitable rather than selecting the
+  least-negative width.
 
 ## 3. Integrate corrected later-book exits into the same clock
 

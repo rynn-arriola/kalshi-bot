@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-27 20:28 (America/New_York).
+Last verified: 2026-08-27 20:40 (America/New_York).
 
 ## Executive state
 
@@ -157,6 +157,8 @@ Approved now:
 
 - Repair and test measurement instruments.
 - Re-run read-only analysis and produce conservative bounds.
+- Compare pure spread-scalping quote gaps separately from rewards on identical
+  data and assumptions; initially test join-the-touch and feasible 1¢–5¢ gaps.
 - Run verified read-only measurement on the existing server under the isolated
   boundaries in `docs/SERVER_MEASUREMENT.md`.
 - Observe and analyze the active read-only server capture; stopping or

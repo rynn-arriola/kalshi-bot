@@ -93,11 +93,15 @@ them accepted without an explicit operator instruction.
 - **Date:** 2026-08-27
 - **Decision owner:** Operator
 - **Decision:** Measure whether two-sided spread capture is profitable on the
-  current Kalshi data, both alone and combined with liquidity reward.
+  current Kalshi data, both alone and combined with liquidity reward. For the
+  pure-scalping result, compare feasible quote-spread widths and identify which
+  width, if any, has the best bounded net P&L without crediting any reward.
 - **Consequence:** Offline/read-only replay may measure pair completion,
   one-sided inventory, fees, exits, and net. Keep pure scalping and reward
-  separate before producing a combined result. This does not authorize live
-  orders or a new strategy implementation.
+  separate before producing a combined result. Spread widths must use the same
+  market universe, evaluation windows, size, queue assumptions, and exit rules;
+  report gross pair edge and fill rate separately from net. This does not
+  authorize live orders or a new strategy implementation.
 - **Revisit when:** A fixed-universe replay provides a decision-grade estimate.
 
 ## Pending decisions

@@ -66,6 +66,12 @@ Deliverables:
 - Measure pure spread scalping separately from liquidity reward: completed-pair
   spread, one-sided inventory, fees, passive/crossed exits, and unknowns. Only
   then combine it with reward on the same fixed universe and clock.
+- For pure scalping, sweep feasible quote gaps (initially 1¢ through 5¢ and a
+  join-the-touch policy, subject to each market's tick grid). Hold universe,
+  timestamps, size, queue model, inventory deadline, exit rule, and unknown-loss
+  treatment constant. Rank widths by conservative net P&L and net/collateral,
+  not by gross completed-pair edge or fill count alone. Credit zero liquidity
+  reward in this comparison.
 - Use time splits: select/rank on the earlier window, score on the later window.
 - Use the July rule for the decision result and retain the February mode only
   as a clearly labeled historical comparison.
