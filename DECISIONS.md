@@ -87,6 +87,19 @@ them accepted without an explicit operator instruction.
 - **Revisit when:** Measurement resource use interferes with production, or the
   operator selects a separate server.
 
+### D-008 — Include spread scalping in the measurement
+
+- **Status:** ACCEPTED
+- **Date:** 2026-08-27
+- **Decision owner:** Operator
+- **Decision:** Measure whether two-sided spread capture is profitable on the
+  current Kalshi data, both alone and combined with liquidity reward.
+- **Consequence:** Offline/read-only replay may measure pair completion,
+  one-sided inventory, fees, exits, and net. Keep pure scalping and reward
+  separate before producing a combined result. This does not authorize live
+  orders or a new strategy implementation.
+- **Revisit when:** A fixed-universe replay provides a decision-grade estimate.
+
 ## Pending decisions
 
 None. The next tasks are evidence work already inside D-001 and D-004.

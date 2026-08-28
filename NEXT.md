@@ -1,6 +1,6 @@
 # Active work queue
 
-Last updated: 2026-08-27 06:50 America/New_York.
+Last updated: 2026-08-27 20:28 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
@@ -8,23 +8,24 @@ operator authority is in `DECISIONS.md`; the experiment contract is in
 
 ## 1. Keep the isolated server shadow healthy
 
-The operator advanced the read-only shadow before the historical replay was
-complete. The 14-day capture is active as
-`kalshi-readonly-capture-14d` in `/root/kalshi-bot` at commit `c135242`.
+The first server shadow ended after 9h51m on a transient TLS EOF. Its closed
+dataset is preserved locally. The retry fix must be verified and redeployed
+before starting a replacement 14-day run.
 
 Tasks:
 
-1. On each operator-requested manual check, inspect service health, newest-data
-   age, errors, projected disk, memory, OOM events, and Polymarket process
-   identity. The automatic heartbeat is paused to conserve Codex usage. A check
-   must alert rather than restart or modify either process.
-2. At the seven-day checkpoint on 2026-09-03, preserve the exact capture window,
-   row counts, error/gap rates, tracked universe, and resource use.
-3. Do not treat partial data as profitability. Run current-rule reward, fill,
+1. Commit/push the bounded network-retry fix after the full suite and endpoint
+   scan pass; deploy only that exact tested commit to `/root/kalshi-bot`.
+2. Start a replacement read-only 14-day capture in a new database/log after
+   printing its exact command and limits. Do not touch the absent Polymarket
+   process; report it to the operator separately.
+3. At the replacement run's seven-day checkpoint, preserve the exact capture
+   window, row counts, error/gap rates, tracked universe, and resource use.
+4. Do not treat partial data as profitability. Run current-rule reward, fill,
    and later-book exit analysis only over named complete windows.
-4. Let the run finish on 2026-09-10 unless errors, disk pressure, or production
+5. Let the replacement run finish unless errors, disk pressure, or production
    interference require the documented stop command.
-5. Quantify the hourly density-scan gaps in downstream analysis. The first
+6. Quantify the hourly density-scan gaps in downstream analysis. The first
    eight hours showed a 60-second median sample gap, 108-second p95, and
    267-second maximum because each hourly candidate scan takes about 200
    seconds. Do not count the missing intervals as observed qualification.
@@ -55,6 +56,9 @@ Tasks:
    - excluded-snapshot multiplier and payout-minimum effect.
 7. Keep reward, realized/simulated trading P&L, fees, unknown exposure, and
    collateral in separate columns.
+8. Report pure spread scalping separately: completed-pair spread, one-sided
+   inventory, passive/crossed exit, fees, unknowns, and net. Then report the
+   combined reward-plus-scalping strategy without mixing clocks or universes.
 
 Done when:
 

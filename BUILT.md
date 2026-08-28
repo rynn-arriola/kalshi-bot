@@ -6,7 +6,7 @@ when something is finished — not when it is started.
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-27 06:50 America/New_York.
+Last updated 2026-08-27 20:28 America/New_York.
 
 Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
 `DECISIONS.md`. Reproducing an old table means an instrument is operational; it
@@ -27,7 +27,7 @@ does not validate the reward-rule interpretation or establish profitability.
 | Analysis | End-date concentration | **not started** |
 | Experiment 0 | Rule and accounting audit | **done** |
 | Experiment 1 | Fixed-universe replay | **active** |
-| Experiment 2 | Read-only live shadow | **active — 14-day server capture** |
+| Experiment 2 | Read-only live shadow | **first run closed at 9h51m; retry fix local** |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
@@ -50,7 +50,7 @@ the price grid. No Polymarket API or project import is used at runtime.
 the current reference function for wide, tight, locked, and half-cent books;
 all quote pairs matched exactly.
 
-### `scripts/record_books.py` — 547 lines
+### `scripts/record_books.py`
 
 Raw capture of liquidity-incentive programs, order books, trades, and exchange
 status. **Interprets nothing**: stores exact venue JSON with a timestamp.
@@ -103,6 +103,13 @@ zero recorder errors, and zero non-200 book responses. It was tracking 75
 markets; the newest book was 30 seconds old. Hourly 1,000-candidate density
 rescans take about 200 seconds and create a measured maximum active-market gap
 of 267 seconds, which downstream reports must treat as missing capture time.
+
+**Corrected after the first run:** one TLS EOF raised `URLError` outside the
+HTTP-status handler and closed the intended 14-day capture at 9h51m. Public GET
+requests now retry up to three times with bounded backoff; exhausted failures
+return local status 599 so callers record the missing observation instead of
+killing the process. Two network-failure fixtures raise the full suite to 27
+tests. The correction is locally verified but not yet deployed.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

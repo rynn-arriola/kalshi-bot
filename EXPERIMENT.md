@@ -32,6 +32,8 @@ paid liquidity reward
   controlled denominator.
 - Kalshi's current rule may make stepping inside economically different from
   the Polymarket strategy even though both venues use discounted book share.
+- A quoted spread is not revenue unless both sides fill; one-sided fills may
+  turn apparent spread scalping into directional inventory and exit loss.
 
 ## Evidence ladder
 
@@ -61,6 +63,9 @@ Deliverables:
 - Sweep size on the same market/snapshot set.
 - Report per-market marginal reward, qualification fraction, predicted fills,
   and conservative exit-cost bounds.
+- Measure pure spread scalping separately from liquidity reward: completed-pair
+  spread, one-sided inventory, fees, passive/crossed exits, and unknowns. Only
+  then combine it with reward on the same fixed universe and clock.
 - Use time splits: select/rank on the earlier window, score on the later window.
 - Use the July rule for the decision result and retain the February mode only
   as a clearly labeled historical comparison.

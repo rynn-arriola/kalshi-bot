@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-27 06:50 (America/New_York).
+Last verified: 2026-08-27 20:28 (America/New_York).
 
 ## Executive state
 
@@ -20,14 +20,15 @@ Credentials and captured market data remain ignored and local-only.
 There is no production bot, deployment, scheduler, reconciler, or authorized
 write path.
 
-**Measurement state:** a 14-day read-only Kalshi capture is active on the
-existing server in the isolated `/root/kalshi-bot` project at commit
-`c13524201819c3f771b9b8193e168a9ae85e1372`. It started
-2026-08-27 02:35:41 UTC and is scheduled through 2026-09-10 02:35 UTC, with a
-seven-day checkpoint on 2026-09-03. The transient unit is
-`kalshi-readonly-capture-14d`; its database is
-`data/shadow-14d-20260827.db` and log is `logs/capture-20260827.log`.
-At the eight-hour checkpoint the unit remained active with zero restarts.
+**Measurement state:** the first isolated server capture is closed, not active.
+It ran in `/root/kalshi-bot` from 2026-08-27 02:35:41 to 12:27:03 UTC (9h51m)
+at deployed commit `c135242`. A transient TLS EOF escaped the recorder and
+ended the intended 14-day run. The closed database is
+`data/shadow-14d-20260827.db`; an integrity-clean analysis copy is stored
+locally as `data/server-shadow-20260827-closed.db`. At 2026-08-28 00:27 UTC no
+Kalshi recorder or Polymarket supervisor/trader process was present. The
+Polymarket absence is observed but its cause is **UNKNOWN**; this project must
+not restart it.
 
 ## What is verified now
 
@@ -71,6 +72,20 @@ At the eight-hour checkpoint the unit remained active with zero restarts.
   UTC after the launch check. Kalshi stayed active, no OOM event occurred, and
   host load was low at inspection. The cause of the Polymarket restart is
   **UNKNOWN**; do not attribute it to Kalshi without evidence.
+- The closed server dataset contains 50,038 books, 5,626 trades, and 17,672
+  program rows with zero recorded HTTP errors/non-200 books before the fatal
+  TLS disconnect. The database integrity check passes.
+- On that 9h51m dataset, size-10 15-minute touch quotes completed both sides in
+  11 of 8,620 windows (0.1%) and filled only one side in 88 (1.0%). Stepping
+  inside completed 21 pairs (0.2%) and produced 140 one-sided fills (1.6%).
+  Pure spread scalping therefore looks unfavorable: inventory is created about
+  7–8 times more often than a spread is captured.
+- A current-rule, same-clock proxy for the Polymarket entry policy modeled
+  `$28.36/day` reward and `-$9.75/day` 300-second markout across 30 funded
+  markets, proxy `+$18.61/day`. This is **not net P&L**: the corrected
+  900-second exit replay priced 92 of 106 fills for `-$54.83` total with 14
+  unknown, and the two instruments do not yet share a fixed universe or
+  realized-exit clock.
 - On thin books, adding size has diminishing marginal reward because our own
   score enters the denominator. This is arithmetic. The portfolio-level optimum
   has not been measured on a fixed universe.
@@ -105,6 +120,14 @@ current Kalshi help. A live experiment must be sized to clear it conservatively.
 Maker fees, qualification uptime, queue position, fill rate, competitor
 reaction, actual exit cost, and realized reward remain unobserved for this
 strategy on Kalshi.
+
+### B6 — Server capture ended on a transient network failure
+
+`record_books.py` handled HTTP error statuses but not `URLError`/TLS failures.
+The first server run ended after 9h51m on one SSL EOF. Bounded retries and a
+recordable local status are implemented and tested locally, but the corrected
+commit has not yet been redeployed or restarted. The Polymarket process is also
+absent and remains outside this project's restart authority.
 
 ## Existing evidence, bounded correctly
 

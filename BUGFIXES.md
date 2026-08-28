@@ -247,3 +247,29 @@ unaltered venue JSON.
 
 **Verification.** A hand fixture that scores 60 under July and 35 under
 February now asserts the recorder returns 60. The full measurement suite passes.
+
+---
+
+## 2026-08-27
+
+### One transient TLS EOF ended the intended 14-day capture
+
+**Symptom.** The isolated server recorder ended after 9h51m. Its SQLite run was
+closed cleanly and contained zero recorded errors, while the log ended with
+`urllib.error.URLError` wrapping an SSL EOF.
+
+**Mechanism.** `get_json()` converted HTTP error responses into data but caught
+no connection, TLS, timeout, or invalid-JSON exception. The outer `finally`
+flushed and closed SQLite, but the transient transport failure still terminated
+the process. Because failure occurred before an HTTP response, no status row
+was available for the caller to record.
+
+**Fix.** Public GETs now retry three times with 1s/2s bounded backoff. If every
+attempt fails, `get_json()` returns local sentinel status 599 and the existing
+caller records the missing observation instead of ending the run. It still
+does not retry venue HTTP statuses or any write operation; no write endpoint
+exists.
+
+**Verification.** One fixture fails once then succeeds and asserts two limiter
+calls plus one backoff. A second exhausts all attempts and asserts status 599,
+three limiter calls, and two backoffs. All 27 tests pass and the module compiles.

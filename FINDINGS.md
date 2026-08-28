@@ -1931,6 +1931,51 @@ without additional evidence.
 
 ---
 
+## 22. Current server data rejects broad pure spread scalping
+
+### MEASURED — closed 9h51m server dataset
+
+Dataset `data/server-shadow-20260827-closed.db`, run
+`cap-20260827T023541Z-dcee8aea`, 2026-08-27 02:35:41–12:27:03 UTC, 50,038
+books, 5,626 trades, size 10. The run ended early on a transient TLS EOF; it is
+not a complete day and contains hourly density-scan gaps.
+
+Non-overlapping quote windows produced:
+
+| policy/window | windows | pairs | one-sided | neither | one-sided:pairs |
+|---|---:|---:|---:|---:|---:|
+| touch / 900s | 8,620 | 11 (0.1%) | 88 (1.0%) | 8,521 | 8.0:1 |
+| inside / 900s | 8,620 | 21 (0.2%) | 140 (1.6%) | 8,459 | 6.7:1 |
+| touch / 3600s | 6,574 | 12 (0.2%) | 48 (0.7%) | 6,514 | 4.0:1 |
+| inside / 3600s | 6,574 | 26 (0.4%) | 70 (1.1%) | 6,478 | 2.7:1 |
+
+Completed pairs earned positive gross spread, but they are too rare to define
+the economics. At 900 seconds, a realized-exit replay priced 86 of 100 touch
+fills for `-$50.9463` total and 236 of 277 inside fills for `-$108.7736`;
+14 and 41 exits respectively remain unknown. The exit replay is not on the
+same non-overlapping sampling clock, so these totals must not be subtracted
+from pair edge as if they formed one portfolio. Directionally, however, both
+instruments agree: broad pure spread scalping creates inventory much more often
+than it captures both sides, and getting flat is adverse.
+
+### INFERRED — reward may rescue selected markets, but this is not net yet
+
+The current-rule same-clock proxy for the audited Polymarket entry policy,
+size 10 and `$300` modeled capital, selected 30 markets and reported 93.1%
+uptime, 201.3 partial fills/day, `$28.36/day` modeled reward,
+`-$9.75/day` 300-second markout, and `+$18.61/day` proxy. Reward-only selection
+of 20 markets reported `$25.385/day` after minimums on `$189.30` collateral.
+
+These positive figures are **INFERRED**, not profitability: they extrapolate
+partial program coverage, include sparse hourly candidate samples, use markout
+instead of realized exit, omit maker/exit fees, and do not bound unknown exits.
+The corrected current-policy exit replay found 106 fills, priced 92 for
+`-$54.8268` total, and left 14 unknown. A fixed-universe replay that puts
+reward, pair completion, realized exits, and unknown bounds on one clock is
+still required.
+
+---
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in
