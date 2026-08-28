@@ -9,23 +9,21 @@ operator authority is in `DECISIONS.md`; the experiment contract is in
 ## 1. Keep the isolated server shadow healthy
 
 The first server shadow ended after 9h51m on a transient TLS EOF. Its closed
-dataset is preserved locally. The retry fix must be verified and redeployed
-before starting a replacement 14-day run.
+dataset is preserved locally. Retry-hardened replacement R2 is active at commit
+`b970654`, with a seven-day checkpoint on 2026-09-04.
 
 Tasks:
 
-1. Commit/push the bounded network-retry fix after the full suite and endpoint
-   scan pass; deploy only that exact tested commit to `/root/kalshi-bot`.
-2. Start a replacement read-only 14-day capture in a new database/log after
-   printing its exact command and limits. Do not touch the absent Polymarket
-   process; report it to the operator separately.
-3. At the replacement run's seven-day checkpoint, preserve the exact capture
+1. On each manual check, verify R2 is active, data is current, transport status
+   599 failures are recorded rather than fatal, and resource limits hold. Do
+   not touch the absent Polymarket process; report it separately.
+2. At the replacement run's seven-day checkpoint, preserve the exact capture
    window, row counts, error/gap rates, tracked universe, and resource use.
-4. Do not treat partial data as profitability. Run current-rule reward, fill,
+3. Do not treat partial data as profitability. Run current-rule reward, fill,
    and later-book exit analysis only over named complete windows.
-5. Let the replacement run finish unless errors, disk pressure, or production
+4. Let the replacement run finish unless errors, disk pressure, or production
    interference require the documented stop command.
-6. Quantify the hourly density-scan gaps in downstream analysis. The first
+5. Quantify the hourly density-scan gaps in downstream analysis. The first
    eight hours showed a 60-second median sample gap, 108-second p95, and
    267-second maximum because each hourly candidate scan takes about 200
    seconds. Do not count the missing intervals as observed qualification.

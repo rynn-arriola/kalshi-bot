@@ -20,15 +20,16 @@ Credentials and captured market data remain ignored and local-only.
 There is no production bot, deployment, scheduler, reconciler, or authorized
 write path.
 
-**Measurement state:** the first isolated server capture is closed, not active.
-It ran in `/root/kalshi-bot` from 2026-08-27 02:35:41 to 12:27:03 UTC (9h51m)
-at deployed commit `c135242`. A transient TLS EOF escaped the recorder and
-ended the intended 14-day run. The closed database is
-`data/shadow-14d-20260827.db`; an integrity-clean analysis copy is stored
-locally as `data/server-shadow-20260827-closed.db`. At 2026-08-28 00:27 UTC no
-Kalshi recorder or Polymarket supervisor/trader process was present. The
-Polymarket absence is observed but its cause is **UNKNOWN**; this project must
-not restart it.
+**Measurement state:** replacement 14-day capture
+`kalshi-readonly-capture-14d-r2` is active at deployed/tested commit `b970654`.
+It started 2026-08-28 00:34:59 UTC in `/root/kalshi-bot`, writing
+`data/shadow-14d-r2-20260828.db` and `logs/capture-r2-20260828.log`; planned
+seven-day checkpoint is 2026-09-04 and completion is 2026-09-11 UTC. The first
+run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC (9h51m) at
+commit `c135242` before a transient TLS EOF ended it. An integrity-clean local
+copy is `data/server-shadow-20260827-closed.db`. At replacement launch no
+Polymarket supervisor/trader process was present. Its absence is observed but
+the cause is **UNKNOWN**; this project did not and must not restart it.
 
 ## What is verified now
 
@@ -121,13 +122,14 @@ Maker fees, qualification uptime, queue position, fill rate, competitor
 reaction, actual exit cost, and realized reward remain unobserved for this
 strategy on Kalshi.
 
-### B6 — Server capture ended on a transient network failure
+### B6 — Replacement capture must demonstrate retry resilience
 
 `record_books.py` handled HTTP error statuses but not `URLError`/TLS failures.
 The first server run ended after 9h51m on one SSL EOF. Bounded retries and a
-recordable local status are implemented and tested locally, but the corrected
-commit has not yet been redeployed or restarted. The Polymarket process is also
-absent and remains outside this project's restart authority.
+recordable local status passed all 27 tests on the server and replacement run
+R2 is active. The fix is code-verified but has not yet encountered and survived
+a real transport failure. The Polymarket process is absent and remains outside
+this project's restart authority.
 
 ## Existing evidence, bounded correctly
 

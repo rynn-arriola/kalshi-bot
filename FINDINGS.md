@@ -1974,6 +1974,16 @@ The corrected current-policy exit replay found 106 fills, priced 92 for
 reward, pair completion, realized exits, and unknown bounds on one clock is
 still required.
 
+### VERIFIED — retry-hardened replacement capture started
+
+Commit `b97065485cbcf10b6c7c0a34d23c0d8c090e4f5e` passed the read-only endpoint
+scan and all 27 tests on the server. Replacement run
+`cap-20260828T003459Z-44ea69de` started at 2026-08-28 00:34:59 UTC as
+`kalshi-readonly-capture-14d-r2`, with the same 20% CPU quota, 256 MB memory
+limit, five-read/s limiter, and separate database/log. The Polymarket process
+was absent and was not touched. This verifies deployment and start, not yet
+survival of a real transport failure.
+
 ---
 
 ## 7. Open questions

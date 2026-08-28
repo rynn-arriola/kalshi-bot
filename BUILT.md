@@ -27,7 +27,7 @@ does not validate the reward-rule interpretation or establish profitability.
 | Analysis | End-date concentration | **not started** |
 | Experiment 0 | Rule and accounting audit | **done** |
 | Experiment 1 | Fixed-universe replay | **active** |
-| Experiment 2 | Read-only live shadow | **first run closed at 9h51m; retry fix local** |
+| Experiment 2 | Read-only live shadow | **replacement R2 active at `b970654`** |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
@@ -109,7 +109,9 @@ HTTP-status handler and closed the intended 14-day capture at 9h51m. Public GET
 requests now retry up to three times with bounded backoff; exhausted failures
 return local status 599 so callers record the missing observation instead of
 killing the process. Two network-failure fixtures raise the full suite to 27
-tests. The correction is locally verified but not yet deployed.
+tests. The exact commit passed the endpoint scan and all 27 tests on the server;
+replacement R2 started at 2026-08-28 00:34:59 UTC with the original CPU,
+memory, request-rate, process, data, and log isolation.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

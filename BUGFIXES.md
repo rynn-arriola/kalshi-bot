@@ -272,4 +272,7 @@ exists.
 
 **Verification.** One fixture fails once then succeeds and asserts two limiter
 calls plus one backoff. A second exhausts all attempts and asserts status 599,
-three limiter calls, and two backoffs. All 27 tests pass and the module compiles.
+three limiter calls, and two backoffs. All 27 tests pass locally and on the
+server, the module compiles, and exact commit `b970654` passed the endpoint
+scan. Replacement capture R2 is active; real-failure survival remains to be
+observed.
