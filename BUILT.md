@@ -6,7 +6,7 @@ when something is finished — not when it is started.
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-27 20:28 America/New_York.
+Last updated 2026-08-27 22:19 America/New_York.
 
 Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
 `DECISIONS.md`. Reproducing an old table means an instrument is operational; it
@@ -27,7 +27,7 @@ does not validate the reward-rule interpretation or establish profitability.
 | Analysis | End-date concentration | **not started** |
 | Experiment 0 | Rule and accounting audit | **done** |
 | Experiment 1 | Fixed-universe replay | **active** |
-| Experiment 2 | Read-only live shadow | **replacement R2 active at `b970654`** |
+| Experiment 2 | Read-only live shadow | **replacement R3 active at `b970654`** |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
@@ -112,6 +112,11 @@ killing the process. Two network-failure fixtures raise the full suite to 27
 tests. The exact commit passed the endpoint scan and all 27 tests on the server;
 replacement R2 started at 2026-08-28 00:34:59 UTC with the original CPU,
 memory, request-rate, process, data, and log isolation.
+
+R2 was stopped cleanly by a host shutdown at 2026-08-28 01:22:04 UTC and its
+transient unit did not return after boot. The same tested commit passed all 27
+tests and the endpoint scan again; replacement R3 started at 02:17:05 UTC in a
+fresh database/log with the same isolation and limits.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 

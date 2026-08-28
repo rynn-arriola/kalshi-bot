@@ -1,6 +1,6 @@
 # Active work queue
 
-Last updated: 2026-08-27 20:28 America/New_York.
+Last updated: 2026-08-27 22:19 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
@@ -9,12 +9,13 @@ operator authority is in `DECISIONS.md`; the experiment contract is in
 ## 1. Keep the isolated server shadow healthy
 
 The first server shadow ended after 9h51m on a transient TLS EOF. Its closed
-dataset is preserved locally. Retry-hardened replacement R2 is active at commit
-`b970654`, with a seven-day checkpoint on 2026-09-04.
+dataset is preserved locally. Replacement R2 was interrupted by a clean host
+shutdown, not a recorder failure. Retry-hardened replacement R3 is active at
+commit `b970654`, with a seven-day checkpoint at 2026-09-04 02:17 UTC.
 
 Tasks:
 
-1. On each manual check, verify R2 is active, data is current, transport status
+1. On each manual check, verify R3 is active, data is current, transport status
    599 failures are recorded rather than fatal, and resource limits hold. Do
    not touch the absent Polymarket process; report it separately.
 2. At the replacement run's seven-day checkpoint, preserve the exact capture

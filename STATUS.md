@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-27 20:45 (America/New_York).
+Last verified: 2026-08-27 22:19 (America/New_York).
 
 ## Executive state
 
@@ -20,17 +20,22 @@ Credentials and captured market data remain ignored and local-only.
 There is no production bot, deployment, scheduler, reconciler, or authorized
 write path.
 
-**Measurement state:** replacement 14-day capture
-`kalshi-readonly-capture-14d-r2` is active at deployed/tested commit `b970654`.
-It started 2026-08-28 00:34:59 UTC in `/root/kalshi-bot`, writing
-`data/shadow-14d-r2-20260828.db` and `logs/capture-r2-20260828.log`; planned
-seven-day checkpoint is 2026-09-04 and completion is 2026-09-11 UTC. At
-2026-08-28 00:45 UTC it remained active as PID 27490 with zero restarts. The first
-run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC (9h51m) at
-commit `c135242` before a transient TLS EOF ended it. An integrity-clean local
-copy is `data/server-shadow-20260827-closed.db`. At replacement launch no
-Polymarket supervisor/trader process was present. Its absence is observed but
-the cause is **UNKNOWN**; this project did not and must not restart it.
+**Measurement state:** replacement R3 14-day capture
+`kalshi-readonly-capture-14d-r3` is active at deployed/tested commit `b970654`.
+It started 2026-08-28 02:17:05 UTC in `/root/kalshi-bot`, writing
+`data/shadow-14d-r3-20260828.db` and `logs/capture-r3-20260828.log`; planned
+seven-day checkpoint is 2026-09-04 02:17 UTC and completion is 2026-09-11
+02:17 UTC. At 02:19:17 UTC it remained active as PID 3898 with zero restarts;
+the database quick check was `ok`, 450 book rows, 17,069 program rows and one
+exchange-status row were present, and zero errors were recorded. Replacement
+R2 was stopped cleanly by the host shutdown at 01:22:04 UTC; it was a transient
+unit and therefore did not return after the 01:24 boot. No OOM event occurred.
+The first run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC
+(9h51m) at commit `c135242` before a transient TLS EOF ended it. An
+integrity-clean local copy is `data/server-shadow-20260827-closed.db`.
+
+The live Polymarket trader was active before R3 started and remained the same
+PID 2251 afterward; this project did not start, stop, signal, or modify it.
 
 ## What is verified now
 
@@ -131,9 +136,9 @@ strategy on Kalshi.
 `record_books.py` handled HTTP error statuses but not `URLError`/TLS failures.
 The first server run ended after 9h51m on one SSL EOF. Bounded retries and a
 recordable local status passed all 27 tests on the server and replacement run
-R2 is active. The fix is code-verified but has not yet encountered and survived
-a real transport failure. The Polymarket process is absent and remains outside
-this project's restart authority.
+R3 is active. R2 ended because the host shut down, not because of a recorder or
+memory failure. The retry fix is code-verified but has not yet encountered and
+survived a real transport failure.
 
 ## Existing evidence, bounded correctly
 

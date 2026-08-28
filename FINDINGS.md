@@ -1984,6 +1984,22 @@ limit, five-read/s limiter, and separate database/log. The Polymarket process
 was absent and was not touched. This verifies deployment and start, not yet
 survival of a real transport failure.
 
+### VERIFIED — host reboot stopped R2; R3 restarted from a fresh database
+
+The host shut down at 2026-08-28 01:22 UTC and booted again at 01:24 UTC.
+Systemd recorded R2 stopping cleanly with an 87.6 MB memory peak and no kernel
+OOM event. Because R2 was a transient unit, it no longer existed after boot;
+this was a host-lifecycle interruption, not a recorder exception.
+
+After all 27 tests and the read-only endpoint scan passed again at deployed
+commit `b970654`, run `cap-20260828T021706Z-2e9d1d6b` started at 02:17:05 UTC
+as `kalshi-readonly-capture-14d-r3`. It uses the same 20% CPU, 256 MB memory,
+five-read/s, 75-market, 60-second-sweep boundaries and writes a fresh database
+and log. At 02:19:17 UTC it was active as PID 3898 with zero restarts; the
+database quick check was `ok`, 450 book rows, 17,069 program rows and one
+exchange-status row were present, and zero errors were recorded. The live
+Polymarket trader remained PID 2251 across the R3 start.
+
 ---
 
 ## 7. Open questions
