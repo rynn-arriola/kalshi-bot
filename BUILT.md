@@ -118,6 +118,11 @@ transient unit did not return after boot. The same tested commit passed all 27
 tests and the endpoint scan again; replacement R3 started at 02:17:05 UTC in a
 fresh database/log with the same isolation and limits.
 
+**Transport fix verified against a real failure:** at 10:27:03 UTC, R3 logged
+an attempt-1/3 `URLError` caused by a connection reset, recovered without a
+restart or traceback, and continued writing fresh books through the 12:58 UTC
+check. No exhausted status-599 observation was required.
+
 ### `scripts/kalshi_auth.py` — 127 lines
 
 Signed read-only access. **No order function exists in this module and there is

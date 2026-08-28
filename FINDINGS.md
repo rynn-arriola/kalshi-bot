@@ -2000,6 +2000,16 @@ database quick check was `ok`, 450 book rows, 17,069 program rows and one
 exchange-status row were present, and zero errors were recorded. The live
 Polymarket trader remained PID 2251 across the R3 start.
 
+### VERIFIED — R3 survived a real transient network failure
+
+At 2026-08-28 10:27:03 UTC, R3 logged an attempt-1/3 `URLError` caused by a
+connection reset by peer. At the 12:58 UTC inspection it retained PID 3898 with
+zero restarts and no traceback, its newest book was about 11 seconds old, and
+the database had zero recorded errors and zero non-200 book rows. The bounded
+retry fix has therefore survived a real transport interruption of the same
+general class that ended the first capture. This verifies recorder resilience;
+it does not turn the partial capture into profitability evidence.
+
 ---
 
 ## 7. Open questions

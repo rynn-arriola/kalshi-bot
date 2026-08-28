@@ -274,5 +274,7 @@ exists.
 calls plus one backoff. A second exhausts all attempts and asserts status 599,
 three limiter calls, and two backoffs. All 27 tests pass locally and on the
 server, the module compiles, and exact commit `b970654` passed the endpoint
-scan. Replacement capture R2 is active; real-failure survival remains to be
-observed.
+scan. R3 then encountered a real connection-reset `URLError` at 2026-08-28
+10:27:03 UTC on attempt 1/3. It recovered without a restart or traceback and
+continued writing fresh books through at least 12:58 UTC, with zero recorded
+errors and zero non-200 book rows. Real-failure survival is now verified.

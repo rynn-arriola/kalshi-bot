@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-27 22:19 (America/New_York).
+Last verified: 2026-08-28 08:58 (America/New_York).
 
 ## Executive state
 
@@ -25,17 +25,20 @@ write path.
 It started 2026-08-28 02:17:05 UTC in `/root/kalshi-bot`, writing
 `data/shadow-14d-r3-20260828.db` and `logs/capture-r3-20260828.log`; planned
 seven-day checkpoint is 2026-09-04 02:17 UTC and completion is 2026-09-11
-02:17 UTC. At 02:19:17 UTC it remained active as PID 3898 with zero restarts;
-the database quick check was `ok`, 450 book rows, 17,069 program rows and one
-exchange-status row were present, and zero errors were recorded. Replacement
-R2 was stopped cleanly by the host shutdown at 01:22:04 UTC; it was a transient
-unit and therefore did not return after the 01:24 boot. No OOM event occurred.
+02:17 UTC. At 2026-08-28 12:58 UTC it remained active as PID 3898 with zero
+restarts. The database quick check was `ok`; it held 54,349 books, 7,998
+trades, 18,667 program rows and 41 exchange-status rows, with zero recorded
+errors and zero non-200 book reads. The newest book was about 11 seconds old.
+Replacement R2 was stopped cleanly by the host shutdown at 01:22:04 UTC; it was
+a transient unit and therefore did not return after the 01:24 boot. No OOM event
+occurred.
 The first run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC
 (9h51m) at commit `c135242` before a transient TLS EOF ended it. An
 integrity-clean local copy is `data/server-shadow-20260827-closed.db`.
 
-The live Polymarket trader was active before R3 started and remained the same
-PID 2251 afterward; this project did not start, stop, signal, or modify it.
+The live Polymarket supervisor and trader were also active at the latest check
+as PIDs 21783 and 21791. This project did not start, stop, signal, modify, or
+make an API call through them.
 
 ## What is verified now
 
@@ -70,14 +73,14 @@ PID 2251 afterward; this project did not start, stop, signal, or modify it.
   trades, 17,597 program rows, zero non-200 books, and zero recorded errors.
   The latest book was 30 seconds old and all 75 actively tracked tickers had
   books in the preceding five minutes.
-- Server capacity remains adequate for Kalshi and for the previously observed
-  Kalshi-plus-Polymarket combination. At 2026-08-28 00:45 UTC, with only the
-  Kalshi capture present, 572 MB memory was available, Kalshi used about 92 MB,
-  load averages were 0.02/0.01/0.00 on one core, 19 GB disk remained free, and
-  no OOM event was recorded. During the earlier period when both were present,
-  461 MB remained available and host load was also low. No upgrade is currently
-  indicated, but capacity should be rechecked after Polymarket is actually
-  running again.
+- Server capacity is adequate for the current Kalshi-plus-Polymarket
+  combination. At 2026-08-28 12:58 UTC the host reported two logical CPUs,
+  3,915 MB RAM and a 77 GB filesystem. With both processes active, 3,141 MB
+  memory and 72 GB disk were available, load averages were 0.97/0.86/0.85, and
+  no OOM event was recorded. Kalshi used about 143 MB under its 256 MB cap and
+  remained limited to 20% of one CPU. No upgrade is currently indicated. The
+  host presents substantially more capacity than the earlier one-CPU/961 MB
+  observation; this read-only check did not determine why it changed.
 - The Polymarket supervisor and trader were restarted at 2026-08-27 04:02:57
   UTC after the launch check. Kalshi stayed active, no OOM event occurred, and
   host load was low at inspection. The cause of the Polymarket restart is
@@ -130,15 +133,6 @@ current Kalshi help. A live experiment must be sized to clear it conservatively.
 Maker fees, qualification uptime, queue position, fill rate, competitor
 reaction, actual exit cost, and realized reward remain unobserved for this
 strategy on Kalshi.
-
-### B6 — Replacement capture must demonstrate retry resilience
-
-`record_books.py` handled HTTP error statuses but not `URLError`/TLS failures.
-The first server run ended after 9h51m on one SSL EOF. Bounded retries and a
-recordable local status passed all 27 tests on the server and replacement run
-R3 is active. R2 ended because the host shut down, not because of a recorder or
-memory failure. The retry fix is code-verified but has not yet encountered and
-survived a real transport failure.
 
 ## Existing evidence, bounded correctly
 
@@ -194,3 +188,12 @@ asks for one; they remain read-only and are not authorized to restart anything.
 **Resolved 2026-08-26.** The later July filing supersedes the February filing
 effective July 30 and matches the Help Center. Current August analysis defaults
 to `july-2026-one-fifth`; the February mode remains comparison-only.
+
+### B6 — Recorder retry resilience
+
+**Resolved 2026-08-28.** At 10:27:03 UTC, R3 encountered a real `URLError`
+caused by a connection reset on attempt 1/3. The request recovered within the
+bounded retry path: the service retained PID 3898 with zero restarts, logged no
+traceback, recorded no exhausted status-599 failure, and was still writing fresh
+books at 12:58 UTC. This resolves transport survival, not the need to complete
+the planned capture window.

@@ -1,6 +1,6 @@
 # Active work queue
 
-Last updated: 2026-08-27 22:19 America/New_York.
+Last updated: 2026-08-28 08:58 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
@@ -15,9 +15,10 @@ commit `b970654`, with a seven-day checkpoint at 2026-09-04 02:17 UTC.
 
 Tasks:
 
-1. On each manual check, verify R3 is active, data is current, transport status
-   599 failures are recorded rather than fatal, and resource limits hold. Do
-   not touch the absent Polymarket process; report it separately.
+1. On each manual check, verify R3 is active, data is current, exhausted
+   transport failures are recorded as status 599 rather than fatal, and
+   resource limits hold. The retry path survived a real connection reset on
+   2026-08-28. Do not touch the Polymarket process; report its state separately.
 2. At the replacement run's seven-day checkpoint, preserve the exact capture
    window, row counts, error/gap rates, tracked universe, and resource use.
 3. Do not treat partial data as profitability. Run current-rule reward, fill,
