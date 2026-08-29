@@ -1,6 +1,6 @@
 # Current status
 
-Last verified: 2026-08-28 08:58 (America/New_York).
+Last verified: 2026-08-28 23:45 (America/New_York).
 
 ## Executive state
 
@@ -20,25 +20,24 @@ Credentials and captured market data remain ignored and local-only.
 There is no production bot, deployment, scheduler, reconciler, or authorized
 write path.
 
-**Measurement state:** replacement R3 14-day capture
-`kalshi-readonly-capture-14d-r3` is active at deployed/tested commit `b970654`.
-It started 2026-08-28 02:17:05 UTC in `/root/kalshi-bot`, writing
-`data/shadow-14d-r3-20260828.db` and `logs/capture-r3-20260828.log`; planned
-seven-day checkpoint is 2026-09-04 02:17 UTC and completion is 2026-09-11
-02:17 UTC. At 2026-08-28 12:58 UTC it remained active as PID 3898 with zero
-restarts. The database quick check was `ok`; it held 54,349 books, 7,998
-trades, 18,667 program rows and 41 exchange-status rows, with zero recorded
-errors and zero non-200 book reads. The newest book was about 11 seconds old.
-Replacement R2 was stopped cleanly by the host shutdown at 01:22:04 UTC; it was
-a transient unit and therefore did not return after the 01:24 boot. No OOM event
-occurred.
-The first run remains preserved: it ran 2026-08-27 02:35:41–12:27:03 UTC
-(9h51m) at commit `c135242` before a transient TLS EOF ended it. An
-integrity-clean local copy is `data/server-shadow-20260827-closed.db`.
+**Measurement state:** laptop R1 14-day capture
+`kalshi-readonly-capture-14d-laptop-r1` is active at deployed/tested commit
+`0043c3a`. It started 2026-08-29 03:39:05 UTC in the laptop WSL path
+`/home/polybot/kalshi-bot`, writing
+`data/shadow-14d-laptop-r1-20260829.db` and
+`logs/capture-14d-laptop-r1-20260829.log`. The seven-day checkpoint is
+2026-09-05 03:39 UTC and planned completion is 2026-09-12 03:39 UTC. At the
+03:44 UTC check it was active as PID 785 with zero restarts, 1,094 books, 5,407
+trades, 16,859 program rows, 75 market-metadata rows, zero recorded errors and
+zero non-200 book reads; the database quick check was `ok`.
 
-The live Polymarket supervisor and trader were also active at the latest check
-as PIDs 21783 and 21791. This project did not start, stop, signal, modify, or
-make an API call through them.
+The former server was destroyed by the operator, so its R3 process and unmirrored
+R3 data are no longer the active evidence source. Historical R1 remains
+preserved locally as `data/server-shadow-20260827-closed.db`. A two-minute
+laptop canary closed cleanly at commit `0043c3a`; verified PC copies are
+`data/laptop-canary-20260829.db` and `.log`. A consistent SQLite-backup snapshot
+of laptop R1 at 03:44 UTC is mirrored on this PC as
+`data/checkpoint-laptop-r1-start-20260829T0344Z.db` and `.log`.
 
 ## What is verified now
 
@@ -73,14 +72,13 @@ make an API call through them.
   trades, 17,597 program rows, zero non-200 books, and zero recorded errors.
   The latest book was 30 seconds old and all 75 actively tracked tickers had
   books in the preceding five minutes.
-- Server capacity is adequate for the current Kalshi-plus-Polymarket
-  combination. At 2026-08-28 12:58 UTC the host reported two logical CPUs,
-  3,915 MB RAM and a 77 GB filesystem. With both processes active, 3,141 MB
-  memory and 72 GB disk were available, load averages were 0.97/0.86/0.85, and
-  no OOM event was recorded. Kalshi used about 143 MB under its 256 MB cap and
-  remained limited to 20% of one CPU. No upgrade is currently indicated. The
-  host presents substantially more capacity than the earlier one-CPU/961 MB
-  observation; this read-only check did not determine why it changed.
+- Laptop capacity is ample for the isolated Kalshi measurement. Windows reports
+  16 logical CPUs, 31,866 MB total RAM with 17,522 MB free, and 706.8 GB free on
+  C:. WSL reports 15,545 MB RAM with 14,782 MB available and 952 GB free. The
+  long collector used about 79 MB with a 90 MB peak under its 256 MB cap and is
+  limited to 20% of one CPU. The active Windows `Server Mode` plan disables
+  sleep and hibernation on AC power; the laptop must remain plugged in because
+  battery settings still permit sleep/hibernation. No upgrade is indicated.
 - The Polymarket supervisor and trader were restarted at 2026-08-27 04:02:57
   UTC after the launch check. Kalshi stayed active, no OOM event occurred, and
   host load was low at inspection. The cause of the Polymarket restart is
@@ -162,7 +160,7 @@ Approved now:
 - Re-run read-only analysis and produce conservative bounds.
 - Compare pure spread-scalping quote gaps separately from rewards on identical
   data and assumptions; initially test join-the-touch and feasible 1¢–5¢ gaps.
-- Run verified read-only measurement on the existing server under the isolated
+- Run verified read-only measurement on the laptop under the isolated
   boundaries in `docs/SERVER_MEASUREMENT.md`.
 - Observe and analyze the active read-only server capture; stopping or
   correcting that measurement remains inside the same safety boundary.
@@ -178,8 +176,9 @@ Not approved now:
 The active work order is `NEXT.md`. Operator authority is in `DECISIONS.md`.
 
 The daily capacity heartbeat is paused at the operator's request to conserve
-Codex usage. Capacity checks are manual when the operator opens this task and
-asks for one; they remain read-only and are not authorized to restart anything.
+Codex usage. Laptop checks and SQLite-backup mirrors to this PC are manual when
+the operator opens this task and asks; they remain read-only with respect to
+Kalshi and are not authorized to restart anything without an operator request.
 
 ## Resolved blocker
 

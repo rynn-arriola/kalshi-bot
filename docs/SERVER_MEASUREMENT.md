@@ -57,3 +57,44 @@ Stages 0 and 1 may use local or isolated server computation. Stage 2 may make
 read-only Kalshi market/account requests. Stage 3 remains unauthorized: D-007
 does not permit order placement, cancellation, capital movement, or any other
 authenticated write.
+
+## Current laptop host
+
+Operator decision D-009 moved the measurement after the former server was
+destroyed. The current host is reachable through SSH alias `poly-laptop`; the
+Linux environment is WSL distribution `Ubuntu-24.04`, and the only active
+Kalshi project path is `/home/polybot/kalshi-bot`.
+
+Tracked code and AI documentation must resolve to the same commit on this PC,
+the laptop checkout, and GitHub `main`. Runtime databases and logs remain
+gitignored. To mirror measurement data to this PC, create a consistent closed
+snapshot with SQLite's online backup API on the laptop, run `PRAGMA quick_check`,
+then copy that snapshot and its matching log into this PC's ignored `data/`
+directory. Never copy an actively changing DB file directly and never push raw
+capture data to GitHub.
+
+The laptop's `Server Mode` Windows power plan disables sleep and hibernation on
+AC power but not on battery. Keep the laptop plugged in for the entire capture.
+The active long-run unit is `kalshi-readonly-capture-14d-laptop-r1`; stopping it
+requires the explicit operator-requested command
+`systemctl stop kalshi-readonly-capture-14d-laptop-r1` inside that WSL
+distribution.
+
+## `run parity` procedure
+
+Decision D-010 defines the operator shorthand `run parity`. Execute it in this
+order:
+
+1. Inspect `git status --short` on this PC and the laptop. If either has tracked
+   changes or the histories diverge, preserve them and stop for an audit; never
+   force-checkout or silently choose a side.
+2. Reconcile tracked code and documentation through GitHub `main`, then verify
+   this PC, laptop and `refs/heads/main` all resolve to the same commit.
+3. Verify the laptop unit is active, the newest book is current, restart/error/
+   non-200 counts are visible, resource caps hold, and `PRAGMA quick_check` is
+   `ok`.
+4. Use SQLite's online backup API to create a timestamped consistent snapshot,
+   run quick check on the snapshot, and copy it plus the corresponding log into
+   this PC's ignored `data/` directory.
+5. Confirm the copied artifacts are ignored. Never add raw DBs, WAL files, logs,
+   credentials, or keys to GitHub.

@@ -122,6 +122,10 @@ guessing what a prior AI intended.
 - Server measurement must follow `docs/SERVER_MEASUREMENT.md`: a separate
   top-level directory, runtime, process, credentials, data, and logs. Never
   install this project inside or operate through the Polymarket directory.
+- The operator command `run parity` has the exact meaning recorded in D-010:
+  reconcile tracked PC/laptop/GitHub state without overwriting divergence,
+  verify the laptop measurement, and mirror an integrity-checked closed SQLite
+  snapshot to this PC. Raw capture data never goes to GitHub.
 - Kalshi has no short position primitive: selling YES is buying NO. Reduce fills
   to signed YES-equivalent economics using explicit YES/NO prices. See
   `FINDINGS.md` section 6f.

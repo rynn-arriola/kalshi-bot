@@ -123,6 +123,16 @@ an attempt-1/3 `URLError` caused by a connection reset, recovered without a
 restart or traceback, and continued writing fresh books through the 12:58 UTC
 check. No exhausted status-599 observation was required.
 
+**Relocated to laptop 2026-08-29 UTC:** exact commit `0043c3a` was installed in
+the standalone WSL path `/home/polybot/kalshi-bot` from a verified Git bundle.
+The deployed checkout is clean and matches this PC and GitHub. The endpoint scan
+found no account, order, or write method; all 27 tests and compilation passed.
+A two-minute public-read canary closed cleanly with 70 books, 2,189 trades,
+zero errors/non-200 books and SQLite quick check `ok`. Laptop R1 then started at
+03:39:05 UTC with the same 75-market, 60-second, five-read/s, 20%-CPU and 256 MB
+boundaries. A SQLite-consistent start checkpoint was mirrored to this PC; raw
+data and logs remain gitignored and are not stored on GitHub.
+
 ### `scripts/kalshi_auth.py` — 127 lines
 
 Signed read-only access. **No order function exists in this module and there is

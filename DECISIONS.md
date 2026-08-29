@@ -120,6 +120,24 @@ them accepted without an explicit operator instruction.
 - **Revisit when:** The operator changes the measurement host or ends the
   capture.
 
+### D-010 — `run parity` operator command
+
+- **Status:** ACCEPTED
+- **Date:** 2026-08-28
+- **Decision owner:** Operator
+- **Decision:** When the operator says `run parity`, reconcile the Kalshi
+  project across this PC, the laptop, and GitHub so tracked code and AI
+  documentation resolve to one identical commit.
+- **Consequence:** First inspect and preserve uncommitted work on both machines;
+  never overwrite a divergence silently. Push/fetch only after the tracked state
+  is verified, then print the PC, laptop, and GitHub commit IDs. Also verify the
+  laptop measurement service and live database health, create an
+  integrity-checked SQLite online-backup snapshot, and copy the closed snapshot
+  plus matching log to this PC. Runtime databases/logs remain gitignored and
+  must never be pushed to GitHub.
+- **Revisit when:** The operator changes the parity destinations or data-retention
+  policy.
+
 ## Pending decisions
 
 None. The next tasks are evidence work already inside D-001 and D-004.

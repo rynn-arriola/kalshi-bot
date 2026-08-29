@@ -1,24 +1,25 @@
 # Active work queue
 
-Last updated: 2026-08-28 08:58 America/New_York.
+Last updated: 2026-08-28 23:45 America/New_York.
 
 This file contains executable next work only. Current truth is in `STATUS.md`;
 operator authority is in `DECISIONS.md`; the experiment contract is in
 `EXPERIMENT.md`.
 
-## 1. Keep the isolated server shadow healthy
+## 1. Keep the isolated laptop shadow healthy
 
 The first server shadow ended after 9h51m on a transient TLS EOF. Its closed
-dataset is preserved locally. Replacement R2 was interrupted by a clean host
-shutdown, not a recorder failure. Retry-hardened replacement R3 is active at
-commit `b970654`, with a seven-day checkpoint at 2026-09-04 02:17 UTC.
+dataset is preserved locally. The former server was destroyed, ending R3 and
+resetting the collection clock. Retry-hardened laptop R1 is active at commit
+`0043c3a`, with a seven-day checkpoint at 2026-09-05 03:39 UTC and planned
+completion at 2026-09-12 03:39 UTC.
 
 Tasks:
 
-1. On each manual check, verify R3 is active, data is current, exhausted
+1. On each manual check, verify laptop R1 is active, data is current, exhausted
    transport failures are recorded as status 599 rather than fatal, and
-   resource limits hold. The retry path survived a real connection reset on
-   2026-08-28. Do not touch the Polymarket process; report its state separately.
+   resource limits hold. Use SSH alias `poly-laptop` and WSL unit
+   `kalshi-readonly-capture-14d-laptop-r1`; this task is Kalshi-only.
 2. At the replacement run's seven-day checkpoint, preserve the exact capture
    window, row counts, error/gap rates, tracked universe, and resource use.
 3. Do not treat partial data as profitability. Run current-rule reward, fill,
@@ -29,6 +30,10 @@ Tasks:
    eight hours showed a 60-second median sample gap, 108-second p95, and
    267-second maximum because each hourly candidate scan takes about 200
    seconds. Do not count the missing intervals as observed qualification.
+6. At each checkpoint, use SQLite's online backup API to make a consistent
+   snapshot on the laptop, integrity-check it, then copy the closed snapshot and
+   matching log into this PC's ignored `data/` directory. Never copy the live DB
+   file directly and never add runtime data to GitHub.
 
 Done when the 14-day dataset is closed cleanly or an evidence-backed stop is
 recorded in `STATUS.md` and `FINDINGS.md`.

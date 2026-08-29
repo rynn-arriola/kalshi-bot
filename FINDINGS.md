@@ -2012,6 +2012,46 @@ it does not turn the partial capture into profitability evidence.
 
 ---
 
+## 23. Measurement relocated to the operator's laptop
+
+### VERIFIED — identical tracked state and isolated Kalshi runtime
+
+The former server was destroyed by the operator, so R3 is no longer running and
+its unmirrored data cannot be treated as part of the new continuous window.
+Under accepted decision D-009, exact commit
+`0043c3aa1b1fbf51bc1a951bc391cf7b4c119953` was installed on 2026-08-29 UTC
+at the standalone laptop WSL path `/home/polybot/kalshi-bot`. That commit matches
+this PC and GitHub `main`; the laptop checkout was clean. The deployed collector
+scan found no account, order, or write endpoint, all 27 tests passed, and both
+collector modules compiled.
+
+The laptop presented 16 logical CPUs, 15,545 MB WSL RAM with 14,782 MB
+available, and 952 GB free inside WSL. Windows AC sleep and hibernation are
+disabled by the active `Server Mode` plan. The collector remains capped at 20%
+of one CPU and 256 MB memory; the laptop must remain plugged in because its
+battery power policy can still suspend it.
+
+### MEASURED — laptop canary and R1 start
+
+The two-minute canary `cap-20260829T033425Z-33ba5758` ran from 03:34:25 to
+03:36:37 UTC and closed cleanly with 70 books, 2,189 trades, 16,859 program
+rows, five market-metadata rows, one exchange-status row, zero errors, zero
+non-200 book rows, no traceback, and SQLite quick check `ok`.
+
+Long run `cap-20260829T033905Z-a7cc8324` started at 03:39:05 UTC as systemd unit
+`kalshi-readonly-capture-14d-laptop-r1`. At the 03:44 UTC check it remained PID
+785 with zero restarts and held 1,094 books, 5,407 trades, 16,859 program rows,
+75 market-metadata rows, zero errors and zero non-200 books; quick check was
+`ok`. The initial density scan found 757 two-sided candidates among 5,379 and
+took 210 seconds. This is operational verification, not profitability evidence.
+
+A consistent SQLite online-backup checkpoint at 03:44 UTC contained 1,139 books
+and 5,477 trades and passed quick check. It and the matching log were copied to
+this PC as ignored files under `data/`. Runtime data is intentionally not stored
+on GitHub; code and documentation are synchronized by Git commit instead.
+
+---
+
 ## 7. Open questions
 
 1. **`period_reward` scale** — confirm 1e-4 against an actual payout. Everything in
