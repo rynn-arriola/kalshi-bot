@@ -104,6 +104,22 @@ them accepted without an explicit operator instruction.
   authorize live orders or a new strategy implementation.
 - **Revisit when:** A fixed-universe replay provides a decision-grade estimate.
 
+### D-009 — Move read-only measurement to the laptop
+
+- **Status:** ACCEPTED
+- **Date:** 2026-08-28
+- **Decision owner:** Operator
+- **Decision:** The former server was destroyed. Restart the approved read-only
+  Kalshi measurement on the operator's laptop, which is reachable from this PC.
+  The live Polymarket project remains on this PC.
+- **Consequence:** Install and run Kalshi only inside the laptop's separate WSL
+  path `/home/polybot/kalshi-bot`, with its own environment, process, data, and
+  logs. Do not use or modify the laptop's stale Polymarket copy, and do not
+  touch the live Polymarket folder or process on this PC. D-004's no-order and
+  no-write boundary remains unchanged.
+- **Revisit when:** The operator changes the measurement host or ends the
+  capture.
+
 ## Pending decisions
 
 None. The next tasks are evidence work already inside D-001 and D-004.
