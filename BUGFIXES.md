@@ -10,6 +10,18 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Supervisor sequence, continuity and identity defects
+
+**Mechanisms.** Repeated STOP did not refence generation; late status refreshed
+already-expired deadlines; failed-spawn release discarded an attention reason;
+clock trust existed only inside one store object; and identityless child events
+could match childless state. **Fix under D-053.** Fence every STOP, check prior-
+state deadlines first, retain attention on reservation release, transact one
+shared boot/wall/monotonic control checkpoint, and require complete child
+identity. **Verification.** Fifty-nine focused and 863 full tests, 10/10 focused
+repeats, compilation, resource checks and disabled preflight pass. See
+`docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md`. No runtime or live use.
+
 ### Supervisor control, recovery and resource-contract defects
 
 **Mechanisms.** Delayed/stale event timestamps could bypass stop fencing; late

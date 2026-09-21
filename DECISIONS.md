@@ -802,6 +802,25 @@ them accepted without an explicit operator instruction.
   live auto-resume or trading. Independent Astra re-review is mandatory before
   S2; D-048's separate review remains another S2 gate.
 
+### D-053 — Implement D-052 supervisor re-review findings
+
+- **Status:** ACCEPTED implementation scope and implemented, 2026-09-21.
+- **Decision owner:** Operator: “Ok implement,” after the D-052 Astra re-review.
+- **Scope:** Implement R1-R5 from
+  [the D-052 review](docs/REVIEW_D052_ASTRA.md): fence every STOP generation,
+  evaluate startup/progress expiry before status refresh, preserve attention
+  during failed-spawn release, persist and validate clock continuity across
+  store instances/lifetimes, and require complete child identity. Add the
+  review's deterministic policy and SQLite regressions.
+- **Evidence:** See
+  [D-053 build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md): 59
+  focused and 863 full tests pass, with 10/10 repeated focused runs, resource,
+  compilation, documentation and disabled-preflight checks.
+- **Boundary:** Preserve execution-disabled S1. No process launcher, IPC,
+  runtime integration, service/task, configuration, credential/network/account
+  access, bot restart, orders or live action. Independent Astra re-review is
+  mandatory before S2; D-048 remains a separate S2 gate.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

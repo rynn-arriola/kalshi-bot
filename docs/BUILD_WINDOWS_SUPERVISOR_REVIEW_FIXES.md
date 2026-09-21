@@ -1,5 +1,11 @@
 # D-052 — Native Windows supervisor review fixes
 
+Review status: [independent Astra re-review](REVIEW_D052_ASTRA.md) requires
+four P2 follow-ups and one P3 identity validation fix. The evidence below records
+implementation results, qualified by that review. D-053
+[implements the follow-ups](BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md) and
+awaits Astra re-review; S2 remains blocked.
+
 Date: September 21, 2026. Native Windows; execution disabled. Implements R1-R7
 from the [D-051 independent Astra review](REVIEW_D051_ASTRA.md) after operator
 approval. This is Sol implementation evidence and requires Astra re-review.

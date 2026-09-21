@@ -58,6 +58,7 @@ class SupervisorAction(StrEnum):
 
 class AttentionReason(StrEnum):
     CLOCK_REGRESSED = "clock_regressed"
+    CLOCK_UNTRUSTED = "clock_untrusted"
     RESTART_BUDGET_EXHAUSTED = "restart_budget_exhausted"
     STARTUP_REFUSED = "startup_refused"
     RETRY_EXHAUSTED = "retry_exhausted"
@@ -397,7 +398,38 @@ def _restart_delay(policy, attempts):
     return policy.restart_delays[min(max(attempts-1, 0), len(policy.restart_delays)-1)]
 
 
-def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
+def _expired_child_deadline(state, event, policy):
+    """Apply prior-state deadlines before a new status can refresh them."""
+    if state.child_id is None:
+        return None
+    if (state.state == SupervisorState.STARTING
+            and state.start_requested_utc is not None
+            and event.observed_utc-state.start_requested_utc
+            >= policy.startup_timeout_seconds):
+        reason = AttentionReason.STARTUP_TIMEOUT
+    else:
+        reference = (state.last_progress_utc if state.last_progress_utc is not None
+                     else state.child_started_utc)
+        heartbeat_fresh = (state.last_heartbeat_utc is not None
+            and event.observed_utc-state.last_heartbeat_utc
+            < policy.progress_timeout_seconds)
+        deadline_active = (state.work_deadline_utc is not None
+            and event.observed_utc <= state.work_deadline_utc and heartbeat_fresh)
+        if not (state.state in {SupervisorState.RECOVERING, SupervisorState.HEALTHY,
+                                SupervisorState.DEGRADED}
+                and reference is not None
+                and event.observed_utc-reference >= policy.progress_timeout_seconds
+                and not deadline_active):
+            return None
+        reason = AttentionReason.PROGRESS_STALLED
+    stopped = _updated(state, event, state=SupervisorState.STOPPING,
+        generation=state.generation+1, desired_armed=False, stop_latched=True,
+        stop_requested_utc=event.observed_utc, attention_reason=reason)
+    return SupervisorDecision(stopped, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
+
+
+def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
+           clock_trusted=True):
     """Return a deterministic transition. The caller persists before actions.
 
     ``observed_utc`` is diagnostic event time. ``control_utc`` is the trusted,
@@ -407,10 +439,14 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
         raise InvalidData("typed supervisor state/event required")
     if not isinstance(policy, SupervisorPolicy):
         raise InvalidData("supervisor policy required")
+    if type(clock_trusted) is not bool:
+        raise InvalidData("clock trust flag must be boolean")
 
     child_event = event.kind in {EventKind.SPAWN_FAILED, EventKind.CHILD_STARTED,
                                  EventKind.CHILD_STATUS, EventKind.CHILD_RESULT}
-    if child_event and (event.expected_generation != state.child_generation
+    if child_event and (state.child_id is None or state.child_generation is None
+                        or event.child_id is None or event.expected_generation is None
+                        or event.expected_generation != state.child_generation
                         or event.child_id != state.child_id):
         return SupervisorDecision(state, stale=True)
     if event.kind == EventKind.SPAWN_FAILED and not (
@@ -435,18 +471,19 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
     now = _time(event.observed_utc if control_utc is None else control_utc,
                 "control time")
     clock_regressed = now < state.updated_utc
+    clock_fault = not clock_trusted or clock_regressed
+    clock_reason = (AttentionReason.CLOCK_UNTRUSTED if not clock_trusted
+                    else AttentionReason.CLOCK_REGRESSED)
     transition = replace(event, observed_utc=max(now, state.updated_utc))
 
     if event.kind == EventKind.STOP:
         active = state.child_id is not None
-        repeated = (active and state.state == SupervisorState.STOPPING
-                    and state.stop_latched and not state.desired_armed)
-        reason = (AttentionReason.CLOCK_REGRESSED if clock_regressed
+        reason = (clock_reason if clock_fault
                   else state.attention_reason if active else None)
         target = (SupervisorState.STOPPING if active else
                   SupervisorState.ATTENTION_REQUIRED if reason else SupervisorState.DISARMED)
         stopped = _updated(state, transition,
-            generation=state.generation if repeated else state.generation+1,
+            generation=state.generation+1,
             state=target, desired_armed=False, stop_latched=True,
             next_restart_utc=None,
             stop_requested_utc=(state.stop_requested_utc or transition.observed_utc)
@@ -455,8 +492,8 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
         return SupervisorDecision(stopped,
             ((SupervisorAction.REQUEST_GRACEFUL_STOP,) if active else ()))
 
-    if clock_regressed:
-        return _attention(state, transition, AttentionReason.CLOCK_REGRESSED,
+    if clock_fault:
+        return _attention(state, transition, clock_reason,
                           request_stop=True)
     event = transition
 
@@ -498,35 +535,9 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
                     and event.observed_utc-state.stop_requested_utc
                     >= policy.shutdown_timeout_seconds):
                 return _attention(state, event, AttentionReason.SHUTDOWN_TIMEOUT)
-            if (state.state == SupervisorState.STARTING
-                    and state.start_requested_utc is not None
-                    and event.observed_utc-state.start_requested_utc
-                    >= policy.startup_timeout_seconds):
-                stopped = _updated(state, event, state=SupervisorState.STOPPING,
-                    generation=state.generation+1,
-                    desired_armed=False, stop_latched=True,
-                    stop_requested_utc=event.observed_utc,
-                    attention_reason=AttentionReason.STARTUP_TIMEOUT)
-                return SupervisorDecision(stopped,
-                    (SupervisorAction.REQUEST_GRACEFUL_STOP,))
-            reference = state.last_progress_utc or state.child_started_utc
-            heartbeat_fresh = (state.last_heartbeat_utc is not None
-                and event.observed_utc-state.last_heartbeat_utc
-                < policy.progress_timeout_seconds)
-            deadline_active = (state.work_deadline_utc is not None
-                and event.observed_utc <= state.work_deadline_utc and heartbeat_fresh)
-            if (state.state in {SupervisorState.RECOVERING, SupervisorState.HEALTHY,
-                                SupervisorState.DEGRADED}
-                    and reference is not None
-                    and event.observed_utc-reference >= policy.progress_timeout_seconds
-                    and not deadline_active):
-                stopped = _updated(state, event, state=SupervisorState.STOPPING,
-                    generation=state.generation+1,
-                    desired_armed=False, stop_latched=True,
-                    stop_requested_utc=event.observed_utc,
-                    attention_reason=AttentionReason.PROGRESS_STALLED)
-                return SupervisorDecision(stopped,
-                    (SupervisorAction.REQUEST_GRACEFUL_STOP,))
+            expired = _expired_child_deadline(state, event, policy)
+            if expired is not None:
+                return expired
         if (state.state == SupervisorState.HEALTHY and not state.retry_holds
                 and state.healthy_since_utc is not None and state.last_progress_utc is not None
                 and event.observed_utc-state.healthy_since_utc
@@ -571,7 +582,9 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
                       else SupervisorState.DISARMED)
             return SupervisorDecision(replace(bare, state=target,
                 desired_armed=False, stop_latched=True, next_restart_utc=None,
-                stop_requested_utc=None))
+                stop_requested_utc=None,
+                attention_reason=state.attention_reason if target
+                    == SupervisorState.ATTENTION_REQUIRED else None))
         if _budget_exhausted(bare, policy, event.observed_utc):
             return _attention(bare, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
         return SupervisorDecision(replace(bare, state=SupervisorState.BACKOFF,
@@ -585,6 +598,9 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None):
             last_progress_utc=event.observed_utc))
 
     if event.kind == EventKind.CHILD_STATUS:
+        expired = _expired_child_deadline(state, event, policy)
+        if expired is not None:
+            return expired
         if event.progress_sequence < state.progress_sequence:
             return _attention(state, event, AttentionReason.INTEGRITY_FAILURE,
                               request_stop=True)

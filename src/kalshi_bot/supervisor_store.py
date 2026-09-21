@@ -1,6 +1,7 @@
 """Transactional local control journal for the execution-disabled S1 supervisor."""
 from contextlib import contextmanager
 import json
+import math
 from pathlib import Path
 import sqlite3
 import time
@@ -9,14 +10,23 @@ from .supervision import ControlState, SupervisorEvent, SupervisorPolicy, decide
 from .values import InvalidData, identity
 
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 MAX_EVENTS = 256
+CLOCK_SKEW_SECONDS = 2.0
+BOOT_BUCKET_SECONDS = 10.0
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE control (
   singleton INTEGER PRIMARY KEY CHECK(singleton=1),
   revision INTEGER NOT NULL,
   payload TEXT NOT NULL
+);
+CREATE TABLE clock_state (
+  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+  boot_id TEXT NOT NULL,
+  wall_utc REAL NOT NULL,
+  monotonic REAL NOT NULL,
+  control_utc REAL NOT NULL
 );
 CREATE TABLE events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +35,7 @@ CREATE TABLE events (
   kind TEXT NOT NULL,
   observed_utc REAL NOT NULL,
   control_utc REAL NOT NULL,
+  clock_trusted INTEGER NOT NULL CHECK(clock_trusted IN (0,1)),
   stale INTEGER NOT NULL CHECK(stale IN (0,1)),
   before_state TEXT NOT NULL,
   after_state TEXT NOT NULL,
@@ -49,6 +60,7 @@ class SupervisorStore:
     """One small SQLite database; never shares the financial ledger."""
     def __init__(self, path: Path | str, *, scope_id: str, clock=time.time,
                  monotonic_clock=time.monotonic,
+                 boot_id=None,
                  event_limit: int = MAX_EVENTS):
         self.path = Path(path) if str(path) != ":memory:" else Path(":memory:")
         self.scope_id = identity(scope_id)
@@ -57,9 +69,9 @@ class SupervisorStore:
         self.event_limit = event_limit
         self.clock = clock
         self.monotonic_clock = monotonic_clock
-        self._wall_anchor = float(clock())
-        self._monotonic_anchor = float(monotonic_clock())
-        initial_state(self.scope_id, self._wall_anchor)
+        if boot_id is not None and not callable(boot_id):
+            identity(boot_id)
+        self.boot_id = boot_id
         self.connection = sqlite3.connect(str(path), timeout=5)
         self.connection.row_factory = sqlite3.Row
         try:
@@ -71,27 +83,62 @@ class SupervisorStore:
     def _open(self):
         tables = {row[0] for row in self.connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        expected = {"meta", "control", "events"}
+        expected = {"meta", "control", "clock_state", "events"}
         if tables and tables != expected:
             raise InvalidData("incompatible supervisor control schema")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         if not tables:
-            now = self.control_utc()
-            state = initial_state(self.scope_id, now)
+            boot_id, wall_utc, monotonic = self._clock_sample()
+            state = initial_state(self.scope_id, wall_utc)
             with self.connection:
                 self.connection.executescript(SCHEMA)
                 self.connection.execute("INSERT INTO meta VALUES ('schema',?)", (SCHEMA_VERSION,))
                 self.connection.execute("INSERT INTO meta VALUES ('scope',?)", (self.scope_id,))
                 self.connection.execute("INSERT INTO control VALUES (1,0,?)", (_dump(state.to_dict()),))
+                self.connection.execute("INSERT INTO clock_state VALUES (1,?,?,?,?)",
+                    (boot_id, wall_utc, monotonic, wall_utc))
         meta = dict(self.connection.execute("SELECT key,value FROM meta"))
         if meta != {"schema": SCHEMA_VERSION, "scope": self.scope_id}:
             raise InvalidData("supervisor schema or scope mismatch")
         self.read()
+        self._read_clock()
 
-    def control_utc(self):
-        """UTC-shaped clock advanced only by the in-boot monotonic source."""
-        return self._wall_anchor + (float(self.monotonic_clock())-self._monotonic_anchor)
+    def _clock_sample(self):
+        wall_utc = float(self.clock())
+        monotonic = float(self.monotonic_clock())
+        if (not math.isfinite(wall_utc) or wall_utc < 0
+                or not math.isfinite(monotonic) or monotonic < 0):
+            raise InvalidData("invalid supervisor clock sample")
+        if self.boot_id is None:
+            boot_id = f"estimated-{math.floor((wall_utc-monotonic)/BOOT_BUCKET_SECONDS)}"
+        else:
+            boot_id = self.boot_id() if callable(self.boot_id) else self.boot_id
+        return identity(boot_id), wall_utc, monotonic
+
+    def _read_clock(self):
+        row = self.connection.execute(
+            "SELECT boot_id,wall_utc,monotonic,control_utc FROM clock_state "
+            "WHERE singleton=1").fetchone()
+        if row is None:
+            raise InvalidData("missing supervisor clock state")
+        boot_id = identity(row["boot_id"])
+        values = tuple(float(row[field]) for field in (
+            "wall_utc", "monotonic", "control_utc"))
+        if any(not math.isfinite(value) or value < 0 for value in values):
+            raise InvalidData("invalid supervisor clock state")
+        return (boot_id,)+values
+
+    def _control_sample(self, state):
+        prior_boot, prior_wall, prior_monotonic, prior_control = self._read_clock()
+        boot_id, wall_utc, monotonic = self._clock_sample()
+        monotonic_delta = monotonic-prior_monotonic
+        wall_delta = wall_utc-prior_wall
+        trusted = (boot_id == prior_boot and monotonic_delta >= 0
+            and abs(wall_delta-monotonic_delta) <= CLOCK_SKEW_SECONDS)
+        control_utc = (prior_control+monotonic_delta if trusted
+                       else max(prior_control, state.updated_utc))
+        return boot_id, wall_utc, monotonic, control_utc, trusted
 
     @contextmanager
     def transaction(self):
@@ -131,8 +178,10 @@ class SupervisorStore:
             raise InvalidData("typed supervisor event required")
         with self.transaction():
             revision, before = self._read_row()
-            control_utc = self.control_utc()
-            decision = decide(before, event, policy, control_utc=control_utc)
+            boot_id, wall_utc, monotonic, control_utc, clock_trusted = (
+                self._control_sample(before))
+            decision = decide(before, event, policy, control_utc=control_utc,
+                              clock_trusted=clock_trusted)
             after = decision.state
             new_revision = revision+1
             cursor = self.connection.execute(
@@ -141,10 +190,14 @@ class SupervisorStore:
             if cursor.rowcount != 1:
                 raise InvalidData("supervisor revision changed concurrently")
             self.connection.execute(
-                "INSERT INTO events(revision,generation,kind,observed_utc,control_utc,stale,"
-                "before_state,after_state,payload) VALUES (?,?,?,?,?,?,?,?,?)",
+                "UPDATE clock_state SET boot_id=?,wall_utc=?,monotonic=?,control_utc=? "
+                "WHERE singleton=1", (boot_id, wall_utc, monotonic, control_utc))
+            self.connection.execute(
+                "INSERT INTO events(revision,generation,kind,observed_utc,control_utc,"
+                "clock_trusted,stale,before_state,after_state,payload) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (new_revision, after.generation, event.kind.value, event.observed_utc,
-                 control_utc,
+                 control_utc, int(clock_trusted),
                  int(decision.stale), before.state.value, after.state.value,
                  _dump(event.to_dict())))
             self.connection.execute("DELETE FROM events WHERE sequence <= ("
@@ -155,7 +208,8 @@ class SupervisorStore:
         if type(limit) is not int or not 1 <= limit <= self.event_limit:
             raise InvalidData("invalid supervisor history limit")
         rows = self.connection.execute(
-            "SELECT sequence,revision,generation,kind,observed_utc,control_utc,stale,before_state,"
-            "after_state,payload FROM events ORDER BY sequence DESC LIMIT ?", (limit,)).fetchall()
+            "SELECT sequence,revision,generation,kind,observed_utc,control_utc,clock_trusted,"
+            "stale,before_state,after_state,payload FROM events "
+            "ORDER BY sequence DESC LIMIT ?", (limit,)).fetchall()
         return tuple(dict(row) | {"payload": _load(row["payload"], "event payload")}
                      for row in reversed(rows))

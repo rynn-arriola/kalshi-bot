@@ -1,5 +1,33 @@
 # Findings — kalshi-bot
 
+## 76. D-052 supervisor follow-ups are fixed offline — 2026-09-21
+
+VERIFIED OFFLINE under D-053: the five section 75 reproductions now pass.
+Repeated STOP advances generation even while already stopping; startup/progress
+expiry is checked against prior state before accepting status; failed-spawn
+release commits while preserving the existing attention reason; SQLite stores
+one transactional cross-instance clock checkpoint and holds on discontinuity;
+and child events without complete identity are stale. The control schema is now
+version 3 and deliberately refuses the undeployed S1 v2 database. Fifty-nine
+focused and exact 863 full tests pass (79.164 seconds), with 10/10 focused repeats,
+resource checks and disabled preflight. See
+[D-053 evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md). This is Sol
+evidence pending Astra re-review; no runtime or live action occurred.
+
+## 75. Supervisor sequence and clock gaps remain after D-052 — 2026-09-21
+
+VERIFIED OFFLINE at `7bf5241`: a second STOP does not fence an intervening
+prepared ARM; late status can erase startup/progress expiry and refund attempts
+after a 600-second observation gap; failed-spawn completion after startup
+timeout raises and rolls back; a new store anchor accepts a forward wall jump
+as elapsed cooldown; and identityless child results mutate childless state.
+See [D-052 Astra re-review](docs/REVIEW_D052_ASTRA.md) for exact probes and
+acceptance. All 46 focused and 850 full tests pass (79.093 seconds), but these
+additional sequences are missing. Original D-051 R4/R6/R7 are cleared in S1.
+This records the `7bf5241` review state and qualifies section 74's broader claims.
+D-053/section 76 now implements the fixes; Astra re-review, S2 and D-048 remain
+outstanding.
+
 ## 74. Supervisor review findings are fixed offline — 2026-09-21
 
 VERIFIED OFFLINE under D-052: R1-R7 from the

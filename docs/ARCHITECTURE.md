@@ -9,7 +9,10 @@ not built and require independent Astra review plus the separate D-048 gate.
 This does not establish account proof or authorize live operation.
 The [D-051 review](REVIEW_D051_ASTRA.md) required policy/contract and resource-
 verification fixes. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
-offline and now awaits independent Astra re-review before S2.
+offline. The [D-052 re-review](REVIEW_D052_ASTRA.md) clears original hold/crash/
+benchmark findings but requires five follow-ups before S2. D-053
+[implements those follow-ups](BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md)
+offline and awaits independent Astra re-review. S2 remains unbuilt and blocked.
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)

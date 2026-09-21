@@ -1,5 +1,24 @@
 # What exists
 
+## D-053 supervisor sequence and clock fixes — 2026-09-21
+
+D-053 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md)
+implements all five findings from the [D-052 Astra re-review](docs/REVIEW_D052_ASTRA.md).
+Repeated STOP commands fence prepared arms; expired startup/progress deadlines
+cannot be refreshed away; failed-spawn release retains attention; persisted
+clock continuity fails closed across stores/restarts; and identityless child
+events are stale. All 59 focused and exact 863 full tests pass, including 10/10
+focused repeats, resource checks and disabled preflight. This is offline Sol
+implementation evidence pending Astra re-review; S2 and D-048 remain gated.
+
+## D-052 supervisor re-review — changes required — 2026-09-21
+
+[Astra re-review](docs/REVIEW_D052_ASTRA.md) clears original D-051 R4/R6/R7
+within offline S1, but reproduces four P2 follow-ups and one P3 identity gap.
+All 46 focused and 850 full tests pass; additional failure-sequence probes show
+why S2 is not cleared. This records the review-time state at `7bf5241`; D-053
+above implements those findings and awaits Astra review. D-048 remains separate.
+
 ## Supervisor S1 review fixes — 2026-09-21
 
 D-052 [review-fix evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)

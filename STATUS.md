@@ -2,6 +2,32 @@
 
 ## Current update — 2026-09-21
 
+D-053 implements all five findings from the D-052
+[Astra re-review](docs/REVIEW_D052_ASTRA.md); see
+[build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md). Every STOP
+now advances the control generation; prior-state deadlines win over late status;
+failed-spawn release preserves attention; a transactional shared clock checkpoint
+detects wall/boot/monotonic discontinuity; and child events require complete
+identity. All 59 focused and exact 863 full tests pass (full: 79.164 seconds),
+including 10/10 focused repeats. The persisted-work benchmark and disabled
+preflight pass. **STOP for independent Astra re-review under D-049.** S2 and the
+separate D-048 review remain gated. No runtime, configuration or live action.
+
+### D-052 Astra re-review before D-053 fixes
+
+D-052 [independent Astra re-review](docs/REVIEW_D052_ASTRA.md) requires changes:
+four P2 findings in repeated-stop fencing, status/deadline ordering and health
+reset, failed-spawn finalization, and clock continuity across store instances;
+one P3 finding accepts child results without identity. All five reproduce
+offline despite 46 focused and 850 full tests passing (full: 79.093 seconds).
+Original D-051 R4/R6/R7 are cleared within S1; R1/R2/R3/R5 remain partly open.
+Disabled preflight stays exit 2 with no side effects. STOP for the operator's
+5.6 Sol switch and documented R1-R5 fixes under D-049. S2 and D-048 remain
+gated. This records the review-time state at `7bf5241`; D-053 above implements
+the requested fixes.
+
+### D-052 implementation evidence before re-review
+
 D-052 implements R1-R7 from the D-051
 [independent Astra review](docs/REVIEW_D051_ASTRA.md); see the
 [review-fix evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md). Trusted
