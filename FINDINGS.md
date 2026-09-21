@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 99. Write outcomes must re-signal after durable recording — 2026-09-21
+
+VERIFIED CODE/OFFLINE: recovery can consume an early outcome notification while
+the writer commit is awaited. Revoke and re-signal after retained persistence,
+including failure, to avoid losing the final recovery request. A regression
+fails when that post-persistence fence is bypassed in memory. HTTP 429 does not
+release durable authority or justify retry; only the original exchange shard
+is paused. One scalar notice contains no raw body/exception. See
+[tests, official source links and resource scope](docs/BUILD_MUTATION_OUTCOMES.md).
+These checks do not prove successful real-account reconciliation or live readiness.
+
 ## 98. One observed quota pair for separate read/write budgets — 2026-09-21
 
 VERIFIED CODE/OFFLINE: full write method/path costs now flow from the existing

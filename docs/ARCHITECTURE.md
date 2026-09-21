@@ -15,6 +15,9 @@ non-authorizing. [Source-bound inventory candidates](BUILD_DISPATCH_SOURCES.md)
 now connect actual owners to the injected path with final source/stop fences.
 The [write-quota source](BUILD_WRITE_QUOTA_SOURCE.md) consumes the shared guarded
 read pair, preserving full method costs and read-owner validity through dispatch.
+The [outcome owner](BUILD_MUTATION_OUTCOMES.md) binds 429 pauses to the original
+request shard and signals existing recovery at observation and after retained
+durable recording; uncertainty never releases authority or creates a retry loop.
 Verified production inputs, transport and supervised runtime integration
 remain unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.

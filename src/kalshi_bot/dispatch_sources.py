@@ -12,6 +12,7 @@ from .dispatch import DispatchCandidate, MutationDispatcher, SAFETY_CANCEL, DUE_
 from .execution import InjectedExecutor, encoded_request
 from .exits import ioc_payload
 from .management import ManagedPlan
+from .mutation_outcomes import MutationOutcomeOwner
 from .runtime import RecoveryRuntime
 from .values import InvalidData, utc
 
@@ -39,14 +40,27 @@ class InventoryDispatchSource:
         self._generation = 0
         self._stopped = False
 
-    def dispatcher(self, budget, *, invoke, clock_pair):
+    def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
         """Compose matching producer/executor callbacks; still injected only."""
-        executor = InjectedExecutor(self.runtime.writer, invoke=invoke,
+        outcomes = MutationOutcomeOwner(budget, invoke=invoke, clock_pair=clock_pair,
+            notify=self._mutation_observed, pause_seconds=pause_seconds, offline_fixture=True)
+        executor = InjectedExecutor(self.runtime.writer, invoke=outcomes,
             validate_proof=self.validate_proof, offline_fixture=True,
-            now=self.runtime.now, diagnostics=self.runtime.diagnostics)
+            now=self.runtime.now, diagnostics=self.runtime.diagnostics,
+            after_outcome=self._mutation_observed)
         return MutationDispatcher(self.runtime.writer, executor, budget,
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
             offline_fixture=True)
+
+    def _mutation_observed(self, notice=None):
+        self._proof = None
+        self._generation += 1
+        self.runtime._revoke()
+        self.runtime.request_recovery()  # Existing coalesced owner; no task/read here.
+        if notice is not None and notice.http_status is not None:
+            self.runtime.diagnostics.emit('mutation_failed', http_status=notice.http_status,
+                market=notice.ticker, order=notice.subject_id)
+            self.runtime.diagnostics.ensure_healthy()
 
     def stop(self):
         self._stopped = True

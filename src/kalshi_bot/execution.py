@@ -494,12 +494,17 @@ class AttemptResult:
 
 class InjectedExecutor:
     def __init__(self, writer, *, invoke, validate_proof, offline_fixture: bool,
-                 now=lambda: datetime.now(timezone.utc), timeout=10, diagnostics=NO_LOG):
+                 now=lambda: datetime.now(timezone.utc), timeout=10, diagnostics=NO_LOG,
+                 after_outcome=None):
         self.diagnostics = diagnostics
         if offline_fixture is not True:
             raise InvalidData('live order transport is unavailable')
         if not callable(invoke) or not callable(validate_proof) or not 0 < timeout <= 30:
             raise InvalidData('bounded injected mutation dependencies required')
+        if after_outcome is not None and (not callable(after_outcome)
+                                         or inspect.iscoroutinefunction(after_outcome)):
+            raise InvalidData('synchronous outcome notification required')
+        self.after_outcome = after_outcome
         self.writer, self.invoke, self.validate_proof, self.now = writer, invoke, validate_proof, now
         self.timeout = timeout
         self.lock = asyncio.Lock()
@@ -512,12 +517,33 @@ class InjectedExecutor:
         cancelled = False
         while not task.done():
             try:
-                await asyncio.shield(task)
+                await asyncio.wait((task,))
             except asyncio.CancelledError:
                 cancelled = True
         return task.result(), cancelled
 
     async def execute_prepared(self, receipt, *, before_invoke=None):
+        completed = False
+        try:
+            result = await self._execute_prepared(receipt, before_invoke=before_invoke)
+            completed = True
+            return result
+        finally:
+            # Recovery may consume an ingress notification while persistence is
+            # awaited. Revoke/re-signal AFTER retained outcome recording too,
+            # including UNKNOWN or a failed writer; never release authority.
+            if self.after_outcome is not None and (completed or self.failed or self.writer.failed):
+                try:
+                    notification = self.after_outcome()
+                    if inspect.isawaitable(notification):
+                        if inspect.iscoroutine(notification):
+                            notification.close()
+                        raise InvalidData('outcome notification must not await')
+                except BaseException:
+                    self.failed = True
+                    raise
+
+    async def _execute_prepared(self, receipt, *, before_invoke=None):
         self.diagnostics.ensure_healthy()
         if before_invoke is not None and (not callable(before_invoke)
                                          or inspect.iscoroutinefunction(before_invoke)):

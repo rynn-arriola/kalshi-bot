@@ -285,7 +285,7 @@ class MutationDispatcher:
         try:
             while not task.done():
                 try:
-                    await asyncio.shield(task)
+                    await asyncio.wait((task,))
                 except asyncio.CancelledError:
                     cancelled = True
             result = task.result()
@@ -309,7 +309,7 @@ class MutationDispatcher:
         cancelled = False
         while not task.done():
             try:
-                await asyncio.shield(task)
+                await asyncio.wait((task,))
             except asyncio.CancelledError:
                 cancelled = True
         task.result()

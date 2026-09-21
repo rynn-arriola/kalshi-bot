@@ -299,6 +299,8 @@ class ObservedDispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.clock.t += 1
         self.fixture.dispatcher.budget = self.source.budget
         self.fixture.dispatcher.clock_pair = self.source.clock_pair
+        self.fixture.dispatcher.executor.invoke.budget = self.source.budget
+        self.fixture.dispatcher.executor.invoke.clock_pair = self.source.clock_pair
         await self.fixture.ready()
 
     async def asyncTearDown(self):
@@ -310,6 +312,26 @@ class ObservedDispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.state, 'ACK')
         self.assertEqual(len(self.fixture.calls), 1)
         self.assertFalse(result.live_ready)
+
+    async def test_late_429_after_new_pair_pauses_shared_owner_without_more_reads(self):
+        from kalshi_bot.mutation_outcomes import MutationHTTPFailure
+        budget = self.source.budget
+        async def failure(*args):
+            await self.reads.refresh_budget()
+            raise MutationHTTPFailure(429)
+        self.fixture.dispatcher.executor.invoke.invoke = failure
+        with self.assertRaises(MutationHTTPFailure):
+            await self.fixture.run_priority()
+        self.assertIs(self.source.budget, budget)
+        self.assertGreater(budget.status(now=self.source.clock_pair()).buckets[0][-1], 0)
+        self.assertEqual((await self.fixture.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertTrue(self.fixture.runtime.recovery_requested.is_set())
+
+    async def test_429_pause_ignores_future_caller_time(self):
+        budget = self.source.budget
+        mono, wall = self.source.clock_pair()
+        budget.pause_429(shard=0, seconds=1, now=(mono+100, wall+100))
+        self.assertEqual(budget.status(now=self.source.clock_pair()).buckets[0][-1], 1)
 
     async def test_owner_expiry_during_sending_never_invokes_transport(self):
         original = self.fixture.writer.begin_send

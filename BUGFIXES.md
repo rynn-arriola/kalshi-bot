@@ -10,6 +10,24 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Write outcomes: recovery timing and retained cancellation errors
+
+**Integration gap.** Transport completion alone was not wired to owned recovery;
+an ingress-only signal could also be consumed before outcome commit.
+**Fix.** Revoke source proof and coalesce recovery at observation and again after
+retained recording. Preserve UNKNOWN/SENDING holds and never infer a safe retry.
+**Verification.** Synthetic early event consumption fails if the final signal is
+bypassed; ACK/UNKNOWN, writer failure and pre-invoke proof loss are covered.
+
+**Reproduced defect.** On this Python 3.14 installation, cancelling a shielded
+dispatcher wait and later receiving a failure prints the retained exception via
+the default event-loop handler, outside structured diagnostics. **Fix.** Wait on
+the owned task without propagating consumer cancellation, then explicitly consume
+its result; use this in dispatcher run/close and executor persistence retention.
+**Verification.** The cancellation/429 regression detects the leak when the old
+shield wait is restored in memory; no source file was weakened for the check.
+See [build record](docs/BUILD_MUTATION_OUTCOMES.md). No production incident claimed.
+
 ### Write-quota source: retain the full pair and owner fence
 
 **Integration gap.** The existing quota candidate's document projection is

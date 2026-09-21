@@ -1,5 +1,14 @@
 # What exists
 
+## Owned write outcomes — 2026-09-21
+
+[Build/verification](docs/BUILD_MUTATION_OUTCOMES.md): `mutation_outcomes.py`
+classifies injected HTTP status/uncertainty, pauses the original shard in the
+shared budget and retains one scalar notice. Source composition revokes proof
+and requests existing recovery; the executor repeats notification after durable
+recording or failure. No transport, retry loop or new recovery worker. Disposable
+ledger regressions and bounded 30/120-shard overhead checks cover this component.
+
 ## Shared write-quota source — 2026-09-21
 
 [Build/verification](docs/BUILD_WRITE_QUOTA_SOURCE.md): `write_quota_source.py`

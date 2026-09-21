@@ -25,6 +25,11 @@ class _ObservedWriteBudget(WriteBudget):
     def _install(self, snapshot, now):
         super().refresh(snapshot, now=now)
 
+    def pause_429(self, *, shard, seconds, now):
+        # A late failure still pauses the current bucket, even if its quota
+        # document expired. Like refill, time comes from the sole read owner.
+        super().pause_429(shard=shard, seconds=seconds, now=self._source.clock_pair())
+
 
 class WriteQuotaSource:
     """One opt-in offline budget per unused guarded RestReads owner.

@@ -1,5 +1,22 @@
 # Current status
 
+## Priority 4 owned write outcomes — 2026-09-21
+
+The [outcome/recovery handoff](docs/BUILD_MUTATION_OUTCOMES.md) now pauses the
+original write shard on an injected HTTP 429, revokes stale account/plan proof
+and signals the existing recovery owner before and after durable recording.
+Failed writes retain UNKNOWN/capacity holds; no automatic retry or resume.
+Cancel ACK is still not terminal evidence. Cancellation waits preserve ownership
+without leaking worker exceptions through Python's default loop logger.
+
+This is the bounded offline outcome-handling milestone, not completion of
+priority 4 or trading readiness. Full suite: 1,156 run, 1,155 passed, one expected
+Windows privilege skip; focused and both resource scopes passed. Details are
+recorded in the build record.
+Next: supervised dispatcher lifecycle/end-to-end shutdown; then ranking/admission
+and final runtime readiness. Real quota/fee inputs and launch approval remain
+required. No account calls, credentials, bot operation or live orders.
+
 ## Priority 4 shared write-quota ingestion — 2026-09-21
 
 The [write-quota source](docs/BUILD_WRITE_QUOTA_SOURCE.md) now consumes the

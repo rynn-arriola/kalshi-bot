@@ -1,7 +1,9 @@
 # Active work queue
 
-Next implementation: priority 4's owned write-429/outcome recovery, then
-supervised dispatch lifecycle. [Shared write-quota ingestion](docs/BUILD_WRITE_QUOTA_SOURCE.md)
+Next implementation: priority 4's supervised dispatch lifecycle and end-to-end
+shutdown/recovery verification. [Owned write outcomes](docs/BUILD_MUTATION_OUTCOMES.md)
+now route 429 pauses and recovery notifications without automatic retries;
+do not rebuild them. [Shared write-quota ingestion](docs/BUILD_WRITE_QUOTA_SOURCE.md)
 is implemented offline using the existing read pair; do not create another
 quota poller. Actual account quota/probe configuration and verified member fee
 profile remain readiness inputs, not facts proved by fixtures. The
@@ -52,8 +54,10 @@ synthetic 30/120-shard resource target. The
 [source-bound offline candidates](docs/BUILD_DISPATCH_SOURCES.md) to durable
 writer receipts and the sole injected executor. The
 [write-quota source](docs/BUILD_WRITE_QUOTA_SOURCE.md) now joins the existing
-guarded document refresh to that budget. Next: owned 429/outcome handling, supervised
-runtime shutdown and end-to-end fail-closed verification. The injected path now
+guarded document refresh to that budget. The
+[outcome owner](docs/BUILD_MUTATION_OUTCOMES.md) preserves UNKNOWN holds and
+signals recovery after persistence. Next: supervised runtime shutdown and
+end-to-end fail-closed verification. The injected path now
 rechecks its write permit at the synchronous send edge; this is not production
 transport clearance.
 No venue transport or live

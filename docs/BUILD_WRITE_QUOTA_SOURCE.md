@@ -88,5 +88,7 @@ nine changed Markdown files and whitespace checks passed. D-065 publication
 requires scoped staged/secret review, commit, push and remote parity; it does
 not deploy or restart a bot.
 
-Owned mutation-429 classification/recovery, restart persistence, fee-profile
-verification and supervised trading-runtime composition remain queued.
+Follow-up: [owned mutation outcomes](BUILD_MUTATION_OUTCOMES.md) now connect
+429 pauses and recovery requests while retaining durable UNKNOWN. Process-local
+cooldowns, explicit resumption policy, fee-profile verification and supervised
+trading-runtime composition remain separate readiness work.
