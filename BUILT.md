@@ -1,5 +1,15 @@
 # What exists
 
+## D-066 offline settlement pause assessment — 2026-09-21
+
+The opening-account assessor now marks any scoped settlement retained after
+the proposed boundary as requiring reconciliation. This conservative finding
+does not prove bot ownership, compute settlement P&L, mutate the risk meter,
+persist a hold, or enable entries. D-066's durable runtime pause remains to be
+built after the opening checkpoint and event handoff contract. The 25 focused
+opening tests, 1,024-test suite (one expected skip), opening benchmark and
+disabled preflight pass.
+
 ## Offline opening-account assessment — 2026-09-21
 
 The bounded pure `assess_opening_accounting` helper checks evidence/report

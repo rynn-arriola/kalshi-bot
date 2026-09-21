@@ -243,6 +243,7 @@ class OpeningAccountingAssessment:
     cash_snapshot_agrees: bool
     settlement_rows: int
     cash_activity_rows: int
+    observed_settlement_reconciliation_required: bool
     blockers: tuple[str, ...]
     approved: bool = False
     ready_for_entry: bool = False
@@ -257,6 +258,9 @@ class OpeningAccountingAssessment:
             raise InvalidData('boolean opening diagnostics required')
         integer(self.settlement_rows, 0, 10000)
         integer(self.cash_activity_rows, 0, 40000)
+        if (type(self.observed_settlement_reconciliation_required) is not bool
+                or self.observed_settlement_reconciliation_required != (self.settlement_rows > 0)):
+            raise InvalidData('settlement reconciliation marker must match evidence')
         if (type(self.blockers) is not tuple or not self.blockers
                 or self.approved or self.ready_for_entry):
             raise InvalidData('opening assessment cannot grant authority')
@@ -295,11 +299,17 @@ def assess_opening_accounting(evidence: OpeningAccountEvidence, report):
         blockers.append('local_flat_candidate_unproven')
     if not cash_agrees:
         blockers.append('cash_changed_since_account_snapshot')
+    # D-066: this is a conservative observation, not bot-ownership proof.
+    # The proposed boundary is unapproved and the result cannot clear a hold.
+    needs_settlement_reconciliation = bool(evidence.settlements)
+    if needs_settlement_reconciliation:
+        blockers.append('observed_settlement_requires_reconciliation')
     return OpeningAccountingAssessment(evidence.subaccount,
         evidence.proposed_boundary, evidence.writer_epoch,
         evidence.writer_revision, flat, cash_agrees, len(evidence.settlements),
         len(evidence.subaccount_transfers) + len(evidence.intra_exchange_transfers)
-        + len(evidence.funding), tuple(dict.fromkeys(blockers)))
+        + len(evidence.funding), needs_settlement_reconciliation,
+        tuple(dict.fromkeys(blockers)))
 
 
 def parse_cash(document, *, subaccount):

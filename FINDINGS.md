@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 93. D-066 settlement pause rule is accepted, not runtime-integrated — 2026-09-21
+
+OPERATOR POLICY: unexpected settlement of a bot-owned open position pauses
+new entries pending reconciliation; it does not automatically enter the
+six-hour matched-fill loss meter. VERIFIED OFFLINE: the opening-account
+assessment flags a retained settlement after its proposed boundary, keeps
+prior-boundary rows historical, and does not mutate the risk window. This
+is not bot-ownership proof or a durable runtime hold. Kalshi's documented
+settlement history is REST and has no shared private-stream replay barrier or
+stable correction ID in its published row schema; [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
+records the remaining gate.
+The focused 25 tests and 1,024-test full suite pass (one expected Windows
+privilege skip); the opening benchmark and disabled preflight pass their
+offline gates.
+
 ## 92. Opening-account assessment remains local evidence — 2026-09-21
 
 VERIFIED OFFLINE: a revision/scope-matched flat account snapshot can be

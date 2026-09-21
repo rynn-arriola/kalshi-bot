@@ -993,6 +993,26 @@ them accepted without an explicit operator instruction.
   overwriting. If checks or publication fail, report the state and retain work.
   Publication is not bot deployment, account access or live-trading authority.
 
+### D-066 — Pause new entries for unexpected bot-owned settlement
+
+- **Status:** ACCEPTED offline policy, 2026-09-21; not live-integrated.
+- **Decision owner:** Operator: “Ok do recommended,” after the recommendation
+  to pause new Kalshi entries when a bot-owned open position unexpectedly
+  reaches settlement, and reconcile before treating its payout as six-hour
+  loss-meter P&L.
+- **Decision:** Such a settlement requires a new-entry pause and operator
+  reconciliation. Do not synthesize a closing fill, infer basis from venue
+  aggregate costs, or automatically add settlement revenue/fees to the D-024
+  six-hour matched-fill meter. Preserve the observed position, settlement and
+  cash evidence; keep unrelated exit/cancel safety actions available under
+  their separate rules. No automatic release merely because the account later
+  appears flat or a new six-hour window begins.
+- **Boundary:** Existing pre-bot settlements remain historical evidence, not
+  proof of a bot-owned event. The precise approved opening boundary, durable
+  settlement journal/hold and reconciliation-release protocol are separate
+  build gates. This decision does not authorize account calls, schema migration,
+  live entry/order actions, deployment or restart.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

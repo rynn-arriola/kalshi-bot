@@ -1,5 +1,12 @@
 # Active work queue
 
+D-066 resolves the unexpected bot-owned settlement rule: pause new entries
+until operator reconciliation; do not auto-count settlement P&L. The offline
+assessment now flags observed settlements, but cannot install a runtime hold.
+Next priority-3 gate is the durable opening checkpoint and settlement-event
+handoff/hold design, including how a reviewed hold can be released. Do not
+assume a settlement correction ID or treat a proposed boundary as approved.
+
 Priority-3 update: the non-authorizing local opening-account assessor is built
 and tested. Next, settle how unexpected bot-owned settlement affects the
 six-hour loss meter; prove a correction/reversal contract and exact historical

@@ -110,6 +110,7 @@ class OpeningEvidenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(assessment.local_flat_candidate)
         self.assertTrue(assessment.cash_snapshot_agrees)
         self.assertEqual((assessment.settlement_rows, assessment.cash_activity_rows), (0, 0))
+        self.assertFalse(assessment.observed_settlement_reconciliation_required)
         self.assertFalse(assessment.approved or assessment.ready_for_entry)
         self.assertIn('venue_history_stream_handoff_unproven', assessment.blockers)
         self.assertIn('operator_boundary_not_approved', assessment.blockers)
@@ -142,9 +143,29 @@ class OpeningEvidenceTests(unittest.IsolatedAsyncioTestCase):
         result = assess_opening_accounting(evidence, self.report)
         self.assertFalse(result.cash_snapshot_agrees)
         self.assertEqual(result.settlement_rows, 1)
+        self.assertTrue(result.observed_settlement_reconciliation_required)
         self.assertIn('cash_changed_since_account_snapshot', result.blockers)
         self.assertIn('settlement_history_requires_ledger_contract', result.blockers)
+        self.assertIn('observed_settlement_requires_reconciliation', result.blockers)
         self.assertFalse(result.ready_for_entry)
+
+    async def test_old_settlement_is_historical_not_new_settlement_pause(self):
+        old = settlement(settled_time='2026-09-21T10:00:00Z')
+        result = assess_opening_accounting(self.build(
+            settlements=self.pages((old,), 'settlements')), self.report)
+        self.assertEqual(result.settlement_rows, 0)
+        self.assertFalse(result.observed_settlement_reconciliation_required)
+        self.assertFalse(result.ready_for_entry)
+        self.assertIn('operator_boundary_not_approved', result.blockers)
+
+    async def test_settlement_does_not_change_six_hour_matched_fill_meter(self):
+        evidence = self.build(settlements=self.pages((settlement(),), 'settlements'))
+        before = await self.writer.observe(NOW)
+        result = assess_opening_accounting(evidence, self.report)
+        after = await self.writer.observe(NOW)
+        self.assertTrue(result.observed_settlement_reconciliation_required)
+        self.assertEqual(after.realized_pnl, before.realized_pnl)
+        self.assertEqual(after.cap, before.cap)
 
     async def test_accounting_assessment_requires_same_audit_and_revision(self):
         evidence = self.build()

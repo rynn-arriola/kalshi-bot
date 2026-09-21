@@ -1,5 +1,19 @@
 # Current status
 
+## D-066 settlement safety policy — 2026-09-21
+
+The operator approved pausing new entries for unexpected settlement of a
+bot-owned open position pending reconciliation. The offline opening assessment
+now explicitly marks observed settlements after its proposed boundary for
+reconciliation; it assigns no settlement P&L and never releases a hold. This is
+not a durable runtime pause or proof of bot ownership. Fresh opening checkpoint,
+event handoff and durable hold/release integration remain unbuilt. Live trading
+stays disabled. Focused opening tests pass 25/25. The full suite ran 1,024
+tests: 1,023 passed and one expected Windows privilege skip. The 128/4,096/
+50,000-row opening benchmark passed all declared bounds. Native preflight
+exited 2 with `live_ready=false` and reported no file creation, credential
+access or network access.
+
 ## Priority-3 opening accounting update — 2026-09-21
 
 The first offline accounting slice is a pure, non-authorizing assessment of
