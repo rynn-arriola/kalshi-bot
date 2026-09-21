@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-20 — development components, no live account use
 
+### Repeated cancellation and buffered-drain failure
+
+**Mechanisms.** A second cancellation interrupted connection teardown after its
+reader had been shielded, leaving the reader alive, tail evidence queued, an
+open marker and stale runtime liveness. One malformed/staging failure also
+aborted the queue drain, and shutdown discarded that child error. **Fix under
+D-047.** A retained cleanup task owns all joins/finalization through repeated
+cancellation. Per-item draining records failures, continues preserving later
+valid fills and returns a safe cleanup failure after marker/gap reconciliation.
+Already observed runtime faults retain their original exception. **Verification.**
+Three regressions, 199 focused tests, 801 full tests, resource checks and disabled
+preflight pass. See `docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md`. No live use.
+
 ### Private-reader shutdown and epoch-open ownership
 
 **Mechanisms.** Stop could cancel a reader after it dequeued a fill but before

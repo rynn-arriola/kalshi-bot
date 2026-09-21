@@ -1,5 +1,23 @@
 # What exists
 
+## Continuity shutdown ownership fixes — 2026-09-20
+
+D-047 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md)
+addresses both D-046 re-review findings. Repeated cancellation retains cleanup
+ownership through reader join and marker finalization. Per-item draining records
+errors, preserves later valid fills and surfaces shutdown failure. All 199
+focused and 801 full tests pass with resource/preflight checks. Independent
+Astra re-review is next; all live/venue-handoff gates remain false.
+
+## D-046 re-review — shutdown changes required — 2026-09-20
+
+[Astra re-review](docs/REVIEW_D046_ASTRA.md) clears original R2-R5 and verifies
+the immediate-stop fix. Two P2 cases remain: a second cancellation can leave
+the shielded account reader alive, and malformed buffered input can abort the
+drain with later valid fills unretained and the shutdown error swallowed. All
+196 focused tests pass; additional probes expose these gaps. Source/tests were
+not changed in review. Next role is Sol fixes after the operator switch.
+
 ## Continuity Phase 1 review fixes — 2026-09-20
 
 D-046 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md)

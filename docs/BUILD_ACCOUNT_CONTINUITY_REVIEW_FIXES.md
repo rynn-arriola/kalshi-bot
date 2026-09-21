@@ -1,5 +1,13 @@
 # D-046 — Account continuity review fixes
 
+Independent review update: [D-046 re-review](REVIEW_D046_ASTRA.md) clears original
+R2-R5 and verifies immediate-stop delivery, but requires repeated-cancellation
+ownership and malformed-buffer drain/error handling fixes. The evidence below
+records the implementation run; its broad shutdown claims are qualified by
+those reproduced cases. D-047 subsequently implemented the
+[shutdown ownership fixes](BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md), pending
+Astra re-review.
+
 Date: September 20, 2026. Native Windows; execution disabled. Implements the
 five findings in [the D-045 Astra review](REVIEW_D045_ASTRA.md) after the
 operator switched to 5.6 Sol and said "Ok fix it." No real Kalshi account,

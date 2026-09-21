@@ -700,6 +700,20 @@ them accepted without an explicit operator instruction.
   approved baseline, risk/policy change, real account/credential call, order
   action, deployment or live activation. Return to Astra re-review under D-037.
 
+### D-047 — Fix D-046 re-review shutdown findings
+
+- **Status:** ACCEPTED fix scope, 2026-09-20.
+- **Decision owner:** Operator: "Ok do it" after receiving the D-046 Astra
+  re-review and switching back to the implementation model.
+- **Scope:** Implement both P2 findings from `docs/REVIEW_D046_ASTRA.md`: retain
+  reader/marker cleanup through repeated caller cancellation, continue bounded
+  queue draining after malformed/staging failures, preserve valid tail fills,
+  and surface cleanup failures. Add regressions and rerun focused/full/resource
+  and disabled-preflight verification.
+- **Boundary:** Preserve the evidence-only architecture and previously cleared
+  fixes. No Phase 2/3, baseline, policy/risk change, account/credential call,
+  order action, deployment or live activation. Return to Astra re-review.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

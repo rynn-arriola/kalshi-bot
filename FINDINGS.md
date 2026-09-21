@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 67. Repeated-cancel and drain-error ownership fixed offline — 2026-09-20
+
+VERIFIED OFFLINE under D-047: one retained runtime shutdown owner survives
+repeated caller cancellation, joins the account reader, preserves queued fills,
+finalizes the epoch/gap and publishes false liveness before returning. Buffered
+malformed or staging failures are recorded per item while later valid fills are
+still staged; cleanup failure reaches the caller after reconciliation. Three
+regressions pass, along with 199 focused and all 801 tests. Continuity/history
+resource checks and disabled preflight pass. See
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md). These local
+results do not prove venue continuity or authorize trading. No live use.
+
+## 66. D-046 shutdown still loses ownership on repeated cancel/drain error — 2026-09-20
+
+VERIFIED OFFLINE at `1753a23`: a second cancellation during the in-flight wait
+finishes the runtime task with its account reader still alive, one tail fill
+queued and an open marker. A separate orderly-stop probe with malformed then
+valid buffered fills returns successfully after the malformed input aborts the
+drain, leaving the valid tail unstored. See
+[D-046 R1/R2 reproduction and handoff](docs/REVIEW_D046_ASTRA.md). These qualify
+section 65's broad shutdown claims. Original epoch-open/status/test/measurement
+fixes check out; 196 focused tests, 10 retention repetitions, the corrected
+benchmark and disabled preflight pass. No implementation changes or live use.
+
 ## 65. Reviewed continuity races are fixed offline — 2026-09-20
 
 VERIFIED OFFLINE under D-046: controlled reader teardown retains queued fills,

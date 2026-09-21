@@ -94,6 +94,7 @@ class RecoveryRuntime:
         self.used = False
         self.running = False
         self._run_cancelled = False
+        self._shutdown_task = None
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -371,6 +372,7 @@ class RecoveryRuntime:
             acknowledged = set()
             ready = asyncio.Event()
             reader_error = False
+            drain_error = None
             delivery_inflight = 0
             delivery_failed = False
             delivery_idle = asyncio.Event()
@@ -475,15 +477,28 @@ class RecoveryRuntime:
                             except asyncio.QueueEmpty:
                                 break
                             delivery_failed = True
-                            event = item
-                            if isinstance(item, tuple) and len(item) == 3:
-                                _, event, wire_bytes = item
-                                if hasattr(reader_owner, 'queued_bytes'):
-                                    reader_owner.queued_bytes = max(0,
-                                        reader_owner.queued_bytes-wire_bytes)
-                            if isinstance(event, dict) and event.get('type') == 'fill':
-                                await self._stage(event)
-                                self._epoch_fills += 1
+                            try:
+                                event = item
+                                if isinstance(item, tuple):
+                                    if len(item) != 3:
+                                        raise InvalidData('invalid buffered reader item')
+                                    queued_name, event, wire_bytes = item
+                                    if (queued_name != spec.name or type(wire_bytes) is not int
+                                            or wire_bytes < 0):
+                                        raise InvalidData('invalid buffered reader provenance')
+                                    if hasattr(reader_owner, 'queued_bytes'):
+                                        reader_owner.queued_bytes = max(0,
+                                            reader_owner.queued_bytes-wire_bytes)
+                                if isinstance(event, BaseException):
+                                    raise InvalidData('buffered reader failure')
+                                if not isinstance(event, dict):
+                                    raise InvalidData('invalid buffered private event')
+                                if event.get('type') == 'fill':
+                                    await self._stage(event)
+                                    self._epoch_fills += 1
+                            except Exception as exc:
+                                if drain_error is None:
+                                    drain_error = exc
                 if (spec.name == "account" and self._epoch is not None
                         and self._epoch.generation == generation and self._epoch.closed_at is None):
                     local_queue = getattr(reader_owner, 'queue', None)
@@ -512,6 +527,10 @@ class RecoveryRuntime:
                         self._persisted_epoch_gaps = await self.writer.private_epoch_gap_count(
                             subaccount=self.account.subaccount)
                     self._refresh_continuity()
+                if drain_error is not None:
+                    self.diagnostics.emit('reader_failed', error=drain_error,
+                        stream=spec.name, generation=generation, attempt=attempt+1)
+                    raise InvalidData('account reader drain failed; reconciliation required') from None
             if attempt+1 < self.attempt_limit and not self.writer.failed and not self.engine.failed:
                 await self.sleep(min(30, 2**attempt)*self.jitter())
         self.reader_states[spec.name] = "retry_exhausted"
@@ -667,11 +686,40 @@ class RecoveryRuntime:
             self.metadata_scheduler.stop()
         self._revoke()
 
+    async def _shutdown(self, tasks):
+        """One retained cleanup owner; child failures cannot disappear in gather."""
+        failures = []
+        try:
+            self.stop()
+            for task in tasks:
+                task.cancel()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            failures.extend(result for result in results
+                if isinstance(result, BaseException)
+                and not isinstance(result, asyncio.CancelledError))
+            if self.metadata_scheduler is not None:
+                try:
+                    await self.metadata_scheduler.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            if self.quota_supervisor is not None:
+                try:
+                    await self.quota_supervisor.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            if failures:
+                self.diagnostics.emit('runtime_failed', error=failures[0])
+                raise InvalidData('runtime cleanup failed; reconciliation required') from None
+        finally:
+            self.running = False
+            self.diagnostics.emit('runtime_stopped')
+
     async def run(self):
         if self.used:
             raise InvalidData("runtime cannot be reused")
         self.used, self.running = True, True
         tasks = []
+        primary_error = None
         try:
             await self._load_continuity_history()
             self.diagnostics.ensure_healthy()
@@ -691,8 +739,11 @@ class RecoveryRuntime:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
                     if task is not stop:
-                        task.result()
                         tasks.remove(task)
+                        # Once observed here, its result belongs to the main run
+                        # path. Remove it before propagating so retained cleanup
+                        # does not count and mask the same failure a second time.
+                        task.result()
                     if task is stop or self.engine.failed or self.writer.failed:
                         self.stop_requested.set()
                 if self.stop_requested.is_set():
@@ -702,19 +753,34 @@ class RecoveryRuntime:
             self.diagnostics.emit('runtime_cancelled')
             raise
         except Exception as exc:
+            primary_error = exc
             self.diagnostics.emit('runtime_failed', error=exc)
             raise
         finally:
-            self.stop()
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            if self.metadata_scheduler is not None:
-                await self.metadata_scheduler.close()
-            if self.quota_supervisor is not None:
-                await self.quota_supervisor.close()
-            self.running = False
-            self.diagnostics.emit('runtime_stopped')
+            if self._shutdown_task is None:
+                self._shutdown_task = asyncio.create_task(
+                    self._shutdown(tuple(tasks)), name='kalshi-runtime-shutdown')
+            cancelled_during_cleanup = False
+            while not self._shutdown_task.done():
+                try:
+                    await asyncio.shield(self._shutdown_task)
+                except asyncio.CancelledError:
+                    # Caller cancellation must not abandon readers, durable fill
+                    # retention or marker finalization. Publish cancellation only
+                    # after the retained cleanup owner has finished.
+                    self._run_cancelled = True
+                    cancelled_during_cleanup = True
+                except BaseException:
+                    if primary_error is None:
+                        raise
+                    break
+            try:
+                self._shutdown_task.result()
+            except BaseException:
+                if primary_error is None:
+                    raise
+            if cancelled_during_cleanup:
+                raise asyncio.CancelledError
 
     async def _diagnostic_health(self):
         while not self.stop_requested.is_set():

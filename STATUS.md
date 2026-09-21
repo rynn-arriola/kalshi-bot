@@ -2,6 +2,32 @@
 
 ## Current update — 2026-09-20
 
+D-047 Sol implemented both P2 fixes from the D-046
+[Astra re-review](docs/REVIEW_D046_ASTRA.md); see
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md). Repeated
+caller cancellation cannot abandon the retained cleanup owner, account reader,
+queued tail fill or marker. Malformed/staging failures no longer stop the bounded
+drain before later valid fills and now make runtime shutdown fail visibly after
+marker/gap reconciliation. All 199 focused and exact 801 full tests pass;
+continuity/history resource checks and native disabled preflight pass. STOP for
+Astra re-review under D-037. Venue handoff and starting basis remain unproven;
+Phase 2/3 and trading remain unauthorized.
+
+### D-046 re-review before shutdown fixes
+
+D-046 [Astra re-review](docs/REVIEW_D046_ASTRA.md) clears original D-045 R2-R5
+and verifies the immediate-stop fix, but leaves two P2 shutdown findings:
+repeated cancellation can abandon the shielded reader; a malformed buffered
+fill can abort draining before a valid tail fill, with the error swallowed by
+shutdown. Both were reproduced offline. All 196 focused tests pass; actual
+handshake-timeout and production-consumer queue probes verify the original
+fixes, and the corrected benchmark/preflight pass. The 798-test full-suite
+result below is Sol's evidence, not a rerun in this review. Only review/handoff
+documents changed. STOP for the operator's Sol switch and fixes. Trading remains
+disabled; Phase 1 shutdown delivery is not yet cleared.
+
+### D-046 implementation evidence before re-review
+
 D-046 Sol implemented all R1-R5 fixes from the D-045 independent
 [Astra review](docs/REVIEW_D045_ASTRA.md); see
 [build evidence](docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md). Real queued and

@@ -3,7 +3,9 @@
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
 whose [review findings](REVIEW_D045_ASTRA.md) are addressed by the D-046
-[review fixes](BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md), pending Astra re-review.
+[review fixes](BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md).
+[D-046 re-review](REVIEW_D046_ASTRA.md) identified two shutdown findings,
+addressed by [D-047](BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md) pending re-review.
 It does not establish a venue history/stream
 barrier, opening inventory or live-entry authority.
 

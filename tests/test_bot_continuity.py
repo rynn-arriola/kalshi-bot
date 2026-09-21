@@ -319,6 +319,107 @@ class ReaderEpochTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(epoch.terminal_reason, 'undrained')
         self.assertEqual(len(await self.writer.pending_fills(0)), 1)
 
+    async def test_second_cancellation_cannot_abandon_reader_or_tail_fill(self):
+        await self.launch()
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        committed = asyncio.Event()
+        original = self.writer.stage_fill
+        first = True
+        async def delay_first(*args, **kwargs):
+            nonlocal first
+            result = await original(*args, **kwargs)
+            if first:
+                first = False
+                committed.set()
+                await asyncio.Event().wait()
+            return result
+        reader = self.connections['account'][0]
+        with patch.object(self.writer, 'stage_fill', side_effect=delay_first):
+            reader.queue.put_nowait(fill_event('first'))
+            await committed.wait()
+            reader.queue.put_nowait(fill_event('tail'))
+            self.task.cancel()
+            await self.eventually(lambda: self.runtime.reader_states['account'] == 'stopped')
+            self.task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(self.task, 4)
+        epochs = await self.runtime.inspect_private_epochs()
+        self.assertFalse(self.runtime.running)
+        self.assertTrue(reader.closed)
+        self.assertTrue(reader.queue.empty())
+        self.assertEqual(len(await self.writer.pending_fills(0)), 2)
+        self.assertEqual((len(epochs), epochs[0].closed_at is not None,
+                          epochs[0].clean_local_delivery), (1, True, False))
+        self.assertEqual(await self.writer.private_epoch_gap_count(subaccount=0), 1)
+        self.assertFalse(any(task.get_name() == 'kalshi-account' and not task.done()
+                             for task in asyncio.all_tasks()))
+
+    async def test_malformed_buffered_fill_preserves_valid_tail_and_surfaces_failure(self):
+        await self.launch()
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        committed = asyncio.Event()
+        original = self.writer.stage_fill
+        first = True
+        async def delay_first(*args, **kwargs):
+            nonlocal first
+            result = await original(*args, **kwargs)
+            if first:
+                first = False
+                committed.set()
+                await asyncio.Event().wait()
+            return result
+        reader = self.connections['account'][0]
+        malformed = fill_event('malformed')
+        malformed['msg']['count_fp'] = 'invalid'
+        with patch.object(self.writer, 'stage_fill', side_effect=delay_first):
+            reader.queue.put_nowait(fill_event('first'))
+            await committed.wait()
+            reader.queue.put_nowait(malformed)
+            reader.queue.put_nowait(fill_event('valid-tail'))
+            self.runtime.stop()
+            with self.assertRaisesRegex(InvalidData, 'runtime cleanup failed'):
+                await asyncio.wait_for(self.task, 4)
+        epochs = await self.runtime.inspect_private_epochs()
+        self.assertFalse(self.runtime.running)
+        self.assertTrue(reader.closed)
+        self.assertTrue(reader.queue.empty())
+        self.assertEqual(len(await self.writer.pending_fills(0)), 2)
+        self.assertEqual((epochs[0].closed_at is not None,
+                          epochs[0].clean_local_delivery), (True, False))
+        self.assertEqual(await self.writer.private_epoch_gap_count(subaccount=0), 1)
+
+    async def test_buffered_stage_failure_preserves_later_valid_fill(self):
+        await self.launch()
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        committed = asyncio.Event()
+        original = self.writer.stage_fill
+        calls = 0
+        async def injected(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise InvalidData('injected teardown staging failure')
+            result = await original(*args, **kwargs)
+            if calls == 1:
+                committed.set()
+                await asyncio.Event().wait()
+            return result
+        reader = self.connections['account'][0]
+        with patch.object(self.writer, 'stage_fill', side_effect=injected):
+            reader.queue.put_nowait(fill_event('first'))
+            await committed.wait()
+            reader.queue.put_nowait(fill_event('failed-tail'))
+            reader.queue.put_nowait(fill_event('valid-tail'))
+            self.runtime.stop()
+            with self.assertRaisesRegex(InvalidData, 'runtime cleanup failed'):
+                await asyncio.wait_for(self.task, 4)
+        epochs = await self.runtime.inspect_private_epochs()
+        self.assertFalse(self.runtime.running)
+        self.assertTrue(reader.queue.empty())
+        self.assertEqual(len(await self.writer.pending_fills(0)), 2)
+        self.assertFalse(epochs[0].clean_local_delivery)
+        self.assertEqual(await self.writer.private_epoch_gap_count(subaccount=0), 1)
+
     async def test_cancelled_epoch_open_ack_is_owned_and_closed_as_gap(self):
         committed = asyncio.Event()
         original = self.writer.open_private_epoch
