@@ -2,6 +2,8 @@
 
 Active Windows folder: `C:/Users/rynna/Bots/kalshi` (D-029), beside Polymarket
 and outside OneDrive. The old OneDrive project location is no longer active.
+This folder tracks the [canonical GitHub repository](https://github.com/rynn-arriola/kalshi-bot)
+on `master`; see [publication record](docs/GITHUB_PUBLICATION.md).
 
 **AI operators:** begin with [AI_OPERATOR.md](AI_OPERATOR.md), then follow its
 required routing. AGENTS/CLAUDE are compatibility pointers, not separate rules.

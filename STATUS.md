@@ -2,13 +2,26 @@
 
 ## Current update — 2026-09-20
 
+D-043: the canonical GitHub repository now holds the Windows project on its
+default `master` branch. Its old tracked tree was replaced with 170 checked
+source, test, config and documentation files. The obsolete divergent `main`
+branch was retired after its history was merged into `master`; the old tips
+remain recoverable in Git history. The active `C:/Users/rynna/Bots/kalshi`
+folder is now a Git checkout tracking `origin/master`. Credentials, captured
+data, backups, logs, virtual environments and machine-local transfer/deployment
+state remain local and ignored. See `docs/GITHUB_PUBLICATION.md`. Repository
+publication did not start the bot or change trading authority.
+
+### Prior D-042 review
+
 Astra D-042 re-review clears both P3 follow-ups with no new findings in scope.
 All 62 focused quota tests pass (8.720s). Each new regression detects its old
 defect in a process-local reversal; an additional probe verifies immutable
 boundary state, preserved caller exception/traceback and pending timing.
 See `docs/REVIEW_D042_ASTRA.md`. No source/test files changed during review.
 The 778-test full suite and resource checks below are Sol's implementation
-results, not reruns in this review. Git diff remains unavailable.
+results, not reruns in that review. Git diff was unavailable at the time;
+D-043 subsequently restored Git metadata in the active folder.
 Next role: Astra design for the next selected milestone, then STOP for the
 operator's Sol switch. Trading remains disabled.
 

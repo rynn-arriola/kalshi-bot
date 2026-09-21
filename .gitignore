@@ -11,6 +11,7 @@ credentials.py
 # Captured data. Raw books grow fast and are reproducible by re-running the
 # recorder; the analysis derived from them is what belongs in git.
 data/
+backups/
 *.db
 *.db-wal
 *.db-shm

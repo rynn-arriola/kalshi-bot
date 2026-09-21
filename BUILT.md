@@ -1,5 +1,13 @@
 # What exists
 
+## Canonical GitHub checkout — 2026-09-20
+
+D-043 replaced the old remote tree with the current Windows Kalshi project on
+the GitHub default `master` branch and connected the active folder to it. The
+old divergent branch history remains in `master`; the obsolete `main` branch
+was removed. [Publication evidence](docs/GITHUB_PUBLICATION.md). Credentials
+and local runtime/data artifacts were excluded. This did not enable trading.
+
 ## Quota review correction design — 2026-09-20
 
 D-042 [follow-up fixes](docs/BUILD_QUOTA_REVIEW_FOLLOWUPS.md) address the two P3

@@ -1,8 +1,11 @@
 # Active work queue
 
-Updated 2026-09-20. Follow D-011 through D-042 and `AI_OPERATOR.md`.
+Updated 2026-09-20. Follow D-011 through D-043 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
+Follow D-043 for the repository publication: this folder now tracks the canonical
+GitHub `master` branch. Future source/doc changes belong here and can be reviewed
+with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
 
@@ -12,7 +15,7 @@ advance phases or switch models. Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking
 findings: 87 focused tests and the integrated reconnect probe passed. See
-`docs/REVIEW_D036_ASTRA_R2.md`. Git diff remains unavailable. The exact prior
+`docs/REVIEW_D036_ASTRA_R2.md`. Git diff was unavailable then. The exact prior
 full-suite outcome after the last source edit is recorded in STATUS.
 D-039 explicitly authorized implementing BOTH D-038 phases in one assignment.
 Both are implemented; the initial Astra review found three issues. See
@@ -25,7 +28,8 @@ D-042 Sol fixed both and added regressions. Astra re-review now clears both with
 no new findings in scope; see `docs/REVIEW_D042_ASTRA.md` and STATUS. No additional
 Sol fixes are required from this review. Next: Astra design for the next selected
 milestone below, followed by the mandatory stop before Sol implementation.
-Git diff remains unavailable. Live operation remains disabled.
+Git diff was unavailable in the historical review; D-043 subsequently connected
+the active folder to Git. Live operation remains disabled.
 
 Credential blocker resolved: the new ID file and supplied RSA private key
 successfully authenticated the one-time account inspection. See `FINDINGS.md`
@@ -258,5 +262,5 @@ add a routing/context/link audit modeled on Polymarket. No automated audit
 or full history migration is claimed implemented yet.
 
 Check the reference's source links and snapshot timestamp before implementation.
-The snapshot is not an immutable venue guarantee. Git currently cannot inspect
-this local checkout; preserve files and do not claim a commit or remote parity.
+The snapshot is not an immutable venue guarantee. D-043 restored Git inspection
+in the active folder; check its current branch and diff before future changes.

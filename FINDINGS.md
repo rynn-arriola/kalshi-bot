@@ -1,5 +1,15 @@
 # Findings — kalshi-bot
 
+## 61. Canonical GitHub now carries the Windows project — 2026-09-20
+
+VERIFIED: the old default `master` tree contained 31 files; the initial published
+replacement tree contained 170. Every staged file matched the active Windows
+source byte for byte before commit. The prior `main` history was joined to
+`master`, then the obsolete branch was deleted. The active folder now tracks
+`origin/master`. Credential, capture, backup, log, environment and transfer
+artifacts were excluded. [Publication record](docs/GITHUB_PUBLICATION.md).
+No bot/account operation occurred.
+
 ## 60. Quota follow-ups cleared by independent review — 2026-09-20
 
 VERIFIED: 62 focused quota tests pass; reverting each D-042 fix in memory makes
