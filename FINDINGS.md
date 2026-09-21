@@ -1,5 +1,15 @@
 # Findings — kalshi-bot
 
+## 97. Source-bound cancel/reducer dispatch — 2026-09-21
+
+VERIFIED CODE/OFFLINE: existing inventory strategy can feed exact candidates
+through the durable writer and sole injected dispatcher with current account,
+book and terms proof. Source expiry or replacement between preparation and
+submission prevents invocation. Cancel ACK remains nonterminal; ambiguity
+never becomes an automatic retry. Review closed stop-during-handoff and
+retained-permit gaps. [Evidence and resource scope](docs/BUILD_DISPATCH_SOURCES.md).
+This establishes neither real fee/quota inputs nor a production trading path.
+
 ## 96. Operational reconciliation without claiming a venue barrier — 2026-09-21
 
 VERIFIED CODE/OFFLINE: D-068's new positive path releases only transient holds

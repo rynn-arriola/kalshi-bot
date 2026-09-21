@@ -10,6 +10,26 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Source dispatch: late stop, final proof and unused permit
+
+**Mechanism.** Dispatcher stop was checked only before starting work, not after
+awaited preparation or at invocation. The executor's final quota hook could
+invalidate account/book proof after its last source check. A pre-SENDING
+`CommandDenied` return aborted the receipt but left a quota permit outstanding.
+**Fix.** Stop fences after both refreshes/preparation and around quota consumption;
+repeat exact writer/source checks after the synchronous hook; discard the unused
+permit on a denied handoff. Already-invoked work retains its outcome owner.
+**Verification.** Deterministic stop/ingress races assert zero injected calls,
+NOT_SENT before SENDING versus conservative UNKNOWN afterward, and zero retained
+permits. In-memory removal of final source checking and permit cleanup makes
+their respective regressions fail. [Build evidence](docs/BUILD_DISPATCH_SOURCES.md).
+
+**Final-review correction.** An already-forced IOC may have metadata expiry as
+its next advisory timer although trading close is sooner. The source fence now
+also rejects the explicit close time; a regression crosses close within the
+five-second source lifetime and blocks invocation. Removing that guard in memory
+makes the regression fail. No live market was exercised.
+
 ### D-068 release ownership and cancel/reducer integration
 
 **Mechanism found before publication.** A retained reconciliation could outlive

@@ -11,7 +11,9 @@ activation are separate. New ledgers only; no existing-ledger migration.
 D-062 adds [opening-account/cash evidence](BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
 and an [offline write-budget primitive](BUILD_WRITE_BUDGET.md) with
 [bounded offline dispatcher](BUILD_WRITE_DISPATCHER.md). These remain
-non-authorizing; production candidate/dispatch and supervised runtime integration
+non-authorizing. [Source-bound inventory candidates](BUILD_DISPATCH_SOURCES.md)
+now connect actual owners to the injected path with final source/stop fences.
+Verified production inputs, transport and supervised runtime integration
 remain unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.
 

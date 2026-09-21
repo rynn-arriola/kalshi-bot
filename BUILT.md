@@ -1,5 +1,15 @@
 # What exists
 
+## Source-bound inventory dispatcher — 2026-09-21
+
+[Build/verification record](docs/BUILD_DISPATCH_SOURCES.md):
+`dispatch_sources.py` composes current managed cancel/reducer candidates with
+the existing injected dispatcher/executor. Tests cover real-owner handoff,
+scope/age/revision/term/deadline revocation, pending cancellation, shutdown and
+retained outcomes. Synthetic 30/120-market candidate resource checks pass.
+The final executor source check, stop fences and denied-handoff permit cleanup
+are implemented. No entry producer, venue transport or live runtime attachment.
+
 ## D-068 operational reconciliation release — 2026-09-21
 
 [Build/verification record](docs/BUILD_ACCOUNT_RECONCILIATION.md): accepted

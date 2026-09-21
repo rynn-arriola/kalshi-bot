@@ -42,10 +42,12 @@ held through the awaited SENDING transition, and expiry there produces zero
 injected calls and durable UNKNOWN rather than an unsafe send or blind retry.
 An asynchronous callback is rejected before SENDING.
 
-Remaining: produce candidates from current runtime/management evidence, decide
-the safe action when no current source proof exists, retain quota/429 lifecycle
-across restart, and test the send-edge permit check against integrated
-runtime/restart faults. This check exists only on the injected path.
+Follow-up: [source-bound candidates](BUILD_DISPATCH_SOURCES.md) now connect
+current runtime/management evidence, block missing/stale proof, recheck sources
+at the final edge and fence dispatcher stop through preparation/submission.
+Denied handoffs release their unused quota permit. Remaining: verified production
+inputs, retained quota/429 lifecycle across restart and supervised runtime
+composition/fault verification. These checks exist only on the injected path.
 Connect the real write transport and runtime/supervisor lifecycle
 only after account baseline and separate live-authorization gates. The fixture
 cannot be enabled by changing a flag; new reviewed production authority is

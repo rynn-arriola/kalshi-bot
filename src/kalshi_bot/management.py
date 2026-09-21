@@ -92,6 +92,19 @@ class InventoryManager:
         return self._current(ticker, plan_writer_revision=prior_revision,
                              current_writer_revision=prepared_revision)
 
+    def current_for_dispatch(self, ticker, *, prior_revision):
+        """Source fence only, never a substitute for a prepared receipt.
+
+        The sole executor checks the exact receipt/revision around begin_send;
+        these are its one prepare and one SENDING revision advances. Any other
+        write invalidates the receipt in the writer, even if sources agree.
+        """
+        revision = self.runtime.writer.revision
+        if revision not in (prior_revision+1, prior_revision+2):
+            return None
+        return self._current(ticker, plan_writer_revision=prior_revision,
+                             current_writer_revision=revision)
+
     async def refresh(self, ticker):
         runtime, account = self.runtime, self.runtime.account
         if ticker not in runtime.engine.market_shard:

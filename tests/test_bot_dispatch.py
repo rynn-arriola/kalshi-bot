@@ -166,6 +166,7 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         rows = await self.writer.mutations()
         self.assertEqual(rows[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.invoked)
+        self.assertEqual(self.budget.status(now=budget_now(self.clock)).outstanding, 0)
 
     async def test_post_sending_proof_loss_latches_failed_with_unknown(self):
         await self.working_order()

@@ -172,6 +172,9 @@ class MutationDispatcher:
     async def _process(self, ticker, priority):
         first = self._validate_candidate(
             await self.refresh(ticker, priority), ticker, priority)
+        if self._stopping:
+            return DispatchResult('INTERRUPTED', ticker, priority,
+                                  blockers=('dispatcher_stopping',))
         if first is None:
             return DispatchResult('BLOCKED', ticker, priority,
                                   blockers=('current_candidate_missing',))
@@ -189,6 +192,10 @@ class MutationDispatcher:
         try:
             current = self._validate_candidate(
                 await self.refresh(ticker, priority), ticker, priority)
+            if self._stopping:
+                await self._discard(permit)
+                return DispatchResult('INTERRUPTED', ticker, priority,
+                                      blockers=('dispatcher_stopping',))
             if current is None:
                 await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
@@ -207,6 +214,13 @@ class MutationDispatcher:
                     current.attempt_id, current.request,
                     evidence=current.evidence, now=self.now())
             receipt = prepared.receipt
+            if self._stopping:
+                if receipt is not None:
+                    await self.writer.abort_prepared(receipt)
+                    receipt = None
+                await self._discard(permit)
+                return DispatchResult('INTERRUPTED', ticker, priority,
+                                      blockers=('dispatcher_stopping',))
             if not prepared.reserved:
                 if receipt is not None:
                     await self.writer.abort_prepared(receipt)
@@ -223,9 +237,13 @@ class MutationDispatcher:
                 raise
             def consume_at_send_edge():
                 nonlocal consumed
+                if self._stopping:
+                    raise CommandDenied(('dispatcher_stopping',))
                 self.budget.consume(permit, method, route,
                                     shard=current.shard, now=self.clock_pair())
                 consumed = True
+                if self._stopping:
+                    raise CommandDenied(('dispatcher_stopping',))
             try:
                 result = await self.executor.execute_prepared(
                     receipt, before_invoke=consume_at_send_edge)
@@ -237,6 +255,7 @@ class MutationDispatcher:
                 receipt = None
                 if self.executor.failed:
                     raise
+                await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
                     current.attempt_id, exc.blockers)
             return DispatchResult('ACK', ticker, priority, current.attempt_id,

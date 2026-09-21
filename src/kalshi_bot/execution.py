@@ -570,6 +570,9 @@ class InjectedExecutor:
                         raise InvalidData('send-edge check must not await')
                 if not self.writer.entry_accounting_current(receipt):
                     raise CommandDenied(('accounting_lease_stale',))
+                if (self.writer.revision != send.writer_revision
+                        or self.validate_proof(receipt.kind, receipt.request) is not True):
+                    raise CommandDenied(('proof_changed_before_submission',))
                 async with asyncio.timeout(self.timeout):
                     reply = await self.invoke(receipt.kind, dispatch_request)
                 ack = acknowledgement(receipt.kind, durable_request, reply)

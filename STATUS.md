@@ -1,5 +1,23 @@
 # Current status
 
+## Priority 4 source-bound inventory dispatch — 2026-09-21
+
+The [candidate/dispatch integration](docs/BUILD_DISPATCH_SOURCES.md) now uses
+actual account, book, inventory-plan and writer owners for safety cancels,
+exact passive reducers and due IOC reducers. Source proof is rechecked through
+the final injected send edge; shutdown cannot start a late mutation. Cancel
+ACK/unknown results still require reconciliation. One writing task and one
+pinned proof; no new REST polling or live transport.
+
+This completes the bounded offline candidate-production slice, not priority 4
+as a whole or trading readiness. Remaining: verified live fee metadata and
+quota ingestion, owned 429/outcome recovery and supervised dispatch lifecycle;
+then ranking/admission and runtime readiness. Tests, resource measurements and
+review evidence are recorded in the build link: final full suite 1,102 run,
+1,101 passed, one expected Windows privilege skip; 42 focused tests and both
+resource scopes passed. Live execution remains disabled;
+no credentials, account requests, bot operation or live orders were involved.
+
 ## D-068 operational reconciliation release — 2026-09-21
 
 The operator accepted the Polymarket-style approach. The implemented

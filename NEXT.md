@@ -1,8 +1,10 @@
 # Active work queue
 
-Next: priority 4's source-bound candidate and dispatch integration, including
-verified fee metadata, account/book/exit rechecks, actual write-quota evidence,
-owned 429/outcome handling and shutdown. Keep transport disabled until separately
+Next: priority 4's verified fee metadata and actual write-quota ingestion,
+then owned 429/outcome recovery and supervised dispatch lifecycle. The
+[source-bound candidate integration](docs/BUILD_DISPATCH_SOURCES.md) now covers
+account/book/exit rechecks and stopping the injected dispatcher; do not rebuild it.
+Keep transport disabled until separately
 authorized readiness work and launch approval. Then priority 5 ranking/admission
 and priority 6 supervised runtime integration.
 
@@ -43,11 +45,11 @@ and live entry authority remain unavailable.
 
 Item 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) now passes the
 synthetic 30/120-shard resource target. The
-[bounded dispatcher](docs/BUILD_WRITE_DISPATCHER.md) connects synthetic
-candidates to durable writer receipts and the sole injected executor. Next,
-establish source-bound candidate production and account/book/exit rechecks,
-actual write-quota document ingestion, owned 429/outcome handling, runtime
-shutdown and end-to-end fail-closed verification. The injected path now
+[bounded dispatcher](docs/BUILD_WRITE_DISPATCHER.md) connects
+[source-bound offline candidates](docs/BUILD_DISPATCH_SOURCES.md) to durable
+writer receipts and the sole injected executor. Next: verified fee inputs,
+actual write-quota document ingestion, owned 429/outcome handling, supervised
+runtime shutdown and end-to-end fail-closed verification. The injected path now
 rechecks its write permit at the synchronous send edge; this is not production
 transport clearance.
 No venue transport or live

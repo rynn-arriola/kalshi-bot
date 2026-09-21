@@ -1,0 +1,453 @@
+"""Real owners + synthetic account/book/transport; never venue I/O."""
+import asyncio
+from dataclasses import replace
+from datetime import timedelta
+from decimal import Decimal as D
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from kalshi_bot.account import normalize_snapshot
+from kalshi_bot.command_types import CommandDenied
+from kalshi_bot.config import BotConfig
+from kalshi_bot.dispatch import SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
+from kalshi_bot.dispatch_sources import InventoryDispatchSource
+from kalshi_bot.exits import ExitTerms
+from kalshi_bot.ledger import Fill
+from kalshi_bot.orders import OrderUpdate
+from kalshi_bot.runtime import RecoveryRuntime
+from kalshi_bot.values import InvalidData
+from kalshi_bot.write_budget import WriteBudget
+from kalshi_bot.writer import LedgerWriter
+from test_bot_engine import NOW, BANDS, snapshot
+from test_bot_inventory_risk import request
+from test_bot_write_budget import snapshot as quota_snapshot, now as quota_now
+
+
+class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = TemporaryDirectory()
+        self.writer = await LedgerWriter(Path(self.temp.name)/'fixture.db').start()
+        self.now, self.mono = NOW, 100.0
+        async def ignore(*args):
+            pass
+        self.runtime = RecoveryRuntime(self.writer, None, None, tickers=('A', 'B'),
+            subaccount=0, history_start=NOW-timedelta(hours=1), now=lambda: self.now,
+            clock=lambda: self.mono, evaluate=ignore, deadline_handler=ignore,
+            lifecycle_handler=ignore)
+        self.runtime.account.connect_generation()
+        self.runtime.engine.begin_private_epoch()
+        await self.books()
+        self.terms()
+        self.source = InventoryDispatchSource(self.runtime, offline_fixture=True)
+        self.calls = []
+        self.budget = WriteBudget(quota_snapshot(rate=100, capacity=100),
+            shards=(0, 1), now=quota_now(), offline_fixture=True)
+        self.dispatcher = self.source.dispatcher(self.budget, invoke=self.invoke,
+                                               clock_pair=lambda: quota_now(1))
+
+    async def asyncTearDown(self):
+        self.source.stop()
+        try:
+            await self.dispatcher.close()
+        finally:
+            await self.writer.close()
+            self.temp.cleanup()
+
+    async def books(self):
+        for name, shard in self.runtime.engine.shards.items():
+            generation = self.runtime.engine.begin_book_epoch(name)
+            for seq, ticker in enumerate(sorted(shard.tickers), 1):
+                event = snapshot(ticker, seq)
+                self.runtime.engine.submit_book(name, event, generation=generation)
+        while self.runtime.engine.backlog:
+            await self.runtime.engine.step()
+
+    def terms(self, **kwargs):
+        terms = ExitTerms('A', BANDS, self.now, self.now+timedelta(hours=1),
+            self.now+timedelta(hours=2), event_risk_at=self.now+timedelta(hours=1),
+            taker_fee_per_contract_bound=D('.02'))
+        self.runtime.management.set_terms(replace(terms, **kwargs))
+
+    async def opening(self, *, filled='10', remaining='0', side='bid', route=0):
+        req = request('open', side=side) | dict(exchange_index=route)
+        prepared = await self.writer.reserve_entry(req, attempt_id='open-attempt',
+            view=await self.writer.portfolio(subaccount=0, now=self.now),
+            config=BotConfig(), now=self.now, free_cash=D(500),
+            account_known=True, offline_fixture=True)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        self.assertTrue((await self.writer.begin_send(prepared.receipt)).dispatch_allowed)
+        await self.writer.record_outcome('ack', prepared.receipt,
+            dict(order_id='opening-order', fill_count=filled,
+                 remaining_count=remaining, ts_ms=1), self.now)
+        order = OrderUpdate('opening-order', 'open', 'A', side, D('.5'), D(10),
+            D(filled), D(remaining), 'resting' if D(remaining) else 'executed' if filled == '10' else 'canceled',
+            0, route, 1)
+        await self.writer.order(order, self.now)
+        self.runtime.account._store_order((await self.writer.orders())[0])
+        if D(filled):
+            await self.writer.fill(Fill('opening-fill', order.order_id, 'A', side,
+                D(filled), D('.5'), D(0)), self.now)
+        return order
+
+    async def report(self, quantity='10', orders=(), route=0):
+        positions = () if D(quantity) == 0 else (dict(ticker='A', exchange_index=route,
+            position_fp=quantity, market_exposure_dollars=str(abs(D(quantity))*D('.5'))),)
+        rows = tuple(dict(order_id=o.order_id, client_order_id=o.client_id,
+            ticker=o.ticker, status='resting', exchange_index=o.exchange_index,
+            book_side=o.side, yes_price_dollars=str(o.yes_price),
+            remaining_count_fp=str(o.remaining)) for o in orders)
+        evidence = normalize_snapshot(rows, positions,
+            dict(balance_dollars='500', updated_ts=1), subaccount=0)
+        account = self.runtime.account
+        await account.finish_reconciliation(account.begin_reconciliation(self.now),
+                                             evidence, self.now)
+
+    async def ready(self, **kwargs):
+        order = await self.opening(**kwargs)
+        qty = str(order.filled*(1 if order.side == 'bid' else -1))
+        await self.report(qty, (order,) if order.remaining else (), order.exchange_index)
+        return order
+
+    async def invoke(self, kind, request):
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'SENDING')
+        self.calls.append((kind, request))
+        if kind == 'cancel':
+            return dict(order_id=request['order_id'], reduced_by='6', ts_ms=1)
+        return dict(order_id='reducer-order', fill_count='0', ts_ms=1,
+            remaining_count='0' if request['time_in_force'] == 'immediate_or_cancel' else request['count'])
+
+    async def run_priority(self, priority=PASSIVE_REDUCER):
+        self.assertTrue(self.dispatcher.submit('A', priority))
+        return await self.dispatcher.run_one()
+
+    async def due(self):
+        self.now += timedelta(seconds=900)
+        self.mono += 900
+        await self.books()
+        await self.report()
+
+    async def test_no_live_or_fake_runtime_construction(self):
+        for flag in (False, 1, None):
+            with self.assertRaises(InvalidData):
+                InventoryDispatchSource(self.runtime, offline_fixture=flag)
+        with self.assertRaises(InvalidData):
+            InventoryDispatchSource(object(), offline_fixture=True)
+
+    async def test_passive_yes_exact_quantity_price_route_durable_handoff(self):
+        await self.ready(filled='4', route=1)
+        result = await self.run_priority()
+        self.assertEqual(result.state, 'ACK')
+        kind, req = self.calls[0]
+        self.assertEqual((kind, req['side'], D(req['price']), D(req['count']),
+                          req['exchange_index']), ('create', 'ask', D('.59'), 4, 1))
+        self.assertTrue(req['reduce_only'] and req['post_only'])
+        self.assertFalse(result.live_ready)
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+
+    async def test_passive_no_maps_to_bid_not_double_complement(self):
+        await self.ready(side='ask')
+        self.assertEqual((await self.run_priority()).state, 'ACK')
+        req = self.calls[0][1]
+        self.assertEqual((req['side'], D(req['price']), D(req['count'])), ('bid', D('.41'), 10))
+
+    async def test_due_ioc_exact_inventory_no_expiration(self):
+        await self.ready()
+        await self.due()
+        self.assertEqual((await self.run_priority(DUE_IOC)).state, 'ACK')
+        req = self.calls[0][1]
+        self.assertEqual((req['side'], D(req['price']), D(req['count']), req['time_in_force']),
+                         ('ask', D('.4'), 10, 'immediate_or_cancel'))
+        self.assertFalse(req['post_only'])
+        self.assertTrue(req['reduce_only'])
+        self.assertNotIn('expiration_time', req)
+
+    async def test_owned_building_cancel_ack_never_unblocks_reducer(self):
+        await self.ready(filled='4', remaining='6')
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        self.assertEqual(self.calls[0][0], 'cancel')
+        await self.report('4', ((await self.writer.orders())[0].order,))
+        for priority in (SAFETY_CANCEL, PASSIVE_REDUCER, DUE_IOC):
+            self.assertIsNone(await self.source.refresh('A', priority))
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_missing_account_terms_and_wrong_priority_block(self):
+        await self.opening()
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+        await self.report()
+        self.runtime.management.revoke_terms('A')
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+        self.terms()
+        self.assertIsNone(await self.source.refresh('A', DUE_IOC))
+        self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
+        self.assertIsNone(await self.source.refresh('OUTSIDE', PASSIVE_REDUCER))
+        self.assertIsNone(await self.source.refresh('A', 'entry'))
+        self.assertFalse(self.calls)
+
+    async def test_due_missing_fee_cannot_fall_back_to_old_passive_subplan(self):
+        await self.ready(filled='4', remaining='6')
+        self.now += timedelta(seconds=900)
+        await self.books()
+        await self.report('4', ((await self.writer.orders())[0].order,))
+        self.terms(taker_fee_per_contract_bound=None)
+        for priority in (SAFETY_CANCEL, PASSIVE_REDUCER, DUE_IOC):
+            self.assertIsNone(await self.source.refresh('A', priority))
+
+    async def test_due_working_order_cancels_before_ioc(self):
+        order = await self.ready(filled='4', remaining='6')
+        self.now += timedelta(seconds=900)
+        await self.books()
+        await self.report('4', (order,))
+        self.assertIsNone(await self.source.refresh('A', DUE_IOC))
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        self.assertEqual(self.calls[0][0], 'cancel')
+
+    async def test_stale_cancel_ownership_evidence_is_discarded(self):
+        await self.ready(filled='4', remaining='6')
+        original = self.writer.cancel_evidence
+        async def changed(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.runtime._revoke()
+            return result
+        self.writer.cancel_evidence = changed
+        self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
+        self.assertIsNone(self.source._proof)
+
+    async def test_private_ingress_during_evidence_await_revokes_candidate(self):
+        await self.ready()
+        original = self.writer.reduction_evidence
+        async def changed(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.runtime._revoke()
+            return result
+        self.writer.reduction_evidence = changed
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+        self.assertIsNone(self.source._proof)
+
+    async def prepared(self):
+        candidate = await self.source.refresh('A', PASSIVE_REDUCER)
+        self.assertIsNotNone(candidate)
+        result = await self.writer.prepare_reduction(candidate.attempt_id, candidate.request,
+            evidence=candidate.evidence, now=self.now)
+        self.assertTrue(result.reserved, result.blockers)
+        self.assertTrue(self.source.validate_proof('create', candidate.request))
+        return candidate, result.receipt
+
+    async def test_mutable_request_and_another_plan_cannot_reuse_proof(self):
+        await self.ready()
+        candidate, receipt = await self.prepared()
+        self.assertFalse(self.source.validate_proof('create', candidate.request | {'count': '1'}))
+        self.assertFalse(self.source.validate_proof('cancel', candidate.request))
+        self.runtime.management.invalidate('A')
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        await self.writer.abort_prepared(receipt)
+
+    async def test_queued_book_change_revokes_at_sending(self):
+        await self.ready()
+        original = self.writer.begin_send
+        async def changed(receipt):
+            result = await original(receipt)
+            name = self.runtime.engine.market_shard['A']
+            self.runtime.engine.public[name].append(('unprocessed', 0, 1))
+            return result
+        self.writer.begin_send = changed
+        with self.assertRaises(CommandDenied):
+            await self.run_priority()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertFalse(self.calls)
+
+    async def test_account_change_in_sync_quota_hook_is_rechecked(self):
+        await self.ready()
+        original = self.budget.consume
+        def changed(*args, **kwargs):
+            original(*args, **kwargs)
+            self.runtime._revoke()
+        self.budget.consume = changed
+        with self.assertRaises(CommandDenied):
+            await self.run_priority()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertFalse(self.calls)
+
+    async def test_passive_deadline_crossing_revokes_still_fresh_plan(self):
+        await self.ready()
+        self.terms(flatten_at=self.now+timedelta(seconds=1))
+        candidate, receipt = await self.prepared()
+        self.now += timedelta(seconds=1)
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        await self.writer.abort_prepared(receipt)
+
+    async def test_already_forced_ioc_revoked_at_trading_close(self):
+        await self.ready()
+        self.terms(flatten_at=self.now-timedelta(seconds=1),
+                   close_at=self.now+timedelta(seconds=1))
+        candidate = await self.source.refresh('A', DUE_IOC)
+        self.assertIsNotNone(candidate)
+        result = await self.writer.prepare_reduction(candidate.attempt_id, candidate.request,
+            evidence=candidate.evidence, now=self.now)
+        self.assertTrue(result.reserved, result.blockers)
+        self.assertTrue(self.source.validate_proof('create', candidate.request))
+        self.now += timedelta(seconds=1)
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        with self.assertRaises(CommandDenied):
+            await self.dispatcher.executor.execute_prepared(result.receipt)
+        self.assertFalse(self.calls)
+        await self.writer.abort_prepared(result.receipt)
+
+    async def test_old_report_cannot_renew_age_via_new_plan(self):
+        await self.ready()
+        self.now += timedelta(seconds=4)
+        candidate, receipt = await self.prepared()
+        self.now += timedelta(seconds=2)
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        await self.writer.abort_prepared(receipt)
+
+    async def test_book_ingress_age_and_terms_replacement_revoke(self):
+        await self.ready()
+        candidate, receipt = await self.prepared()
+        self.mono += 6
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        self.mono -= 6
+        self.terms()
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        await self.writer.abort_prepared(receipt)
+
+    async def test_runtime_shutdown_and_source_stop_revoke(self):
+        await self.ready()
+        candidate, receipt = await self.prepared()
+        self.runtime.stop_requested.set()
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        self.source.stop()
+        self.runtime.stop_requested.clear()
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+        await self.writer.abort_prepared(receipt)
+
+    async def test_epoch_change_cannot_restore_pinned_proof(self):
+        await self.ready()
+        candidate, receipt = await self.prepared()
+        await self.writer.abort_prepared(receipt)
+        self.runtime.account.disconnect()
+        self.runtime.account.connect_generation()
+        self.assertFalse(self.source.validate_proof('create', candidate.request))
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+
+    async def test_unrelated_writer_revision_is_not_own_send_revision(self):
+        await self.ready()
+        candidate, receipt = await self.prepared()
+        await self.writer.observe(self.now)
+        # Source fence alone never substitutes for the exact prepared receipt.
+        with self.assertRaises(CommandDenied):
+            await self.dispatcher.executor.execute_prepared(receipt)
+        self.assertFalse(self.calls)
+        await self.writer.abort_prepared(receipt)
+
+    async def test_dispatcher_stop_after_first_refresh_has_no_prepared_command(self):
+        await self.ready()
+        original = self.dispatcher.refresh
+        async def stopped(*args):
+            result = await original(*args)
+            self.dispatcher.stop()
+            return result
+        self.dispatcher.refresh = stopped
+        self.assertEqual((await self.run_priority()).state, 'INTERRUPTED')
+        self.assertEqual(len(await self.writer.mutations()), 1)
+        self.assertFalse(self.calls)
+
+    async def test_dispatcher_stop_after_second_refresh_releases_permit(self):
+        await self.ready()
+        original = self.dispatcher.refresh
+        refreshes = 0
+        async def stopped(*args):
+            nonlocal refreshes
+            result = await original(*args)
+            refreshes += 1
+            if refreshes == 2:
+                self.dispatcher.stop()
+            return result
+        self.dispatcher.refresh = stopped
+        self.assertEqual((await self.run_priority()).state, 'INTERRUPTED')
+        self.assertEqual(len(await self.writer.mutations()), 1)
+        self.assertEqual(self.budget.status(now=quota_now(1)).outstanding, 0)
+        self.assertFalse(self.calls)
+
+    async def test_dispatcher_stop_inside_quota_hook_never_invokes(self):
+        await self.ready()
+        original = self.budget.consume
+        def stopped(*args, **kwargs):
+            original(*args, **kwargs)
+            self.dispatcher.stop()
+        self.budget.consume = stopped
+        with self.assertRaises(CommandDenied):
+            await self.run_priority()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertFalse(self.calls)
+
+    async def test_caller_cancellation_retains_injected_outcome_owner(self):
+        await self.ready()
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def held(kind, req):
+            entered.set()
+            await release.wait()
+            return await self.invoke(kind, req)
+        self.dispatcher.executor.invoke = held
+        task = asyncio.create_task(self.run_priority())
+        await asyncio.wait_for(entered.wait(), 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        self.assertFalse(task.done())
+        release.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'ACK')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_dispatcher_stop_during_prepare_aborts_unsent(self):
+        await self.ready()
+        original = self.writer.prepare_reduction
+        async def stopped(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.dispatcher.stop()
+            return result
+        self.writer.prepare_reduction = stopped
+        self.assertEqual((await self.run_priority()).state, 'INTERRUPTED')
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertFalse(self.calls)
+
+    async def test_dispatcher_stop_during_sending_records_unknown_no_invoke(self):
+        await self.ready()
+        original = self.writer.begin_send
+        async def stopped(receipt):
+            result = await original(receipt)
+            self.dispatcher.stop()
+            return result
+        self.writer.begin_send = stopped
+        with self.assertRaises(CommandDenied):
+            await self.run_priority()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertFalse(self.calls)
+
+    async def test_concurrent_refresh_revokes_both_without_second_read(self):
+        await self.ready()
+        entered, release = asyncio.Event(), asyncio.Event()
+        original = self.writer.reduction_evidence
+        async def held(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            return await original(*args, **kwargs)
+        self.writer.reduction_evidence = held
+        task = asyncio.create_task(self.source.refresh('A', PASSIVE_REDUCER))
+        await asyncio.wait_for(entered.wait(), 2)
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+        release.set()
+        self.assertIsNone(await task)
+        self.assertIsNone(self.source._proof)
+
+    async def test_unknown_invoke_never_retries_or_claims_ack(self):
+        await self.ready()
+        async def uncertain(*args):
+            raise TimeoutError('synthetic')
+        self.dispatcher.executor.invoke = uncertain
+        with self.assertRaises(TimeoutError):
+            await self.run_priority()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.dispatcher.run_one()).state, 'FAILED')
