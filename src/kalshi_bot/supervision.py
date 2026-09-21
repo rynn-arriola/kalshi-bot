@@ -428,6 +428,35 @@ def _expired_child_deadline(state, event, policy):
     return SupervisorDecision(stopped, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
 
 
+def _child_event_stale(state, event):
+    if event.kind not in {EventKind.SPAWN_FAILED, EventKind.CHILD_STARTED,
+                          EventKind.CHILD_STATUS, EventKind.CHILD_RESULT}:
+        return False
+    if (state.child_id is None or state.child_generation is None
+            or event.child_id is None or event.expected_generation is None
+            or event.expected_generation != state.child_generation
+            or event.child_id != state.child_id):
+        return True
+    if event.kind == EventKind.SPAWN_FAILED:
+        return not (state.state in {SupervisorState.STARTING,
+                                    SupervisorState.STOPPING,
+                                    SupervisorState.ATTENTION_REQUIRED}
+                    and state.child_started_utc is None)
+    if event.kind == EventKind.CHILD_STARTED:
+        return not (state.state == SupervisorState.STARTING
+                    and state.child_started_utc is None and not state.stop_latched)
+    if event.kind == EventKind.CHILD_STATUS and (
+            event.child_phase is not None and event.progress_sequence is not None):
+        return (state.child_started_utc is None
+            or state.state not in {SupervisorState.STARTING,
+                                   SupervisorState.RECOVERING,
+                                   SupervisorState.HEALTHY,
+                                   SupervisorState.DEGRADED}
+            or (event.child_phase == ChildPhase.STARTING
+                and state.state != SupervisorState.STARTING))
+    return False
+
+
 def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
            clock_trusted=True):
     """Return a deterministic transition. The caller persists before actions.
@@ -441,32 +470,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
         raise InvalidData("supervisor policy required")
     if type(clock_trusted) is not bool:
         raise InvalidData("clock trust flag must be boolean")
-
-    child_event = event.kind in {EventKind.SPAWN_FAILED, EventKind.CHILD_STARTED,
-                                 EventKind.CHILD_STATUS, EventKind.CHILD_RESULT}
-    if child_event and (state.child_id is None or state.child_generation is None
-                        or event.child_id is None or event.expected_generation is None
-                        or event.expected_generation != state.child_generation
-                        or event.child_id != state.child_id):
-        return SupervisorDecision(state, stale=True)
-    if event.kind == EventKind.SPAWN_FAILED and not (
-            state.state in {SupervisorState.STARTING, SupervisorState.STOPPING,
-                            SupervisorState.ATTENTION_REQUIRED}
-            and state.child_started_utc is None):
-        return SupervisorDecision(state, stale=True)
-    if event.kind == EventKind.CHILD_STARTED and not (
-            state.state == SupervisorState.STARTING and state.child_started_utc is None
-            and not state.stop_latched):
-        return SupervisorDecision(state, stale=True)
-    if event.kind == EventKind.CHILD_STATUS:
-        if event.child_phase is None or event.progress_sequence is None:
-            raise InvalidData("child status requires phase and progress sequence")
-        if (state.child_started_utc is None
-                or state.state not in {SupervisorState.STARTING, SupervisorState.RECOVERING,
-                                       SupervisorState.HEALTHY, SupervisorState.DEGRADED}
-                or (event.child_phase == ChildPhase.STARTING
-                    and state.state != SupervisorState.STARTING)):
-            return SupervisorDecision(state, stale=True)
+    child_stale = _child_event_stale(state, event)
 
     now = _time(event.observed_utc if control_utc is None else control_utc,
                 "control time")
@@ -491,6 +495,20 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
             attention_reason=reason)
         return SupervisorDecision(stopped,
             ((SupervisorAction.REQUEST_GRACEFUL_STOP,) if active else ()))
+
+    # Local clock trust is control evidence, independent of the payload.  Handle
+    # it before stale child filtering so an old message cannot consume the fault.
+    # A trusted direct-policy call still filters stale payloads before considering
+    # their diagnostic timestamp, preserving non-authoritative child event time.
+    if not clock_trusted:
+        held = _attention(state, transition, clock_reason, request_stop=True)
+        return SupervisorDecision(held.state, held.actions, stale=child_stale)
+
+    if child_stale:
+        return SupervisorDecision(state, stale=True)
+    if event.kind == EventKind.CHILD_STATUS:
+        if event.child_phase is None or event.progress_sequence is None:
+            raise InvalidData("child status requires phase and progress sequence")
 
     if clock_fault:
         return _attention(state, transition, clock_reason,

@@ -12,7 +12,10 @@ verification fixes. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVI
 offline. The [D-052 re-review](REVIEW_D052_ASTRA.md) clears original hold/crash/
 benchmark findings but requires five follow-ups before S2. D-053
 [implements those follow-ups](BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md)
-offline and awaits independent Astra re-review. S2 remains unbuilt and blocked.
+offline. [D-053 Astra review](REVIEW_D053_ASTRA.md) clears four D-052 findings
+but requires two clock-continuity corrections. S2 remains unbuilt and blocked.
+D-054 [implements those corrections](BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md)
+offline and awaits independent Astra re-review.
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)

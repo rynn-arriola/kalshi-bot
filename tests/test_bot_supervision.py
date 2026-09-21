@@ -251,6 +251,18 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(stale.stale)
         self.assertEqual(stale.state, current)
 
+    def test_local_clock_fault_precedes_stale_child_filter(self):
+        active = started(start(arm(self.state)), 101)
+        held = decide(active, event(EventKind.CHILD_RESULT, 50,
+            expected_generation=0, child_id="old-child", outcome=ChildOutcome.CLEAN,
+            process_exited=True, cleanup_complete=True), POLICY, control_utc=102,
+            clock_trusted=False)
+        self.assertTrue(held.stale)
+        self.assertEqual(held.state.state, SupervisorState.ATTENTION_REQUIRED)
+        self.assertEqual(held.state.attention_reason, AttentionReason.CLOCK_UNTRUSTED)
+        self.assertEqual(held.state.child_id, active.child_id)
+        self.assertEqual(held.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
+
     def test_heartbeat_without_progress_cannot_hide_stalled_loop(self):
         active = started(start(arm(self.state)), 101)
         first = decide(active, event(EventKind.CHILD_STATUS, 102,
@@ -827,6 +839,133 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(one.state, SupervisorState.BACKOFF)
         self.assertEqual(two.state, SupervisorState.BACKOFF)
         self.assertEqual(two.updated_utc, 102)
+
+    def test_untrusted_clock_cannot_be_consumed_by_stale_or_missing_child(self):
+        payloads = (
+            dict(expected_generation=0, child_id="old-child"),
+            dict(expected_generation=None, child_id=None),
+        )
+        for number, values in enumerate(payloads):
+            with self.subTest(values=values):
+                path = Path(self.temp.name)/f"stale-clock-{number}.db"
+                clock = ControlledClock()
+                first = SupervisorStore(path, scope_id="kalshi-primary",
+                    clock=clock.utc, monotonic_clock=clock.monotonic,
+                    boot_id=clock.boot_id)
+                second = SupervisorStore(path, scope_id="kalshi-primary",
+                    clock=clock.utc, monotonic_clock=clock.monotonic,
+                    boot_id=clock.boot_id)
+                try:
+                    armed = first.apply(self.arm_event(now=100)).state
+                    clock.wall = 10000
+                    clock.monotonic_value = 1
+                    held = second.apply(event(EventKind.CHILD_RESULT, 10000,
+                        outcome=ChildOutcome.CLEAN, process_exited=True,
+                        cleanup_complete=True, **values))
+                    self.assertTrue(held.stale)
+                    self.assertEqual(held.state.state,
+                                     SupervisorState.ATTENTION_REQUIRED)
+                    self.assertEqual(held.state.attention_reason,
+                                     AttentionReason.CLOCK_UNTRUSTED)
+                    self.assertTrue(held.state.stop_latched)
+                    self.assertEqual(second.history(limit=1)[0]["clock_trusted"], 0)
+                    clock.advance(1)
+                    persisted = first.apply(event(EventKind.TICK, 10001))
+                    self.assertEqual(persisted.state.state,
+                                     SupervisorState.ATTENTION_REQUIRED)
+                    self.assertEqual(persisted.actions, ())
+                    refused = first.apply(event(EventKind.START_REQUESTED, 10001,
+                        expected_generation=armed.generation, child_id="next-child"))
+                    self.assertTrue(refused.stale)
+                finally:
+                    first.close()
+                    second.close()
+                clock.advance(1)
+                with SupervisorStore(path, scope_id="kalshi-primary",
+                        clock=clock.utc, monotonic_clock=clock.monotonic,
+                        boot_id=clock.boot_id) as reopened:
+                    self.assertEqual(reopened.read().state,
+                                     SupervisorState.ATTENTION_REQUIRED)
+                    self.assertTrue(reopened.read().stop_latched)
+
+    def test_clock_fault_precedes_duplicate_lifecycle_and_preserves_child(self):
+        clock = ControlledClock()
+        with self.open(clock=clock.utc, monotonic_clock=clock.monotonic,
+                boot_id=clock.boot_id) as store:
+            armed = store.apply(self.arm_event(now=100)).state
+            reserved = store.apply(event(EventKind.START_REQUESTED, 100,
+                expected_generation=armed.generation, child_id="child-a")).state
+            clock.advance(1)
+            active = store.apply(event(EventKind.CHILD_STARTED, 101,
+                expected_generation=reserved.child_generation,
+                child_id=reserved.child_id)).state
+            clock.wall = 10000
+            clock.monotonic_value = 2
+            held = store.apply(event(EventKind.CHILD_STARTED, 10000,
+                expected_generation=active.child_generation,
+                child_id=active.child_id))
+            self.assertTrue(held.stale)
+            self.assertEqual(held.state.state, SupervisorState.ATTENTION_REQUIRED)
+            self.assertEqual(held.state.attention_reason,
+                             AttentionReason.CLOCK_UNTRUSTED)
+            self.assertEqual(held.state.child_id, active.child_id)
+            self.assertEqual(held.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
+            clock.advance(1)
+            status = store.apply(event(EventKind.CHILD_STATUS, 10001,
+                expected_generation=active.child_generation,
+                child_id=active.child_id, child_phase=ChildPhase.HEALTHY,
+                progress_sequence=1))
+            self.assertTrue(status.stale)
+            self.assertEqual(status.state.state, SupervisorState.ATTENTION_REQUIRED)
+            clock.advance(1)
+            exited = store.apply(event(EventKind.CHILD_RESULT, 10002,
+                expected_generation=active.child_generation,
+                child_id=active.child_id, outcome=ChildOutcome.CLEAN,
+                process_exited=True, cleanup_complete=True)).state
+            self.assertEqual(exited.state, SupervisorState.ATTENTION_REQUIRED)
+            self.assertEqual(exited.attention_reason, AttentionReason.CLOCK_UNTRUSTED)
+            self.assertIsNone(exited.child_id)
+
+    def test_default_clock_tolerates_sampling_skew_across_reopen_and_instances(self):
+        clock = ControlledClock(wall=110.001, monotonic=10)
+        with self.open(clock=clock.utc, monotonic_clock=clock.monotonic) as store:
+            store.apply(self.arm_event(now=110.001))
+            original_boot = store._read_clock()[0]
+        clock.wall = 111.001
+        clock.monotonic_value = 11.002
+        first = self.open(clock=clock.utc, monotonic_clock=clock.monotonic)
+        second = self.open(clock=clock.utc, monotonic_clock=clock.monotonic)
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        one = first.apply(event(EventKind.TICK, 111.001)).state
+        self.assertEqual(one.state, SupervisorState.BACKOFF)
+        self.assertEqual(first.history(limit=1)[0]["clock_trusted"], 1)
+        self.assertEqual(first._read_clock()[0], original_boot)
+        clock.wall = 112.003
+        clock.monotonic_value = 12.003
+        two = second.apply(event(EventKind.TICK, 112.003)).state
+        self.assertEqual(two.state, SupervisorState.BACKOFF)
+        self.assertNotEqual(two.attention_reason, AttentionReason.CLOCK_UNTRUSTED)
+        self.assertEqual(second._read_clock()[0], original_boot)
+
+    def test_default_clock_discontinuities_hold_for_attention(self):
+        cases = ((10000.0, 2.0), (50.0, 2.0), (101.0, 0.5))
+        for number, (wall, monotonic) in enumerate(cases):
+            with self.subTest(wall=wall, monotonic=monotonic):
+                path = Path(self.temp.name)/f"default-clock-{number}.db"
+                clock = ControlledClock(wall=100, monotonic=1)
+                with SupervisorStore(path, scope_id="kalshi-primary",
+                        clock=clock.utc, monotonic_clock=clock.monotonic) as store:
+                    store.apply(self.arm_event(now=100))
+                clock.wall = wall
+                clock.monotonic_value = monotonic
+                with SupervisorStore(path, scope_id="kalshi-primary",
+                        clock=clock.utc, monotonic_clock=clock.monotonic) as store:
+                    held = store.apply(event(EventKind.TICK, wall)).state
+                    self.assertEqual(held.state, SupervisorState.ATTENTION_REQUIRED)
+                    self.assertEqual(held.attention_reason,
+                                     AttentionReason.CLOCK_UNTRUSTED)
+                    self.assertTrue(held.stop_latched)
 
     def test_stop_fences_arm_when_clock_continuity_is_lost(self):
         clock = ControlledClock()

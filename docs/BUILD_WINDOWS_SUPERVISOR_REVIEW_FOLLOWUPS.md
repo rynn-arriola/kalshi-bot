@@ -1,5 +1,11 @@
 # D-053 — Native Windows supervisor re-review follow-ups
 
+Review status: [independent Astra review](REVIEW_D053_ASTRA.md) clears D-052
+R1/R2/R3/R5 within S1, but requires two clock corrections. The evidence below
+records Sol's implementation results, qualified by that review. D-054
+[implements the clock corrections](BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md)
+and awaits Astra review; S2 is blocked.
+
 Date: September 21, 2026. Native Windows; execution disabled. Implements R1-R5
 from the [D-052 independent Astra re-review](REVIEW_D052_ASTRA.md) after operator
 approval. This is Sol implementation evidence and requires Astra re-review.

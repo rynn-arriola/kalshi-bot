@@ -13,7 +13,7 @@ from .values import InvalidData, identity
 SCHEMA_VERSION = "3"
 MAX_EVENTS = 256
 CLOCK_SKEW_SECONDS = 2.0
-BOOT_BUCKET_SECONDS = 10.0
+DEFAULT_BOOT_PREFIX = "estimated-"
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE control (
@@ -111,7 +111,7 @@ class SupervisorStore:
                 or not math.isfinite(monotonic) or monotonic < 0):
             raise InvalidData("invalid supervisor clock sample")
         if self.boot_id is None:
-            boot_id = f"estimated-{math.floor((wall_utc-monotonic)/BOOT_BUCKET_SECONDS)}"
+            boot_id = f"{DEFAULT_BOOT_PREFIX}{wall_utc-monotonic:.9f}"
         else:
             boot_id = self.boot_id() if callable(self.boot_id) else self.boot_id
         return identity(boot_id), wall_utc, monotonic
@@ -134,8 +134,18 @@ class SupervisorStore:
         boot_id, wall_utc, monotonic = self._clock_sample()
         monotonic_delta = monotonic-prior_monotonic
         wall_delta = wall_utc-prior_wall
-        trusted = (boot_id == prior_boot and monotonic_delta >= 0
+        delta_continuous = (monotonic_delta >= 0
             and abs(wall_delta-monotonic_delta) <= CLOCK_SKEW_SECONDS)
+        if self.boot_id is None:
+            # The two clocks are sampled sequentially, so their estimated boot
+            # epoch is evidence with tolerance, not an exact identifier.  Keep
+            # the persisted identity stable while their deltas prove continuity.
+            boot_continuous = delta_continuous
+            if boot_continuous:
+                boot_id = prior_boot
+        else:
+            boot_continuous = boot_id == prior_boot
+        trusted = boot_continuous and delta_continuous
         control_utc = (prior_control+monotonic_delta if trusted
                        else max(prior_control, state.updated_utc))
         return boot_id, wall_utc, monotonic, control_utc, trusted

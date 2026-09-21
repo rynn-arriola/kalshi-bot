@@ -1,5 +1,25 @@
 # What exists
 
+## D-054 supervisor clock review fixes — 2026-09-21
+
+D-054 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md) implements
+both findings from the [D-053 Astra review](docs/REVIEW_D053_ASTRA.md). A stale
+or out-of-phase child payload cannot consume local clock distrust; the hold is
+durable and the payload remains labeled stale. Default wall/monotonic continuity
+uses tolerated deltas and retains its persisted identity instead of comparing a
+fresh quantized estimate. All 64 focused and 868 full tests pass, including
+10/10 repeats, counterfactual parent checks, resource checks and disabled
+preflight. This is Sol evidence pending Astra review; S2 and D-048 remain gated.
+
+## D-053 Astra review — two clock fixes required — 2026-09-21
+
+[Independent review](docs/REVIEW_D053_ASTRA.md) clears D-052 R1/R2/R3/R5 in
+offline S1, but reproduces clock-fault loss after stale events and false boot
+changes from small sampling skew. All 59 focused and 863 full tests pass;
+additional transaction probes qualify the implementation claims below. This
+records the `b051067` review state; D-054 above implements both findings and
+awaits Astra review. S2 and D-048 remain gated.
+
 ## D-053 supervisor sequence and clock fixes — 2026-09-21
 
 D-053 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md)

@@ -10,6 +10,18 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Clock fault loss and unstable default boot estimate
+
+**Mechanisms.** Stale child filtering returned before local clock distrust was
+handled, then the journal replaced the checkpoint; a later event could resume.
+The default exact quantized wall-minus-monotonic identifier could also change
+under harmless sampling skew. **Fix under D-054.** Apply independent clock
+distrust durably before payload filtering while retaining the stale label, and
+validate persisted default continuity from tolerated clock deltas. **Verification.**
+Sixty-four focused and 868 full tests, 10/10 focused repeats, four parent-code
+counterfactual detections, resource checks and disabled preflight pass. See
+`docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md`. No runtime or live use.
+
 ### Supervisor sequence, continuity and identity defects
 
 **Mechanisms.** Repeated STOP did not refence generation; late status refreshed

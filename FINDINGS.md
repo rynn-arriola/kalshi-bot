@@ -1,5 +1,33 @@
 # Findings — kalshi-bot
 
+## 78. D-053 clock findings are fixed offline — 2026-09-21
+
+VERIFIED OFFLINE under D-054: independent local clock distrust now takes safety
+precedence over stale child filtering, persists `ATTENTION_REQUIRED`, requests
+stop for an owned child and still journals the ignored payload as stale. The
+default clock path treats wall-minus-monotonic as tolerant continuity evidence,
+retains the persisted identity across trusted samples and rejects forward,
+backward or monotonic discontinuity. Sixty-four focused and exact 868 full tests
+pass (76.297 seconds), with 10/10 focused repeats. Four new tests detect the
+parent commit's defects when its policy/store are loaded in memory. The 60.006-
+second persisted-work fixture recorded 124 events at 0.4427% of one core. See
+[D-054 evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md). This is Sol
+evidence pending Astra re-review; no runtime or live action occurred.
+
+## 77. D-053 clock validation has two remaining gaps — 2026-09-21
+
+VERIFIED OFFLINE at `b051067`: a stale child event detects an untrusted local
+clock but returns before applying the hold; the journal replaces its checkpoint
+and a subsequent tick/start is permitted, including after reopen. The same
+sequence leaves an active child HEALTHY. Separately, the default quantized
+wall-minus-monotonic boot ID changes across a bucket boundary under only 2 ms
+of sampling skew, falsely requiring attention. See
+[D-053 Astra review](docs/REVIEW_D053_ASTRA.md) for reproductions and acceptance.
+D-052 R1/R2/R3/R5 are cleared in S1; R4 remains partly open. Fifty-nine focused
+and 863 full tests pass (79.900 seconds), so these additional event/default-clock
+cases are missing from coverage. This records the `b051067` review state;
+D-054/section 78 implements both fixes and awaits Astra review.
+
 ## 76. D-052 supervisor follow-ups are fixed offline — 2026-09-21
 
 VERIFIED OFFLINE under D-053: the five section 75 reproductions now pass.

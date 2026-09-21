@@ -2,6 +2,31 @@
 
 ## Current update — 2026-09-21
 
+D-054 implements both findings from the D-053
+[Astra review](docs/REVIEW_D053_ASTRA.md); see
+[build evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md). Local clock
+trust failure now enters a durable hold before stale child filtering while the
+ignored payload remains labeled stale. Default continuity retains one persisted
+boot estimate when wall/monotonic deltas agree within tolerance; small sampling
+jitter no longer creates a boot change, while real discontinuities fail closed.
+All 64 focused and exact 868 full tests pass (full: 76.297 seconds), including
+10/10 focused repeats and four parent-code counterfactual detections. Resource
+and disabled-preflight checks pass. **STOP for independent Astra re-review under
+D-049.** S2 and D-048 remain gated. No runtime, configuration or live action.
+
+### D-053 Astra review before D-054 fixes
+
+D-053 [independent Astra review](docs/REVIEW_D053_ASTRA.md) requires two P2
+clock fixes: stale child events can consume a detected clock discontinuity
+without retaining a hold, and the default boot estimator can falsely disarm on
+two milliseconds of sampling skew. D-052 R1/R2/R3/R5 are cleared within S1;
+R4 remains partly open. All 59 focused and 863 full tests pass (full: 79.900
+seconds); additional disposable-store probes reproduce both gaps. Preflight
+remains disabled with no side effects. This records the review-time state at
+`b051067`; D-054 above implements both requested fixes. S2 and D-048 remain gated.
+
+### D-053 implementation evidence before Astra review
+
 D-053 implements all five findings from the D-052
 [Astra re-review](docs/REVIEW_D052_ASTRA.md); see
 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md). Every STOP

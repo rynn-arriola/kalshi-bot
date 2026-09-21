@@ -821,6 +821,26 @@ them accepted without an explicit operator instruction.
   access, bot restart, orders or live action. Independent Astra re-review is
   mandatory before S2; D-048 remains a separate S2 gate.
 
+### D-054 — Implement D-053 clock review findings
+
+- **Status:** ACCEPTED implementation scope and implemented, 2026-09-21.
+- **Decision owner:** Operator: “Sol implement,” after the D-053 Astra review.
+- **Scope:** Implement R1/R2 from
+  [the D-053 review](docs/REVIEW_D053_ASTRA.md): durably apply local clock trust
+  failures before stale child payload filtering while preserving stale labels,
+  and replace exact quantized default boot matching with persisted, tolerance-
+  validated wall/monotonic continuity. Add policy and SQLite regressions for
+  stale/missing identity, duplicate lifecycle, multiple store handles, reopen,
+  active-child ownership, harmless jitter and genuine discontinuities.
+- **Evidence:** See
+  [D-054 build evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md): 64
+  focused and 868 full tests pass, with 10/10 repeated focused runs, four
+  counterfactual parent detections, resource, compilation and preflight checks.
+- **Boundary:** Preserve execution-disabled S1. No launcher, IPC, runtime
+  integration, service/task, configuration, credential/network/account access,
+  bot restart, orders or live action. Independent Astra re-review is mandatory
+  before S2; D-048 remains a separate S2 gate.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a
