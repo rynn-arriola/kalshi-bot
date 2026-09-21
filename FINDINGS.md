@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 94. Accounting restrictions now reach durable command gates — 2026-09-21
+
+VERIFIED OFFLINE: D-067 adds persistent restrictions checked during atomic entry
+reservation and prepared-entry dispatch. A fresh report, caller account-known
+flag, empty settlement page, next risk window or writer restart cannot bypass
+them. Snapshot/cash/history observations do not manufacture fills, lot basis or
+settlement P&L. Boundary-ambiguous fills stay in a separate durable journal.
+Current official [balance](https://docs.kalshi.com/api-reference/portfolio/get-balance),
+[settlement](https://docs.kalshi.com/api-reference/portfolio/get-settlements) and
+[position stream](https://docs.kalshi.com/websockets/market-positions) contracts
+were rechecked; a shared replay barrier and exact cash/hold attribution remain
+UNKNOWN. See [build evidence](docs/BUILD_DURABLE_ACCOUNTING.md).
+
 ## 93. D-066 settlement pause rule is accepted, not runtime-integrated — 2026-09-21
 
 OPERATOR POLICY: unexpected settlement of a bot-owned open position pauses

@@ -161,6 +161,18 @@ END;
 CREATE TABLE IF NOT EXISTS risk_windows (
   start TEXT PRIMARY KEY, end TEXT NOT NULL, entry_cap INTEGER NOT NULL,
   tripped INTEGER NOT NULL DEFAULT 0, released INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS accounting_state (
+  id INTEGER PRIMARY KEY CHECK(id=1), rows INTEGER NOT NULL, bytes INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS opening_checkpoint (
+  id INTEGER PRIMARY KEY CHECK(id=1), digest TEXT NOT NULL, payload TEXT NOT NULL,
+  boundary TEXT NOT NULL, subaccount INTEGER NOT NULL, observed_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS accounting_events (
+  digest TEXT PRIMARY KEY, kind TEXT NOT NULL, event_key TEXT NOT NULL,
+  payload TEXT NOT NULL, first_seen_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS accounting_event_key ON accounting_events(kind,event_key);
+CREATE INDEX IF NOT EXISTS accounting_event_kind ON accounting_events(kind);
+CREATE TABLE IF NOT EXISTS accounting_holds (
+  code TEXT PRIMARY KEY, evidence_digest TEXT NOT NULL, first_seen_at TEXT NOT NULL);
 """
 
 
@@ -175,7 +187,7 @@ class Ledger:
         if tables:
             version = (self.connection.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
                        if "meta" in tables else None)
-            if version is None or version[0] != "3":
+            if version is None or version[0] != "4":
                 self.close()
                 raise InvalidData("incompatible ledger accounting schema; explicit migration required")
             counter_columns = ({row[1] for row in self.connection.execute(
@@ -185,18 +197,28 @@ class Ledger:
                 "PRAGMA table_info(command_authorizations)")}
                 if "command_authorizations" in tables else set())
             if ("used" not in counter_columns or
-                    "proof" not in authorization_columns):
+                    "proof" not in authorization_columns or
+                    not {'accounting_state', 'opening_checkpoint',
+                         'accounting_events', 'accounting_holds'} <= tables):
                 self.close()
                 raise InvalidData("incompatible development ledger schema; recreate explicitly")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.executescript(SCHEMA)
         with self.connection:
-            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','3')")
+            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','4')")
             self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('ledger_id',?)", (uuid4().hex,))
             self.connection.executemany(
                 "INSERT OR IGNORE INTO command_capacity_counters VALUES (?,0,0)",
                 ((name,) for name in ('mutation','intent','order')))
+            if not tables:
+                self.connection.execute("INSERT INTO accounting_state VALUES (1,0,0)")
+        try:
+            from .accounting import validate_accounting
+            validate_accounting(self)
+        except BaseException:
+            self.close()
+            raise
 
     def close(self):
         self.connection.close()
@@ -236,6 +258,9 @@ class Ledger:
                         self.connection.execute(
                             "UPDATE fills SET executed_us=?,execution_precision_us=? WHERE id=?",
                             (fill.executed_us, fill.execution_precision_us, fill.key))
+                return False
+            from .accounting import quarantine_fill
+            if quarantine_fill(self, fill, received_at):
                 return False
             latest = self.connection.execute("SELECT value FROM meta WHERE key='fill_clock'").fetchone()
             if latest and stamp < latest[0]:

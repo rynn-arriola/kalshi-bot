@@ -1013,6 +1013,21 @@ them accepted without an explicit operator instruction.
   build gates. This decision does not authorize account calls, schema migration,
   live entry/order actions, deployment or restart.
 
+### D-067 — Finish offline opening-account accounting and enforcement
+
+- **Status:** ACCEPTED build assignment, 2026-09-21.
+- **Decision owner:** Operator: “Finish it then,” after the remaining baseline,
+  cash/reservations, persistent settlement pause, history/stream and entry-gate
+  work was explained.
+- **Scope:** Complete the necessary offline design, implementation, integration,
+  recovery tests and review under D-064/D-066. Persist accounting evidence and
+  restrictions in the single-writer ledger; enforce them in entry reservation
+  and prepared-command dispatch. Test new schema only in disposable ledgers.
+- **Boundary:** No migration or modification of existing runtime ledgers,
+  authenticated account reads, real opening boundary, fabricated venue proof,
+  live transport, deployment or trading. Missing venue guarantees remain
+  explicit blockers. D-065 governs publication after verification.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

@@ -12,6 +12,7 @@ from .execution import (check_new_attempt, encoded_request, insert_prepared,
 from .orders import OrderReceipt, OrderUpdate
 from .risk import WindowRisk, admit_entry
 from .values import InvalidData, count, decimal, identity, integer, price, utc
+from .accounting import entry_blockers as accounting_entry_blockers
 
 
 @dataclass(frozen=True)
@@ -207,6 +208,7 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
         blockers.append("stale_account_evidence")
     with ledger.transaction():
         # Recompute in the transaction; caller-provided exposure numbers are never trusted.
+        blockers.extend(accounting_entry_blockers(ledger, require_checkpoint=not offline_fixture))
         current = portfolio_view(ledger, subaccount=request["subaccount"], epoch=epoch,
                                  revision=revision, now=now, capacity=capacity)
         blockers.extend(current.blockers)

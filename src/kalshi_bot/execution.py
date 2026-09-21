@@ -389,6 +389,11 @@ def begin_send(ledger, receipt, *, writer_epoch, writer_revision, post_revision)
             (receipt.kind, receipt.request_json, receipt.prepared_at.isoformat(), 'PREPARED')):
         raise InvalidData('current prepared mutation conflicts with authorization')
     if receipt.kind == 'create':
+        if receipt.request.get('reduce_only') is not True:
+            from .accounting import entry_blockers
+            restrictions = entry_blockers(ledger)
+            if restrictions:
+                return SendResult(False, restrictions, writer_revision)
         state = ledger.connection.execute('SELECT state,payload FROM intents WHERE client_id=?',
                                           (receipt.subject_id,)).fetchone()
         if state is None or state['payload'] != receipt.request_json or state['state'] != 'RESERVED':

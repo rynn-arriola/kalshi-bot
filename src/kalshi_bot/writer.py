@@ -165,6 +165,23 @@ class LedgerWriter:
     async def observe(self, now: datetime) -> WindowState:
         return await self._wait(self._submit("observe", utc(now)))
 
+    async def capture_accounting(self, evidence, report, *, source_current=True):
+        """Accepted evidence writes survive caller cancellation; never grant entry."""
+        from .opening_account import OpeningAccountEvidence
+        if not isinstance(evidence, OpeningAccountEvidence):
+            raise InvalidData('typed opening evidence required')
+        return await self._wait(self._submit('capture_accounting', evidence, report, source_current))
+
+    async def accounting_source_failed(self):
+        return await self._wait(self._submit('accounting_source_failed'))
+
+    async def accounting_status(self):
+        return await self._wait(self._submit('accounting_status'))
+
+    async def record_accounting_review(self, *, reference, checkpoint_digest, now):
+        return await self._wait(self._submit('accounting_review', identity(reference),
+                                             checkpoint_digest, utc(now)))
+
     async def market_inventory(self, ticker, *, subaccount):
         return await self._wait(self._submit("market_inventory", identity(ticker), integer(subaccount, 0, 63)))
 
@@ -407,6 +424,21 @@ class LedgerWriter:
         return await self._wait(self._submit("mutations"))
 
     def _execute(self, ledger, command, args):
+        if command == 'capture_accounting':
+            from .accounting import capture
+            return capture(ledger, args[0], args[1], source_current=args[2], writer_epoch=self.epoch,
+                           writer_revision=self._revision, post_revision=self._revision+1,
+                           capacity=self.market_capacity)
+        if command == 'accounting_status':
+            from .accounting import inspect
+            return inspect(ledger)
+        if command == 'accounting_source_failed':
+            from .accounting import record_failure, inspect
+            record_failure(ledger, command)
+            return inspect(ledger)
+        if command == 'accounting_review':
+            from .accounting import record_review
+            return record_review(ledger, reference=args[0], checkpoint_digest=args[1], now=args[2])
         if command == 'private_epoch_open':
             from .private_epoch_store import open_epoch
             return open_epoch(ledger, args[0])
@@ -734,17 +766,25 @@ class LedgerWriter:
                     read_only = {"portfolio", "market_inventory", "inventory", "fill_scope",
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
-                                 'reduction_evidence', 'command_capacity'}
+                                 'reduction_evidence', 'command_capacity', 'accounting_status'}
                     post_revision = {'reserve_entry', 'prepare_cancel', 'prepare_reduction',
-                                     'begin_send', 'abort_prepared'}
+                                     'begin_send', 'abort_prepared', 'capture_accounting'}
                     if command not in read_only and command not in post_revision:
                         self._revision += 1
                     result = self._execute(ledger, command, args)
-                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction'}:
+                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction', 'capture_accounting'}:
                         self._revision += 1
                     elif command in {'begin_send', 'abort_prepared'} and result.writer_revision == self._revision+1:
                         self._revision += 1
                 except Exception as exc:
+                    if command in {'fill', 'apply_pending', 'recover_fills', 'order',
+                                   'order_batch', 'capture_accounting'}:
+                        try:
+                            from .accounting import record_failure
+                            record_failure(ledger, command)
+                        except Exception as journal_error:
+                            self.diagnostics.emit('writer_failed', error=journal_error,
+                                                  command='accounting_failure_journal')
                     self.diagnostics.emit('writer_failed', error=exc, command=command,
                                           revision=self._revision, backlog=self.backlog)
                     with self._lock:

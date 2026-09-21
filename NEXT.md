@@ -1,20 +1,19 @@
 # Active work queue
 
-D-066 resolves the unexpected bot-owned settlement rule: pause new entries
-until operator reconciliation; do not auto-count settlement P&L. The offline
-assessment now flags observed settlements, but cannot install a runtime hold.
-Next priority-3 gate is the durable opening checkpoint and settlement-event
-handoff/hold design, including how a reviewed hold can be released. Do not
-assume a settlement correction ID or treat a proposed boundary as approved.
+D-067 implements the [durable accounting restrictions](docs/BUILD_DURABLE_ACCOUNTING.md)
+in new schema-4 fixture ledgers. The opening candidate, observation journal,
+settlement/cash/fill-conflict restrictions, restart validation and entry/send
+checks exist. The account owner has an explicit persist-and-reconcile operation;
+do not rebuild these as another report-only helper.
 
-Priority-3 update: the non-authorizing local opening-account assessor is built
-and tested. Next, settle how unexpected bot-owned settlement affects the
-six-hour loss meter; prove a correction/reversal contract and exact historical
-handoff before designing a durable checkpoint/journal. Do not migrate schema 3
-or bind opening authority to entries yet. See
-[accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md).
+Remaining priority-3 readiness gates: prove the venue history/private-stream
+handoff and cash/reservation semantics, approve the actual opening boundary at
+launch, and reconcile any retained economic ambiguity before specifying a
+release that can grant entries. Current documents provide no shared replay
+barrier, so local agreement cannot clear that restriction. No existing schema-3
+ledger migration or account request is authorized by the offline build.
 
-Updated 2026-09-21. Follow accepted decisions through D-065 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-067 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -37,8 +36,9 @@ Do not rebuild it. Sequential 512-row normalization now passes the bounded
 latency fixture with cross-batch conflict tests. D-064 selects exclusive primary
 subaccount 0 and requires no nonzero position or resting order before arming.
 Fresh account proof is still missing; choose the exact boundary only during a
-separately authorized launch. Finish the durable basis, cash/holds and settlement/
-correction contracts. Evidence alone cannot activate entries.
+separately authorized launch. D-067 now durably stores the candidate and cash/
+settlement evidence and enforces their restrictions; automatic correction,
+settlement P&L attribution and live entry authority remain unavailable.
 
 Item 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) now passes the
 synthetic 30/120-shard resource target. The

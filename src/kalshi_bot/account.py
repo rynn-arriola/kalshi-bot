@@ -610,13 +610,13 @@ class AccountCoordinator:
             raise
 
     async def inspect_opening_account(self, reads: RestReads, *, proposed_boundary,
-                                      continuity, now):
-        """Explicit bounded evidence read; never installs a baseline or authority."""
+                                      continuity, now, persist=False):
+        """Bounded inspection; optional durable restrictions, never live authority."""
         self._check_owner()
         if self._opening_task is not None:
             raise InvalidData('opening inspection already active')
         task = asyncio.create_task(self._inspect_opening_account(reads,
-            proposed_boundary=proposed_boundary, continuity=continuity, now=now),
+            proposed_boundary=proposed_boundary, continuity=continuity, now=now, persist=persist),
             name='kalshi-opening-inspection')
         self._opening_task = task
         def completed(result):
@@ -629,7 +629,21 @@ class AccountCoordinator:
         # bounded reads or the pure normalization thread still own work.
         return await asyncio.shield(task)
 
-    async def _inspect_opening_account(self, reads, *, proposed_boundary, continuity, now):
+    async def reconcile_accounting(self, reads: RestReads, *, proposed_boundary, continuity, now):
+        """Explicit account-owner integration; no background polling is created."""
+        return await self.inspect_opening_account(reads, proposed_boundary=proposed_boundary,
+            continuity=continuity, now=now, persist=True)
+
+    async def _inspect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist=False):
+        try:
+            return await self._collect_opening_account(reads, proposed_boundary=proposed_boundary,
+                continuity=continuity, now=now, persist=persist)
+        except BaseException:
+            if persist and not self.writer.failed:
+                await self.writer.accounting_source_failed()
+            raise
+
+    async def _collect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist):
         from .opening_account import build_opening_evidence_async
         observed = utc(now())
         boundary = utc(proposed_boundary)
@@ -658,9 +672,10 @@ class AccountCoordinator:
             if isinstance(result, BaseException):
                 raise result
         current = utc(now())
-        if (self.current_report(current) is not report or generation != self.generation
+        source_changed = (self.current_report(current) is not report or generation != self.generation
                 or revision != self.revision or writer_epoch != self.writer.epoch
-                or writer_revision != self.writer.revision):
+                or writer_revision != self.writer.revision)
+        if source_changed and not persist:
             return None
         balance, settlements, subaccount_transfers, intra_transfers, deposits, withdrawals = results
         evidence = await build_opening_evidence_async(
@@ -671,6 +686,14 @@ class AccountCoordinator:
             subaccount_transfers=subaccount_transfers,
             intra_exchange_transfers=intra_transfers, deposits=deposits,
             withdrawals=withdrawals, observed_at=current)
+        if persist:
+            source_current = (not source_changed and self.current_report(utc(now())) is report
+                and (generation, revision, writer_epoch, writer_revision) ==
+                    (self.generation, self.revision, self.writer.epoch, self.writer.revision))
+            receipt = await self.writer.capture_accounting(evidence, report, source_current=source_current)
+            if (generation, revision) != (self.generation, self.revision):
+                await self.writer.accounting_source_failed()
+            return receipt
         if (self.current_report(utc(now())) is not report or generation != self.generation
                 or revision != self.revision or writer_epoch != self.writer.epoch
                 or writer_revision != self.writer.revision):

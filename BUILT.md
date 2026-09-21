@@ -1,6 +1,19 @@
 # What exists
 
-## D-066 offline settlement pause assessment — 2026-09-21
+## D-067 durable accounting and entry restrictions — 2026-09-21
+
+[Build contract and evidence](docs/BUILD_DURABLE_ACCOUNTING.md): new schema-4
+tables retain an immutable opening candidate, bounded event versions and
+sticky restrictions. The sole writer and account owner expose durable capture;
+entry reservation and prepared-entry sending consume the restrictions. Old
+schema-3 ledgers are refused before mutation. Review acknowledgement, risk
+window changes, restart and empty later histories cannot clear unresolved
+evidence. This implements enforcement offline; source handoff/cash semantics,
+the actual launch boundary and live authority remain unproved. Verification:
+1,046-test full suite (one expected skip), then 48 focused tests including a
+new reducer regression; synthetic resource budgets and disabled preflight pass.
+
+## D-066 offline settlement pause assessment — historical step, superseded by D-067
 
 The opening-account assessor now marks any scoped settlement retained after
 the proposed boundary as requiring reconciliation. This conservative finding

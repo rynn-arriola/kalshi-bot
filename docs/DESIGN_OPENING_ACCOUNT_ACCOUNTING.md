@@ -3,7 +3,10 @@
 September 21, 2026. Priority 3 under D-062/D-064. Design and decision record,
 not a live baseline, migration, account read, or entry grant. Supersedes no
 accepted risk/accounting rule. The existing [evidence reader](BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
-is the input; do not rebuild it.
+is the input; do not rebuild it. D-067 implements the durable candidate,
+observation/restriction journal and command gates in
+[BUILD_DURABLE_ACCOUNTING.md](BUILD_DURABLE_ACCOUNTING.md). References below to
+an approved baseline or successful release remain readiness requirements.
 
 ## Source and authority boundary
 
@@ -45,12 +48,12 @@ is the input; do not rebuild it.
    only for that candidate; it does not prove that a late pre-boundary fill
    cannot arrive. Every result retains the venue-handoff and non-atomic-cash
    blockers until an approved boundary/proof protocol exists.
-3. A future single-writer durable checkpoint must atomically bind the approved
+3. D-067's single-writer schema-4 checkpoint binds a **proposed**, not approved,
    boundary, ledger identity, writer revision, source digests, cash observation,
-   empty opening lots, excluded-old-history evidence and unresolved blockers.
-   It must never be inferred from a caller boolean. The current schema-3
-   trading ledger must not be silently upgraded or given a fabricated baseline;
-   design/test any new schema and migration separately before installation.
+   flat local audit and unresolved blockers. It never grants entry authority.
+   Existing schema-3 ledgers are refused before mutation; no migration exists.
+   Installing an approved live baseline still requires the source proof and
+   separately authorized opening protocol below.
 4. After a checkpoint, preserve distinct journals for bot fills, venue cash
    observations, member funding, scoped transfers, settlements and potential
    corrections. Deduplicate by documented identity and reject immutable
@@ -71,7 +74,8 @@ is the input; do not rebuild it.
   trade closes and actual fill fees continue under D-024. A settlement on an
   old or unknown-owned lot cannot enter bot-era P&L. An observed settlement
   after a merely proposed boundary is conservatively marked for reconciliation,
-  not asserted to be bot-owned or installed as a durable runtime hold.
+  not asserted to be bot-owned. D-067 now persists this restriction when the
+  explicit account-owner reconciliation operation is invoked.
 - A duplicate settlement with changed economics, a reversed/corrected fill,
   an unexplained cash delta, an old order/fill crossing the proposed boundary,
   or mismatched exchange/account scope must persist a blocker. No automatic
@@ -92,24 +96,25 @@ cash/settlement activity, while keeping `approved`, `ready_for_entry` and
 orders, pending fills, source conflicts, cancellation/revision races and old
 funding. No ledger or network access.
 
-**B. Durable accounting design gate.** D-066 settles the unexpected-settlement
-pause rule; the checkpoint schema and exact event/hold/release protocol are not
-approved. After those are designed and accepted, add one writer-owned immutable
-checkpoint/cash-event journal in disposable ledgers only. Reject schema-3
-migration until explicitly designed. Fault-inject crash before/after atomic
+**B. Durable accounting.** D-067 authorizes and implements a writer-owned
+immutable candidate and cash-event/restriction journal in disposable schema-4
+ledgers. No existing schema-3 ledger is migrated. The exact live opening and
+successful reconciliation-release protocol remain unproved. Fault-inject crash before/after atomic
 commit, duplicate/conflicting events, out-of-order arrival, stale balance,
 restart and receipt-window cases.
 Prove no event changes the stop meter except the approved accounting paths.
 
-**C. Runtime integration gate.** Bind a fresh checkpoint, continuity assessment,
+**C. Live-authority integration gate.** D-067 enforces durable restrictions at
+reservation and prepared send; this does not yet produce an eligible live entry.
+Bind a fresh approved checkpoint, continuity assessment,
 cash revision and current account/book/risk state to one entry decision. Revoke
 on every ambiguous event or gap. Verify 30/120-market workloads, bounded
 history/queue costs, shutdown/restart, full suite and disabled preflight. Do not
 enable a production write transport or live run in this phase.
 
-The D-066 rule is accepted but only its evidence-only assessment is currently
-built. Exact launch timestamp, durable hold/release implementation, fresh
-account proof and live trading approval remain separate gates. The operator
+The D-066 rule now has durable entry restrictions under D-067. Exact launch
+timestamp, a proved reconciliation release, fresh account proof and live
+trading approval remain separate gates. The operator
 has not approved a formula for assigning reconciled settlement P&L to a window.
 
 ## Polymarket code cross-check (read-only)
@@ -129,5 +134,6 @@ Phase A implemented: `assess_opening_accounting` classifies a revision-matched
 local flat candidate and cash equality from already normalized evidence. It
 explicitly marks an observed post-proposed-boundary settlement as requiring
 reconciliation, without computing settlement P&L or auto-clearing the finding.
-It neither installs basis/cash nor clears any evidence blocker. Phases B/C
-remain gated by the open decisions and source proof above.
+It neither installs basis/cash nor clears any evidence blocker. D-067 adds
+Phase B's durable observations and Phase C's entry-restriction checks. Source
+proof, cash attribution and a release granting live entries remain unresolved.

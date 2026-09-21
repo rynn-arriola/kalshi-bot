@@ -115,6 +115,18 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
         evidence = await self.writer.reduction_evidence(request, now=decision_now)
         return evidence, decision_now
 
+    async def test_accounting_hold_preserves_verified_reduction_path(self):
+        await self.funded_position()
+        await self.writer.accounting_source_failed()
+        request = self.reducer()
+        proof, decision_now = await self.reduction_proof(request)
+        prepared = await self.writer.prepare_reduction('accounting-held-reducer',
+            request, evidence=proof, now=decision_now)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        sent = await self.writer.begin_send(prepared.receipt)
+        self.assertTrue(sent.dispatch_allowed, sent.blockers)
+        self.assertIn('accounting_source_failed', (await self.writer.accounting_status()).holds)
+
     async def test_atomic_prepare_returns_post_commit_receipt(self):
         result = await self.reserve()
         self.assertTrue(result.reserved, result.blockers)

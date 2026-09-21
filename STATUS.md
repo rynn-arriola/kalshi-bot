@@ -1,6 +1,28 @@
 # Current status
 
-## D-066 settlement safety policy — 2026-09-21
+## D-067 durable accounting enforcement — 2026-09-21
+
+The writer now retains an immutable opening candidate, separate cash/funding/
+settlement observations and persistent restrictions in fresh schema-4 ledgers.
+An explicit account-owner reconciliation operation joins reads, normalization
+and durable capture; stale sources retain positive settlement evidence but
+cannot create the candidate. Entry reservation and prepared entry sending
+check restrictions inside the writer transaction. Cancels/reducers retain
+their own safety rules. Cross-boundary/undated fills are quarantined outside
+matched P&L; rejected financial evidence leaves a restriction across restart.
+No existing ledger was migrated or opened. No account/credential/trading action.
+
+Source completeness is still unproved: there is no verified shared REST/WS
+barrier or cash-hold mapping, no approved launch boundary and no reconciliation
+that permits releasing these restrictions. A review acknowledgement does not
+clear them. The [build record](docs/BUILD_DURABLE_ACCOUNTING.md) distinguishes
+implemented enforcement from external readiness gates. The full suite ran
+1,046 tests: 1,045 passed and one expected Windows privilege skip. After adding
+a reducer-path regression, all 48 durable-accounting/command-handoff tests
+passed. Synthetic resource budgets passed; disabled preflight returned native
+exit 2 with no files, credentials or network access. Scoped diff review passed.
+
+## D-066 settlement safety policy — historical step, superseded by D-067
 
 The operator approved pausing new entries for unexpected settlement of a
 bot-owned open position pending reconciliation. The offline opening assessment
