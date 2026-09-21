@@ -45,8 +45,9 @@ permit without refund and treats a consumed/absent permit as a no-op.
   peak Python allocation 7,140/22,572 B. Both pass <250 ms CPU and <8 MiB peak;
   no REST, 429, external shared usage or full-runtime performance is measured.
 
-Next: integrate source-bound candidate production, account/book/exit checks and
-quota refresh with the [offline dispatcher](BUILD_WRITE_DISPATCHER.md), then
-review restart/shutdown and receipt ownership. Transport, shared external
+Follow-ups implemented: [source-bound candidates](BUILD_DISPATCH_SOURCES.md)
+and [shared quota ingestion](BUILD_WRITE_QUOTA_SOURCE.md) now connect to the
+[offline dispatcher](BUILD_WRITE_DISPATCHER.md). Next: owned 429/outcome recovery,
+supervised lifecycle and receipt ownership. Transport, shared external
 account usage, real grants/costs and production probe policy remain unbuilt or
 unverified. No venue write or account request occurred.

@@ -344,6 +344,7 @@ class RestReads:
         self.budget_refresh = None
         self.quota = None
         self.quota_supervisor = None
+        self.write_quota_source = None  # Optional offline consumer of this same pair.
         self.used = False
         self.concurrency = concurrency
         self._quota_owner = object()
@@ -443,6 +444,9 @@ class RestReads:
 
     async def _refresh_quota(self):
         epoch, sequence, start = self.quota.begin()
+        write_source = self.write_quota_source
+        if write_source is not None:
+            write_source.invalidate('write_quota_refreshing')
         scope = object()
         self._control_scope = scope
         self.diagnostics.emit('quota_refresh_started', attempt=sequence)
@@ -454,9 +458,17 @@ class RestReads:
                                           _control_scope=scope)
                 candidate = parse_candidate(limits.payload, costs.payload, scope=self.quota.scope,
                     epoch=epoch, sequence=sequence, start=start, end=self.quota._sample())
+                write_snapshot = (None if write_source is None else write_source.prepare(
+                    limits.payload, costs.payload, candidate))
                 self.quota.install(candidate)
+                if write_source is not None:
+                    write_source.install(write_snapshot, candidate)
                 return dict(read=self.budget.status(), write=dict(rate=candidate.write_rate,
                     capacity=candidate.write_capacity), write_enabled=False, quota=self.quota.status())
+        except BaseException:
+            if write_source is not None:
+                write_source.invalidate('write_quota_refresh_failed')
+            raise
         finally:
             # Revoke the pair first, then join actual work. No replacement pair
             # can start while a timed-out/cancelled worker is still draining.

@@ -1,7 +1,10 @@
 # Active work queue
 
-Next: priority 4's verified fee metadata and actual write-quota ingestion,
-then owned 429/outcome recovery and supervised dispatch lifecycle. The
+Next implementation: priority 4's owned write-429/outcome recovery, then
+supervised dispatch lifecycle. [Shared write-quota ingestion](docs/BUILD_WRITE_QUOTA_SOURCE.md)
+is implemented offline using the existing read pair; do not create another
+quota poller. Actual account quota/probe configuration and verified member fee
+profile remain readiness inputs, not facts proved by fixtures. The
 [source-bound candidate integration](docs/BUILD_DISPATCH_SOURCES.md) now covers
 account/book/exit rechecks and stopping the injected dispatcher; do not rebuild it.
 Keep transport disabled until separately
@@ -47,8 +50,9 @@ Item 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) now passes the
 synthetic 30/120-shard resource target. The
 [bounded dispatcher](docs/BUILD_WRITE_DISPATCHER.md) connects
 [source-bound offline candidates](docs/BUILD_DISPATCH_SOURCES.md) to durable
-writer receipts and the sole injected executor. Next: verified fee inputs,
-actual write-quota document ingestion, owned 429/outcome handling, supervised
+writer receipts and the sole injected executor. The
+[write-quota source](docs/BUILD_WRITE_QUOTA_SOURCE.md) now joins the existing
+guarded document refresh to that budget. Next: owned 429/outcome handling, supervised
 runtime shutdown and end-to-end fail-closed verification. The injected path now
 rechecks its write permit at the synchronous send edge; this is not production
 transport clearance.

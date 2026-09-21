@@ -10,6 +10,20 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Write-quota source: retain the full pair and owner fence
+
+**Integration gap.** The existing quota candidate's document projection is
+GET-only; reconstructing write costs from it would silently lose overrides.
+The arithmetic budget's raw grant expiry is also later than the read owner's
+required safety margin. **Implementation.** Parse original full pair documents
+before publication, bind the result to the accepted read lease, and check the
+owner at every quota operation, including final consumption. Do not let caller
+timestamps mint tokens. Replaced reader/source ownership is a sticky stop.
+**Verification.** Exact POST/DELETE versus GET costs, owner replacement and a
+grant-margin boundary are covered; bypassing the source fence in memory makes
+the grant-margin regression fail. No production bug or account use is claimed.
+See [build evidence](docs/BUILD_WRITE_QUOTA_SOURCE.md).
+
 ### Source dispatch: late stop, final proof and unused permit
 
 **Mechanism.** Dispatcher stop was checked only before starting work, not after

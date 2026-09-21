@@ -1,5 +1,14 @@
 # What exists
 
+## Shared write-quota source — 2026-09-21
+
+[Build/verification](docs/BUILD_WRITE_QUOTA_SOURCE.md): `write_quota_source.py`
+feeds one observed offline budget from the existing guarded `RestReads` pair.
+Owner/clock/grant fences remain active on acquired budgets; refresh preserves
+429 pauses but not tokens or permits. Actual dispatcher integration, retained
+read-pair cancellation and 30/120-shard resource fixtures exist. No production
+write transport, actual account observations or new quota scheduler.
+
 ## Source-bound inventory dispatcher — 2026-09-21
 
 [Build/verification record](docs/BUILD_DISPATCH_SOURCES.md):

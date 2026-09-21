@@ -45,7 +45,9 @@ An asynchronous callback is rejected before SENDING.
 Follow-up: [source-bound candidates](BUILD_DISPATCH_SOURCES.md) now connect
 current runtime/management evidence, block missing/stale proof, recheck sources
 at the final edge and fence dispatcher stop through preparation/submission.
-Denied handoffs release their unused quota permit. Remaining: verified production
+Denied handoffs release their unused quota permit. The
+[shared write-quota source](BUILD_WRITE_QUOTA_SOURCE.md) now feeds this injected
+path from the guarded reader's full observed pair. Remaining: verified production
 inputs, retained quota/429 lifecycle across restart and supervised runtime
 composition/fault verification. These checks exist only on the injected path.
 Connect the real write transport and runtime/supervisor lifecycle

@@ -1,5 +1,21 @@
 # Current status
 
+## Priority 4 shared write-quota ingestion — 2026-09-21
+
+The [write-quota source](docs/BUILD_WRITE_QUOTA_SOURCE.md) now consumes the
+existing guarded REST document pair and feeds the injected dispatcher. Full
+method-specific costs, source identity, grant/TTL expiry and owner clocks remain
+binding at submission. Refresh revokes old permits, starts empty and preserves
+shard cooldowns. No additional poller or per-market quota requests.
+
+Offline component only: real account quota/probe policy and member fee-profile
+evidence are still unverified. Next implementation: owned write-429/outcome
+recovery and supervised lifecycle; fee readiness, ranking/admission and launch
+gates remain. No credentials, account requests, trading, bot start or restart.
+Final verification: 1,130 tests run, 1,129 passed, one expected Windows privilege
+skip; 28 new source/dispatcher tests and both resource scopes passed. Details
+are in the build record.
+
 ## Priority 4 source-bound inventory dispatch — 2026-09-21
 
 The [candidate/dispatch integration](docs/BUILD_DISPATCH_SOURCES.md) now uses

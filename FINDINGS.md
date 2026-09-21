@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 98. One observed quota pair for separate read/write budgets — 2026-09-21
+
+VERIFIED CODE/OFFLINE: full write method/path costs now flow from the existing
+guarded document refresh rather than the read-only projection. A cached budget
+cannot outlive the source's grant margin, reader identity or freshness. Source
+checks at consumption block dispatch even after durable SENDING. The
+[build record](docs/BUILD_WRITE_QUOTA_SOURCE.md) includes tests and measurements:
+eight refreshes use 16 injected GETs at both 30 and 120 shards. This is not
+real account quota evidence or production transport clearance. Member rounding
+profile remains an explicit verified input; it is not inferred from decimals.
+
 ## 97. Source-bound cancel/reducer dispatch — 2026-09-21
 
 VERIFIED CODE/OFFLINE: existing inventory strategy can feed exact candidates
