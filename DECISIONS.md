@@ -658,6 +658,20 @@ them accepted without an explicit operator instruction.
 - **Boundary:** Exclude credentials, local data, logs, environments and
   machine-local transfer/deployment state. No live bot start or account action.
 
+### D-044 — Design starting-account and private-stream continuity
+
+- **Status:** ACCEPTED design scope, 2026-09-20.
+- **Decision owner:** Operator: "Ok do it" in response to the recommended next
+  Astra design milestone.
+- **Scope:** Analyze the current Windows Kalshi implementation and official API
+  contract, use Polymarket source as a read-only conceptual reference, and
+  specify a phased starting-inventory/private-stream continuity design in
+  `docs/DESIGN_ACCOUNT_CONTINUITY.md`.
+- **Boundary:** Stop after design for the operator's 5.6 Sol switch under D-037.
+  This does not authorize implementation, a launch boundary, live account calls,
+  credential use, order actions or trading. An undocumented venue handoff is
+  not proof of complete fill coverage or starting inventory.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

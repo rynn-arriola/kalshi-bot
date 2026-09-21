@@ -2,6 +2,17 @@
 
 ## Current update — 2026-09-20
 
+D-044 Astra design is complete: [starting account/private-stream continuity](docs/DESIGN_ACCOUNT_CONTINUITY.md).
+It specifies an evidence-only Phase 1, conditional venue handoff Phase 2 and
+opening-account/cash Phase 3. Current Kalshi documentation does not establish a
+shared REST/private-stream checkpoint or bounded late-fill publication; the
+design therefore keeps all entry/live-readiness gates false. Official public
+docs and current Kalshi/Polymarket source were reviewed; no source/tests were
+changed or account/credential calls made. STOP for the operator to switch to
+5.6 Sol and explicitly assign Phase 1 implementation under D-037. No live use.
+
+### Prior D-043 publication
+
 D-043: the canonical GitHub repository now holds the Windows project on its
 default `master` branch. Its old tracked tree was replaced with 170 checked
 source, test, config and documentation files. The obsolete divergent `main`

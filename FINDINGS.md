@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 62. Starting-account/private-stream continuity design — 2026-09-20
+
+SOURCE/CODE REVIEW: the current official user-fill and user-order stream pages
+do not document a shared REST/history replay checkpoint, and the live/archive
+fill pages do not establish bounded publication delay. The market-position
+stream example omits subaccount, while current `AccountCoordinator.on_event`
+requires it. Current `RestReads.collect` does not require an explicit positions
+cursor before accepting enumeration end. These are proof/handling gaps, not
+evidence of missed account events. D-044 specifies evidence-only local epoch and
+baseline-candidate assessment while keeping entry/live gates false. No venue
+account read, credential use, implementation or test run was performed. See
+[design and source links](docs/DESIGN_ACCOUNT_CONTINUITY.md).
+
 ## 61. Canonical GitHub now carries the Windows project — 2026-09-20
 
 VERIFIED: the old default `master` tree contained 31 files; the initial published

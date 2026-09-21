@@ -1,5 +1,12 @@
 # What exists
 
+## Starting-account continuity design — 2026-09-20
+
+D-044 [Astra design](docs/DESIGN_ACCOUNT_CONTINUITY.md) specifies an evidence-only
+Phase 1 and conditional later phases. This is documentation, not built source or
+a verified account/stream handoff. Await the operator's 5.6 Sol switch and
+explicit Phase 1 implementation assignment; trading remains disabled.
+
 ## Canonical GitHub checkout — 2026-09-20
 
 D-043 replaced the old remote tree with the current Windows Kalshi project on

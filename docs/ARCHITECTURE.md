@@ -1,5 +1,9 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
+is the next handoff. It is not yet implemented and does not establish a venue
+history/stream barrier, opening inventory or live-entry authority.
+
 Status: **D-021 implementation underway; component foundation only, no live trader**.
 See [initial foundation](BUILD_FOUNDATION.md) and
 [account-I/O integration](BUILD_ACCOUNT_IO.md) and
