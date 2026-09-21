@@ -1028,6 +1028,25 @@ them accepted without an explicit operator instruction.
   live transport, deployment or trading. Missing venue guarantees remain
   explicit blockers. D-065 governs publication after verification.
 
+### D-068 — Operational reconciliation gate in place of global venue proof
+
+- **Status:** PROPOSED, awaiting explicit operator choice, 2026-09-21.
+- **Context:** The operator requested the required work to finish the release
+  path. Investigation found that the reviewed user-data timestamp is explicitly
+  approximate; existing source contracts do not establish global REST/stream
+  completeness. Build authorization is not approval to weaken that requirement.
+- **Recommendation:** Adopt the bot-owned, source-fenced reconciliation and
+  conservative two-ceiling cash model in the
+  [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md). Continue to
+  report global venue handoff as unproved. Preserve economic holds and all
+  independent risk, operator-settlement, live-activation and restart rules.
+- **Tradeoff:** Common REST/stream delay can temporarily hide an event; repeated
+  matching observations cannot eliminate that residual risk. Otherwise retain
+  strict proof and seek a stronger venue contract; entries remain blocked.
+- **Authority:** Approval would authorize offline implementation/tests only,
+  not account requests, a real opening boundary, trading or deployment. Until
+  answered, do not alter positive admission/release policy.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

@@ -1,5 +1,12 @@
 # Active work queue
 
+First resolve proposed D-068: approve operational bot-owned reconciliation
+with its explicit delayed-event risk, or retain the strict global-proof gate.
+The [release design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md) records source
+evidence, cash equations, implementation order and tests. No release-policy
+change is authorized merely by its presence in the design. Implement the
+approved branch without repeating the source investigation.
+
 D-067 implements the [durable accounting restrictions](docs/BUILD_DURABLE_ACCOUNTING.md)
 in new schema-4 fixture ledgers. The opening candidate, observation journal,
 settlement/cash/fill-conflict restrictions, restart validation and entry/send

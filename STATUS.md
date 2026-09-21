@@ -1,5 +1,17 @@
 # Current status
 
+## Reconciliation release investigation — 2026-09-21
+
+D-068 is proposed, **not approved**. The user-data timestamp endpoint was
+rechecked: its documented approximate validation time does not establish a
+global history/stream barrier. The [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
+now specifies a practical bot-owned reconciliation gate and independent cash
+ceilings, its residual common-delay risk, affected components and acceptance
+tests. Using it to release holds changes the existing entry-safety criterion;
+the operator has been asked to choose it or retain the strict requirement.
+No bot logic, configuration, ledger, credentials or runtime changed. Existing
+D-067 restrictions remain active. Do not label the release path complete.
+
 ## D-067 durable accounting enforcement — 2026-09-21
 
 The writer now retains an immutable opening candidate, separate cash/funding/

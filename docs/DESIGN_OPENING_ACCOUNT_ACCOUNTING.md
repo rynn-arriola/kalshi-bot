@@ -8,6 +8,116 @@ observation/restriction journal and command gates in
 [BUILD_DURABLE_ACCOUNTING.md](BUILD_DURABLE_ACCOUNTING.md). References below to
 an approved baseline or successful release remain readiness requirements.
 
+## Release-path investigation — 2026-09-21, operator decision pending
+
+The request to finish the implementation authorizes investigation and design;
+it is not acceptance of a weaker completeness guarantee. D-068 below records
+the proposed policy change. Do not implement its positive admission branch
+until that decision is accepted. Existing restrictions remain active.
+
+### What was verified
+
+- [User data timestamp](https://docs.kalshi.com/api-reference/exchange/get-user-data-timestamp)
+  explicitly describes an **approximate** last-validation indication for balance,
+  orders, fills and positions. It is not a shared sequence number or a replay
+  boundary. Waiting until it passes a local timestamp cannot prove completeness.
+- [Order reads](https://docs.kalshi.com/api-reference/orders/get-orders) distinguish
+  resting/canceled/executed orders and retain resting orders in the current API;
+  older terminal orders require historical storage. [Fill reads](https://docs.kalshi.com/api-reference/portfolio/get-fills)
+  support order/account/exchange filters, but older fills also require historical
+  retrieval. Per-order cumulative counts provide a useful reconciliation target,
+  not proof that the current REST response includes the latest execution.
+- [User orders](https://docs.kalshi.com/websockets/user-orders) and
+  [user fills](https://docs.kalshi.com/websockets/user-fills) carry order identity,
+  quantities, account/exchange scope and fill economics. The reviewed contracts
+  do not establish a shared REST/stream replay cursor.
+- `balance_dollars` is documented as available cash, with an exchange breakdown
+  on the primary-account response. Do not substitute portfolio value, add back
+  inferred holds, or import perpetual-futures margin rules into predictions.
+- Polymarket source cross-check: `account_snapshots.py:426` brackets positions
+  with matching cash reads; `bot_era.py` separates owned ledger activity from
+  account-wide funding/equity. Matching cash cannot rule out offsetting activity
+  or common REST/stream delay. The reference is not a stronger venue guarantee.
+
+### Proposed operational gate (not yet approved)
+
+Replace the unconditional requirement for a globally complete venue history
+with a separately named **bot-owned reconciliation** requirement. Keep
+`venue_handoff_proven=false`; never re-label this operational gate as an atomic
+snapshot or lossless venue guarantee. Preserve the operator-approved $500,
+10-contract, 30-resting-entry and six-hour loss policies.
+
+1. **Opening:** explicit launch-boundary approval tied to ledger identity,
+   primary account and exclusive ownership. No prior bot sends. Fresh scoped
+   zero-position/zero-resting-order reads, no pending/unbound evidence, bracketed
+   cash observations and an active private epoch. Store the candidate plus the
+   distinct approval; a generic review acknowledgement cannot approve a boundary.
+2. **Catch-up:** freeze new-entry preparation while one retained account-owner
+   pass reads complete bounded pages and reconciles the exact durable intent/
+   order universe. Bind all fills by order and execution identity; compare
+   cumulative filled counts, terms and current position quantities. A missing
+   order is not canceled; unknown sends, missing fills, mismatched scope,
+   conflicting economics or an incomplete archive pass cannot release the hold.
+   Preserve already seen events if later responses omit them.
+3. **Source fence:** capture reader generation, ingress revision, writer epoch
+   and revision before the pass; invalidate on every change, disconnect, timeout
+   or failure. Bound freshness at issuance and consumption. Reconcile once per
+   coalesced bootstrap/recovery need using the shared read budget, not per tick.
+4. **Cash:** use two independent ceilings, never two summed deductions:
+   `max(0, min(fresh_venue_available, local_cash - outstanding_obligations))`.
+   Starting local cash comes only from the approved flat boundary. Derive local
+   cash from owned fill economics, including actual fees, with open-order and
+   candidate fee bounds from verified metadata. Do not credit pending rewards,
+   unknown transfers or unreviewed settlements. Apply account-wide **and**
+   exchange-specific constraints; aggregate cash cannot fund another shard by
+   assumption. Portfolio risk limits remain a separate check, not a cash balance.
+   This lower-bound model avoids needing to guess whether venue cash has already
+   deducted a particular order hold. It does not prove exact venue hold semantics.
+5. **Release transaction:** recompute current state on the sole writer; append
+   the exact resolved restriction instances and evidence digest to an immutable
+   reconciliation record. Clear only eligible source/observation restrictions.
+   Bind any short-lived admission receipt to checkpoint, cash, active epoch,
+   source revisions and writer revision; recheck at reservation and send. Never
+   accept a caller `account_known` or `handoff_proven` boolean as a substitute.
+   Saturation or inability to save the release leaves restrictions intact.
+6. **Economic holds:** D-066 settlements still require a specific operator
+   reconciliation, not auto-release after apparent flatness. Unknown activity,
+   conflicting fills/corrections, journal corruption/fullness and wrong scope
+   need their underlying cause resolved. A release cannot discard lots, invent
+   P&L, reset risk windows, or turn a review reference into resolved economics.
+7. **Restart:** persisted evidence survives, but no admission receipt survives a
+   writer restart or private disconnect. Reconcile again. Pending commands keep
+   their cash/exposure obligations until exact terminal/proven-unsent evidence.
+   Existing schema-4 files are not automatically migrated by this assignment.
+
+**Residual risk requiring the operator's choice:** an event delayed by both REST
+and WebSocket can temporarily escape the checks. Offsetting fills can leave a
+matching position/cash snapshot. The proposed gate reduces and bounds known
+uncertainty but cannot promise immediate detection of all venue activity or a
+guaranteed maximum loss. The alternative is retaining the strict requirement
+and seeking a stronger documented venue contract. This is why changing the
+entry gate needs approval, rather than silently deleting the current hold.
+
+### Implementation order after approval
+
+- Extend existing accounting/writer ownership with scoped cash state and
+  immutable release evidence; no second account reader or orchestrator.
+- Extend `AccountCoordinator` to produce source-bound reconciliation input from
+  existing history/private-epoch owners; keep cancellation ownership and bounds.
+- Bind the resulting short-lived evidence to `portfolio.reserve_entry` and
+  `execution.begin_send`, retaining all other command/risk/transport checks.
+- Add deterministic fixtures for successful opening/release, wrong/expired/
+  forged/replayed evidence, restart, ingress during every await, missing or
+  late fills, archived orders, duplicate fees, settlement and correction holds,
+  cross-shard cash, pending/ambiguous sends and transaction rollback.
+- Prove cash equations with YES/NO opening, partial close, full close and
+  reversal examples; compare the two-ceiling result when venue cash includes
+  or excludes working-order holds. Reject missing fee bounds. Demonstrate the
+  residual common-delay scenario explicitly rather than marking it detected.
+- Test bounded 30/120-market paths and retained-history scaling, review the
+  actual diff, run full suite and disabled preflight, then commit/push/parity.
+  No account call, real boundary approval or live start is part of that build.
+
 ## Source and authority boundary
 
 - The bot will use primary subaccount 0 exclusively and begin only from a

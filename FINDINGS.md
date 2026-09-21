@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 95. Release policy, not an undocumented timestamp guarantee — 2026-09-21
+
+VERIFIED SOURCE: [Get User Data Timestamp](https://docs.kalshi.com/api-reference/exchange/get-user-data-timestamp)
+is an approximate API validation indicator. Neither it nor repeated agreeing
+snapshots establishes a shared REST/private-stream checkpoint. VERIFIED CODE:
+the current accounting capture installs `opening_proof_unresolved`; its review
+operation cannot release it. Polymarket's `account_snapshots.py:426` brackets
+cash reads, but does not supply the missing Kalshi guarantee.
+
+PROPOSAL: reconcile the exact bot-owned order/fill universe and use the lower
+of current venue cash and independently accounted cash after obligations.
+This avoids subtracting the same inferred venue hold twice, but depends on a
+reviewed starting balance, exact owned cash flows and verified fee bounds.
+No claim is made that common REST/stream delay is detectable. D-068 asks for
+the policy choice before implementation; [design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md).
+No trading/runtime code or account state changed during this investigation.
+
 ## 94. Accounting restrictions now reach durable command gates — 2026-09-21
 
 VERIFIED OFFLINE: D-067 adds persistent restrictions checked during atomic entry

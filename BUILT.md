@@ -1,5 +1,13 @@
 # What exists
 
+## Release-path design, pending D-068 — 2026-09-21
+
+The [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md) now records
+current official source checks, the proposed bot-owned reconciliation/cash
+protocol, residual risk, affected components and acceptance tests. This is a
+completed investigation/design artifact, not an implemented or approved release
+path. Existing D-067 code and its verification state are unchanged.
+
 ## D-067 durable accounting and entry restrictions — 2026-09-21
 
 [Build contract and evidence](docs/BUILD_DURABLE_ACCOUNTING.md): new schema-4
