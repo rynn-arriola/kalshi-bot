@@ -8,6 +8,8 @@ DECISIONS owns acceptance, while STATUS/NEXT/BUILT only summarize or route to
 it. D-037 is marked superseded where its blanket flow differs. No bot logic,
 configuration, data, process or runtime state changed.
 Verification: `git diff --check` and the repository Markdown local-link audit pass.
+Astra review found two stale D-037 citations in the active STATUS/NEXT handoffs;
+both now cite D-049. Historical D-037 records remain unchanged.
 
 ## 69. Disconnect finalization survives stop/cancellation offline — 2026-09-21
 

@@ -11,7 +11,7 @@ and record their decisions before implementation.
 
 D-048 Sol fixes for the D-047 finding are implemented and verified; see
 `docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. STOP for independent Astra
-review under D-037. Inspect retained connection finalization across disconnect,
+review under D-049. Inspect retained connection finalization across disconnect,
 ordinary stop, caller/repeated cancellation, marker close and genuine storage
 failure. Verify transport queue/byte accounting, fill durability, marker/gap
 consistency, task ownership and original-fault propagation. Do not implement

@@ -20,7 +20,7 @@ joined, valid tail fills are durable, the marker is closed and gaps are refreshe
 Three new regressions cover real transport queue/byte accounting, ordinary stop,
 caller cancellation and marker-close cancellation. All 231 focused and exact
 804 full tests pass; continuity/history resource checks and disabled preflight
-pass. STOP for Astra review under D-037. Venue handoff, starting basis, Phase
+pass. STOP for Astra review under D-049. Venue handoff, starting basis, Phase
 2/3 and trading remain unauthorized.
 
 ### D-047 Astra review before finalizer fix
