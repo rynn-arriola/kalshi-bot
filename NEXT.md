@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-20. Follow D-011 through D-044 and `AI_OPERATOR.md`.
+Updated 2026-09-20. Follow D-011 through D-045 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -9,14 +9,15 @@ with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
 
-D-044 Astra design is complete in `docs/DESIGN_ACCOUNT_CONTINUITY.md`.
-STOP for the operator's switch to 5.6 Sol. On an explicit Phase 1 assignment,
-Sol implements only the design's evidence-only continuity assessment, durable
-local private-epoch markers, incomplete-position pagination handling and
-unscoped-position safety, with its declared offline regressions/resource checks.
-Do not install a baseline, claim a venue handoff, implement Phases 2/3 or enable
-orders. An independent Astra review follows. The public Kalshi contract still
-lacks the cross-source guarantee needed for positive continuity proof.
+D-045 Sol Phase 1 is implemented and verified offline; see
+`docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md`. STOP for independent Astra review of
+source and current Git diff under D-037. Review local epoch lifecycle/cancellation,
+assessment freshness, position-scope/pagination handling, schema and tests for
+races, edge cases, security and incorrect authority assumptions. Also triage
+the existing quota-supervisor weak-reference assertion that failed the final
+full-suite run and two isolated reruns despite no D-045 quota edits. Do not
+implement review findings in the review role. The public Kalshi contract still
+lacks cross-source continuity proof, and no baseline/live action is approved.
 
 MANDATORY D-037: Astra designs only, then ALWAYS STOPS for the operator to switch
 to 5.6 Sol. Sol implements/tests, Astra reviews, Sol fixes. Do not automatically
@@ -33,10 +34,10 @@ R2/R3 concern shutdown ownership and a clock-fault waiter. D-040 design and
 D-041 Sol fixes are complete and Astra cleared original R1-R3 in scope. See
 `docs/REVIEW_D041_ASTRA.md` for two P3 follow-ups: truthful run status after repeated
 cancellation, and a pending record that does not retain exception/payload frames.
-D-042 Sol fixed both and added regressions. Astra re-review now clears both with
-no new findings in scope; see `docs/REVIEW_D042_ASTRA.md` and STATUS. No additional
-Sol fixes are required from this review. D-044 is the next selected design and
-is complete; the mandatory stop before Sol implementation applies now.
+D-042 Sol fixed both and added regressions. Astra re-review cleared both with
+no new findings in that scope; see `docs/REVIEW_D042_ASTRA.md` and STATUS. D-044
+design and D-045 Sol Phase 1 are complete; the mandatory Astra review gate
+applies now.
 Git diff was unavailable in the historical review; D-043 subsequently connected
 the active folder to Git. Live operation remains disabled.
 
@@ -159,7 +160,9 @@ exposure calibration using Poly's verified local reference default; do not
 reopen the superseded $400 proposal or derive budgets from current occupancy.
 
 1. Follow D-044's phased history/private-stream continuity and starting-inventory
-   design around the D-026 recovery-connected engine. D-028 now provides coherent local
+   design around the D-026 recovery-connected engine. Phase 1 is implemented
+   under D-045, pending independent review; do not build Phase 2/3 from this
+   assignment. D-028 now provides coherent local
    inventory/order/pending evidence and retains the actual history interval;
    it must not be rebuilt or mistaken for a venue snapshot/stream barrier.
    D-035 now records completed enumeration intervals/digests durably and flags gaps

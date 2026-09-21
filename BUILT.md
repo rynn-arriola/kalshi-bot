@@ -1,11 +1,21 @@
 # What exists
 
+## Evidence-only account continuity Phase 1 — 2026-09-20
+
+D-045 [implementation and verification](docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
+adds durable local private-epoch markers, unapproved starting-account candidates,
+source-bound assessment and safer position-stream/pagination handling. All 168
+directly affected tests and resource fixtures pass. A 792-test complete run
+passed once, but the final 794-test run had one unrelated reproducible quota
+weak-reference failure; see STATUS. Independent Astra review is next. This does
+not establish a venue handoff, opening inventory or live authority.
+
 ## Starting-account continuity design — 2026-09-20
 
 D-044 [Astra design](docs/DESIGN_ACCOUNT_CONTINUITY.md) specifies an evidence-only
-Phase 1 and conditional later phases. This is documentation, not built source or
-a verified account/stream handoff. Await the operator's 5.6 Sol switch and
-explicit Phase 1 implementation assignment; trading remains disabled.
+Phase 1 and conditional later phases. Phase 1 was built under D-045 above;
+conditional venue proof and opening-state phases remain unbuilt. Trading remains
+disabled.
 
 ## Canonical GitHub checkout — 2026-09-20
 

@@ -253,6 +253,10 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaisesRegex(InvalidData, "required pagination cursor"):
                         await client.collect(name, reason=reason)
             with patch.object(client, "read", AsyncMock(return_value=ReadResult({"market_positions": []}, 20))):
+                with self.assertRaisesRegex(InvalidData, "required pagination cursor"):
+                    await client.collect("positions", reason="reconcile")
+            with patch.object(client, "read", AsyncMock(return_value=ReadResult({"market_positions": [],
+                                                                                "cursor": ""}, 20))):
                 self.assertEqual((await client.collect("positions", reason="reconcile")).rows, ())
         finally:
             await client.close()

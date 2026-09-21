@@ -8,10 +8,12 @@ import asyncio
 from datetime import timedelta
 import random
 import time
+from uuid import uuid4
 
-from .account import AccountCoordinator
+from .account import AccountCoordinator, UnscopedPositionUpdate
 from .adapters import parse_fill
 from .books import BookConnection
+from .continuity import PrivateEpoch, assess_continuity, starting_candidate
 from .engine import EventEngine
 from .config import BotConfig
 from .management import InventoryManager
@@ -91,6 +93,14 @@ class RecoveryRuntime:
         self.history_ingress_revision = None
         self.used = False
         self.running = False
+        self._run_cancelled = False
+        self._epoch = None
+        self._epoch_ingress = 0
+        self._epoch_fills = 0
+        self._epoch_ambiguous = False
+        self._unscoped_position_requested = False
+        self._persisted_epoch_gaps = None
+        self.continuity_assessment = None
         self.quota_supervisor = quota_supervisor
         self.quota = getattr(reads, 'quota', None)
         if quota_supervisor is not None:
@@ -146,7 +156,41 @@ class RecoveryRuntime:
         """Explicit local control-plane inspection; never a live recovery lease."""
         result = await self.writer.history_coverage(subaccount=self.account.subaccount, start=start, end=end)
         self.history_inspection = result
+        self._refresh_continuity()
         return result
+
+    async def inspect_private_epochs(self, *, limit=128):
+        """Explicit local control-plane read; no venue request or authority."""
+        return await self.writer.inspect_private_epochs(subaccount=self.account.subaccount, limit=limit)
+
+    def inspect_starting_account(self, *, proposed_boundary):
+        report = self.account.current_report(self.now())
+        return starting_candidate(report, proposed_boundary=proposed_boundary,
+            subaccount=self.account.subaccount, writer_epoch=self.writer.epoch,
+            writer_revision=self.writer.revision, continuity=self._refresh_continuity())
+
+    async def _load_continuity_history(self):
+        if self._persisted_epoch_gaps is None:
+            count = await self.writer.private_epoch_gap_count(
+                subaccount=self.account.subaccount,
+                exclude_epoch_id=self._epoch.epoch_id if self._epoch and self._epoch.closed_at is None else None)
+            # An epoch may close while the read is queued; never overwrite a
+            # locally recorded gap with an older count.
+            self._persisted_epoch_gaps = max(self._persisted_epoch_gaps or 0, count)
+            self._refresh_continuity()
+
+    def _refresh_continuity(self):
+        report = self.account.current_report(self.now())
+        history = self.last_reports[0] if self.last_reports else None
+        self.continuity_assessment = assess_continuity(subaccount=self.account.subaccount,
+            generation=self.account.generation, writer_epoch=self.writer.epoch,
+            writer_revision=self.writer.revision, report=report, recovery=history,
+            coverage=self.history_inspection, epoch=self._epoch,
+            history_ingress_revision=self.history_ingress_revision,
+            ingress_revision=self.ingress_revision,
+            persisted_gap_count=self._persisted_epoch_gaps,
+            epoch_ambiguous=self._epoch_ambiguous)
+        return self.continuity_assessment
 
     async def inspect_entry(self, request):
         """Integrated fail-closed gate; never grants a live reservation."""
@@ -163,6 +207,7 @@ class RecoveryRuntime:
 
     def request_recovery(self):
         self.last_reports = None
+        self._refresh_continuity()
         self.recovery_requested.set()  # Coalesced, never a task per market/event.
 
     def _revoke(self):
@@ -171,6 +216,7 @@ class RecoveryRuntime:
         self.account._invalidate()
         for ticker in self.engine.market_shard:
             self._invalidate_market(ticker)
+        self._refresh_continuity()
 
     async def _stage(self, event):
         msg = event["msg"]
@@ -192,6 +238,14 @@ class RecoveryRuntime:
             if generation != self.account.generation or not self.account.connected:
                 return  # Old order/position projection will be re-enumerated.
             result = await self.account.on_event(event, generation=generation, received_at=self.now())
+            if isinstance(result, UnscopedPositionUpdate):
+                self._epoch_ambiguous = True
+                if not self._unscoped_position_requested:
+                    self._unscoped_position_requested = True
+                    self.request_recovery()
+                return
+            if event.get('type') == 'market_position':
+                self.request_recovery()
             if result is not None and getattr(result, "owned", False):
                 waiting = await self.writer.pending_fills(self.account.subaccount, result.order.order_id)
                 for item in waiting[:32]:
@@ -221,8 +275,19 @@ class RecoveryRuntime:
             integer(msg.get("sid"), 1, 2**63-1)
             if channel not in spec.channels or event.get("id") != 1:
                 raise InvalidData("unexpected subscription acknowledgment")
+            if channel in acknowledged:
+                raise InvalidData("duplicate subscription acknowledgment")
             acknowledged.add(channel)
             if acknowledged == set(spec.channels):
+                if spec.name == "account":
+                    if not self.account.connected:
+                        return
+                    self._epoch = await self.writer.open_private_epoch(PrivateEpoch(
+                        uuid4().hex, self.account.subaccount, generation, self.writer.epoch,
+                        tuple(sorted(acknowledged)), self.now()))
+                    self._epoch_ingress = self._epoch_fills = 0
+                    self._epoch_ambiguous = self._unscoped_position_requested = False
+                    self._refresh_continuity()
                 self.reader_states[spec.name] = "subscribed"
                 if spec.name=='lifecycle' and self.market_inputs is not None:
                     self.market_inputs.subscribed(generation,msg['sid'])
@@ -230,8 +295,6 @@ class RecoveryRuntime:
                 if ready is not None:
                     ready.set()
                 if spec.name == "account":
-                    if not self.account.connected:
-                        return
                     self.account_subscribed = True
                     self.request_recovery()
             return
@@ -240,10 +303,20 @@ class RecoveryRuntime:
         if spec.name == "account":
             if generation != self.account.generation:
                 return
+            if not self.account_subscribed:
+                # A private event before every required ACK has no opened local
+                # epoch. Preserve positive fill evidence, then reconnect rather
+                # than later declaring the span clean.
+                self._revoke()
+                if kind == 'fill':
+                    await self._stage(event)
+                raise InvalidData('private event before complete subscription')
             self._revoke()  # At ingestion, before queue/disk waits; not at dispatch.
             if kind == "fill":
                 await self._stage(event)  # Acknowledged durable evidence before enqueue.
-            self.engine.submit_private(event, generation=generation)
+                self._epoch_fills += 1
+            if self.engine.submit_private(event, generation=generation):
+                self._epoch_ingress += 1
         elif spec.name in self.engine.shards:
             self.engine.submit_book(spec.name, event, generation=generation)
         else:
@@ -275,13 +348,15 @@ class RecoveryRuntime:
                     self.market_inputs.begin(generation)
             acknowledged = set()
             ready = asyncio.Event()
+            reader_error = False
             async def consume(name, event):
                 if name != spec.name:
                     raise InvalidData("reader source mismatch")
                 await self._consume(spec, event, generation, acknowledged, ready)
             # Factory/construction faults must be observed by the runtime owner,
             # not treated as successful connections or silently retried forever.
-            reader = asyncio.create_task(self.reader_factory(spec).run(consume), name='kalshi-'+spec.name)
+            reader_owner = self.reader_factory(spec)
+            reader = asyncio.create_task(reader_owner.run(consume), name='kalshi-'+spec.name)
             lost = (asyncio.create_task(self.lost[spec.name].wait())
                     if spec.name in self.lost else None)
             try:
@@ -311,6 +386,7 @@ class RecoveryRuntime:
                 # Bounded retry, no raw response/credential logging. Writer/engine
                 # failure is permanent for this runtime and cannot be retried away.
                 self.reader_states[spec.name] = "disconnected"
+                reader_error = True
                 self.diagnostics.emit('reader_failed', error=exc, stream=spec.name,
                                       generation=generation, attempt=attempt+1)
             finally:
@@ -329,6 +405,26 @@ class RecoveryRuntime:
                 if lost:
                     lost.cancel()
                 await asyncio.gather(reader, *([lost] if lost else []), return_exceptions=True)
+                if (spec.name == "account" and self._epoch is not None
+                        and self._epoch.generation == generation and self._epoch.closed_at is None):
+                    local_queue = getattr(reader_owner, 'queue', None)
+                    reader_drained = (local_queue is not None and callable(getattr(local_queue, 'empty', None))
+                        and local_queue.empty() and getattr(reader_owner, 'queued_bytes', 0) == 0)
+                    clean = (self.stop_requested.is_set() and not self._run_cancelled
+                        and not reader_error and not self.engine.failed and not self.writer.failed
+                        and reader_drained and self.engine.private_idle.is_set()
+                        and not self._epoch_ambiguous)
+                    reason = ('stopped' if clean else 'writer_failure' if self.writer.failed else
+                              'engine_failure' if self.engine.failed else
+                              'scope_ambiguous' if self._epoch_ambiguous else
+                              'undrained' if not reader_drained or not self.engine.private_idle.is_set() else
+                              'reader_error' if reader_error else 'cancelled')
+                    self._epoch = await self.writer.close_private_epoch(self._epoch.epoch_id,
+                        closed_at=self.now(), ingress_count=self._epoch_ingress,
+                        durable_fill_count=self._epoch_fills, terminal_reason=reason,
+                        clean_local_delivery=clean)
+                    self._persisted_epoch_gaps = (self._persisted_epoch_gaps or 0) + int(not clean)
+                    self._refresh_continuity()
             if attempt+1 < self.attempt_limit and not self.writer.failed and not self.engine.failed:
                 await self.sleep(min(30, 2**attempt)*self.jitter())
         self.reader_states[spec.name] = "retry_exhausted"
@@ -339,6 +435,7 @@ class RecoveryRuntime:
         if self.recovery_lock.locked():
             raise InvalidData("recovery already in flight")
         async with self.recovery_lock:
+            await self._load_continuity_history()
             return await self._repair()
 
     async def _repair(self):
@@ -398,10 +495,12 @@ class RecoveryRuntime:
         repaired = (not remaining and not history.missing_fill_keys
                 and history.enumeration is not None and not history.enumeration.omitted_rows
                 and self.account.current_report(self.now()) is final and final.audit.consistent
+                and not self._epoch_ambiguous
                 and history_ingress == self.ingress_revision
                 and (history.generation, history.subaccount) ==
                     (self.account.generation, self.account.subaccount))
         self.recovery_passes += int(repaired)
+        self._refresh_continuity()
         return repaired
 
     async def _recover(self):
@@ -451,6 +550,15 @@ class RecoveryRuntime:
                     self.recovery_state = "repaired_entries_blocked"
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation)
                     break
+                if self._epoch_ambiguous:
+                    if self.recovery_requested.is_set() and attempt+1 < self.attempt_limit:
+                        # The event may have overtaken an already running REST
+                        # pass. Allow one bounded post-event scoped attempt.
+                        attempt += 1
+                        continue
+                    self.recovery_state = 'blocked_scope_ambiguous'
+                    self.recovery_requested.clear()
+                    break
                 self.diagnostics.emit('recovery_incomplete', attempt=attempt+1, generation=self.account.generation)
                 if attempt+1 == self.attempt_limit:
                     self.recovery_state = "blocked_retry_exhausted"
@@ -478,6 +586,7 @@ class RecoveryRuntime:
         self.used, self.running = True, True
         tasks = []
         try:
+            await self._load_continuity_history()
             self.diagnostics.ensure_healthy()
             self.diagnostics.emit('runtime_started')
             tasks = [asyncio.create_task(self.engine.run(), name='kalshi-engine'),
@@ -502,6 +611,7 @@ class RecoveryRuntime:
                 if self.stop_requested.is_set():
                     break
         except asyncio.CancelledError:
+            self._run_cancelled = True
             self.diagnostics.emit('runtime_cancelled')
             raise
         except Exception as exc:
@@ -536,6 +646,7 @@ class RecoveryRuntime:
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):
+        continuity = self._refresh_continuity()
         quota_available = self.quota is None or self.quota.poll()
         report = self.account.current_report(self.now())
         history = self.last_reports[0] if self.last_reports else None
@@ -562,4 +673,10 @@ class RecoveryRuntime:
                 gap_count=len(inspection.gaps), receipt_count=len(inspection.receipt_ids),
                 omission_receipts=inspection.omission_receipts, historical_only=True,
                 complete_account_proof=False) if inspection else None),
+            continuity=dict(local_evidence_consistent=continuity.local_evidence_consistent,
+                venue_handoff_proven=False, stream_span_state=continuity.stream_span_state,
+                stream_epoch_id=continuity.stream_epoch_id,
+                persisted_gap_count=self._persisted_epoch_gaps,
+                receipt_count=len(continuity.receipt_ids), gap_count=len(continuity.interval_gaps),
+                blockers=continuity.blockers, ready_for_entry=False),
             blockers=list(dict.fromkeys(blockers)), live_ready=False)

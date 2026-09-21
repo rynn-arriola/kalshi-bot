@@ -56,6 +56,13 @@ class PositionObservation:
     received_at: datetime
 
 
+@dataclass(frozen=True)
+class UnscopedPositionUpdate:
+    """Invalidation only: no account/lot/cost authority can be inferred."""
+    ticker: str
+    received_at: datetime
+
+
 def normalize_snapshot(orders, positions, balance, *, subaccount, capacity=128) -> Snapshot:
     """Only called with cursor-exhausted, unfiltered-by-market REST responses."""
     integer(subaccount, 0, 63)
@@ -222,13 +229,17 @@ class AccountCoordinator:
                 return result
             if kind == "market_position":
                 msg = event["msg"]
-                if integer(msg["subaccount"], 0, 63) != self.subaccount:
-                    raise InvalidData("position update account scope unknown/conflicting")
                 ticker = identity(msg["market_ticker"])
                 quantity, cost = decimal(msg["position_fp"]), decimal(msg["position_cost_dollars"])
                 count(abs(quantity), zero=True)
                 if cost < 0:
                     raise InvalidData("negative position cost")
+                if "subaccount" not in msg:
+                    # Published stream example has no account scope. Preserve
+                    # the reader for fills but install no quantity/cost basis.
+                    return UnscopedPositionUpdate(ticker, now)
+                if integer(msg["subaccount"], 0, 63) != self.subaccount:
+                    raise InvalidData("position update account scope unknown/conflicting")
                 if ticker not in self.position_updates and len(self.position_updates) >= self.capacity:
                     raise InvalidData("position update capacity exceeded")
                 self.position_updates[ticker] = PositionObservation(ticker, quantity, cost, now)

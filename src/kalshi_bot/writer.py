@@ -201,6 +201,28 @@ class LedgerWriter:
         integer(end_us, start_us+1, 2**63-1)
         return await self._wait(self._submit('history_coverage', scope, start_us, end_us))
 
+    async def open_private_epoch(self, epoch):
+        from .continuity import PrivateEpoch
+        if not isinstance(epoch, PrivateEpoch) or epoch.writer_epoch != self.epoch:
+            raise InvalidData('current writer private epoch required')
+        return await self._wait(self._submit('private_epoch_open', epoch))
+
+    async def close_private_epoch(self, epoch_id, *, closed_at, ingress_count,
+                                  durable_fill_count, terminal_reason, clean_local_delivery):
+        return await self._wait(self._submit('private_epoch_close', identity(epoch_id), self.epoch,
+            utc(closed_at), integer(ingress_count, 0, 2**63-1),
+            integer(durable_fill_count, 0, 2**63-1), terminal_reason, bool(clean_local_delivery)))
+
+    async def private_epoch_gap_count(self, *, subaccount, exclude_epoch_id=None):
+        if exclude_epoch_id is not None:
+            identity(exclude_epoch_id)
+        return await self._wait(self._submit('private_epoch_gaps',
+            integer(subaccount, 0, 63), exclude_epoch_id))
+
+    async def inspect_private_epochs(self, *, subaccount, limit=128):
+        return await self._wait(self._submit('private_epoch_inspect',
+            integer(subaccount, 0, 63), integer(limit, 1, 128)))
+
     async def audit_history(self, evidence: HistoryEvidence, now: datetime, *, read_started_at=None,
                             generation=None, source_revision=None):
         if not isinstance(evidence, HistoryEvidence) or len(evidence.records) > 10000:
@@ -261,6 +283,21 @@ class LedgerWriter:
         return await self._wait(self._submit("mutations"))
 
     def _execute(self, ledger, command, args):
+        if command == 'private_epoch_open':
+            from .private_epoch_store import open_epoch
+            return open_epoch(ledger, args[0])
+        if command == 'private_epoch_close':
+            from .private_epoch_store import close_epoch
+            epoch_id, writer_epoch, closed_at, ingress, fills, reason, clean = args
+            return close_epoch(ledger, epoch_id, writer_epoch=writer_epoch, closed_at=closed_at,
+                ingress_count=ingress, durable_fill_count=fills, terminal_reason=reason,
+                clean_local_delivery=clean)
+        if command == 'private_epoch_gaps':
+            from .private_epoch_store import gap_count
+            return gap_count(ledger, subaccount=args[0], exclude_epoch_id=args[1])
+        if command == 'private_epoch_inspect':
+            from .private_epoch_store import inspect_epochs
+            return inspect_epochs(ledger, subaccount=args[0], limit=args[1])
         if command == 'history_complete':
             from .history_coverage import complete_enumeration
             evidence, receipt_id, started, observed, generation, revision = args
@@ -464,7 +501,8 @@ class LedgerWriter:
                     # In-process authority epoch changes on restart. Any command
                     # that can mutate financial/evidence/risk state revokes leases.
                     read_only = {"portfolio", "market_inventory", "inventory", "fill_scope",
-                                 "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage"}
+                                 "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
+                                 "private_epoch_gaps", "private_epoch_inspect"}
                     if command not in read_only and command != "reserve_entry":
                         self._revision += 1
                     result = self._execute(ledger, command, args)

@@ -672,6 +672,20 @@ them accepted without an explicit operator instruction.
   credential use, order actions or trading. An undocumented venue handoff is
   not proof of complete fill coverage or starting inventory.
 
+### D-045 — Implement evidence-only continuity Phase 1
+
+- **Status:** ACCEPTED implementation scope, 2026-09-20.
+- **Decision owner:** Operator: "Ok do phase 1" and confirmed "I did" when
+  asked whether this task had switched to 5.6 Sol.
+- **Scope:** Implement and offline-verify Phase 1 of
+  `docs/DESIGN_ACCOUNT_CONTINUITY.md` in the native Windows Kalshi project.
+  Record local private epochs and baseline candidates, tighten positions
+  pagination, and handle unscoped position updates without claiming account
+  authority. Hand off to Astra for independent review under D-037.
+- **Boundary:** No venue handoff proof, approved opening inventory, Phase 2/3,
+  real account calls, credential use, live order action or activation. All
+  entry and live-readiness gates remain false.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

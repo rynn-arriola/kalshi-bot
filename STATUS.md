@@ -2,6 +2,21 @@
 
 ## Current update — 2026-09-20
 
+D-045 Sol implemented [evidence-only continuity Phase 1](docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md).
+Durable local private-epoch markers, scoped baseline candidates, source-bound
+assessment and position-stream/pagination safety are built. All 168 directly
+affected tests pass. One earlier 792-test full-suite run passed, but the final
+794-test run failed one pre-existing quota-supervisor weak-reference assertion,
+reproduced in isolation; this is an open verification finding, not a cleared
+suite. The 30/120-market continuity and inherited
+128/4,096-row history resource fixtures pass. Native Windows preflight remains
+`live_ready=false`, exit 2, without credentials/network/files. No actual
+account read or trading. Venue REST/private-stream handoff and starting basis
+remain unproven. STOP for independent Astra review of source and Git diff under
+D-037; no Phase 2/3 or live authority.
+
+### Prior D-044 design
+
 D-044 Astra design is complete: [starting account/private-stream continuity](docs/DESIGN_ACCOUNT_CONTINUITY.md).
 It specifies an evidence-only Phase 1, conditional venue handoff Phase 2 and
 opening-account/cash Phase 3. Current Kalshi documentation does not establish a

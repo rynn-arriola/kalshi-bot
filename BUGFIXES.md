@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-20 — development components, no live account use
 
+### Position pagination and unscoped private updates
+
+**Mechanisms.** The development REST collector treated an omitted positions
+cursor as exhausted pagination. The account handler rejected the documented
+market-position example's missing subaccount and disconnected the whole private
+reader, risking loss of later fill observations. **Fix under D-045.** Require an
+explicit cursor value on every positions page. Treat an otherwise valid unscoped
+position as scope ambiguity: invalidate, install no cost/quantity, request one
+coalesced scoped reconciliation and keep the fill reader; conflicting or
+malformed scope still fails closed. **Verification.** First/later-page cursor,
+live-reader, fill-after-unscoped and mismatch regressions pass. No live account
+feed or credential was used. See `docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md`.
+
 ### Supervisor liveness and rollover-record retention
 
 **Mechanisms.** A second cancellation during `run()` shutdown skipped the

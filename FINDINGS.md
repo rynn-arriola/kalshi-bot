@@ -1,5 +1,21 @@
 # Findings — kalshi-bot
 
+## 63. Local continuity evidence is built, venue handoff remains unknown — 2026-09-20
+
+VERIFIED OFFLINE: D-045 opens a durable local reader marker only after all four
+private ACKs; a crash/open marker, failed reader/close or scope ambiguity remains
+a gap across restart. A position update without subaccount is an invalidation,
+not cost/quantity proof. Missing positions pagination cursor fails closed.
+Candidate starting inventory is unapproved and source-revision-bound. All 168
+directly affected tests and resource fixtures pass; one complete 792-test run
+passed, but the final 794-test run failed an unrelated existing quota
+weak-reference assertion reproduced in isolation. No real account event or
+venue replay guarantee was tested. Two process-local guard reversals were detected. See
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md) and the current
+[official position stream](https://docs.kalshi.com/websockets/market-positions)
+and [REST positions](https://docs.kalshi.com/api-reference/portfolio/get-positions).
+No credential/account call, trading or Polymarket change.
+
 ## 62. Starting-account/private-stream continuity design — 2026-09-20
 
 SOURCE/CODE REVIEW: the current official user-fill and user-order stream pages

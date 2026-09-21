@@ -652,7 +652,7 @@ class RestReads:
             if self.budget.clock() > deadline:
                 raise InvalidData("enumeration deadline exhausted; result is incomplete")
             data = result.payload.get(spec.rows)
-            if name in {"orders", "historical_orders", "fills", "historical_fills", "event_fees"} and spec.cursor not in result.payload:
+            if name in {"orders", "positions", "historical_orders", "fills", "historical_fills", "event_fees"} and spec.cursor not in result.payload:
                 raise InvalidData("required pagination cursor missing; result is incomplete")
             cursor = result.payload.get(spec.cursor, "")  # Optional only on some endpoints.
             if (not isinstance(data, list) or any(not isinstance(row, dict) for row in data)

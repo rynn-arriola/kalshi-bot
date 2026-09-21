@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS history_enumerations (
   id TEXT PRIMARY KEY, subaccount INTEGER NOT NULL, start_us INTEGER NOT NULL,
   end_us INTEGER NOT NULL, eligible_end_us INTEGER NOT NULL, payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS history_scope_interval ON history_enumerations(subaccount,start_us,end_us);
+CREATE TABLE IF NOT EXISTS private_epochs (
+  id TEXT PRIMARY KEY, subaccount INTEGER NOT NULL, writer_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL, opened_at TEXT NOT NULL, closed_at TEXT,
+  payload TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS private_epochs_scope_time ON private_epochs(subaccount,opened_at);
 CREATE TABLE IF NOT EXISTS lots (
   id INTEGER PRIMARY KEY, ticker TEXT NOT NULL, direction INTEGER NOT NULL,
   quantity TEXT NOT NULL, yes_price TEXT NOT NULL, fee TEXT NOT NULL);
