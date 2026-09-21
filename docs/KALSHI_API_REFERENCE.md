@@ -2,6 +2,9 @@
 
 Official documentation snapshot: **2026-09-19T22:18:31.500174+00:00**.
 
+Read [dated contract updates](API_REFERENCE_NOTES.md) alongside this captured
+snapshot; the September 21 historical-fill subaccount update is recorded there.
+
 This is the local development reference for `kalshi-bot`. It documents API contracts; it does not authorize trading, transfers, or account changes. No account was accessed to build it.
 
 Scope: all operations in the official three OpenAPI files, both AsyncAPI files, and all pages discovered through `llms.txt` and `sitemap.xml`. Endpoint definitions and shared schemas are included without dropping optional fields, error responses, examples, deprecations, validation constraints, or specification extensions. FIX field tables and technical examples are included separately. Narrative guides are linked and their technical tables/examples extracted; this is not a verbatim copy of every guide.

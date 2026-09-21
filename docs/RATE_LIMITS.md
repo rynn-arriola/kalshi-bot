@@ -70,6 +70,11 @@ payload. Scheduler work reuses this service, never creates a per-market bucket.
 
 ## Writes and remaining launch work
 
+D-062 adds the separate [offline write-budget primitive](BUILD_WRITE_BUDGET.md):
+full method/path costs, explicit shard scopes, expiring observations and bounded
+one-use permits. It has no production transport, priority queue or runtime wiring;
+the existing GET service below still cannot authorize mutations.
+
 Write limits returned by refresh are informational only; there is NO production
 write limiter/transport enabled here. The current guide distinguishes explicitly
 sharded single writes, unscoped shard 0, auto-routed writes and unscoped batch

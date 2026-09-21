@@ -38,7 +38,9 @@ class RiskTests(unittest.IsolatedAsyncioTestCase):
         return await self.writer.portfolio(subaccount=0, now=NOW)
 
     async def reserve(self, req=None, view=None, config=None, cash="500", known=True, fixture=True, now=NOW):
-        return await self.writer.reserve_entry(req or request(), view=view or await self.view(),
+        req = req or request()
+        return await self.writer.reserve_entry(req,
+            attempt_id='attempt-'+req['client_order_id'], view=view or await self.view(),
             config=config or BotConfig(managed_market_slots=30), now=now, free_cash=D(cash),
             account_known=known, offline_fixture=fixture)
 
@@ -286,7 +288,18 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
         return order
 
     async def position(self, quantity="10"):
-        order = await self.order("open", filled=quantity, remaining="0", terminal=True, qty=quantity)
+        req = request('open')
+        prepared = await self.writer.reserve_entry(req, attempt_id='open-attempt',
+            view=await self.writer.portfolio(subaccount=0, now=self.now),
+            config=BotConfig(), now=self.now, free_cash=D(500),
+            account_known=True, offline_fixture=True)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        sent = await self.writer.begin_send(prepared.receipt)
+        self.assertTrue(sent.dispatch_allowed, sent.blockers)
+        order = OrderUpdate('open', 'open', 'A', 'bid', D('.5'), D(10), D(quantity), D(0),
+            'executed' if quantity == '10' else 'canceled', 0, 0, 1)
+        await self.writer.order(order, self.now)
+        self.runtime.account._store_order((await self.writer.orders())[-1])
         await self.writer.fill(Fill("f", "open", "A", "bid", D(quantity), D(".5"), D(0)), self.now)
         return order
 

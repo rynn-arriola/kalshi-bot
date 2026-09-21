@@ -882,6 +882,117 @@ them accepted without an explicit operator instruction.
   Stop after fixes/verification for independent review; implementation is not
   self-clearance.
 
+### D-058 — Astra commits previous work and performs overall review
+
+- **Status:** ACCEPTED and performed, 2026-09-21.
+- **Decision owner:** Operator: “Astra commit then review the one I asked previously.”
+- **Scope:** One-task commit exception to D-049, followed by the requested
+  overall code review and priority-ordered actions. Previous work committed as
+  `8c03aa0`; [review evidence](docs/REVIEW_OVERALL_2026-09-21.md).
+- **Boundary:** No permanent routing change, new implementation, source/config
+  change, push, runtime action or live authority. Recommendations need a new
+  assignment; existing review and readiness gates remain in force.
+
+### D-059 — Plan the first two overall-review priorities
+
+- **Status:** ACCEPTED design assignment, 2026-09-21; plan produced, implementation
+  and proposed schema/capacity changes await approval.
+- **Decision owner:** Operator: “Ok we are doing it in priority order lets do 1
+  and 2 first Astra go ahead and plan it.”
+- **Scope:** Astra designs safety-command capacity and the atomic reservation/
+  execution handoff in [the plan](docs/DESIGN_COMMAND_CAPACITY_HANDOFF.md), then
+  stops for approval and Sol. The earlier overall queue remains the roadmap.
+- **Boundary:** Documentation only. No source/config/runtime change, migration,
+  history deletion, commit/push, live action or clearance of other readiness gates.
+
+### D-060 — Implement the approved D-059 design
+
+- **Status:** ACCEPTED and implemented offline, 2026-09-21;
+  [Astra review](docs/REVIEW_D060_ASTRA.md) requires corrections.
+- **Decision owner:** Operator: “Sol implement.”
+- **Review assignment:** Operator subsequently: “Astra do it.” Independent
+  review only; no new implementation or operational authority inferred.
+- **Scope:** Implement both priority fixes exactly through the D-059 interfaces,
+  schema-3 disposable ledgers, bounded durable capacity credits, atomic
+  preparation/receipt consumption, fault tests and 30/120-market resource
+  verification. Evidence: [D-060 build record](docs/BUILD_COMMAND_CAPACITY_HANDOFF.md).
+- **Boundary:** No schema-2 migration, archive deletion, risk/config change,
+  authenticated transport, account access, deployment, restart or live action.
+  Stop after verification for independent Astra review; all other readiness
+  gates retain their previous state.
+
+### D-061 — Remove model-switch workflow requirements
+
+- **Status:** ACCEPTED permanent workflow change, 2026-09-21.
+- **Decision owner:** Operator: “forget about switching models,” followed by
+  “no more changing models even the one from earlier.”
+- **Decision:** D-049's required model recommendation, model-mismatch stop and
+  manual Astra/Sol phase switching are superseded. Continue authorized work
+  with the model already selected; do not recommend or require model changes.
+- **Boundary:** This changes only model routing. It does not relax project
+  decisions, independent review quality, testing, security, deployment,
+  restart, credential, account, capital, risk or live-action controls.
+
+### D-062 — Continue the remaining work in priority order
+
+- **Status:** ACCEPTED offline build assignment, 2026-09-21; in progress.
+- **Decision owner:** Operator: “Just do all of it in priority order,” followed
+  by “Ok continue working.”
+- **Scope:** Finish the remaining authorized development in the
+  [overall review](docs/REVIEW_OVERALL_2026-09-21.md). Priority 3 starts with
+  [bounded opening-account/cash evidence](docs/DESIGN_OPENING_ACCOUNT_CASH.md),
+  current public API verification, offline tests and independent review.
+  Continue routine implementation and verification without model-switch gates.
+- **Boundary:** No inferred account exclusivity, launch timestamp, inventory
+  adoption, settlement/correction policy, loss reset or schema migration.
+  Pending choices still require the operator; broad build scope does not grant
+  credentials/account calls, live transport activation, trading, deployment,
+  restart, commit or push. Existing review and readiness gates remain in force.
+
+### D-063 — Return to single-session development
+
+- **Status:** ACCEPTED workflow change, 2026-09-21.
+- **Decision owner:** Operator: “Cant we go back on how we usually build stuff
+  like originally,” after discussing delegated workers and usage.
+- **Decision:** Continue directly in the primary session. Stop existing workers,
+  preserve their partial work, and complete/review/verify it locally. No new
+  delegated agents or worker sessions unless explicitly requested again.
+  D-061's no-model-switch rule remains.
+- **Boundary:** Existing build scope, testing, risk and live-operation rules
+  remain unchanged. Worker handoffs are not completion evidence.
+
+### D-064 — Primary account, exclusive bot use, flat opening
+
+- **Status:** ACCEPTED opening-account policy, 2026-09-21; not activated.
+- **Decision owner:** Operator: “I wont trade manually on this,” then “Ok” to
+  the explicit confirmation: use the primary Kalshi account exclusively for
+  this bot, starting only after verifying zero open positions and zero resting
+  orders.
+- **Decision:** Scope the future bot to primary subaccount 0. No manual trading
+  in that account during bot operation. Before arming, require fresh evidence of
+  no nonzero positions and no resting orders. Existing history remains separate
+  reconciliation evidence under D-030; it is not silently imported or discarded.
+- **Boundary:** This records the operator's choice, not current flatness,
+  exclusivity proof, a launch timestamp, settled-loss reset, opening basis or
+  live authority. Choose the exact accounting boundary during a separately
+  approved launch after the required checks. No account/API call, order action,
+  migration, deployment or restart is approved by this decision.
+
+### D-065 — Verify, commit and push completed work
+
+- **Status:** ACCEPTED permanent repository workflow, 2026-09-21.
+- **Decision owner:** Operator: “When we finish something we should always check
+  then commit and push.”
+- **Decision:** After each completed work unit, run relevant verification,
+  review the exact diff for scope and secrets, commit the verified changes and
+  push to the canonical GitHub branch. Verify local/remote commit parity after
+  pushing. Do not present unfinished work as complete merely to publish it.
+- **Boundary:** This supersedes earlier no-commit/no-push clauses for completed,
+  verified repository work only. Preserve unrelated changes, ignored private
+  material and remote commits; never force-push or resolve divergence by
+  overwriting. If checks or publication fail, report the state and retain work.
+  Publication is not bot deployment, account access or live-trading authority.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

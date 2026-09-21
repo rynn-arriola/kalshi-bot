@@ -27,9 +27,9 @@ operator authority and completed readiness gates.
 
 ## Required boot sequence for every new session
 
-Before acting, follow the mandatory model-selection and phase gates below
-(D-049), including for "continue" or "do next" requests. Existing build
-authority does not waive them.
+Model selection and manual switch gates are not repository workflow controls
+(D-061). Continue an authorized task with the model already selected; do not
+recommend, require or wait for a model change.
 
 Read these files before proposing or changing anything:
 
@@ -61,51 +61,22 @@ Read D-014 and `AI_ENGINEERING.md` before any design or implementation.
 Use WebSocket information first, with REST for information unavailable through
 the documented streams. CPU efficiency and scalability are required from design.
 
-## Mandatory model selection and development workflow — D-049
+## Model continuity — D-061
 
-Only **GPT-6 Astra** and **GPT-5.6 Sol** are used. Before every substantive task,
-give the operator one short recommendation in exactly one of these forms:
+D-063 restores single-session development. Perform planning, implementation,
+verification and review in the primary session. Do not launch delegated agents
+or separate worker sessions unless the operator explicitly requests them again.
+Keep the selected model; no model recommendations or switch gates.
 
-`Recommended agent: Astra — [reason]`
+D-049's mandatory Astra/Sol recommendations, mismatch stops and manual switching
+workflow are **SUPERSEDED**. Do not ask the operator to change models and do not
+stop an otherwise authorized task for model selection. The active session may
+plan, implement, test, review and document the assigned work continuously.
 
-`Recommended agent: 5.6 Sol — [reason]`
-
-Recommend **5.6 Sol by default** for approved-plan implementation, focused fixes
-with an established cause, tests and verification, routine logs/status/reports/
-data checks, documentation and formatting, deployment/restart/standard operations,
-and fixes requested by an Astra review.
-
-Recommend **Astra only when deeper reasoning is materially needed**: new feature
-architecture or end-to-end design; strategy, risk or business-logic changes;
-difficult incidents with an uncertain cause; cross-system concurrency, recovery,
-security or account-state problems; API research that may affect architecture,
-strategy, compliance or risk; and final review of meaningful or high-risk
-live-money code changes.
-
-The recommendation follows the task, not the currently selected model. If the
-selected model does not match, stop before development so the operator can
-switch. Do not repeatedly switch models within one phase. Sol escalates to Astra
-only when evidence reveals material architectural uncertainty or risk. Astra is
-not used for routine work Sol can reliably complete. Urgent safety actions such
-as stopping a live bot or preventing exposure never wait for a model switch.
-
-For work requiring the full development flow:
-
-1. **Astra — analysis/design only.** Analyze requirements and the repo; design
-   architecture, modules, data flow, interfaces, failure handling and phases;
-   then stop for the operator's switch.
-2. **5.6 Sol — implementation.** Implement the approved design, test and verify;
-   then stop for Astra review when the change is meaningful or high risk.
-3. **Astra — review only.** Review the implementation and Git diff for
-   architectural violations, races, security problems, edge cases and incorrect
-   assumptions; then stop for the operator's switch. If the diff is unavailable,
-   disclose that limitation.
-4. **5.6 Sol — review fixes.** Implement the findings and rerun verification.
-
-Small, low-risk changes may be implemented and verified by Sol without Astra
-review. Model routing never grants operational authority: preserve every existing
-safety, testing, deployment, restart and live-action rule. Record the current
-phase, completed work, verification gaps and next recommended model in STATUS/NEXT.
+This changes routing only. Meaningful changes still require an actual diff
+review and proportionate verification before completion. Preserve every
+authority, safety, testing, deployment, restart and live-action rule below;
+model identity never grants additional authority.
 
 ## Authority boundary
 
@@ -199,6 +170,13 @@ Before ending a material work session:
 6. Record operator decisions in `DECISIONS.md`; do not infer them.
 7. Run relevant verification and report what was not run.
 8. Check `git diff` for secrets and unrelated operator work.
+
+D-065: when a work unit is complete and verified, review the exact staged
+scope, commit it, push to the canonical branch and verify local/remote parity.
+Do not stage unrelated or private files, force-push, or publish a failed or
+unfinished unit as complete. If remote divergence or publication failure
+prevents a safe push, preserve the local commit and report the blocker. This
+repository workflow does not change bot launch or live-action authority.
 
 If context is incomplete, stop at a read-only audit. Do not fill gaps by
 guessing what a prior AI intended.

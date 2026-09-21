@@ -1,0 +1,270 @@
+"""Offline-only priority, durable handoff and recovery fixtures."""
+import asyncio
+from dataclasses import replace
+from datetime import datetime, timezone
+from decimal import Decimal as D
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from kalshi_bot.command_types import CommandDenied
+from kalshi_bot.config import BotConfig
+from kalshi_bot.dispatch import (DispatchCandidate, MutationDispatcher,
+    SAFETY_CANCEL, PASSIVE_REDUCER, DUE_IOC)
+from kalshi_bot.execution import InjectedExecutor
+from kalshi_bot.ledger import Fill
+from kalshi_bot.orders import OrderUpdate
+from kalshi_bot.quota import QuotaUnavailable
+from kalshi_bot.values import InvalidData
+from kalshi_bot.write_budget import WriteBudget
+from kalshi_bot.writer import LedgerWriter
+from test_bot_write_budget import snapshot, now as budget_now
+from test_bot_command_handoff import request as entry_request
+
+
+NOW = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
+
+
+class DispatcherTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = TemporaryDirectory()
+        self.writer = await LedgerWriter(Path(self.temp.name)/'dispatch.db').start()
+        self.invoked = []
+        async def invoke(kind, request):
+            self.invoked.append((kind, request))
+            if kind == 'cancel':
+                return dict(order_id=request['order_id'], ts_ms=1, reduced_by='10')
+            return dict(order_id='reducer-order', ts_ms=1, fill_count='0',
+                        remaining_count=request['count'])
+        self.executor = InjectedExecutor(self.writer, invoke=invoke,
+            validate_proof=lambda *_: True, offline_fixture=True, now=lambda: NOW)
+        self.clock = 1
+        self.budget = WriteBudget(snapshot(rate=100, capacity=100),
+            shards=(0, 1), now=budget_now(), offline_fixture=True)
+        self.candidates = {}
+        self.refresh_count = 0
+        async def refresh(ticker, priority):
+            self.refresh_count += 1
+            return self.candidates.get((ticker, priority))
+        self.dispatcher = MutationDispatcher(self.writer, self.executor, self.budget,
+            refresh=refresh, clock_pair=lambda: budget_now(self.clock), now=lambda: NOW,
+            offline_fixture=True)
+
+    async def asyncTearDown(self):
+        await self.dispatcher.close()
+        await self.writer.close()
+        self.temp.cleanup()
+
+    async def working_order(self, ticker='A', order_id='order-a'):
+        req = entry_request(ticker+'-client')
+        req['ticker'] = ticker
+        reserved = await self.writer.reserve_entry(req, attempt_id=ticker+'-entry',
+            view=await self.writer.portfolio(subaccount=0, now=NOW),
+            config=BotConfig(), now=NOW, free_cash=D(500), account_known=True,
+            offline_fixture=True)
+        self.assertTrue(reserved.reserved, reserved.blockers)
+        receipt = reserved.receipt
+        self.assertTrue((await self.writer.begin_send(receipt)).dispatch_allowed)
+        await self.writer.record_outcome('ack', receipt, dict(order_id=order_id,
+            client_order_id=req['client_order_id'], fill_count='0',
+            remaining_count='10', ts_ms=1), NOW)
+        await self.writer.order(OrderUpdate(order_id, req['client_order_id'], ticker,
+            'bid', D('.4'), D(10), D(0), D(10), 'resting', 0, 1, 1), NOW)
+        evidence = await self.writer.cancel_evidence(order_id)
+        request = dict(order_id=order_id, market_ticker=ticker,
+                       subaccount=0, exchange_index=1)
+        candidate = DispatchCandidate(ticker, SAFETY_CANCEL, ticker+'-cancel',
+                                      request, evidence, 1)
+        self.candidates[(ticker, SAFETY_CANCEL)] = candidate
+        return candidate
+
+    async def test_priority_coalescing_and_bounded_overflow(self):
+        self.assertTrue(self.dispatcher.submit('A', PASSIVE_REDUCER))
+        self.assertTrue(self.dispatcher.submit('B', SAFETY_CANCEL))
+        self.assertTrue(self.dispatcher.submit('A', DUE_IOC))
+        self.assertFalse(self.dispatcher.submit('A', PASSIVE_REDUCER))
+        self.assertEqual(self.dispatcher.status().queued,
+            ((SAFETY_CANCEL, 'B'), (DUE_IOC, 'A')))
+        self.dispatcher.capacity = 2
+        with self.assertRaises(InvalidData):
+            self.dispatcher.submit('C', SAFETY_CANCEL)
+        self.assertTrue(self.dispatcher.status().failed)
+
+    async def test_one_dispatcher_owner_per_writer(self):
+        with self.assertRaisesRegex(InvalidData, 'one mutation dispatcher'):
+            MutationDispatcher(self.writer, self.executor, self.budget,
+                refresh=lambda *_: None, clock_pair=lambda: budget_now(1),
+                now=lambda: NOW, offline_fixture=True)
+
+    async def test_cancel_handoff_is_durable_before_injected_invoke(self):
+        await self.working_order()
+        async def checked(kind, request):
+            rows = await self.writer.mutations()
+            self.assertEqual(rows[-1]['phase'], 'SENDING')
+            self.invoked.append((kind, request))
+            return dict(order_id=request['order_id'], ts_ms=1, reduced_by='10')
+        self.executor.invoke = checked
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        outcome = await self.dispatcher.run_one()
+        self.assertEqual((outcome.state, outcome.order_id), ('ACK', 'order-a'))
+        self.assertEqual(len(self.invoked), 1)
+        self.assertEqual(self.refresh_count, 2)
+        self.assertFalse(self.dispatcher.status().live_ready)
+        self.assertFalse((await self.writer.orders())[0].order.terminal)
+        self.assertEqual((await self.dispatcher.run_one()).state, 'IDLE')
+
+    async def test_urgent_cancel_precedes_older_passive_work(self):
+        await self.working_order('A', 'order-a')
+        await self.working_order('B', 'order-b')
+        self.dispatcher.submit('A', PASSIVE_REDUCER)
+        self.dispatcher.submit('B', SAFETY_CANCEL)
+        first = await self.dispatcher.run_one()
+        self.assertEqual((first.priority, first.state, first.ticker),
+                         (SAFETY_CANCEL, 'ACK', 'B'))
+        self.assertEqual(self.invoked[0][1]['order_id'], 'order-b')
+        # A still needs a fresh reducer plan; there was no stale receipt.
+        second = await self.dispatcher.run_one()
+        self.assertEqual((second.priority, second.state),
+                         (PASSIVE_REDUCER, 'BLOCKED'))
+
+    async def test_waiting_retains_market_key_not_prepared_receipt(self):
+        await self.working_order()
+        self.clock = 0
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        waiting = await self.dispatcher.run_one()
+        self.assertEqual(waiting.state, 'WAITING')
+        self.assertEqual(self.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.assertEqual(len(await self.writer.mutations()), 1)  # Entry only.
+        self.clock = 1
+        self.assertEqual((await self.dispatcher.run_one()).state, 'ACK')
+
+    async def test_route_change_after_reservation_requeues_without_write(self):
+        first = await self.working_order()
+        calls = 0
+        async def changed(ticker, priority):
+            nonlocal calls
+            calls += 1
+            return first if calls == 1 else replace(first, request=dict(
+                first.request, order_id='order-b'),
+                evidence=replace(first.evidence, order_id='order-b'))
+        self.dispatcher.refresh = changed
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        result = await self.dispatcher.run_one()
+        self.assertEqual((result.state, result.blockers),
+                         ('WAITING', ('candidate_route_changed',)))
+        self.assertEqual(self.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.assertEqual(len(await self.writer.mutations()), 1)  # Entry only.
+        self.assertFalse(self.invoked)
+        self.assertFalse(self.dispatcher.status().failed)
+
+    async def test_executor_denial_aborts_unsent_preparation(self):
+        await self.working_order()
+        self.executor.validate_proof = lambda *_: False
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        rows = await self.writer.mutations()
+        self.assertEqual(rows[-1]['phase'], 'NOT_SENT')
+        self.assertFalse(self.invoked)
+
+    async def test_post_sending_proof_loss_latches_failed_with_unknown(self):
+        await self.working_order()
+        checks = iter((True, False))
+        self.executor.validate_proof = lambda *_: next(checks)
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(CommandDenied):
+            await self.dispatcher.run_one()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+
+    async def test_quota_expiry_during_prepare_aborts(self):
+        await self.working_order()
+        original = self.writer.prepare_cancel
+        async def stale(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.clock = 300
+            return result
+        self.writer.prepare_cancel = stale
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(Exception):
+            await self.dispatcher.run_one()
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertFalse(self.invoked)
+
+    async def test_quota_expiry_during_sending_never_invokes_transport(self):
+        await self.working_order()
+        original = self.writer.begin_send
+        async def delayed(receipt):
+            self.assertEqual(self.budget.status(now=budget_now(self.clock)).outstanding, 1)
+            result = await original(receipt)
+            self.clock = 300
+            return result
+        self.writer.begin_send = delayed
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(QuotaUnavailable):
+            await self.dispatcher.run_one()
+        self.assertFalse(self.invoked)
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertTrue(self.executor.failed)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual(self.budget.status(now=budget_now(300)).outstanding, 0)
+
+    async def test_async_send_edge_callback_rejected_before_sending(self):
+        candidate = await self.working_order()
+        prepared = await self.writer.prepare_cancel(candidate.attempt_id,
+            candidate.request, evidence=candidate.evidence, now=NOW)
+        self.assertTrue(prepared.reserved)
+        async def unsafe_callback():
+            return None
+        with self.assertRaisesRegex(InvalidData, 'synchronous send-edge'):
+            await self.executor.execute_prepared(
+                prepared.receipt, before_invoke=unsafe_callback)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'PREPARED')
+        self.assertFalse(self.invoked)
+
+    async def test_cancellation_joins_one_worker_and_does_not_duplicate(self):
+        await self.working_order()
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def slow(kind, request):
+            entered.set()
+            await release.wait()
+            self.invoked.append((kind, request))
+            return dict(order_id=request['order_id'], ts_ms=1, reduced_by='10')
+        self.executor.invoke = slow
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        task = asyncio.create_task(self.dispatcher.run_one())
+        await entered.wait()
+        self.assertEqual((await self.dispatcher.run_one()).blockers,
+                         ('dispatcher_busy',))
+        task.cancel()
+        self.assertEqual(self.dispatcher.status().active, ('A', SAFETY_CANCEL))
+        release.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(len(self.invoked), 1)
+        self.assertIsNone(self.dispatcher.status().active)
+
+    async def test_unknown_injected_send_latches_dispatcher_without_retry(self):
+        await self.working_order()
+        async def lost(*_):
+            self.invoked.append('once')
+            raise TimeoutError('synthetic transport uncertainty')
+        self.executor.invoke = lost
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(TimeoutError):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.dispatcher.run_one()).state, 'FAILED')
+        self.assertEqual(self.invoked, ['once'])
+
+    async def test_explicit_live_mode_rejected(self):
+        with self.assertRaises(InvalidData):
+            MutationDispatcher(self.writer, self.executor, self.budget,
+                refresh=lambda *_: None, clock_pair=lambda: budget_now(),
+                now=lambda: NOW)
+
+
+if __name__ == '__main__':
+    unittest.main()

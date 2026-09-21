@@ -6,7 +6,7 @@ This folder tracks the [canonical GitHub repository](https://github.com/rynn-arr
 on `master`; see [publication record](docs/GITHUB_PUBLICATION.md).
 
 **AI operators:** begin with [AI_OPERATOR.md](AI_OPERATOR.md), then follow its
-required two-model recommendation and routing. AGENTS/CLAUDE are compatibility
+authority and session routing. D-061 removes model-switch requirements. AGENTS/CLAUDE are compatibility
 pointers, not separate rules.
 Permanent requirements: [AI_ENGINEERING.md](AI_ENGINEERING.md).
 Design: [WebSocket-first architecture](docs/ARCHITECTURE.md).
@@ -18,7 +18,7 @@ tested foundation is in `src/kalshi_bot`; see
 [account-I/O milestone](docs/BUILD_ACCOUNT_IO.md), followed by
 [owned orders and recovery evidence](docs/BUILD_RECOVERY_ORDERS.md), then
 [event/command and quote/ranking components](docs/BUILD_ENGINE_RANKING.md)
-(280 passing tests). It is not yet a complete
+with current verification recorded in [STATUS.md](STATUS.md). It is not yet a complete
 or live-ready trader. No paper trading, live launch or exchange writes occurred.
 
 ```powershell

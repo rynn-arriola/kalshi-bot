@@ -1,3 +1,22 @@
+### Dated contract update — September 21, 2026
+
+The current official [historical fills operation](https://docs.kalshi.com/api-reference/historical/get-historical-fills)
+now documents `subaccount` (0 primary, 1–63 numbered; omitted means all). A
+restricted key must match the requested scope. This supersedes only the missing
+historical-fill parameter in the September 19 captured reference and D-044's
+dated description. Recovery now sends the scope and rejects conflicting row
+scope. Cursor exhaustion still establishes enumeration only, not continuity.
+
+The [balance contract](https://docs.kalshi.com/api-reference/portfolio/get-balance)
+reports integer cents alongside precise `balance_dollars`, without specifying
+legacy rounding. Opening evidence preserves both, rejects differences of one
+cent or more, and labels smaller differences unverified rather than rounding
+cash or assuming a conversion rule. Aggregate exchange breakdowns must agree.
+The [settlement contract](https://docs.kalshi.com/api-reference/portfolio/get-settlements)
+allows absent/null `value`; it is a per-YES-contract payout in cents, not total
+revenue. Cash-history inspection requires explicit terminal cursors even where
+the schema marks them optional; missing cursors are incomplete evidence.
+
 ### How to use this reference
 
 Start from the method/path index, read the operation and its referenced schemas,

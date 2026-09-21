@@ -26,6 +26,7 @@ class ManagedPlan:
 class InventoryManager:
     def __init__(self, runtime):
         self.runtime = runtime
+        runtime.writer.claim_management_owner(self)
         self._plans = {}
         self.unmanaged = set()
         self.terms = {}
@@ -59,10 +60,12 @@ class InventoryManager:
             return shard, None
         return shard, book
 
-    def current(self, ticker):
+    def _current(self, ticker, *, plan_writer_revision, current_writer_revision):
         plan = self._plans.get(ticker)
         account = self.runtime.account
-        if plan is None or not account.connected or self.runtime.engine.stopped or self.runtime.writer.failed:
+        writer = self.runtime.writer
+        if (plan is None or not account.connected or self.runtime.engine.stopped
+                or writer.failed or writer.revision != current_writer_revision):
             return None
         if plan.terms is not self.terms.get(ticker):
             return None
@@ -71,12 +74,23 @@ class InventoryManager:
         shard, book = self._book(ticker)
         if ((plan.generation, plan.account_revision) != (account.generation, account.revision)
                 or (plan.inventory.writer_epoch, plan.inventory.writer_revision) !=
-                   (self.runtime.writer.epoch, self.runtime.writer.revision)
+                   (writer.epoch, plan_writer_revision)
                 or not timedelta(0) <= utc(self.runtime.now())-plan.observed_at <= timedelta(seconds=5)
                 or plan.book_generation != (shard.generation if shard else 0)
                 or plan.book_revision != (book.revision if book else -1)):
             return None
         return plan
+
+    def current(self, ticker):
+        revision = self.runtime.writer.revision
+        return self._current(ticker, plan_writer_revision=revision,
+                             current_writer_revision=revision)
+
+    def current_after_prepare(self, ticker, *, prior_revision, prepared_revision):
+        if prepared_revision != prior_revision+1:
+            return None
+        return self._current(ticker, plan_writer_revision=prior_revision,
+                             current_writer_revision=prepared_revision)
 
     async def refresh(self, ticker):
         runtime, account = self.runtime, self.runtime.account

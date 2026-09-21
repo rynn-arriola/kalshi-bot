@@ -14,6 +14,8 @@ from uuid import uuid4
 from kalshi_bot.adapters import PriceBand, create_payload
 from kalshi_bot.account import AccountCoordinator
 from kalshi_bot.books import Book, BookConnection, Ladder, ProofLost
+from kalshi_bot.command_types import CommandDenied
+from kalshi_bot.config import BotConfig
 from kalshi_bot.engine import EventEngine
 from kalshi_bot.execution import InjectedExecutor, acknowledgement
 from kalshi_bot.ledger import Ledger
@@ -53,8 +55,8 @@ def delta(seq=2, ticker="A"):
         "market_ticker": ticker, "side": "yes", "price_dollars": "0.4", "delta_fp": "1"}}
 
 
-def request():
-    return create_payload(ticker="A", client_id="client", outcome="yes", outcome_price=D("0.4"),
+def request(client="client"):
+    return create_payload(ticker="A", client_id=client, outcome="yes", outcome_price=D("0.4"),
                           quantity=D(10), bands=BANDS) | {"subaccount": 0, "exchange_index": 1}
 
 
@@ -475,12 +477,21 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.executor = InjectedExecutor(self.writer, invoke=invoke, validate_proof=lambda *_: True,
                                          offline_fixture=True, now=lambda: NOW)
 
+    async def prepare(self, attempt="attempt", req=None):
+        req = req or request()
+        result = await self.writer.reserve_entry(req, attempt_id=attempt,
+            view=await self.writer.portfolio(subaccount=0, now=NOW),
+            config=BotConfig(), now=NOW, free_cash=D(500), account_known=True,
+            offline_fixture=True)
+        self.assertTrue(result.reserved, result.blockers)
+        return result.receipt
+
     async def asyncTearDown(self):
         await self.writer.close()
         self.temp.cleanup()
 
     async def test_create_durable_before_invoke_ack_not_order(self):
-        result = await self.executor.attempt("create", "attempt", request())
+        result = await self.executor.execute_prepared(await self.prepare())
         self.assertEqual(result.order_id, "order")
         self.assertTrue(result.reconciliation_required)
         self.assertEqual(len(self.calls), 1)
@@ -490,8 +501,9 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["phase"], "ACK")
 
     async def test_duplicate_attempt_cannot_send_twice(self):
-        await self.executor.attempt("create", "attempt", request())
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "attempt", request())
+        receipt = await self.prepare()
+        await self.executor.execute_prepared(receipt)
+        with self.assertRaises(CommandDenied): await self.executor.execute_prepared(receipt)
         self.assertEqual(len(self.calls), 1)
 
     async def test_timeout_persists_unknown_and_never_retries(self):
@@ -499,32 +511,33 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.calls.append(1)
             raise TimeoutError()
         self.executor.invoke = timeout
-        with self.assertRaises(TimeoutError): await self.executor.attempt("create", "attempt", request())
+        receipt = await self.prepare()
+        with self.assertRaises(TimeoutError): await self.executor.execute_prepared(receipt)
         self.assertEqual((await self.writer.mutations())[0]["phase"], "UNKNOWN")
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "other", request())
+        with self.assertRaises(CommandDenied): await self.executor.execute_prepared(receipt)
         self.assertEqual(len(self.calls), 1)
 
     async def test_bad_ack_persists_unknown(self):
         async def invoke(*_): return ack(client_order_id="wrong")
         self.executor.invoke = invoke
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "attempt", request())
+        with self.assertRaises(InvalidData): await self.executor.execute_prepared(await self.prepare())
         self.assertEqual((await self.writer.mutations())[0]["phase"], "UNKNOWN")
 
     async def test_gate_false_does_not_prepare_or_send(self):
         self.executor.validate_proof = lambda *_: False
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "attempt", request())
-        self.assertEqual(await self.writer.mutations(), ())
+        with self.assertRaises(CommandDenied): await self.executor.execute_prepared(await self.prepare())
+        self.assertEqual((await self.writer.mutations())[0]["phase"], "PREPARED")
         self.assertFalse(self.calls)
 
     async def test_gate_rechecked_after_durable_await(self):
-        checks = iter([True, True, False])
+        checks = iter([True, False])
         self.executor.validate_proof = lambda *_: next(checks)
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "attempt", request())
+        with self.assertRaises(CommandDenied): await self.executor.execute_prepared(await self.prepare())
         self.assertFalse(self.calls)
-        self.assertEqual((await self.writer.mutations())[0]["phase"], "SENDING")
+        self.assertEqual((await self.writer.mutations())[0]["phase"], "UNKNOWN")
 
     async def test_restart_retains_ack_and_unresolved_reservation(self):
-        await self.executor.attempt("create", "attempt", request())
+        await self.executor.execute_prepared(await self.prepare())
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
         self.assertEqual(json.loads((await self.writer.mutations())[0]["response"])["order_id"], "order")
@@ -533,22 +546,26 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_ack_fill_count_does_not_post_pnl(self):
         async def invoke(*_): return ack(fill_count="10", remaining_count="0")
         self.executor.invoke = invoke
-        await self.executor.attempt("create", "attempt", request())
+        await self.executor.execute_prepared(await self.prepare())
         self.assertEqual((await self.writer.inventory()).positions, ())
 
     async def test_cancel_ack_does_not_release_order(self):
-        await self.executor.attempt("create", "attempt", request())
+        await self.executor.execute_prepared(await self.prepare())
         await self.writer.order(OrderUpdate("order", "client", "A", "bid", D(".4"), D(10), D(0), D(10), "resting", 0, 1, 1000), NOW)
         async def invoke(*_): return {"order_id": "order", "ts_ms": 2, "reduced_by": "10"}
         self.executor.invoke = invoke
         req = dict(order_id="order", market_ticker="A", subaccount=0, exchange_index=1)
-        await self.executor.attempt("cancel", "cancel", req)
+        prepared = await self.writer.prepare_cancel('cancel', req,
+            evidence=await self.writer.cancel_evidence('order'), now=NOW)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        await self.executor.execute_prepared(prepared.receipt)
         self.assertFalse((await self.writer.orders())[0].order.terminal)
         self.assertEqual((await self.writer.inventory()).unresolved_intents, 1)
 
     async def test_unowned_cancel_never_invokes_gateway(self):
         req = dict(order_id="foreign", market_ticker="A", subaccount=0, exchange_index=1)
-        with self.assertRaises(InvalidData): await self.executor.attempt("cancel", "cancel", req)
+        with self.assertRaises(InvalidData):
+            await self.writer.prepare_cancel('cancel', req, evidence=None, now=NOW)
         self.assertFalse(self.calls)
 
     async def test_cancelled_send_retains_unknown(self):
@@ -557,7 +574,8 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
             entered.set()
             await asyncio.Event().wait()
         self.executor.invoke = invoke
-        task = asyncio.create_task(self.executor.attempt("create", "attempt", request()))
+        receipt = await self.prepare()
+        task = asyncio.create_task(self.executor.execute_prepared(receipt))
         await entered.wait()
         task.cancel()
         with self.assertRaises(asyncio.CancelledError): await task
@@ -570,9 +588,10 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             return ack()
         self.executor.invoke = invoke
-        task = asyncio.create_task(self.executor.attempt("create", "attempt", request()))
+        receipt = await self.prepare()
+        task = asyncio.create_task(self.executor.execute_prepared(receipt))
         await entered.wait()
-        with self.assertRaises(InvalidData): await self.executor.attempt("create", "other", request())
+        with self.assertRaises(CommandDenied): await self.executor.execute_prepared(receipt)
         release.set()
         await task
 
@@ -604,7 +623,7 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         ranked = ranks.ranked(now=NOW, by="remaining_reward")[0]
         self.assertEqual(ranked.quotes[0].yes_price, D(".4"))
         # Explicit offline fixture gate only; ranking is not trading permission.
-        await self.executor.attempt("create", "attempt", request())
+        await self.executor.execute_prepared(await self.prepare())
         engine.submit_private(dict(type="user_order", msg=dict(order_id="order", client_order_id="client",
             ticker="A", book_side="bid", yes_price_dollars=".4", initial_count_fp="10", fill_count_fp="0",
             remaining_count_fp="10", status="resting", subaccount_number=0, exchange_index=1,

@@ -197,7 +197,9 @@ class RecoveryRuntime:
         """Integrated fail-closed gate; never grants a live reservation."""
         view = await self.risk_view()
         report = self.account.current_report(self.now())
-        return await self.writer.reserve_entry(request, view=view, config=BotConfig(), now=self.now(),
+        return await self.writer.reserve_entry(request,
+            attempt_id=request['client_order_id'], view=view,
+            config=BotConfig(), now=self.now(),
             free_cash=report.snapshot.available_balance if report else 0,
             account_known=False, offline_fixture=False)
 

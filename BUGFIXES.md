@@ -10,6 +10,84 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Offline dispatcher spent write permit before durable SENDING await
+
+**Mechanism.** The dispatcher consumed a fresh local write permit before
+awaiting the writer's SENDING transition. Quota evidence could expire during
+that await, leaving the subsequent injected send without an edge check.
+**Fix.** Check the outstanding permit before SENDING, retain it through the
+await, then consume it synchronously immediately before the injected invoke.
+**Verification.** A synthetic expiry during the handoff makes zero injected
+calls, durably records UNKNOWN and latches the dispatcher. An asynchronous
+send-edge callback is rejected. 48 focused and 1,018 full tests pass (one
+expected native privilege skip). This is offline-only and does not authorize
+venue mutations.
+
+### Write-budget hot path exceeded synthetic CPU acceptance
+
+**Mechanism.** Each reserve repeatedly parsed an unchanged route, converted
+the same clock pair and revalidated identical command terms. **Fix.** Bound
+canonical-route caching to 512 entries, reuse validated equal clock samples,
+and share one readiness pass between reserve and delay while preserving exact
+rational comparisons and expiry checks. **Verification.** 33 budget regressions,
+the 12,000-command five-sample CPU/allocation fixture and the combined focused
+dispatcher suite pass; see [write-budget evidence](docs/BUILD_WRITE_BUDGET.md).
+
+### Dispatcher proof loss after durable SENDING was misreported as blocked
+
+**Mechanism.** The injected executor persisted UNKNOWN and latched its recovery
+hold, but an initial dispatcher handler caught the denial as ordinary blocked
+work. **Fix.** The dispatcher now latches failed when the executor's post-SENDING
+hold is active. **Verification.** A synthetic two-stage proof reversal confirms
+UNKNOWN, zero invoked requests and a failed dispatcher; no retry is attempted.
+
+### Opening evidence omitted older pending or undated cash movements
+
+**Mechanism.** Creation-time filtering omitted pre-boundary pending funding,
+funding with absent/null finalization, and older intra-exchange transfers even
+though their completion time was unknown. **Fix.** Retain those observations
+with explicit timing/attribution blockers. Preserve exact cash precision,
+nullable payout fields and source/query provenance; join inspection work and
+recheck revisions after off-loop normalization. **Verification.** New focused
+regressions and the 966-test full run pass (one expected skip); see the
+[build record](docs/BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md). Resource and complete
+accounting gates remain open.
+
+### D-060 receipt, reducer, recovery and hot-capacity review defects
+
+**Mechanisms.** Receipt identity was not durably bound to its issuing writer;
+proof callbacks could mutate outgoing terms; reducer evidence echoed caller
+routing and skipped complete management eligibility; proven-unsent attempts
+wedged later safety work; some post-SENDING failures released the executor hold;
+and repeated full-table integrity scans made valid retained histories exceed the
+CPU target. **Fix.** Persist per-preparation authorizations, dispatch fresh
+canonical terms, require and persist an exact management/exit decision, recompute
+reducer authority transactionally, reauthorize the
+same proven-unsent slot under a bounded audit history, hold recovery immediately
+after SENDING, and use trigger-maintained hot counters with full startup audits
+and transactional limits on legacy writes. A final authority check after queued
+reducer preparation aborts stale PREPARED work before returning a receipt.
+**Verification.** 258 focused and 950 complete tests pass (one existing skip);
+self-audited complete-history 30/120-market cases pass with worst CPU growth
+1.429x. See
+[review-fix evidence](docs/BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md).
+
+### Safety-command capacity cliff and duplicate entry reservation
+
+**Mechanisms.** The 4,096 mutation-row check rejected every new journal row,
+including cancellation of an owned working order. Separately, risk reservation
+created the entry intent and the executor tried to reserve the same identity
+again, faulting the writer before dispatch. **Fix under D-060.** Durable bounded
+credits reserve order/cancel and one-passive/three-IOC drain evidence; funded
+safety commands atomically convert held capacity. Entry risk, intent and
+PREPARED mutation now commit once and return a post-commit receipt consumed once
+by the sole executor. **Verification.** Real 4,096/8,192 boundaries, 21 new
+focused regressions and the prior 936-test suite are recorded in the
+[build evidence](docs/BUILD_COMMAND_CAPACITY_HANDOFF.md). The
+[independent review](docs/REVIEW_D060_ASTRA.md) requires six corrections and
+invalidates the original resource acceptance fixture. No live transport or
+account was used; these implementation changes are not yet cleared.
+
 ### S2A retained ownership, launch permission and shutdown evidence
 
 **Mechanisms.** Repeated cancellation and protocol exceptions could abandon a

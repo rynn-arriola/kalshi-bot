@@ -4,9 +4,9 @@ These are design/review requirements, not claims about implemented behavior.
 Current state belongs in [STATUS.md](STATUS.md), authorization in
 [DECISIONS.md](DECISIONS.md), and session routing in [AI_OPERATOR.md](AI_OPERATOR.md).
 
-D-049 supersedes D-037's blanket routing. Follow the mandatory two-model
-selection and phase gates in `AI_OPERATOR.md`: Sol is the default; Astra is
-reserved for material design, uncertainty, risk and meaningful live-money review.
+D-061 supersedes D-049's mandatory model selection and switch gates. Continue
+authorized work with the active model while retaining actual review,
+verification, safety and authority boundaries from `AI_OPERATOR.md`.
 
 ## Standing operator rules — D-014
 
@@ -90,6 +90,12 @@ reserved for material design, uncertainty, risk and meaningful live-money review
 - Keep database scans, blocking network/file operations and heavy reports off
   the event-processing path. Durable intent must still precede a mutation;
   batching must not weaken that guarantee.
+- D-060 command preparation is one writer transaction: risk checks, durable
+  capacity funding, intent and PREPARED mutation evidence. Dispatch consumes
+  the immutable post-commit receipt once. Preserve the 4,096 ordinary-entry /
+  8,192 total mutation bounds and the 4,096 intent/order bounds; funded safety
+  commands convert held capacity atomically. Never bypass credits, silently
+  reclaim history, reuse a stale/old-epoch receipt or auto-migrate an old ledger.
 - Preserve exact money/quantities with explicit fixed-point scales or Decimal.
   CPU optimizations cannot change monetary results.
 - Start with the simplest bounded concurrent design. Add workers/processes or

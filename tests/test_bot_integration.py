@@ -296,7 +296,7 @@ class RestTests(unittest.IsolatedAsyncioTestCase):
         for name, params, reason in (("POST", {}, "metadata"), ("orders", {}, "poll"),
                                      ("market", {"ticker": "../secrets"}, "metadata"),
                                      ("positions", {"bad": 1}, "bootstrap"),
-                                     ("historical_fills", {"subaccount": 0}, "history"),
+                                     ("historical_fills", {"bad": 0}, "history"),
                                      ("incentives", {"limit": True}, "incentives")):
             with self.subTest(name=name, reason=reason), self.assertRaises(InvalidData):
                 request_path(name, params, reason)
@@ -312,6 +312,23 @@ class RestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result.rows), 2)
         self.assertIn("cursor=a%2Bb", calls[1])
         self.assertIn("type=liquidity", calls[1])
+        self.assertEqual(result.source, 'incentives')
+        self.assertEqual(result.query, (('type', 'liquidity'),))
+        self.assertTrue(result.exhausted)
+
+    async def test_cash_history_requires_explicit_terminal_cursor(self):
+        class Signer:
+            def headers(self, *_):
+                return {}
+        for name, field in (('settlements', 'settlements'),
+                            ('subaccount_transfers', 'transfers'),
+                            ('intra_exchange_transfers', 'transfers'),
+                            ('deposits', 'deposits'), ('withdrawals', 'withdrawals')):
+            with self.subTest(name=name):
+                client = self.client(lambda *_, key=field: wire({key: []}),
+                                     signer=Signer())
+                with self.assertRaisesRegex(InvalidData, 'cursor missing'):
+                    await client.collect(name, reason='cash')
 
     async def test_cursor_cycles_never_return_partial_success(self):
         client = self.client(lambda *_: wire({"incentive_programs": [], "next_cursor": "repeat"}))

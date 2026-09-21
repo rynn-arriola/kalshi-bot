@@ -186,6 +186,23 @@ class ExitTests(unittest.TestCase):
 
 class IntegratedExitTests(management_fixtures.ManagementTests):
     # Inherit the existing management/race/reconnect tests as well as new cases.
+    async def prepare_reducer(self, payload, *, attempt='attempt'):
+        inventory = await self.writer.market_inventory('A', subaccount=0)
+        await self.report(str(abs(inventory.position)))
+        selected_terms = (terms(flatten_at=self.now)
+                          if payload['time_in_force'] == 'immediate_or_cancel'
+                          else terms())
+        self.runtime.management.set_terms(selected_terms)
+        plan = await self.runtime.management.refresh('A')
+        self.assertIs(plan, self.runtime.management.current('A'))
+        evidence = await self.writer.reduction_evidence(payload, now=self.now)
+        prepared = await self.writer.prepare_reduction(
+            attempt, payload, evidence=evidence, now=self.now)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        sent = await self.writer.begin_send(prepared.receipt)
+        self.assertTrue(sent.dispatch_allowed, sent.blockers)
+        return prepared.receipt
+
     async def test_terms_enable_improvement_and_revoke_on_change(self):
         await self.position(); await self.report()
         self.runtime.management.set_terms(terms())
@@ -216,9 +233,8 @@ class IntegratedExitTests(management_fixtures.ManagementTests):
     async def test_durable_ioc_attempt_survives_writer_restart(self):
         await self.position()
         p=ioc_payload(ticker='A',client_id='exit',position=D(10),limit_price=D('.4'),bands=BANDS)|{'subaccount':0,'exchange_index':0}
-        await self.writer.mutation('prepare_create','attempt',p,self.now)
-        await self.writer.mutation('sending','attempt',{},self.now)
-        await self.writer.mutation('unknown','attempt',{},self.now)
+        receipt=await self.prepare_reducer(p)
+        await self.writer.record_outcome('unknown',receipt,{},self.now)
         before=await self.writer.market_inventory('A',subaccount=0)
         self.assertEqual(before.exit_journal.attempts,1); self.assertTrue(before.exit_journal.unresolved_ioc)
         path=self.writer.path if hasattr(self.writer,'path') else Path(self.temp.name)/'manage.db'
@@ -232,8 +248,7 @@ class IntegratedExitTests(management_fixtures.ManagementTests):
         await self.position()
         self.runtime.management.set_terms(terms(flatten_at=NOW))
         p=ioc_payload(ticker='A',client_id='exit',position=D(10),limit_price=D('.4'),bands=BANDS)|{'subaccount':0,'exchange_index':0}
-        await self.writer.mutation('prepare_create','attempt',p,self.now)
-        await self.writer.mutation('sending','attempt',{},self.now)
+        await self.prepare_reducer(p)
         order=OrderUpdate('exit-order','exit','A','ask',D('.4'),D(10),D(4),D(0),'canceled',0,0,2)
         await self.writer.order(order,self.now)
         before=await self.writer.market_inventory('A',subaccount=0)
@@ -248,19 +263,27 @@ class IntegratedExitTests(management_fixtures.ManagementTests):
 
     async def test_cancel_fill_race_recomputes_quantity_after_terminal_proof(self):
         await self.position()
-        reducer=await self.order('reduce',side='ask',p='.6',reducing=True)
+        payload=management_fixtures.request('reduce',side='ask',p='.59',reduce=True,quantity='10')
+        await self.prepare_reducer(payload,attempt='reduce-attempt')
+        reducer=OrderUpdate('reduce','reduce','A','ask',D('.59'),D(10),D(0),D(10),'resting',0,0,1)
+        await self.writer.order(reducer,self.now)
+        self.runtime.account._store_order((await self.writer.orders())[-1])
         self.runtime.management.set_terms(terms(flatten_at=NOW))
         cancel=dict(order_id='reduce',market_ticker='A',subaccount=0,exchange_index=0)
-        await self.writer.mutation('prepare_cancel','cancel',cancel,self.now)
-        await self.writer.mutation('sending','cancel',{},self.now)
-        await self.writer.mutation('ack','cancel',dict(order_id='reduce',ts_ms=1,reduced_by='6'),self.now)
+        prepared=await self.writer.prepare_cancel('cancel',cancel,
+            evidence=await self.writer.cancel_evidence('reduce'),now=self.now)
+        self.assertTrue(prepared.reserved,prepared.blockers)
+        sent=await self.writer.begin_send(prepared.receipt)
+        self.assertTrue(sent.dispatch_allowed,sent.blockers)
+        await self.writer.record_outcome('ack',prepared.receipt,
+            dict(order_id='reduce',ts_ms=1,reduced_by='6'),self.now)
         await self.report(orders=(reducer,))
         waiting=await self.runtime.management.refresh('A')
         self.assertEqual(waiting.exit.mode,'wait')
         await self.writer.order(replace(reducer,status='canceled',filled=D(4),remaining=D(0),version_us=2),self.now)
         before=await self.writer.market_inventory('A',subaccount=0)
         self.assertEqual(before.exit_journal.cancel_ids,('reduce',))
-        await self.writer.fill(Fill('race','reduce','A','ask',D(4),D('.6'),D(0)),self.now)
+        await self.writer.fill(Fill('race','reduce','A','ask',D(4),D('.59'),D(0)),self.now)
         await self.report('6')
         plan=await self.runtime.management.refresh('A')
         self.assertEqual((plan.exit.mode,plan.exit.quantity),('ioc',6))

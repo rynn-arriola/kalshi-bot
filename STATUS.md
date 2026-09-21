@@ -2,6 +2,106 @@
 
 ## Current update — 2026-09-21
 
+D-065 now requires verification, scoped diff/secret review, commit, push and
+parity check for each completed work unit. This changes repository publication
+only; live operation remains disabled.
+
+Latest offline correction: the injected write dispatcher now holds its permit
+through durable SENDING and consumes it synchronously at the send edge.
+Synthetic quota expiry during that handoff makes no transport call, records
+UNKNOWN and holds the owner for reconciliation; expiry before SENDING remains
+NOT_SENT. An asynchronous send-edge callback is rejected before SENDING. The
+final focused run passed 48 tests. The complete suite ran
+**1,018 tests: 1,017 passed, one expected Windows symlink-privilege skip** in
+129.871s on the D-065 publication candidate. Disabled preflight remains
+`live_ready=false`, native exit 2, with
+no file creation, credentials or network. This is offline-only and does not
+clear opening-account, dispatch, ranking, supervisor or live gates.
+
+D-063 restores single-session development. All delegated workers are stopped;
+the primary session completed their partial handoffs. No new workers or model
+switches unless explicitly requested again.
+
+D-064 selects the primary Kalshi account (subaccount 0) for exclusive bot use,
+with no nonzero positions or resting orders permitted before arming.
+This is an operator policy, not current account proof or live authorization.
+The exact boundary remains unchosen until a separately approved launch.
+
+D-062 continues the remaining review priorities. Priority 3 now has a bounded
+[opening-account/cash evidence reader](docs/BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md):
+scope/query-bound histories, precise cash, revision fences, retained inspection
+ownership and 512-row off-loop normalization. Latest complete-suite verification:
+**1,015 run, 1,014 pass, one expected native symlink-privilege skip** in
+134.201s, including D-064's primary/flat-policy tests.
+Preflight stays disabled and side-effect-free.
+The old pending/undated cash finding is fixed and independent evidence-only
+review cleared it. Primary review/test coverage finishes the batching delta.
+Maximum-history normalization again passes the bounded resource fixture: 50,000
+rows, loop p99 11.334 ms, maximum 40.203 ms. Priority 3 still needs a fresh
+flat-account verification, exact launch boundary and durable cash/settlement/
+basis contracts. No baseline or entry authority is installed. Priority 4's
+[offline write budget](docs/BUILD_WRITE_BUDGET.md)
+and [bounded cancel/reducer dispatcher](docs/BUILD_WRITE_DISPATCHER.md) now pass
+45 focused tests. Five-sample 30/120-shard CPU/allocation fixtures pass their
+predeclared targets; 12,000 commands max 187.5 ms CPU and 22,572 B peak.
+The dispatcher uses injected candidates, the durable writer and its sole
+offline executor; it is not attached to recovery runtime or venue transport.
+Production mutation authority, ranking/admission and supervised runtime remain
+unfinished.
+At the time of the D-062 build, no live operation, account call, credential
+access, configuration change, deployment, restart, commit or push occurred.
+The later D-065 publication rule supersedes that historical no-push boundary.
+
+### Priorities 1/2 — completed offline
+
+R1-R6 from the [independent D-060 review](docs/REVIEW_D060_ASTRA.md) are corrected
+offline; [evidence](docs/BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md). Durable issuing
+identity, canonical dispatch terms, authoritative reducer eligibility/routing,
+bounded proven-unsent reauthorization, immediate post-SENDING recovery holds and
+constant-time hot capacity counters now close overall-review priorities 1/2 in
+the offline component. A post-prepare authority recheck also durably aborts a
+reducer if account, book, or management state changes while queued. Focused
+**258** and complete **950** tests pass (one
+existing native symlink-privilege skip). Correct complete-history 30/120-market
+benchmarks pass after fixture self-audit; worst retained-history CPU growth is
+**1.429x**, backlog 1.
+Disabled preflight remains exit 2 and side-effect-free. D-061 supersedes mandatory
+model recommendations/switches. No account/credential/network/live action,
+migration, configuration, deployment, restart, commit or push occurred. Opening
+account/continuity and cash contracts are the next overall priority; all live
+readiness gates remain closed.
+
+### D-060 implementation evidence before independent review
+
+D-060 implements the approved [D-059 command-capacity and atomic-handoff design](docs/DESIGN_COMMAND_CAPACITY_HANDOFF.md)
+in offline, execution-disabled scope. Schema 3, durable capacity credits, funded
+safety cancellations, atomic risk/intent/PREPARED receipts and single-use
+dispatch consumption are present; schema 2 is refused without migration. The
+[build evidence](docs/BUILD_COMMAND_CAPACITY_HANDOFF.md) records 21 new focused
+tests, 244 impacted tests, and the complete **936-test run: 935 passed, one
+existing native symlink-privilege skip**. Original resource cases reported pass,
+but the independent review above invalidates their acceptance fixture; disabled
+preflight remains side-effect-free. No risk/config/live transport/runtime/account
+state changed. Account proof, production dispatch/exits, archive policy,
+ranking/allocation and S2A/S2B gates remain open.
+
+### D-058 overall review before D-059 planning
+
+Previous D-057 work is committed locally as `8c03aa0`; no push. The operator
+authorized Astra for this commit and the requested overall review (D-058).
+[Overall code triage](docs/REVIEW_OVERALL_2026-09-21.md) reproduces two pre-live
+integration/capacity problems: a full mutation journal refuses safety cancels,
+and chaining risk reservation into execution double-reserves and faults the
+writer. It also orders the remaining account-proof, exit/write-dispatch,
+ranking/allocation and supervised-runtime work. Fresh targeted verification:
+267 tests pass, two in-memory probes reproduce, disabled preflight stays
+side-effect-free. No bot source/config/runtime change. This is not exhaustive
+D-057 clearance; its independent review/resource gates and S2B block remain.
+Review/handoff Markdown is local and uncommitted. Next recommendation: Astra
+for a bounded design of the two order-lifecycle findings, only on assignment.
+
+### D-057 implementation evidence before overall triage
+
 D-057 implements the [S2A review corrections](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
 under the operator's explicit Astra fix-phase exception. Retained ownership,
 affirmative launch permission, terminal IPC completion, child protocol/power

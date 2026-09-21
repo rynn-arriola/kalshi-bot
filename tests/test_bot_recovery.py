@@ -269,7 +269,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.pages, 2)
         historic = next(args for name, args in reads.calls if name == "historical_fills")
         current = next(args for name, args in reads.calls if name == "fills")
-        self.assertNotIn("subaccount", historic)
+        self.assertEqual(historic["subaccount"], 0)
         self.assertEqual(current["subaccount"], 0)
         self.assertLess(current["min_ts"], int(NOW.timestamp()))
         self.assertGreater(historic["max_ts"], int(NOW.timestamp()))
@@ -280,21 +280,22 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.pages, 1)
         self.assertNotIn("historical_fills", [n for n, _ in reads.calls])
 
-    async def test_archive_only_does_not_send_unsupported_subaccount_query(self):
+    async def test_archive_only_uses_documented_subaccount_query(self):
         reads = FakeReads(historical=[history_row()], cutoff=END+timedelta(hours=1))
         await fetch_history(reads, start=START, end=END, subaccount=0)
         self.assertNotIn("fills", [n for n, _ in reads.calls])
+        historic = next(args for name, args in reads.calls if name == "historical_fills")
+        self.assertEqual(historic["subaccount"], 0)
 
-    async def test_archive_unknown_scope_fails_not_defaults_to_primary(self):
+    async def test_archive_missing_row_scope_uses_documented_request_filter(self):
         reads = FakeReads(historical=[history_row(subaccount_number=None)])
-        with self.assertRaises(InvalidData):
-            await fetch_history(reads, start=START, end=END, subaccount=0)
-
-    async def test_explicit_foreign_archive_rows_excluded(self):
-        reads = FakeReads(historical=[history_row(subaccount_number=1)])
         result = await fetch_history(reads, start=START, end=END, subaccount=0)
-        self.assertEqual(result.records, ())
-        self.assertEqual(result.excluded_other_accounts, 1)
+        self.assertEqual((len(result.records), result.records[0].subaccount), (1, 0))
+
+    async def test_explicit_foreign_archive_row_conflicts_with_filter(self):
+        reads = FakeReads(historical=[history_row(subaccount_number=1)])
+        with self.assertRaisesRegex(InvalidData, 'differs from filtered request'):
+            await fetch_history(reads, start=START, end=END, subaccount=0)
 
     async def test_moving_archive_boundary_rejects_collection(self):
         reads = FakeReads(changed_cutoff=NOW+timedelta(seconds=1))

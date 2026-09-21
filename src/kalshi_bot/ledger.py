@@ -10,6 +10,7 @@ from decimal import Decimal, localcontext
 import json
 from pathlib import Path
 import sqlite3
+from uuid import uuid4
 
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 
@@ -112,6 +113,51 @@ CREATE TABLE IF NOT EXISTS mutation_attempts (
   phase TEXT NOT NULL, response TEXT, created_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS mutations_market_time ON mutation_attempts(
   coalesce(json_extract(request,'$.ticker'),json_extract(request,'$.market_ticker')),created_at);
+CREATE INDEX IF NOT EXISTS mutations_client ON mutation_attempts(
+  kind,json_extract(request,'$.client_order_id'));
+CREATE INDEX IF NOT EXISTS mutations_cancel_order ON mutation_attempts(
+  kind,json_extract(request,'$.order_id'));
+CREATE TABLE IF NOT EXISTS command_authorizations (
+  id TEXT PRIMARY KEY, mutation_id TEXT NOT NULL, writer_epoch TEXT NOT NULL,
+  writer_revision INTEGER NOT NULL, kind TEXT NOT NULL, subject_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL, request TEXT NOT NULL, proof TEXT NOT NULL, state TEXT NOT NULL,
+  prepared_at TEXT NOT NULL,
+  FOREIGN KEY(mutation_id) REFERENCES mutation_attempts(id));
+CREATE INDEX IF NOT EXISTS authorizations_mutation ON command_authorizations(mutation_id,prepared_at);
+CREATE UNIQUE INDEX IF NOT EXISTS active_command_authorization ON command_authorizations(mutation_id)
+  WHERE state IN ('PREPARED','SENDING');
+CREATE TABLE IF NOT EXISTS command_episodes (
+  id TEXT PRIMARY KEY, subaccount INTEGER NOT NULL, ticker TEXT NOT NULL,
+  state TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS active_command_episode ON command_episodes(subaccount,ticker)
+  WHERE state='ACTIVE';
+CREATE TABLE IF NOT EXISTS command_credits (
+  id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, resource TEXT NOT NULL,
+  purpose TEXT NOT NULL, owner_id TEXT, state TEXT NOT NULL, created_at TEXT NOT NULL,
+  FOREIGN KEY(episode_id) REFERENCES command_episodes(id));
+CREATE INDEX IF NOT EXISTS credits_lookup ON command_credits(resource,purpose,owner_id,state);
+CREATE INDEX IF NOT EXISTS credits_episode ON command_credits(episode_id,state);
+CREATE INDEX IF NOT EXISTS credits_owner ON command_credits(owner_id,state,purpose);
+CREATE TABLE IF NOT EXISTS command_capacity_counters (
+  resource TEXT PRIMARY KEY, used INTEGER NOT NULL, held INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS mutation_capacity_insert AFTER INSERT ON mutation_attempts BEGIN
+  UPDATE command_capacity_counters SET used=used+1 WHERE resource='mutation';
+END;
+CREATE TRIGGER IF NOT EXISTS mutation_capacity_delete AFTER DELETE ON mutation_attempts BEGIN
+  UPDATE command_capacity_counters SET used=used-1 WHERE resource='mutation';
+END;
+CREATE TRIGGER IF NOT EXISTS intent_capacity_insert AFTER INSERT ON intents BEGIN
+  UPDATE command_capacity_counters SET used=used+1 WHERE resource='intent';
+END;
+CREATE TRIGGER IF NOT EXISTS intent_capacity_delete AFTER DELETE ON intents BEGIN
+  UPDATE command_capacity_counters SET used=used-1 WHERE resource='intent';
+END;
+CREATE TRIGGER IF NOT EXISTS order_capacity_insert AFTER INSERT ON order_evidence BEGIN
+  UPDATE command_capacity_counters SET used=used+1 WHERE resource='order';
+END;
+CREATE TRIGGER IF NOT EXISTS order_capacity_delete AFTER DELETE ON order_evidence BEGIN
+  UPDATE command_capacity_counters SET used=used-1 WHERE resource='order';
+END;
 CREATE TABLE IF NOT EXISTS risk_windows (
   start TEXT PRIMARY KEY, end TEXT NOT NULL, entry_cap INTEGER NOT NULL,
   tripped INTEGER NOT NULL DEFAULT 0, released INTEGER NOT NULL DEFAULT 0);
@@ -129,14 +175,28 @@ class Ledger:
         if tables:
             version = (self.connection.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
                        if "meta" in tables else None)
-            if version is None or version[0] != "2":
+            if version is None or version[0] != "3":
                 self.close()
                 raise InvalidData("incompatible ledger accounting schema; explicit migration required")
+            counter_columns = ({row[1] for row in self.connection.execute(
+                "PRAGMA table_info(command_capacity_counters)")}
+                if "command_capacity_counters" in tables else set())
+            authorization_columns = ({row[1] for row in self.connection.execute(
+                "PRAGMA table_info(command_authorizations)")}
+                if "command_authorizations" in tables else set())
+            if ("used" not in counter_columns or
+                    "proof" not in authorization_columns):
+                self.close()
+                raise InvalidData("incompatible development ledger schema; recreate explicitly")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.executescript(SCHEMA)
         with self.connection:
-            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','2')")
+            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','3')")
+            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('ledger_id',?)", (uuid4().hex,))
+            self.connection.executemany(
+                "INSERT OR IGNORE INTO command_capacity_counters VALUES (?,0,0)",
+                ((name,) for name in ('mutation','intent','order')))
 
     def close(self):
         self.connection.close()

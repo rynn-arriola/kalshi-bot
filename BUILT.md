@@ -1,5 +1,89 @@
 # What exists
 
+## Offline write dispatch send-edge check — 2026-09-21
+
+The injected dispatcher now retains its write permit through the awaited
+durable SENDING handoff, then consumes it synchronously just before invoking
+the injected transport. A stale permit after SENDING produces no send and
+durable UNKNOWN/reconciliation hold. Pre-SENDING expiry remains NOT_SENT.
+This is not a venue transport or live-readiness gate. See
+[dispatch evidence](docs/BUILD_WRITE_DISPATCHER.md).
+
+## D-062 opening-account/cash evidence — 2026-09-21
+
+[Implementation and limits](docs/BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md): bounded
+normalized cash histories, endpoint/query provenance, precise subcent handling,
+optional payout fields, revision-safe off-loop inspection and cancellation
+ownership. Old pending/undated funding is retained after independent review.
+The 512-row batching correction passes the 50,000-row normalization fixture,
+with global conflict detection intact. D-064's primary/flat policy is reflected
+in blockers, not installed as live account authority. Two new focused policy
+tests and the 1,015-test full suite pass (one expected skip); the 50,000-row
+fixture still passes. Complete cash/settlement/opening authority is not built.
+See STATUS for current verification.
+
+## D-062 offline write-budget and dispatcher — 2026-09-21
+
+[Implementation and limits](docs/BUILD_WRITE_BUDGET.md): exact local token
+accounting, immutable method/path quota observations, bounded explicit-shard
+buckets and one-use permits. Cached route normalization and paired-clock samples
+pass the 30/120-shard synthetic CPU and allocation limits. The
+[dispatcher](docs/BUILD_WRITE_DISPATCHER.md) coalesces bounded reevaluation keys
+and hands fresh cancel/reducer candidates through durable writer receipts to the
+sole offline injected executor. 45 focused tests and the complete 1,013-test
+suite pass (one native privilege skip).
+Neither component is connected to the runtime or venue transport. D-063 ends
+delegated development; work continues here.
+
+## D-060 review corrections — 2026-09-21
+
+[Correction evidence](docs/BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md): durable
+authorization identity, canonical dispatch isolation, authoritative reducer
+eligibility/routing, bounded proven-unsent recovery, post-SENDING recovery holds
+and constant-time hot capacity accounting address R1-R6. Queued reducer
+preparation is rechecked against current account/book/management authority and
+aborted if it changed. Focused 258 and complete 950-test runs pass (one existing
+privilege skip). Corrected, self-auditing complete-history 30/120-market
+benchmarks pass with a worst 1.429x CPU ratio
+and backlog 1.
+Execution remains disabled; no account, credentials, network or live action.
+
+## D-060 Astra review — superseded pre-fix findings — 2026-09-21
+
+[Independent review](docs/REVIEW_D060_ASTRA.md) records six findings and offline
+reproductions despite 244 passing focused tests. Receipt/dispatch integrity,
+reducer authority, abort recovery and failure ownership need correction.
+Complete retained history fails the <2x CPU target (10.429–14x); original resource
+acceptance was invalid. The correction record above supersedes that pre-fix
+state; this entry remains historical.
+
+## D-060 command capacity and atomic handoff — 2026-09-21
+
+[Implementation evidence](docs/BUILD_COMMAND_CAPACITY_HANDOFF.md): schema-3
+durable command credits and episodes, funded cancel/reducer headroom, atomic
+risk/intent/PREPARED receipts and sole single-use executor consumption. Real
+4,096/8,192 boundaries, restart/identity/fault cases and safeguard reversals are
+covered by the original tests, with acceptance gaps qualified by the review
+above. Prior Sol complete suite: 936 run, 935 pass, one native privilege skip;
+original resource results do not clear the corrected-history CPU gate. Existing
+ledgers are not migrated and live transport stays absent.
+
+## D-059 command capacity/handoff design — 2026-09-21
+
+[Plan](docs/DESIGN_COMMAND_CAPACITY_HANDOFF.md) covers overall-review items 1/2:
+bounded durable safety headroom, one risk/intent/command transaction, receipt
+consumption, failure handling, proposed schema and offline acceptance. It was
+subsequently approved and implemented under D-060; the plan remains the design
+contract, while the D-060 build record owns implementation evidence.
+
+## Overall source triage — 2026-09-21
+
+[Review](docs/REVIEW_OVERALL_2026-09-21.md) at committed `8c03aa0`: two additional
+in-memory probes reproduce safety-cancel capacity and duplicate-reservation
+handoff problems; 267 focused tests pass. Includes a priority-ordered readiness
+queue, not fixes or production/D-057 clearance. Previous implementation is
+committed locally; this review adds only documentation.
+
 ## D-057 S2A review corrections — 2026-09-21
 
 [Fixes and evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md) cover D-056 R1-R8:

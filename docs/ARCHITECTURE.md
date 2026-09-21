@@ -1,5 +1,24 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-062 adds [opening-account/cash evidence](BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
+and an [offline write-budget primitive](BUILD_WRITE_BUDGET.md) with
+[bounded offline dispatcher](BUILD_WRITE_DISPATCHER.md). These remain
+non-authorizing; durable opening/cash accounting, runtime integration and
+production transport are unfinished. D-063 restores development in the primary session without
+delegated agents or model switches unless explicitly requested again.
+
+D-059 [command capacity/handoff design](DESIGN_COMMAND_CAPACITY_HANDOFF.md),
+implemented offline under [D-060](BUILD_COMMAND_CAPACITY_HANDOFF.md), addresses
+the overall review's first two priorities with bounded durable safety credits
+and atomic preparation/single-use dispatch receipts. Schema 3 refuses old
+ledgers without explicit migration; no production account/transport authority
+is added. Existing supervisor, continuity, risk and live-disable gates below
+remain unchanged. The [independent D-060 review](REVIEW_D060_ASTRA.md) identified
+R1-R6; the [offline corrections](BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md) add
+durable authorization identity, canonical dispatch terms, source-backed reducer
+authority, bounded proven-unsent reauthorization, fail-closed SENDING ownership
+and O(1) hot capacity accounting with full startup reconciliation.
+
 D-055 [S2 detailed design](DESIGN_WINDOWS_SUPERVISOR_S2.md) is the current
 native-process/IPC proposal after S1 and D-048 clearance. It specifies S2A inert
 lifecycle foundations followed by separately assigned S2B offline runtime and

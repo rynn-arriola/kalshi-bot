@@ -46,12 +46,24 @@ ENDPOINTS = {
                           "bootstrap reconcile gap", rows="market_positions"),
     "fills": endpoint("/portfolio/fills", "ticker order_id min_ts max_ts limit cursor subaccount exchange_index",
                       "bootstrap history gap", rows="fills"),
-    "historical_fills": endpoint("/historical/fills", "ticker min_ts max_ts limit cursor",
+    "historical_fills": endpoint("/historical/fills", "ticker min_ts max_ts limit cursor subaccount",
                                  "history gap", rows="fills"),
     "historical_orders": endpoint("/historical/orders", "ticker min_ts max_ts limit cursor",
                                   "history gap", rows="orders"),
     "cutoff": endpoint("/historical/cutoff", "", "history gap", False),
     "balance": endpoint("/portfolio/balance", "subaccount exchange_index", "bootstrap reconcile cash"),
+    "settlements": endpoint("/portfolio/settlements",
+                            "limit cursor ticker event_ticker min_ts max_ts subaccount",
+                            "bootstrap reconcile cash", rows="settlements"),
+    "subaccount_transfers": endpoint("/portfolio/subaccounts/transfers", "limit cursor",
+                                     "bootstrap reconcile cash", rows="transfers"),
+    "intra_exchange_transfers": endpoint("/portfolio/intra_exchange_instance_transfers",
+                                         "limit cursor", "bootstrap reconcile cash",
+                                         rows="transfers"),
+    "deposits": endpoint("/portfolio/deposits", "limit cursor",
+                         "bootstrap reconcile cash", rows="deposits"),
+    "withdrawals": endpoint("/portfolio/withdrawals", "limit cursor",
+                            "bootstrap reconcile cash", rows="withdrawals"),
     "limits": endpoint("/account/limits", "", "budget"),
     "costs": endpoint("/account/endpoint_costs", "", "budget", False),
     "incentives": endpoint("/incentive_programs", "status type incentive_description limit cursor",
@@ -308,6 +320,9 @@ class PageSet:
     rows: tuple[dict, ...]
     pages: int
     wire_bytes: int
+    source: str | None = None
+    query: tuple[tuple[str, object], ...] = ()
+    exhausted: bool = False
     # Exhausting cursors is NOT an atomic exchange snapshot/history guarantee.
 
 
@@ -642,6 +657,7 @@ class RestReads:
         spec, _ = request_path(name, params, reason)
         if spec.rows is None or "cursor" in params:
             raise InvalidData("complete enumeration requires a paged endpoint and first page")
+        initial_query = tuple(sorted(params.items()))
         params = {"limit": 100, **params}
         rows, cursors, size = [], set(), 0
         deadline = self.budget.clock()+30
@@ -652,7 +668,9 @@ class RestReads:
             if self.budget.clock() > deadline:
                 raise InvalidData("enumeration deadline exhausted; result is incomplete")
             data = result.payload.get(spec.rows)
-            if name in {"orders", "positions", "historical_orders", "fills", "historical_fills", "event_fees"} and spec.cursor not in result.payload:
+            if name in {"orders", "positions", "historical_orders", "fills", "historical_fills",
+                        "settlements", "subaccount_transfers", "intra_exchange_transfers",
+                        "deposits", "withdrawals", "event_fees"} and spec.cursor not in result.payload:
                 raise InvalidData("required pagination cursor missing; result is incomplete")
             cursor = result.payload.get(spec.cursor, "")  # Optional only on some endpoints.
             if (not isinstance(data, list) or any(not isinstance(row, dict) for row in data)
@@ -663,7 +681,7 @@ class RestReads:
                 raise InvalidData("pagination resource limit; result is incomplete")
             rows.extend(data)
             if not cursor:
-                return PageSet(tuple(rows), page, size)
+                return PageSet(tuple(rows), page, size, name, initial_query, True)
             if cursor in cursors:
                 raise InvalidData("pagination cursor cycle; result is incomplete")
             cursors.add(cursor)

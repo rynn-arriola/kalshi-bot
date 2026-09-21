@@ -33,7 +33,9 @@ Checked current official documentation September 20, 2026:
   a bounded publication delay or an atomic handoff to a private socket.
   [Recent fills](https://docs.kalshi.com/api-reference/portfolio/get-fills)
   have a subaccount query; [historical fills](https://docs.kalshi.com/api-reference/historical/get-historical-fills)
-  do not document that query and require per-row account evidence.
+  did not document that query in this September 20 audit. The
+  [September 21 contract update](API_REFERENCE_NOTES.md) now documents the
+  filter; D-062 sends it and rejects contradictory row scope.
 - [Positions](https://docs.kalshi.com/api-reference/portfolio/get-positions),
   [resting orders](https://docs.kalshi.com/api-reference/orders/get-orders)
   and [balance](https://docs.kalshi.com/api-reference/portfolio/get-balance)
@@ -187,6 +189,11 @@ secrets and unrelated changes. Phase 1 does not need real credentials or account
 calls.
 
 ## 6. Operator decisions and next gate
+
+D-064 later selected primary subaccount 0 for exclusive bot use with a
+verified flat opening. This does not approve a boundary timestamp, prove
+current account state or change this design's historical Phase 1 scope. D-061
+and D-063 supersede the old manual model-switch instruction below.
 
 UNKNOWN: a shared Kalshi private/REST watermark or replay guarantee, a bound on
 late fill publication, and whether position updates can be scoped by

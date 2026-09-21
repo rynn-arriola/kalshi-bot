@@ -4,7 +4,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 import json
 
-from .execution import validate_request
+from .command_capacity import (DEFAULT_POLICY, reserve_entry_capacity, status,
+                               validate_capacity)
+from .command_types import PreparationResult
+from .execution import (check_new_attempt, encoded_request, insert_prepared,
+                        validate_request)
 from .orders import OrderReceipt, OrderUpdate
 from .risk import WindowRisk, admit_entry
 from .values import InvalidData, count, decimal, identity, integer, price, utc
@@ -40,14 +44,6 @@ class PortfolioView:
         with localcontext() as ctx:
             ctx.prec = 40
             return sum((value for _, value in self.exposure), Decimal(0))
-
-
-@dataclass(frozen=True)
-class ReservationResult:
-    reserved: bool
-    blockers: tuple[str, ...]
-    client_id: str
-    live_authorized: bool = False
 
 
 def active_rows(ledger, ticker=None):
@@ -92,9 +88,9 @@ def market_inventory(ledger, ticker, subaccount):
     rows = ledger.connection.execute("SELECT m.*,i.state AS intent_state FROM mutation_attempts m "
         "LEFT JOIN intents i ON i.client_id=json_extract(m.request,'$.client_order_id') "
         "WHERE coalesce(json_extract(m.request,'$.ticker'),json_extract(m.request,'$.market_ticker'))=? "
-        "AND (m.created_at>=? OR m.kind='cancel') ORDER BY m.created_at LIMIT 4097",
+        "AND (m.created_at>=? OR m.kind='cancel') ORDER BY m.created_at LIMIT 8193",
         (ticker, first.isoformat() if first else '')).fetchall()
-    if len(rows) > 4096: raise InvalidData("exit journal capacity exceeded")
+    if len(rows) > 8192: raise InvalidData("exit journal capacity exceeded")
     working = {r.order.order_id for r in receipts if not r.order.terminal or r.awaiting_fills}
     for row in rows:
         request = json.loads(row['request'])
@@ -102,10 +98,15 @@ def market_inventory(ledger, ticker, subaccount):
             blockers.add('exit_journal_scope_conflict')
         stamp = datetime.fromisoformat(row['created_at'])
         if row['kind'] == 'create' and request.get('time_in_force') == 'immediate_or_cancel':
-            attempts += 1
-            started = started or stamp
-            unresolved |= row['intent_state'] != 'TERMINAL'
-        if row['kind'] == 'cancel' and request.get('order_id') in working:
+            if row['phase'] in {'SENDING','UNKNOWN','ACK'}:
+                attempts += 1
+                started = started or stamp
+                unresolved |= row['intent_state'] != 'TERMINAL'
+            elif row['phase'] == 'PREPARED':
+                unresolved = True
+                started = started or stamp
+        if (row['kind'] == 'cancel' and row['phase'] != 'NOT_SENT'
+                and request.get('order_id') in working):
             cancels.append(request['order_id'])
             cancel_started = cancel_started or stamp
     journal = ExitJournal(attempts, started, unresolved, tuple(cancels), cancel_started)
@@ -176,24 +177,28 @@ def portfolio_view(ledger, *, subaccount, epoch, revision, now, capacity):
                          tuple(sorted(exposure.items())), working, entries, tuple(sorted(blockers)))
 
 
-def reserve_entry(ledger, *, request, view, epoch, revision, config, now,
-                  free_cash, account_known, offline_fixture, capacity):
+def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
+                  post_revision, config, now, free_cash, account_known,
+                  offline_fixture, capacity, command_policy=DEFAULT_POLICY):
     """Compare current ownership/risk and reserve in one owner transaction.
 
     This API has no live-authorized branch. The positive path is explicitly an
     offline fixture; a future production gate must prove account/book/cash scope.
     """
     validate_request("create", request)
+    identity(attempt_id)
     if request["reduce_only"]:
         raise InvalidData("entry reservation cannot authorize a reducer")
     cash = decimal(free_cash)
     if cash < 0 or type(account_known) is not bool or type(offline_fixture) is not bool:
         raise InvalidData("invalid account evidence")
     client = request["client_order_id"]
+    encoded = encoded_request(request)
     now = utc(now)
     if not isinstance(view, PortfolioView):
         raise InvalidData("writer-issued portfolio view required")
     blockers = []
+    blockers.extend(check_new_attempt(ledger, attempt_id, 'create', encoded))
     if not offline_fixture:
         blockers.append("live_authorization_missing")
     if (view.epoch, view.revision, view.subaccount) != (epoch, revision, request["subaccount"]):
@@ -207,8 +212,6 @@ def reserve_entry(ledger, *, request, view, epoch, revision, config, now,
         blockers.extend(current.blockers)
         if ledger.connection.execute("SELECT 1 FROM intents WHERE client_id=?", (client,)).fetchone():
             blockers.append("client_identity_already_reserved")
-        if ledger.connection.execute("SELECT COUNT(*) FROM intents").fetchone()[0] >= 4096:
-            blockers.append("intent_retention_capacity")
         p, q = price(request["price"]), count(request["count"])
         candidate = q*(p if request["side"] == "bid" else 1-p)
         window = WindowRisk(ledger).observe(now)
@@ -221,6 +224,20 @@ def reserve_entry(ledger, *, request, view, epoch, revision, config, now,
             free_capital=max(Decimal(0), cash-current.working_risk), account_known=account_known, now=now))
         if request["ticker"] not in dict(current.exposure) and len(current.exposure) >= capacity:
             blockers.append("risk_market_capacity")
+        episode_id = None
+        if not blockers:
+            episode_id, capacity_blockers = reserve_entry_capacity(
+                ledger, command_policy, request, now)
+            blockers.extend(capacity_blockers)
+        receipt = None
         if not blockers:
             ledger.reserve_intent(client, request, now)
-    return ReservationResult(not blockers, tuple(dict.fromkeys(blockers)), client)
+            receipt = insert_prepared(ledger, mutation_id=attempt_id,
+                authorization_id=attempt_id, kind='create', encoded=encoded,
+                writer_epoch=epoch, writer_revision=post_revision,
+                subject_id=client, episode_id=episode_id, now=now,
+                proof=encoded_request({'type': 'entry_reservation',
+                    'portfolio_epoch': view.epoch,
+                    'portfolio_revision': view.revision}))
+            validate_capacity(ledger, command_policy, full=False)
+    return PreparationResult(receipt, tuple(dict.fromkeys(blockers)), status(ledger), client)

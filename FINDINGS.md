@@ -1,5 +1,136 @@
 # Findings — kalshi-bot
 
+## 91. Offline write permit is checked at the send edge — 2026-09-21
+
+VERIFIED OFFLINE: the previous dispatcher consumed the local write permit
+before awaiting the writer's SENDING transition. It now checks the still-held
+permit before that transition and consumes it synchronously after SENDING,
+immediately before the injected transport call. A synthetic expiry during the
+await results in zero injected sends and a durable UNKNOWN outcome; it cannot
+be retried as proven unsent. This addresses only the injected path. It does
+not establish a production write budget, account scope, actual 429 behavior
+or live order authority. The full 1,018-test suite passes (one expected native
+privilege skip); disabled preflight remains side-effect-free and blocked. See
+[build evidence](docs/BUILD_WRITE_DISPATCHER.md).
+
+## 90. Scoped cash observations do not establish an opening ledger — 2026-09-21
+
+D-064 OPERATOR POLICY: use primary subaccount 0 exclusively for this bot and
+start only after verifying zero nonzero positions and zero resting orders.
+The offline evidence reader now labels nonprimary scopes and nonflat inventory;
+a zero-quantity position row is not itself open inventory. This policy does not
+prove current account state, venue history/stream continuity or a launch time.
+The 1,015-test suite passes (one expected Windows privilege skip); the renewed
+50,000-row synthetic evidence fixture meets its declared bounds. No account
+request or ledger/baseline mutation occurred.
+
+VERIFIED OFFLINE: D-062's evidence reader retains source/query provenance,
+cash precision, optional settlement payout and pre-boundary pending/unknown-time
+funding. It cannot approve a baseline or entries. Current historical-fill docs
+now publish a subaccount filter; the [dated update](docs/API_REFERENCE_NOTES.md)
+supersedes that one captured-contract omission. No shared REST/private-stream
+barrier or atomic cash snapshot is established.
+
+MEASURED: initial synthetic 50,000-row normalization used about 14.2 MB and
+338 ms, but loop p99 61.2 ms missed <50 ms. Sequential 512-row worker batching
+now passes the same fixture: 379.857 ms wall, 14.2 MB, p99 9.349 ms and maximum
+41.341 ms, with global duplicate checks and unchanged source evidence. This is
+not full REST/runtime acceptance. The [build record](docs/BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
+owns details and limitations. No account/credential/trading action occurred.
+
+Priority 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) passes 33 exact
+fixture tests. Local estimates start empty; permits cannot outlive observations,
+survive refresh/429 invalidation, or be reused/copied. Scope identity alone is
+not a cross-process account allowance. Primary review corrected O(shards) hot
+refills to addressed-shard-only work. After bounded route caching, paired-clock
+reuse and a single readiness pass, five-sample synthetic 30/120-shard workloads
+pass <250 ms CPU and <8 MiB peak; the 12,000-command maximum was 187.5 ms CPU,
+22,572 B peak in the latest run. This is local arithmetic, not venue rate-limit
+verification. The [offline dispatcher](docs/BUILD_WRITE_DISPATCHER.md) now
+prioritizes safety cancellations and connects injected candidates to one durable
+writer/executor; 45 focused tests pass. It cannot supply production account,
+transport, or live readiness authority.
+
+## 89. D-060 R1-R6 corrected under complete-history acceptance — 2026-09-21
+
+VERIFIED OFFLINE: original authorization epoch/revision and immutable command
+terms now survive relabelling attempts and restarts; reducer preparation derives
+one current route and requires a current exact management/exit decision plus
+terminal, fully accounted inventory evidence;
+proven-unsent cancellation/reducer work reuses its funded logical slot with at
+most eight retained authorizations; every failure after SENDING retains the
+executor recovery hold. Trigger-maintained used counters remove full-history
+scans from hot preparation while startup still performs complete integrity
+reconciliation; legacy writer mutations cannot exceed configured capacity.
+Queued reducer preparation is rechecked after commit and stale account/book/
+management authority is durably aborted before a receipt can be used. The
+focused 258-test set and complete 950-test suite pass (one existing privilege
+skip). MEASURED on valid retained histories: worst near/small CPU growth is
+1.429x at 30 markets (0.798x at 120), reducer p99 12.983 ms, loop-lag p99 8.209
+ms, peak backlog 1. See
+[correction evidence](docs/BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md). This supersedes
+section 88's pre-fix state, not the remaining production-readiness blockers.
+
+## 88. D-060 review finds dispatch, recovery and resource gaps — 2026-09-21
+
+VERIFIED OFFLINE: relabelling a stale/restarted receipt authorizes its old
+PREPARED row; a proof callback changes dispatched size/price without changing
+the journal; reducer preparation accepts caller-selected wrong routing with a
+working entry; proven-unsent cancels/IOCs wedge recovery; a post-SENDING proof
+exception leaves no executor failure hold. The
+[independent review](docs/REVIEW_D060_ASTRA.md) owns R1-R6 reproductions and fixes
+required for acceptance. MEASURED: replacing incomplete benchmark history with
+complete terminal lifecycle evidence gives 10.429–14x CPU versus small history,
+failing <2x. Existing 244 focused tests still pass (16.486 seconds). Disabled
+preflight remains side-effect-free; full 936-test suite was not rerun here.
+Section 87's broad identity, resource and closure claims are superseded by this
+review. No source/config/runtime/account changes; next phase is Sol corrections.
+
+## 87. Reserved command capacity and atomic receipts remove both reproduced blockers — 2026-09-21
+
+VERIFIED OFFLINE under D-060: a funded owned-order cancellation prepares with
+4,096 retained mutation rows, and a held cancellation converts to a used row at
+the exact 8,192 hard bound without increasing `used + held`. A new entry is
+denied at the ordinary high-water mark without poisoning the writer. Entry risk,
+capacity, intent and PREPARED evidence now commit once; the executor consumes the
+returned post-commit receipt without a second reservation. Original tests deny
+unchanged cross-ledger/epoch/stale receipts and selected tampering; section 88
+reproduces bypasses outside that coverage.
+
+The complete native suite ran 936 tests: 935 passed and one existing symlink-
+privilege test skipped. Four 30/120-market lifecycle measurements met latency,
+loop, memory, backlog/thread and near-capacity CPU targets on the original
+incomplete fixture; this acceptance claim is superseded by section 88. See
+[build evidence](docs/BUILD_COMMAND_CAPACITY_HANDOFF.md). Overall-review items
+1/2 remain open after independent review. This evidence does not prove account
+continuity, live mutation transport, complete exits, archive rollover or live
+readiness.
+
+## 86. Safety headroom must cover adjacent evidence and post-commit identity — 2026-09-21
+
+VERIFIED SOURCE at `8c03aa0`: intents, order evidence and account/basis readers
+also have 4,096-row bounds; exempting only cancellation preparation would leave
+reducer/evidence capacity failures. The writer increments revision after entry
+reservation, so a coherent dispatch receipt must identify the committed result,
+not reuse the caller's earlier portfolio revision. D-059's
+[design](docs/DESIGN_COMMAND_CAPACITY_HANDOFF.md) specifies bounded durable credits,
+atomic preparation and nonfatal expected denials. These are proposals, not fixes
+or measured resource results. No source/runtime or historical ledger changed.
+
+## 85. Overall triage identifies order-lifecycle integration blockers — 2026-09-21
+
+VERIFIED OFFLINE at `8c03aa0`: an in-memory journal with 4,096 mutation rows
+refuses a safety cancellation for an owned resting order. A successful atomic
+fixture entry reservation followed by `InjectedExecutor` preparation attempts
+to reserve the same identity again: writer faults, zero gateway calls. The
+second case is an incompatibility between presently separate components, not
+an already connected live trading defect. See the
+[review and ordered actions](docs/REVIEW_OVERALL_2026-09-21.md).
+Fresh targeted verification passes 267 tests; both extra probes reproduce and
+disabled preflight has no file/credential/network side effects. Account
+continuity/opening cash, production writes/exits, rank-to-allocation and S2B
+remain unfinished. No fixes, live use or independent D-057 clearance claimed.
+
 ## 84. S2A review corrections have native regression evidence — 2026-09-21
 
 VERIFIED OFFLINE under D-057: targeted barriers now retain process/lease ownership

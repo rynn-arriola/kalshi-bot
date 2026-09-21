@@ -168,7 +168,8 @@ async def fetch_history(reads, *, start: datetime, end: datetime, subaccount: in
     upper = (end_us+999999)//1000000+1
     requests = []
     if start_us < cutoff:
-        requests.append(("historical_fills", dict(min_ts=lower, max_ts=min(upper, (cutoff+999999)//1000000+1))))
+        requests.append(("historical_fills", dict(min_ts=lower,
+            max_ts=min(upper, (cutoff+999999)//1000000+1), subaccount=subaccount)))
     if end_us >= cutoff:
         requests.append(("fills", dict(min_ts=max(lower, cutoff//1000000-1), max_ts=upper, subaccount=subaccount)))
     records, pages, size, raw_count, excluded = {}, 0, 0, 0, 0
@@ -180,14 +181,7 @@ async def fetch_history(reads, *, start: datetime, end: datetime, subaccount: in
         if size > max_bytes or raw_count > max_rows:
             raise InvalidData("combined history resource budget exceeded")
         for row in result.rows:
-            if name == "historical_fills":
-                # Historical endpoint has no documented subaccount query.
-                account = row.get("subaccount_number")
-                integer(account, 0, 63)
-                if account != subaccount:
-                    excluded += 1
-                    continue
-            record = parse_history_fill(row, scope=subaccount if name == "fills" else None)
+            record = parse_history_fill(row, scope=subaccount)
             if not start_us <= record.executed_us < end_us:
                 continue
             prior = records.get(record.fill.key)

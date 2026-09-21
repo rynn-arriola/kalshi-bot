@@ -186,7 +186,7 @@ class AccountingTests(unittest.TestCase):
 
 class SchemaGuardTests(unittest.TestCase):
     def test_old_or_unversioned_databases_are_refused_without_rewriting(self):
-        for version in (None, "1", "99"):
+        for version in (None, "1", "2", "99"):
             with self.subTest(version=version), TemporaryDirectory() as folder:
                 path = Path(folder)/"old.db"
                 db = sqlite3.connect(path)

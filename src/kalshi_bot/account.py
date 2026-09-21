@@ -155,6 +155,7 @@ class AccountCoordinator:
         self._token = None
         self._processing = False
         self._loop = None
+        self._opening_task = None
 
     def _check_owner(self):
         loop = asyncio.get_running_loop()
@@ -607,3 +608,71 @@ class AccountCoordinator:
             if token is self._token:
                 self._invalidate()
             raise
+
+    async def inspect_opening_account(self, reads: RestReads, *, proposed_boundary,
+                                      continuity, now):
+        """Explicit bounded evidence read; never installs a baseline or authority."""
+        self._check_owner()
+        if self._opening_task is not None:
+            raise InvalidData('opening inspection already active')
+        task = asyncio.create_task(self._inspect_opening_account(reads,
+            proposed_boundary=proposed_boundary, continuity=continuity, now=now),
+            name='kalshi-opening-inspection')
+        self._opening_task = task
+        def completed(result):
+            if self._opening_task is result:
+                self._opening_task = None
+            if not result.cancelled():
+                result.exception()  # Observe failure even if the caller cancelled.
+        task.add_done_callback(completed)
+        # A cancelled consumer cannot release the single inspection slot while
+        # bounded reads or the pure normalization thread still own work.
+        return await asyncio.shield(task)
+
+    async def _inspect_opening_account(self, reads, *, proposed_boundary, continuity, now):
+        from .opening_account import build_opening_evidence_async
+        observed = utc(now())
+        boundary = utc(proposed_boundary)
+        report = self.current_report(observed)
+        if report is None or boundary > observed:
+            raise InvalidData('current account report and past boundary required')
+        if continuity is None or continuity.generation != self.generation:
+            raise InvalidData('current continuity assessment required for opening inspection')
+        generation, revision = self.generation, self.revision
+        writer_epoch, writer_revision = self.writer.epoch, self.writer.revision
+        # Endpoint filters are second-granularity and documented as "after";
+        # overlap one second, then apply the exact boundary locally.
+        minimum = max(0, int(boundary.timestamp())-1)
+        results = await asyncio.gather(
+            reads.read('balance', reason='cash', subaccount=self.subaccount),
+            reads.collect('settlements', reason='cash', subaccount=self.subaccount,
+                          min_ts=minimum, max_rows=10000),
+            reads.collect('subaccount_transfers', reason='cash', max_rows=10000),
+            reads.collect('intra_exchange_transfers', reason='cash', max_rows=10000),
+            reads.collect('deposits', reason='cash', max_rows=10000),
+            reads.collect('withdrawals', reason='cash', max_rows=10000),
+            return_exceptions=True)
+        # Join every bounded enumeration before surfacing an error, so a failed
+        # source does not leave sibling pagination running behind the caller.
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        current = utc(now())
+        if (self.current_report(current) is not report or generation != self.generation
+                or revision != self.revision or writer_epoch != self.writer.epoch
+                or writer_revision != self.writer.revision):
+            return None
+        balance, settlements, subaccount_transfers, intra_transfers, deposits, withdrawals = results
+        evidence = await build_opening_evidence_async(
+            report=report, continuity=continuity,
+            proposed_boundary=boundary, subaccount=self.subaccount,
+            writer_epoch=writer_epoch, writer_revision=writer_revision,
+            cash_document=balance.payload, settlements=settlements,
+            subaccount_transfers=subaccount_transfers,
+            intra_exchange_transfers=intra_transfers, deposits=deposits,
+            withdrawals=withdrawals, observed_at=current)
+        if (self.current_report(utc(now())) is not report or generation != self.generation
+                or revision != self.revision or writer_epoch != self.writer.epoch
+                or writer_revision != self.writer.revision):
+            return None
+        return evidence

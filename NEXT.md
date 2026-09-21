@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-21. Follow D-011 through D-056 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-065 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -8,6 +8,39 @@ GitHub `master` branch. Future source/doc changes belong here and can be reviewe
 with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
+D-065 requires verify, scoped diff/secret review, commit, push and parity check
+after each completed work unit. Do not publish unfinished or private work.
+
+D-060's [review corrections](docs/BUILD_COMMAND_CAPACITY_REVIEW_FIXES.md) close
+overall-review priorities 1/2 in offline scope: focused/full suites, disabled
+preflight and valid complete-history 30/120-market resource acceptance pass.
+Do not migrate schema-2 ledgers, delete retained history, enable transport,
+change risk/configuration, restart or infer live readiness from this clearance.
+
+Priority 3 from the [overall review](docs/REVIEW_OVERALL_2026-09-21.md) now has
+[opening-account/cash evidence](docs/BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md).
+Do not rebuild it. Sequential 512-row normalization now passes the bounded
+latency fixture with cross-batch conflict tests. D-064 selects exclusive primary
+subaccount 0 and requires no nonzero position or resting order before arming.
+Fresh account proof is still missing; choose the exact boundary only during a
+separately authorized launch. Finish the durable basis, cash/holds and settlement/
+correction contracts. Evidence alone cannot activate entries.
+
+Item 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) now passes the
+synthetic 30/120-shard resource target. The
+[bounded dispatcher](docs/BUILD_WRITE_DISPATCHER.md) connects synthetic
+candidates to durable writer receipts and the sole injected executor. Next,
+establish source-bound candidate production and account/book/exit rechecks,
+actual write-quota document ingestion, owned 429/outcome handling, runtime
+shutdown and end-to-end fail-closed verification. The injected path now
+rechecks its write permit at the synchronous send edge; this is not production
+transport clearance.
+No venue transport or live
+authority has been connected. Item 5 ranking/admission and item 6 supervised
+runtime remain queued; prior reviews and resource gates still apply.
+
+D-063: continue directly in this session; no delegated agents or model-switch
+steps unless the operator explicitly requests them again.
 
 D-054 [independent Astra review](docs/REVIEW_D054_ASTRA.md) clears both D-053
 clock findings and completes the execution-disabled supervisor S1 review.
@@ -28,11 +61,9 @@ or unsupervised-baseline coverage. Do not weaken security to reach a target.
 S2B remains blocked and separately assigned; no service/task, bot start, account
 call, baseline or live authority. Account-continuity Phase 2/3 remains unapproved.
 
-MANDATORY D-049: before every substantive task, give the short Astra/Sol
-recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
-for the listed material reasoning/review cases. Stop before development on a
-model mismatch, except urgent safety action. D-037 is superseded where routing
-differs. D-057 is a one-task exception only; the next S2A phase is Astra review.
+D-061 supersedes D-049's mandatory recommendations and manual model switches.
+Continue authorized work with the active model while preserving review,
+verification and every safety/authority gate.
 Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking

@@ -113,6 +113,12 @@ def settle_order(ledger, order_id: str) -> OrderReceipt | None:
     if update.terminal and not waiting and state == "ACKNOWLEDGED":
         ledger.transition_intent(update.client_id, "TERMINAL")
         state = "TERMINAL"
+    if update.terminal and not waiting and state == 'TERMINAL':
+        from .command_capacity import (episode_for_client, maybe_retire_episode,
+                                       release_client_credits)
+        episode = episode_for_client(ledger, update.client_id)
+        release_client_credits(ledger, update.client_id)
+        maybe_retire_episode(ledger, episode)
     return OrderReceipt(update, True, True, waiting, state,
                         json.loads(intent[1]).get("reduce_only") is True)
 
@@ -153,7 +159,11 @@ def record_order(ledger, update: OrderUpdate, now: datetime, *, capacity=4096) -
                 raise InvalidData("conflicting order states at the same version")
             if update.filled < old.filled or (old.terminal and not update.terminal):
                 raise InvalidData("order progress/terminal state regressed")
-        elif ledger.connection.execute("SELECT COUNT(*) FROM order_evidence").fetchone()[0] >= capacity:
+        else:
+            from .command_capacity import bind_order_evidence
+            bind_order_evidence(ledger, update.client_id)
+        if previous is None and ledger.connection.execute(
+                "SELECT COUNT(*) FROM order_evidence").fetchone()[0] >= capacity:
             raise InvalidData("durable order evidence capacity reached")
         ledger.connection.execute("INSERT INTO order_evidence VALUES (?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET payload=excluded.payload,observed_at=excluded.observed_at",
                                    (update.order_id, update.client_id, update.encode(), utc(now).isoformat()))

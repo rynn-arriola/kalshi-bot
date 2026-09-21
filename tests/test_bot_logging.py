@@ -12,6 +12,8 @@ import unittest
 from unittest.mock import patch
 
 from kalshi_bot.cli import main
+from kalshi_bot.command_types import CommandDenied
+from kalshi_bot.config import BotConfig
 from kalshi_bot.execution import InjectedExecutor
 from kalshi_bot.observability import Diagnostics, StrictRotatingHandler, safe_error
 from kalshi_bot.rest import RestReads, TokenBudget, WireResponse, ReadFailure
@@ -328,8 +330,14 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
             raise TimeoutError(SECRET)
         executor = InjectedExecutor(self.writer, invoke=invoke, validate_proof=lambda *_: True,
             offline_fixture=True, now=lambda: NOW, diagnostics=self.log)
-        with self.assertRaises(TimeoutError): await executor.attempt('create', 'attempt-a', request())
-        with self.assertRaises(InvalidData): await executor.attempt('create', 'attempt-b', request())
+        prepared = await self.writer.reserve_entry(request(), attempt_id='attempt-a',
+            view=await self.writer.portfolio(subaccount=0, now=NOW), config=BotConfig(),
+            now=NOW, free_cash='500', account_known=True, offline_fixture=True)
+        self.assertTrue(prepared.reserved, prepared.blockers)
+        with self.assertRaises(TimeoutError):
+            await executor.execute_prepared(prepared.receipt)
+        with self.assertRaises(CommandDenied):
+            await executor.execute_prepared(prepared.receipt)
         self.assertEqual(len(calls), 1)
         self.assertEqual((await self.writer.mutations())[0]['phase'], 'UNKNOWN')
         data = [r for r in await self.data() if r['component']=='execution']

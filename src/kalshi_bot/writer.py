@@ -14,6 +14,10 @@ from queue import Full, Queue
 from threading import Lock, Thread
 from uuid import uuid4
 
+from .command_capacity import (CapacityPolicy, DEFAULT_POLICY, status,
+                               validate_capacity)
+from .command_types import (CancelEvidence, PreparationResult, PreparedMutation,
+                            ReductionEvidence)
 from .ledger import Fill, Ledger
 from .inbox import pending, stage
 from .orders import OrderUpdate, record_order, settle_order
@@ -21,7 +25,7 @@ from .position_basis import VenueCost, exit_basis, observe_cost, observe_costs
 from .recovery import HistoricalFill, HistoryAudit, HistoryEvidence, stage_history
 from .risk import WindowRisk, WindowState
 from .observability import NO_LOG
-from .values import InvalidData, identity, integer, utc
+from .values import InvalidData, count, identity, integer, price, utc
 
 
 @dataclass(frozen=True)
@@ -46,12 +50,15 @@ class RecoveredChunk:
 
 class LedgerWriter:
     def __init__(self, path: Path | str, *, capacity: int = 256, market_capacity: int = 128,
-                 diagnostics=NO_LOG):
+                 diagnostics=NO_LOG, command_policy=DEFAULT_POLICY):
         self.diagnostics = diagnostics
         self.path = path
         self.epoch = uuid4().hex
         self._revision = 0
         self.market_capacity = integer(market_capacity, 1, 1024)
+        if not isinstance(command_policy, CapacityPolicy):
+            raise InvalidData('typed command capacity policy required')
+        self.command_policy = command_policy
         self._queue = Queue(maxsize=integer(capacity, 1, 8192))
         self._lock = Lock()
         self._closing = False
@@ -59,6 +66,10 @@ class LedgerWriter:
         self._started = False
         self._ready = Future()
         self._close_task = None
+        self._executor_owner = None
+        self._dispatcher_owner = None
+        self._management_owner = None
+        self._max_backlog_observed = 0
         self._thread = Thread(target=self._run, name="kalshi-ledger", daemon=False)
 
     @property
@@ -73,6 +84,32 @@ class LedgerWriter:
     @property
     def backlog(self):
         return self._queue.qsize()
+
+    @property
+    def max_backlog_observed(self):
+        with self._lock:
+            return self._max_backlog_observed
+
+    def claim_executor(self, owner):
+        with self._lock:
+            if self._executor_owner is not None and self._executor_owner is not owner:
+                raise InvalidData('one mutation executor permitted per writer lifetime')
+            self._executor_owner = owner
+
+    def claim_dispatcher(self, owner):
+        with self._lock:
+            if self._dispatcher_owner is not None and self._dispatcher_owner is not owner:
+                raise InvalidData('one mutation dispatcher permitted per writer lifetime')
+            self._dispatcher_owner = owner
+
+    def claim_management_owner(self, owner):
+        from .management import InventoryManager
+        if not isinstance(owner, InventoryManager):
+            raise InvalidData('typed inventory manager required')
+        with self._lock:
+            if self._management_owner is not None and self._management_owner is not owner:
+                raise InvalidData('one inventory manager permitted per writer lifetime')
+            self._management_owner = owner
 
     async def start(self):
         with self._lock:
@@ -101,6 +138,8 @@ class LedgerWriter:
                 raise InvalidData("ledger owner unavailable; reconciliation required")
             try:
                 self._queue.put_nowait((command, args, future))
+                self._max_backlog_observed = max(
+                    self._max_backlog_observed, self._queue.qsize())
             except Full as exc:
                 self._failed = True
                 self.diagnostics.emit('writer_overflow', error=exc, backlog=self.backlog)
@@ -132,13 +171,107 @@ class LedgerWriter:
     async def portfolio(self, *, subaccount, now):
         return await self._wait(self._submit("portfolio", integer(subaccount, 0, 63), utc(now)))
 
-    async def reserve_entry(self, request, *, view, config, now, free_cash,
+    async def reserve_entry(self, request, *, attempt_id, view, config, now, free_cash,
                             account_known=False, offline_fixture=False):
         frozen = json.dumps(request, allow_nan=False, separators=(",", ":"))
         if len(frozen.encode()) > 16384:
             raise InvalidData("entry request exceeds byte budget")
-        return await self._wait(self._submit("reserve_entry", frozen, view, config, utc(now),
+        return await self._wait(self._submit("reserve_entry", identity(attempt_id), frozen, view, config, utc(now),
                                             free_cash, account_known, offline_fixture))
+
+    async def cancel_evidence(self, order_id):
+        return await self._wait(self._submit('cancel_evidence', identity(order_id)))
+
+    async def reduction_evidence(self, request, *, now):
+        frozen = json.dumps(request, allow_nan=False, sort_keys=True, separators=(',', ':'))
+        if len(frozen.encode()) > 16384:
+            raise InvalidData('reduction request exceeds byte budget')
+        owner = self._management_owner
+        plan = owner.current(request.get('ticker')) if owner is not None else None
+        if plan is None:
+            return None
+        return await self._wait(self._submit('reduction_evidence', frozen, plan, utc(now)))
+
+    async def prepare_cancel(self, attempt_id, request, *, evidence, now):
+        if not isinstance(evidence, CancelEvidence):
+            raise InvalidData('typed cancel evidence required')
+        encoded = json.dumps(request, allow_nan=False, separators=(',', ':'))
+        if len(encoded.encode()) > 16384:
+            raise InvalidData('cancel request exceeds byte budget')
+        frozen = json.loads(encoded)
+        return await self._wait(self._submit('prepare_cancel', identity(attempt_id), frozen,
+                                             evidence, utc(now)))
+
+    async def prepare_reduction(self, attempt_id, request, *, evidence, now):
+        if not isinstance(evidence, ReductionEvidence):
+            raise InvalidData('typed reduction evidence required')
+        encoded = json.dumps(request, allow_nan=False, separators=(',', ':'))
+        if len(encoded.encode()) > 16384:
+            raise InvalidData('reduction request exceeds byte budget')
+        frozen = json.loads(encoded)
+        owner = self._management_owner
+        plan = owner.current(request.get('ticker')) if owner is not None else None
+        management_current = (plan is not None and
+                              self._decision_matches_plan(evidence, plan, frozen))
+        result = await self._wait(self._submit('prepare_reduction', identity(attempt_id), frozen,
+                                               evidence, management_current, utc(now)))
+        if result.receipt is not None:
+            current = owner.current_after_prepare(
+                request.get('ticker'), prior_revision=evidence.writer_revision,
+                prepared_revision=result.receipt.writer_revision) if owner is not None else None
+            if current is None or not self._decision_matches_plan(evidence, current, frozen):
+                await self.abort_prepared(result.receipt)
+                return PreparationResult(
+                    None, ('reduction_management_decision_changed',),
+                    await self.command_capacity(), result.client_id)
+        return result
+
+    @staticmethod
+    def _decision_matches_plan(evidence, plan, request):
+        try:
+            decision = json.loads(evidence.decision_json)
+            journal = plan.inventory.exit_journal
+            return (plan.ticker == request['ticker']
+                and plan.exit is not None and plan.terms is not None
+                and plan.inventory.writer_epoch == evidence.writer_epoch
+                and plan.inventory.writer_revision == evidence.writer_revision
+                and decision['observed_at'] == plan.observed_at.isoformat()
+                and decision['account_generation'] == plan.generation
+                and decision['account_revision'] == plan.account_revision
+                and decision['book_generation'] == plan.book_generation
+                and decision['book_revision'] == plan.book_revision
+                and decision['terms_observed_at'] == plan.terms.observed_at.isoformat()
+                and decision['terms_valid_until'] == plan.terms.valid_until.isoformat()
+                and decision['mode'] == plan.exit.mode
+                and decision['limit_price'] == str(plan.exit.limit_price)
+                and count(decision['quantity']) == count(
+                    plan.exit.quantity if plan.exit.mode == 'ioc'
+                    else plan.exit.passive.reduce_quantity)
+                and decision['attempts'] == journal.attempts
+                and decision['started_at'] == (journal.started_at.isoformat()
+                                                if journal.started_at else None))
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return False
+
+    async def begin_send(self, receipt):
+        if not isinstance(receipt, PreparedMutation):
+            raise InvalidData('typed prepared mutation required')
+        return await self._wait(self._submit('begin_send', receipt))
+
+    async def abort_prepared(self, receipt):
+        if not isinstance(receipt, PreparedMutation):
+            raise InvalidData('typed prepared mutation required')
+        return await self._wait(self._submit('abort_prepared', receipt))
+
+    async def record_outcome(self, operation, receipt, document, now):
+        if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
+            raise InvalidData('invalid typed mutation outcome')
+        frozen = json.loads(json.dumps(document, allow_nan=False))
+        return await self._wait(self._submit('mutation_outcome', operation, receipt,
+                                             frozen, utc(now)))
+
+    async def command_capacity(self):
+        return await self._wait(self._submit('command_capacity'))
 
     async def inventory(self) -> Inventory:
         return await self._wait(self._submit("inventory"))
@@ -270,15 +403,6 @@ class LedgerWriter:
             raise InvalidData("unsupported intent state")
         return await self._wait(self._submit("transition", client_id, target))
 
-    async def mutation(self, operation: str, attempt_id: str, document: dict, now: datetime):
-        if operation not in {"prepare_create", "prepare_cancel", "sending", "unknown", "ack"}:
-            raise InvalidData("invalid mutation journal operation")
-        identity(attempt_id)
-        encoded = json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        if len(encoded.encode()) > 16384:
-            raise InvalidData("mutation journal document too large")
-        return await self._wait(self._submit("mutation", operation, attempt_id, encoded, utc(now)))
-
     async def mutations(self):
         return await self._wait(self._submit("mutations"))
 
@@ -327,10 +451,111 @@ class LedgerWriter:
                                   revision=self._revision, now=now, capacity=self.market_capacity)
         if command == "reserve_entry":
             from .portfolio import reserve_entry
-            encoded, view, config, now, cash, known, fixture = args
-            return reserve_entry(ledger, request=json.loads(encoded), view=view, epoch=self.epoch,
-                revision=self._revision, config=config, now=now, free_cash=cash,
-                account_known=known, offline_fixture=fixture, capacity=self.market_capacity)
+            attempt_id, encoded, view, config, now, cash, known, fixture = args
+            return reserve_entry(ledger, request=json.loads(encoded), attempt_id=attempt_id,
+                view=view, epoch=self.epoch, revision=self._revision,
+                post_revision=self._revision+1, config=config, now=now, free_cash=cash,
+                account_known=known, offline_fixture=fixture, capacity=self.market_capacity,
+                command_policy=self.command_policy)
+        if command == 'cancel_evidence':
+            order_id = args[0]
+            row = ledger.connection.execute('SELECT payload FROM order_evidence WHERE order_id=?',
+                                            (order_id,)).fetchone()
+            if row is None:
+                return None
+            update = OrderUpdate.decode(row[0])
+            if update.terminal:
+                return None
+            return CancelEvidence(self.epoch, self._revision, update.order_id, update.ticker,
+                                  update.subaccount, update.exchange_index)
+        if command == 'reduction_evidence':
+            from .execution import encoded_request, reduction_authority, validate_request
+            from .management import ManagedPlan
+            request, plan, now = json.loads(args[0]), args[1], args[2]
+            validate_request('create', request)
+            if request['reduce_only'] is not True or not isinstance(plan, ManagedPlan):
+                raise InvalidData('reduction evidence requires reduce-only request')
+            inventory, exit_plan, terms = plan.inventory, plan.exit, plan.terms
+            if (plan.ticker != request['ticker'] or exit_plan is None or terms is None
+                    or inventory.ticker != request['ticker']
+                    or (inventory.writer_epoch, inventory.writer_revision) !=
+                       (self.epoch, self._revision)
+                    or plan.observed_at > now or now-plan.observed_at > timedelta(seconds=5)
+                    or not terms.observed_at <= now < terms.valid_until
+                    or inventory.blockers or exit_plan.blockers):
+                return None
+            quantity = count(request['count'])
+            limit_price = price(request['price'])
+            passive = request['time_in_force'] == 'good_till_canceled'
+            action_matches = (
+                exit_plan.mode == 'passive'
+                and exit_plan.passive.keep_id is None
+                and not exit_plan.passive.cancel_ids
+                and exit_plan.passive.reduce_side == request['side']
+                and exit_plan.passive.reduce_quantity == quantity
+                and exit_plan.limit_price == limit_price
+            ) if passive else (
+                exit_plan.mode == 'ioc'
+                and exit_plan.quantity == quantity
+                and exit_plan.limit_price == limit_price
+            )
+            if not action_matches:
+                return None
+            episode, position, route, authority_blockers = reduction_authority(ledger, request)
+            if (episode is None or not position or route is None
+                    or set(authority_blockers)-{'reduction_route_changed'}):
+                return None
+            journal = inventory.exit_journal
+            decision = encoded_request({
+                'type': 'managed_exit', 'ticker': plan.ticker,
+                'observed_at': plan.observed_at.isoformat(),
+                'account_generation': plan.generation,
+                'account_revision': plan.account_revision,
+                'book_generation': plan.book_generation,
+                'book_revision': plan.book_revision,
+                'writer_epoch': inventory.writer_epoch,
+                'writer_revision': inventory.writer_revision,
+                'terms_observed_at': terms.observed_at.isoformat(),
+                'terms_valid_until': terms.valid_until.isoformat(),
+                'mode': exit_plan.mode,
+                'limit_price': str(exit_plan.limit_price),
+                'quantity': str(quantity),
+                'attempts': journal.attempts,
+                'started_at': journal.started_at.isoformat() if journal.started_at else None})
+            return ReductionEvidence(self.epoch, self._revision, episode,
+                request['ticker'], request['subaccount'], route, position,
+                encoded_request(request), decision)
+        if command == 'prepare_cancel':
+            from .execution import prepare_cancel
+            attempt_id, request, evidence, now = args
+            with ledger.transaction():
+                return prepare_cancel(ledger, attempt_id=attempt_id, request=request,
+                    evidence=evidence, writer_epoch=self.epoch, writer_revision=self._revision,
+                    post_revision=self._revision+1, now=now, policy=self.command_policy)
+        if command == 'prepare_reduction':
+            from .execution import prepare_reduction
+            attempt_id, request, evidence, management_current, now = args
+            with ledger.transaction():
+                return prepare_reduction(ledger, attempt_id=attempt_id, request=request,
+                    evidence=evidence, writer_epoch=self.epoch, writer_revision=self._revision,
+                    post_revision=self._revision+1, now=now,
+                    management_current=management_current, policy=self.command_policy)
+        if command == 'begin_send':
+            from .execution import begin_send
+            with ledger.transaction():
+                return begin_send(ledger, args[0], writer_epoch=self.epoch,
+                    writer_revision=self._revision, post_revision=self._revision+1)
+        if command == 'abort_prepared':
+            from .execution import abort_prepared
+            with ledger.transaction():
+                return abort_prepared(ledger, args[0], writer_epoch=self.epoch,
+                    writer_revision=self._revision, post_revision=self._revision+1)
+        if command == 'mutation_outcome':
+            from .execution import record_outcome
+            with ledger.transaction():
+                return record_outcome(ledger, *args, writer_epoch=self.epoch)
+        if command == 'command_capacity':
+            return status(ledger)
         if command == "stage_fill":
             return stage(ledger, *args)
         if command == "pending_fills":
@@ -431,7 +656,7 @@ class LedgerWriter:
                 inserted = ledger.record_fill(fill, now)
                 if row and ledger.filled_quantity(fill.order_id) > order.initial:
                     raise InvalidData("executions exceed owned order size")
-                # Schema 2 has exactly one lot per ticker. COUNT(*) avoids
+                # Schema 3 retains exactly one lot per ticker. COUNT(*) avoids
                 # allocating every active market on every recovered fill.
                 markets = ledger.connection.execute("SELECT COUNT(*) FROM lots").fetchone()[0]
                 if markets > self.market_capacity:
@@ -443,11 +668,16 @@ class LedgerWriter:
         if command == "observe":
             return WindowRisk(ledger).observe(*args)
         if command == "order":
-            return record_order(ledger, *args)
+            with ledger.transaction():
+                result = record_order(ledger, *args)
+                validate_capacity(ledger, self.command_policy, full=False)
+                return result
         if command == "order_batch":
             updates, now = args
             with ledger.transaction():
-                return tuple(record_order(ledger, update, now) for update in updates)
+                result = tuple(record_order(ledger, update, now) for update in updates)
+                validate_capacity(ledger, self.command_policy, full=False)
+                return result
         if command == "history":
             return stage_history(ledger, *args)
         if command == "fill_scope":
@@ -471,15 +701,15 @@ class LedgerWriter:
                              ledger.unresolved_intents())
         if command == "reserve":
             client_id, encoded, now = args
-            return ledger.reserve_intent(client_id, json.loads(encoded), now)
+            with ledger.transaction():
+                result = ledger.reserve_intent(client_id, json.loads(encoded), now)
+                validate_capacity(ledger, self.command_policy, full=False)
+                return result
         if command == "transition":
             return ledger.transition_intent(*args)
-        if command == "mutation":
-            from .execution import journal_mutation
-            return journal_mutation(ledger, *args)
         if command == "mutations":
-            rows = ledger.connection.execute("SELECT * FROM mutation_attempts LIMIT 4097").fetchall()
-            if len(rows) > 4096:
+            rows = ledger.connection.execute("SELECT * FROM mutation_attempts LIMIT 8193").fetchall()
+            if len(rows) > 8192:
                 raise InvalidData("mutation journal requires archival before further work")
             return tuple(dict(row) for row in rows)
         raise InvalidData("unsupported writer command")
@@ -489,6 +719,7 @@ class LedgerWriter:
         future = None
         try:
             ledger = Ledger(self.path)  # Construct/use/close on this thread only.
+            validate_capacity(ledger, self.command_policy)
             self._ready.set_result(None)
             while True:
                 item = self._queue.get()
@@ -502,11 +733,16 @@ class LedgerWriter:
                     # that can mutate financial/evidence/risk state revokes leases.
                     read_only = {"portfolio", "market_inventory", "inventory", "fill_scope",
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
-                                 "private_epoch_gaps", "private_epoch_inspect"}
-                    if command not in read_only and command != "reserve_entry":
+                                 "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
+                                 'reduction_evidence', 'command_capacity'}
+                    post_revision = {'reserve_entry', 'prepare_cancel', 'prepare_reduction',
+                                     'begin_send', 'abort_prepared'}
+                    if command not in read_only and command not in post_revision:
                         self._revision += 1
                     result = self._execute(ledger, command, args)
-                    if command == "reserve_entry":
+                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction'}:
+                        self._revision += 1
+                    elif command in {'begin_send', 'abort_prepared'} and result.writer_revision == self._revision+1:
                         self._revision += 1
                 except Exception as exc:
                     self.diagnostics.emit('writer_failed', error=exc, command=command,
