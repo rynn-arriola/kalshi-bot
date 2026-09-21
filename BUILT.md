@@ -1,5 +1,27 @@
 # What exists
 
+## Supervisor S1 review fixes — 2026-09-21
+
+D-052 [review-fix evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
+implements R1-R7 from the [D-051 Astra review](docs/REVIEW_D051_ASTRA.md).
+The execution-disabled supervisor now separates trusted control time from event
+timestamps, fences every safety disarm, enforces lifecycle ownership and bounded
+deadlines, persists explicit retry holds, distinguishes process exit from cleanup
+and measures real persisted supervisor work. All 46 focused and exact 850 full
+tests pass, plus 10/10 repeated focused runs, compilation, disabled preflight and
+the 60-second CPU fixture. No launcher, runtime wiring or live action was added.
+Independent Astra re-review is next; S2 remains blocked.
+
+## Supervisor S1 review — changes required — 2026-09-21
+
+[D-051 Astra review](docs/REVIEW_D051_ASTRA.md) reproduces six P2 policy/contract
+defects and one P3 resource-verification issue. All 32 focused and 836 full tests
+pass, but stop fencing, lifecycle/progress, retry/startup and crash recovery need
+additional regressions and fixes. The sleep-only CPU measurement does not verify
+parent workload. This section records the original review state at `7b8d6cd`;
+D-052 above now implements the requested fixes. S2 remains blocked pending Astra
+re-review, alongside the separate D-048 gate.
+
 ## Native Windows supervisor S1 — 2026-09-21
 
 D-051 [implementation evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md) adds an

@@ -12,6 +12,7 @@ from kalshi_bot.supervision import (
     decide, initial_state)
 from kalshi_bot.supervisor_store import SupervisorStore
 from kalshi_bot.values import InvalidData
+from scripts.benchmark_supervision import measure_idle
 
 
 POLICY = SupervisorPolicy()
@@ -44,9 +45,10 @@ def started(state, now=None):
 
 def result(state, outcome, now=None, **values):
     now = state.updated_utc+1 if now is None else now
+    values.setdefault("process_exited", True)
     values.setdefault("cleanup_complete", True)
     return decide(state, event(EventKind.CHILD_RESULT, now,
-        expected_generation=state.generation, child_id=state.child_id,
+        expected_generation=state.child_generation, child_id=state.child_id,
         outcome=outcome, **values), POLICY)
 
 
@@ -88,7 +90,8 @@ class PolicyTests(unittest.TestCase):
         exited = decide(stopping.state, event(EventKind.CHILD_RESULT, 105,
             expected_generation=active.child_generation,
             child_id=stopping.state.child_id,
-            outcome=ChildOutcome.UNEXPECTED_DEATH, cleanup_complete=True), POLICY)
+            outcome=ChildOutcome.UNEXPECTED_DEATH, process_exited=True,
+            cleanup_complete=True), POLICY)
         self.assertEqual(exited.state.state, SupervisorState.DISARMED)
 
     def test_repeated_stop_preserves_child_generation_until_exit(self):
@@ -99,7 +102,8 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(second.child_generation, active.generation)
         exited = decide(second, event(EventKind.CHILD_RESULT, 104,
             expected_generation=active.generation, child_id=active.child_id,
-            outcome=ChildOutcome.CLEAN, cleanup_complete=True), POLICY)
+            outcome=ChildOutcome.CLEAN, process_exited=True,
+            cleanup_complete=True), POLICY)
         self.assertEqual(exited.state.state, SupervisorState.DISARMED)
 
     def test_stale_child_result_after_rearm_cannot_change_new_session(self):
@@ -107,7 +111,8 @@ class PolicyTests(unittest.TestCase):
         stopped = decide(first, event(EventKind.STOP, 101), POLICY).state
         stopped = decide(stopped, event(EventKind.CHILD_RESULT, 102,
             expected_generation=first.generation, child_id="old",
-            outcome=ChildOutcome.CLEAN, cleanup_complete=True), POLICY).state
+            outcome=ChildOutcome.CLEAN, process_exited=True,
+            cleanup_complete=True), POLICY).state
         second = arm(stopped, 103)
         stale = decide(second, event(EventKind.CHILD_RESULT, 104,
             expected_generation=1, child_id="old",
@@ -185,6 +190,17 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(decision.state.attention_reason, AttentionReason.CLOCK_REGRESSED)
         self.assertEqual(decision.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
 
+    def test_stale_child_timestamp_cannot_create_current_clock_fault(self):
+        active = started(start(arm(self.state)), 101)
+        current = decide(active, event(EventKind.CHILD_STATUS, 200,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.HEALTHY, progress_sequence=1), POLICY).state
+        stale = decide(current, event(EventKind.CHILD_RESULT, 150,
+            expected_generation=0, child_id="old-child", outcome=ChildOutcome.CLEAN,
+            process_exited=True, cleanup_complete=True), POLICY, control_utc=201)
+        self.assertTrue(stale.stale)
+        self.assertEqual(stale.state, current)
+
     def test_heartbeat_without_progress_cannot_hide_stalled_loop(self):
         active = started(start(arm(self.state)), 101)
         first = decide(active, event(EventKind.CHILD_STATUS, 102,
@@ -203,10 +219,37 @@ class PolicyTests(unittest.TestCase):
         working = decide(active, event(EventKind.CHILD_STATUS, 102,
             expected_generation=active.generation, child_id=active.child_id,
             child_phase=ChildPhase.RECOVERING, progress_sequence=1,
-            work_deadline_utc=200), POLICY).state
+            work_deadline_utc=150), POLICY).state
+        working = decide(working, event(EventKind.CHILD_STATUS, 130,
+            expected_generation=working.child_generation, child_id=working.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1,
+            work_deadline_utc=150), POLICY).state
         checked = decide(working, event(EventKind.TICK, 150), POLICY)
         self.assertEqual(checked.state.state, SupervisorState.RECOVERING)
         self.assertEqual(checked.actions, ())
+
+    def test_work_deadline_cannot_hide_missing_heartbeat(self):
+        active = started(start(arm(self.state)), 101)
+        working = decide(active, event(EventKind.CHILD_STATUS, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1,
+            work_deadline_utc=162), POLICY).state
+        decision = decide(working, event(EventKind.TICK, 132), POLICY)
+        self.assertEqual(decision.state.state, SupervisorState.STOPPING)
+        self.assertEqual(decision.state.attention_reason, AttentionReason.PROGRESS_STALLED)
+
+    def test_unchanged_progress_cannot_extend_work_deadline(self):
+        active = started(start(arm(self.state)), 101)
+        working = decide(active, event(EventKind.CHILD_STATUS, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1,
+            work_deadline_utc=150), POLICY).state
+        extended = decide(working, event(EventKind.CHILD_STATUS, 120,
+            expected_generation=working.child_generation, child_id=working.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1,
+            work_deadline_utc=180), POLICY)
+        self.assertEqual(extended.state.state, SupervisorState.ATTENTION_REQUIRED)
+        self.assertEqual(extended.state.attention_reason, AttentionReason.INTEGRITY_FAILURE)
 
     def test_shutdown_timeout_never_kills_or_restarts_child(self):
         active = started(start(arm(self.state)), 101)
@@ -219,11 +262,15 @@ class PolicyTests(unittest.TestCase):
 
     def test_timeout_attention_survives_clean_child_exit(self):
         active = started(start(arm(self.state)), 101)
+        active = decide(active, event(EventKind.CHILD_STATUS, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1), POLICY).state
         stopping = decide(active, event(EventKind.TICK, 132), POLICY).state
         self.assertEqual(stopping.attention_reason, AttentionReason.PROGRESS_STALLED)
         exited = decide(stopping, event(EventKind.CHILD_RESULT, 133,
             expected_generation=active.generation, child_id=active.child_id,
-            outcome=ChildOutcome.CLEAN, cleanup_complete=True), POLICY)
+            outcome=ChildOutcome.CLEAN, process_exited=True,
+            cleanup_complete=True), POLICY)
         self.assertEqual(exited.state.state, SupervisorState.ATTENTION_REQUIRED)
         self.assertEqual(exited.state.attention_reason, AttentionReason.PROGRESS_STALLED)
 
@@ -232,7 +279,8 @@ class PolicyTests(unittest.TestCase):
         stopping = decide(active, event(EventKind.STOP, 102), POLICY).state
         exited = decide(stopping, event(EventKind.CHILD_RESULT, 103,
             expected_generation=active.generation, child_id=active.child_id,
-            outcome=ChildOutcome.INTEGRITY_FAILURE, cleanup_complete=True), POLICY)
+            outcome=ChildOutcome.INTEGRITY_FAILURE, process_exited=True,
+            cleanup_complete=True), POLICY)
         self.assertEqual(exited.state.state, SupervisorState.ATTENTION_REQUIRED)
         self.assertEqual(exited.state.attention_reason, AttentionReason.INTEGRITY_FAILURE)
 
@@ -243,14 +291,66 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(decision.state.attention_reason, AttentionReason.STARTUP_TIMEOUT)
         self.assertEqual(decision.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
 
+    def test_safety_stop_fences_arm_prepared_before_fault(self):
+        active = started(start(arm(self.state)), 101)
+        active = decide(active, event(EventKind.CHILD_STATUS, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1), POLICY).state
+        prepared = event(EventKind.ARM, 134,
+            expected_generation=active.generation, build_fingerprint="build-b",
+            config_fingerprint="config-b")
+        stopping = decide(active, event(EventKind.TICK, 132), POLICY).state
+        self.assertEqual(stopping.state, SupervisorState.STOPPING)
+        self.assertEqual(stopping.generation, active.generation+1)
+        exited = decide(stopping, event(EventKind.CHILD_RESULT, 133,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            outcome=ChildOutcome.CLEAN, process_exited=True,
+            cleanup_complete=True), POLICY).state
+        stale = decide(exited, prepared, POLICY)
+        self.assertTrue(stale.stale)
+        self.assertEqual(stale.state.state, SupervisorState.ATTENTION_REQUIRED)
+        self.assertTrue(stale.state.stop_latched)
+
+    def test_startup_uses_absolute_sixty_second_deadline(self):
+        active = start(arm(self.state))
+        early = None
+        for stamp in range(101, 131):
+            early = decide(active, event(EventKind.TICK, stamp), POLICY)
+            active = early.state
+            self.assertEqual(active.state, SupervisorState.STARTING)
+        started_state = started(early.state, 131)
+        for sequence, stamp in enumerate(range(132, 160, 2), start=1):
+            started_state = decide(started_state, event(EventKind.CHILD_STATUS, stamp,
+                expected_generation=started_state.child_generation,
+                child_id=started_state.child_id, child_phase=ChildPhase.STARTING,
+                progress_sequence=sequence), POLICY).state
+        expired = decide(started_state, event(EventKind.TICK, 160), POLICY)
+        self.assertEqual(expired.state.state, SupervisorState.STOPPING)
+        self.assertEqual(expired.state.attention_reason, AttentionReason.STARTUP_TIMEOUT)
+
+    def test_completed_startup_leaves_absolute_startup_deadline(self):
+        active = started(start(arm(self.state)), 101)
+        recovering = decide(active, event(EventKind.CHILD_STATUS, 150,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.RECOVERING, progress_sequence=1), POLICY).state
+        checked = decide(recovering, event(EventKind.TICK, 160), POLICY)
+        self.assertEqual(checked.state.state, SupervisorState.RECOVERING)
+
     def test_healthy_progress_resets_incident_only_after_ten_minutes(self):
         active = started(start(arm(self.state)), 101)
         healthy = decide(active, event(EventKind.CHILD_STATUS, 102,
             expected_generation=active.generation, child_id=active.child_id,
-            child_phase=ChildPhase.HEALTHY, progress_sequence=1,
-            work_deadline_utc=1000), POLICY).state
+            child_phase=ChildPhase.HEALTHY, progress_sequence=1), POLICY).state
+        for sequence, stamp in enumerate(range(122, 683, 20), start=2):
+            healthy = decide(healthy, event(EventKind.CHILD_STATUS, stamp,
+                expected_generation=healthy.child_generation,
+                child_id=healthy.child_id, child_phase=ChildPhase.HEALTHY,
+                progress_sequence=sequence), POLICY).state
         early = decide(healthy, event(EventKind.TICK, 701), POLICY).state
         self.assertEqual(early.incident_attempts, 1)
+        early = decide(early, event(EventKind.CHILD_STATUS, 702,
+            expected_generation=early.child_generation, child_id=early.child_id,
+            child_phase=ChildPhase.HEALTHY, progress_sequence=31), POLICY).state
         reset = decide(early, event(EventKind.TICK, 702), POLICY).state
         self.assertEqual((reset.incident_attempts, reset.restart_attempts_utc), (0, ()))
 
@@ -269,6 +369,85 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(omitted.retry_holds, ("quota_retry_exhausted",))
         failed = result(omitted, ChildOutcome.TRANSIENT_FAILURE).state
         self.assertEqual(failed.retry_holds, ("quota_retry_exhausted",))
+        self.assertEqual(failed.state, SupervisorState.ATTENTION_REQUIRED)
+
+    def test_retry_holds_require_explicit_resolution_before_arm(self):
+        active = started(start(arm(self.state)), 101)
+        held = decide(active, event(EventKind.CHILD_STATUS, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            child_phase=ChildPhase.DEGRADED, progress_sequence=1,
+            retry_holds=("quota_retry_exhausted", "cooldown_pending")), POLICY).state
+        stopped = result(held, ChildOutcome.RETRY_EXHAUSTED, 103).state
+        refused = decide(stopped, event(EventKind.ARM, 104,
+            expected_generation=stopped.generation, build_fingerprint="build-b",
+            config_fingerprint="config-b"), POLICY)
+        self.assertTrue(refused.stale)
+        self.assertEqual(refused.state.retry_holds,
+                         ("quota_retry_exhausted", "cooldown_pending"))
+        resolved = decide(stopped, event(EventKind.HOLDS_RESOLVED, 104,
+            expected_generation=stopped.generation,
+            retry_holds=("quota_retry_exhausted", "cooldown_pending")), POLICY).state
+        rearmed = decide(resolved, event(EventKind.ARM, 105,
+            expected_generation=resolved.generation, build_fingerprint="build-b",
+            config_fingerprint="config-b"), POLICY)
+        self.assertEqual(rearmed.state.state, SupervisorState.BACKOFF)
+
+    def test_late_spawn_events_do_not_release_running_child(self):
+        active = started(start(arm(self.state)), 101)
+        late_failure = decide(active, event(EventKind.SPAWN_FAILED, 102,
+            expected_generation=active.child_generation, child_id=active.child_id), POLICY)
+        self.assertTrue(late_failure.stale)
+        self.assertEqual(late_failure.state, active)
+        replay = decide(active, event(EventKind.CHILD_STARTED, 129,
+            expected_generation=active.child_generation, child_id=active.child_id), POLICY)
+        self.assertTrue(replay.stale)
+        self.assertEqual(replay.state.last_progress_utc, 101)
+
+    def test_late_spawn_events_do_not_release_stopping_or_attention_child(self):
+        active = started(start(arm(self.state)), 101)
+        stopping = decide(active, event(EventKind.STOP, 102), POLICY).state
+        attention = decide(active, event(EventKind.TICK, 100), POLICY).state
+        self.assertEqual(attention.state, SupervisorState.ATTENTION_REQUIRED)
+        for current in (stopping, attention):
+            with self.subTest(state=current.state):
+                failed = decide(current, event(EventKind.SPAWN_FAILED, 103,
+                    expected_generation=current.child_generation,
+                    child_id=current.child_id), POLICY, control_utc=103)
+                replay = decide(current, event(EventKind.CHILD_STARTED, 103,
+                    expected_generation=current.child_generation,
+                    child_id=current.child_id), POLICY, control_utc=103)
+                self.assertTrue(failed.stale)
+                self.assertTrue(replay.stale)
+                self.assertEqual(failed.state.child_id, active.child_id)
+                self.assertEqual(replay.state.child_id, active.child_id)
+
+    def test_confirmed_unexpected_death_enters_recovery_without_cleanup_claim(self):
+        active = started(start(arm(self.state)), 101)
+        crashed = decide(active, event(EventKind.CHILD_RESULT, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            outcome=ChildOutcome.UNEXPECTED_DEATH, process_exited=True,
+            unresolved_work=True), POLICY)
+        self.assertEqual(crashed.state.state, SupervisorState.BACKOFF)
+        self.assertIsNone(crashed.state.child_id)
+        self.assertEqual(crashed.state.recovery_reasons,
+                         ("unexpected_death", "cleanup_unconfirmed", "unresolved_work"))
+        self.assertEqual(crashed.actions, ())
+
+    def test_uncertain_exit_retains_child_and_cleanup_failure_blocks(self):
+        active = started(start(arm(self.state)), 101)
+        uncertain = decide(active, event(EventKind.CHILD_RESULT, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            outcome=ChildOutcome.UNEXPECTED_DEATH), POLICY)
+        self.assertEqual(uncertain.state.state, SupervisorState.ATTENTION_REQUIRED)
+        self.assertEqual(uncertain.state.child_id, active.child_id)
+        self.assertIn("process_exit_unconfirmed", uncertain.state.retry_holds)
+        failed = decide(active, event(EventKind.CHILD_RESULT, 102,
+            expected_generation=active.child_generation, child_id=active.child_id,
+            outcome=ChildOutcome.UNEXPECTED_DEATH, process_exited=True,
+            cleanup_failed=True), POLICY)
+        self.assertEqual(failed.state.state, SupervisorState.ATTENTION_REQUIRED)
+        self.assertIsNone(failed.state.child_id)
+        self.assertIn("cleanup_failed", failed.state.retry_holds)
 
     def test_regressing_progress_is_integrity_failure(self):
         active = started(start(arm(self.state)), 101)
@@ -297,7 +476,7 @@ class StoreTests(unittest.TestCase):
         self.path = Path(self.temp.name)/"supervisor.db"
 
     def open(self, **values):
-        return SupervisorStore(self.path, scope_id="kalshi-primary", clock=lambda: 90, **values)
+        return SupervisorStore(self.path, scope_id="kalshi-primary", **values)
 
     def arm_event(self, generation=0, now=100):
         return event(EventKind.ARM, now, expected_generation=generation,
@@ -399,6 +578,70 @@ class StoreTests(unittest.TestCase):
             self.assertTrue(decision.stale)
             self.assertEqual(store.read().state, SupervisorState.DISARMED)
             self.assertTrue(store.history(limit=2)[-1]["stale"])
+
+    def test_delayed_stop_fences_prepared_arm_with_separate_control_clock(self):
+        class Clock:
+            wall = 90.0
+            monotonic_value = 0.0
+
+            def utc(self):
+                return self.wall
+
+            def monotonic(self):
+                return self.monotonic_value
+
+            def advance(self, seconds):
+                self.wall += seconds
+                self.monotonic_value += seconds
+
+        clock = Clock()
+        with self.open(clock=clock.utc, monotonic_clock=clock.monotonic) as store:
+            armed = store.apply(self.arm_event()).state
+            prepared = self.arm_event(armed.generation, 103)
+            clock.advance(12)
+            store.apply(event(EventKind.TICK, 102))
+            stopped = store.apply(event(EventKind.STOP, 101)).state
+            self.assertEqual(stopped.state, SupervisorState.DISARMED)
+            self.assertEqual(stopped.generation, armed.generation+1)
+            clock.advance(1)
+            stale = store.apply(prepared)
+            self.assertTrue(stale.stale)
+            self.assertEqual(stale.state.state, SupervisorState.DISARMED)
+
+    def test_retry_holds_persist_and_block_arm_until_explicit_resolution(self):
+        with self.open() as store:
+            armed = store.apply(self.arm_event()).state
+            running = store.apply(event(EventKind.START_REQUESTED, 101,
+                expected_generation=armed.generation, child_id="child-a")).state
+            running = store.apply(event(EventKind.CHILD_STARTED, 102,
+                expected_generation=running.child_generation,
+                child_id=running.child_id)).state
+            held = store.apply(event(EventKind.CHILD_STATUS, 103,
+                expected_generation=running.child_generation,
+                child_id=running.child_id, child_phase=ChildPhase.DEGRADED,
+                progress_sequence=1,
+                retry_holds=("quota_retry_exhausted",))).state
+            stopped = store.apply(event(EventKind.CHILD_RESULT, 104,
+                expected_generation=held.child_generation, child_id=held.child_id,
+                outcome=ChildOutcome.RETRY_EXHAUSTED, process_exited=True,
+                cleanup_complete=True)).state
+        with self.open() as store:
+            persisted = store.read()
+            self.assertEqual(persisted.retry_holds, ("quota_retry_exhausted",))
+            refused = store.apply(self.arm_event(persisted.generation, 105))
+            self.assertTrue(refused.stale)
+            resolved = store.apply(event(EventKind.HOLDS_RESOLVED, 106,
+                expected_generation=persisted.generation,
+                retry_holds=("quota_retry_exhausted",))).state
+            self.assertEqual(resolved.retry_holds, ())
+
+
+class ResourceFixtureTests(unittest.TestCase):
+    def test_idle_fixture_executes_policy_and_journal(self):
+        report = measure_idle(0.01)
+        self.assertGreaterEqual(report["policy_events"], 6)
+        self.assertEqual(report["journal_events"], report["policy_events"])
+        self.assertFalse(report["live_ready"])
 
 
 if __name__ == "__main__":

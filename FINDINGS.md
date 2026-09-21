@@ -1,5 +1,35 @@
 # Findings — kalshi-bot
 
+## 74. Supervisor review findings are fixed offline — 2026-09-21
+
+VERIFIED OFFLINE under D-052: R1-R7 from the
+[D-051 review](docs/REVIEW_D051_ASTRA.md) now have deterministic regressions and
+corrected contracts. Stale child payloads cannot trigger current clock faults;
+STOP and safety disarms fence prepared arms; late lifecycle events cannot release
+or renew a confirmed child; work/startup deadlines remain bounded by fresh useful
+progress; persisted holds block launch until explicit resolution; and confirmed
+OS exit is distinct from cleanup evidence while unresolved recovery reasons stay
+visible. The idle fixture performs real SQLite policy/journal work. Forty-six
+focused and exact 850 full tests pass, focused tests pass 10/10 repeatedly, and
+the 60-second fixture recorded 124 policy/journal events at 0.3385% of one core.
+Disabled preflight stays false with no side effects. See
+[fix evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md). This is Sol
+implementation evidence, not Astra clearance; S2 remains blocked.
+
+## 73. Supervisor S1 has untested control and recovery gaps — 2026-09-21
+
+VERIFIED OFFLINE at `7b8d6cd`: delayed STOP skips generation fencing; stale child
+timestamps stop the current child; out-of-phase spawn failure releases active
+ownership; a silent child with a work deadline refunds its retry budget; holds
+do not gate spawn and ARM deletes them; startup timing is inconsistent; real
+unexpected death lacks the claimed recovery path without cleanup proof. The idle
+CPU fixture runs no supervisor policy or journal work. See
+[D-051 review](docs/REVIEW_D051_ASTRA.md) for reproductions and acceptance.
+All 32 focused and 836 full tests pass, so section 72's general safety/resource
+claims are qualified by these uncovered cases. Live authority remains false.
+This section records the original `7b8d6cd` review evidence. D-052/section 74 now
+implements the fixes; Astra re-review is next and S2 remains blocked.
+
 ## 72. Supervisor S1 is fail-closed and execution-disabled — 2026-09-21
 
 VERIFIED OFFLINE under D-051: immutable policy and a separate transactional

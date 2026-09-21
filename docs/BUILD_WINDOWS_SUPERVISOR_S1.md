@@ -1,5 +1,11 @@
 # D-051 — Native Windows supervisor S1
 
+Review status: [independent Astra review](REVIEW_D051_ASTRA.md) required R1-R7
+fixes before S2. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
+and awaits Astra re-review. The original implementation evidence below remains
+historical evidence for `7b8d6cd`; use the D-052 report for corrected behavior
+and current verification.
+
 Date: September 21, 2026. Native Windows; execution disabled. Implements the
 approved S1 policy/control foundation from the
 [D-050 design](DESIGN_WINDOWS_SUPERVISOR.md). No process was spawned, no

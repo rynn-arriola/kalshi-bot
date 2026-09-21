@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Supervisor control, recovery and resource-contract defects
+
+**Mechanisms.** Delayed/stale event timestamps could bypass stop fencing; late
+lifecycle events could release or renew a confirmed child; work/startup timing
+could hide stalls; retry holds did not block relaunch; crash evidence conflated
+process exit with cleanup; and the CPU fixture measured only sleep. **Fix under
+D-052.** Separate monotonic-normalized control time from diagnostic event time,
+fence safety stops, enforce lifecycle/deadline/hold contracts, preserve truthful
+recovery evidence and exercise the persisted journal in the idle fixture.
+**Verification.** Forty-six focused and 850 full tests, 10/10 repeated focused
+runs, compilation, disabled preflight and a 60-second 124-event CPU fixture pass.
+See `docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md`. No runtime or live use.
+
 ### Disconnect teardown interrupted by runtime stop
 
 **Mechanism.** Runtime cleanup cancelled a connection already draining after a

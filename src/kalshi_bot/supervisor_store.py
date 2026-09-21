@@ -9,7 +9,7 @@ from .supervision import ControlState, SupervisorEvent, SupervisorPolicy, decide
 from .values import InvalidData, identity
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 MAX_EVENTS = 256
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -24,6 +24,7 @@ CREATE TABLE events (
   generation INTEGER NOT NULL,
   kind TEXT NOT NULL,
   observed_utc REAL NOT NULL,
+  control_utc REAL NOT NULL,
   stale INTEGER NOT NULL CHECK(stale IN (0,1)),
   before_state TEXT NOT NULL,
   after_state TEXT NOT NULL,
@@ -47,6 +48,7 @@ def _load(value, label):
 class SupervisorStore:
     """One small SQLite database; never shares the financial ledger."""
     def __init__(self, path: Path | str, *, scope_id: str, clock=time.time,
+                 monotonic_clock=time.monotonic,
                  event_limit: int = MAX_EVENTS):
         self.path = Path(path) if str(path) != ":memory:" else Path(":memory:")
         self.scope_id = identity(scope_id)
@@ -54,6 +56,10 @@ class SupervisorStore:
             raise InvalidData("supervisor event limit outside bounds")
         self.event_limit = event_limit
         self.clock = clock
+        self.monotonic_clock = monotonic_clock
+        self._wall_anchor = float(clock())
+        self._monotonic_anchor = float(monotonic_clock())
+        initial_state(self.scope_id, self._wall_anchor)
         self.connection = sqlite3.connect(str(path), timeout=5)
         self.connection.row_factory = sqlite3.Row
         try:
@@ -71,7 +77,7 @@ class SupervisorStore:
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         if not tables:
-            now = float(self.clock())
+            now = self.control_utc()
             state = initial_state(self.scope_id, now)
             with self.connection:
                 self.connection.executescript(SCHEMA)
@@ -82,6 +88,10 @@ class SupervisorStore:
         if meta != {"schema": SCHEMA_VERSION, "scope": self.scope_id}:
             raise InvalidData("supervisor schema or scope mismatch")
         self.read()
+
+    def control_utc(self):
+        """UTC-shaped clock advanced only by the in-boot monotonic source."""
+        return self._wall_anchor + (float(self.monotonic_clock())-self._monotonic_anchor)
 
     @contextmanager
     def transaction(self):
@@ -121,7 +131,8 @@ class SupervisorStore:
             raise InvalidData("typed supervisor event required")
         with self.transaction():
             revision, before = self._read_row()
-            decision = decide(before, event, policy)
+            control_utc = self.control_utc()
+            decision = decide(before, event, policy, control_utc=control_utc)
             after = decision.state
             new_revision = revision+1
             cursor = self.connection.execute(
@@ -130,9 +141,10 @@ class SupervisorStore:
             if cursor.rowcount != 1:
                 raise InvalidData("supervisor revision changed concurrently")
             self.connection.execute(
-                "INSERT INTO events(revision,generation,kind,observed_utc,stale,before_state,"
-                "after_state,payload) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO events(revision,generation,kind,observed_utc,control_utc,stale,"
+                "before_state,after_state,payload) VALUES (?,?,?,?,?,?,?,?,?)",
                 (new_revision, after.generation, event.kind.value, event.observed_utc,
+                 control_utc,
                  int(decision.stale), before.state.value, after.state.value,
                  _dump(event.to_dict())))
             self.connection.execute("DELETE FROM events WHERE sequence <= ("
@@ -143,7 +155,7 @@ class SupervisorStore:
         if type(limit) is not int or not 1 <= limit <= self.event_limit:
             raise InvalidData("invalid supervisor history limit")
         rows = self.connection.execute(
-            "SELECT sequence,revision,generation,kind,observed_utc,stale,before_state,"
+            "SELECT sequence,revision,generation,kind,observed_utc,control_utc,stale,before_state,"
             "after_state,payload FROM events ORDER BY sequence DESC LIMIT ?", (limit,)).fetchall()
         return tuple(dict(row) | {"payload": _load(row["payload"], "event payload")}
                      for row in reversed(rows))

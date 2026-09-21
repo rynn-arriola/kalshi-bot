@@ -2,6 +2,27 @@
 
 ## Current update — 2026-09-21
 
+D-052 implements R1-R7 from the D-051
+[independent Astra review](docs/REVIEW_D051_ASTRA.md); see the
+[review-fix evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md). Trusted
+monotonic-normalized control time, strict lifecycle transitions, bounded useful-
+progress deadlines, persistent explicit retry holds, absolute startup timing,
+truthful process-exit/cleanup evidence and a real journal workload now replace
+the reviewed behavior. All 46 focused and exact 850 full tests pass; focused
+tests also pass 10/10 repeated runs. The 60-second fixture performs 124 persisted
+policy events at 0.3385% of one core. Disabled preflight remains exit 2 with no
+files, credentials or network. STOP for Astra re-review under D-049. S2 and the
+separate D-048 review remain outstanding; no runtime or live action was added.
+
+### D-051 Astra review before D-052 fixes
+
+The review reproduced six P2 control/recovery findings and one P3 resource-
+verification finding against `7b8d6cd`, despite 32 focused and 836 full passing
+tests. Its report remains the acceptance source for D-052 and records the
+original evidence; it is not a claim about the corrected working tree.
+
+### D-051 implementation evidence before review
+
 D-051 implements the approved D-050 supervisor S1 foundation; see
 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md). Immutable execution-
 disabled policy and a separate transactional SQLite control journal now cover

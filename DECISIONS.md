@@ -783,6 +783,25 @@ them accepted without an explicit operator instruction.
   Astra review is mandatory before S2. D-048's separate review also remains an
   S2 gate.
 
+### D-052 — Implement D-051 supervisor review findings
+
+- **Status:** ACCEPTED implementation scope and implemented, 2026-09-21.
+- **Decision owner:** Operator: “Implement those,” after the D-051 Astra review.
+- **Scope:** Implement R1-R7 from
+  [the D-051 review](docs/REVIEW_D051_ASTRA.md): trusted control/event time
+  separation, stop/safety generation fencing, strict lifecycle ownership,
+  bounded useful-progress and startup deadlines, persistent explicit retry holds,
+  truthful process-exit/cleanup recovery evidence and a real persisted-work idle
+  benchmark. Add deterministic regressions and rerun required verification.
+- **Evidence:** See
+  [D-052 build evidence](docs/BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md): 46
+  focused and 850 full tests pass, with repeated focused, resource, compilation
+  and disabled-preflight checks.
+- **Boundary:** Preserve D-051's execution-disabled S1 scope. No process launcher,
+  IPC, runtime integration, service/task, credential/network/account access,
+  live auto-resume or trading. Independent Astra re-review is mandatory before
+  S2; D-048's separate review remains another S2 gate.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a
