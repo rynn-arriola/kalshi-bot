@@ -8,6 +8,18 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-21 — development components, no live account use
+
+### Disconnect teardown interrupted by runtime stop
+
+**Mechanism.** Runtime cleanup cancelled a connection already draining after a
+transport failure. That cancellation could stop positive-fill retention before
+the queue emptied and skip marker close/cache refresh. **Fix under D-048.** Each
+connection creates one retained finalizer and awaits it through repeated
+cancellation; genuine finalizer errors still propagate. **Verification.** Three
+new regressions, 231 focused tests, 804 full tests, resource fixtures and disabled
+preflight pass. See `docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. No live use.
+
 ## 2026-09-20 — development components, no live account use
 
 ### Repeated cancellation and buffered-drain failure

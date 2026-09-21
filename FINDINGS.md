@@ -1,5 +1,27 @@
 # Findings — kalshi-bot
 
+## 69. Disconnect finalization survives stop/cancellation offline — 2026-09-21
+
+VERIFIED OFFLINE under D-048: one retained connection finalizer now owns reader
+join, bounded queue/byte drain, valid fill staging, marker close and gap refresh
+through ordinary stop and repeated cancellation. The review's actual transport
+case retains all 3/3 fills and leaves no queue bytes or tasks. Three regressions,
+231 focused tests, all 804 tests, resource checks and disabled preflight pass.
+Both disconnect regressions fail on the prior runtime. See
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md). This does not
+prove venue continuity or authorize trading. No live use.
+
+## 68. Stop can interrupt an already-active disconnect drain — 2026-09-21
+
+VERIFIED OFFLINE at `ecf04c3`: retained runtime shutdown still cancels connection
+finalization already running after a disconnect. Actual WebSocket consumer
+probes left 1/3 valid fills buffered, an open epoch and cached/durable gaps 0/1;
+ordinary stop returned success. Both stop and cancellation reproduced 3/3.
+See [D-047 R1](docs/REVIEW_D047_ASTRA.md) for mechanism and acceptance. All 228
+focused tests pass and the three new regressions fail against the old runtime,
+so the exact earlier fixes are verified but section 67's ownership claim is
+qualified by this overlap. No source/test edits or live use during review.
+
 ## 67. Repeated-cancel and drain-error ownership fixed offline — 2026-09-20
 
 VERIFIED OFFLINE under D-047: one retained runtime shutdown owner survives

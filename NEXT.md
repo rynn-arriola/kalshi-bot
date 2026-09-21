@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-20. Follow D-011 through D-047 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow D-011 through D-048 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -9,14 +9,13 @@ with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
 
-D-047 Sol fixes for both D-046 shutdown findings are implemented and verified;
-see `docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md`. STOP for independent
-Astra re-review under D-037. Inspect retained cleanup under repeated cancellation,
-bounded per-item queue drain, valid-tail preservation, marker/gap finalization,
-cleanup error propagation and original-fault preservation. Review the current
-Git diff for races, edge cases, security and false authority claims. Do not
-implement findings in the review role. The public Kalshi contract still lacks
-cross-source continuity proof; no baseline/live action or Phase 2/3 is approved.
+D-048 Sol fixes for the D-047 finding are implemented and verified; see
+`docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. STOP for independent Astra
+review under D-037. Inspect retained connection finalization across disconnect,
+ordinary stop, caller/repeated cancellation, marker close and genuine storage
+failure. Verify transport queue/byte accounting, fill durability, marker/gap
+consistency, task ownership and original-fault propagation. Do not implement
+findings in the review role. No baseline/live action or Phase 2/3 is approved.
 
 MANDATORY D-037: Astra designs only, then ALWAYS STOPS for the operator to switch
 to 5.6 Sol. Sol implements/tests, Astra reviews, Sol fixes. Do not automatically
@@ -36,7 +35,7 @@ cancellation, and a pending record that does not retain exception/payload frames
 D-042 Sol fixed both and added regressions. Astra re-review cleared both with
 no new findings in that scope; see `docs/REVIEW_D042_ASTRA.md` and STATUS. D-044
 design, D-045 Sol Phase 1, D-046 fixes/re-review and D-047 shutdown fixes are
-complete. Astra re-review of D-047 applies now.
+complete. D-047 Astra review's R1 is implemented under D-048 and awaits review.
 Git diff was unavailable in the historical review; D-043 subsequently connected
 the active folder to Git. Live operation remains disabled.
 

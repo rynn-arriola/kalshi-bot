@@ -1,5 +1,22 @@
 # What exists
 
+## Retained connection finalization — 2026-09-21
+
+D-048 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md)
+addresses the D-047 review finding. Connection teardown now has one retained
+owner through disconnect/stop overlap, fill drain and marker/gap finalization.
+Three new regressions pass with 231 focused and 804 full tests, resource checks
+and disabled preflight. Independent Astra review is next; live gates remain false.
+
+## D-047 review — disconnect/stop overlap remains — 2026-09-21
+
+[Astra review](docs/REVIEW_D047_ASTRA.md) verifies the original fixes with 228
+passing focused tests and three counterfactual regression failures against the
+previous runtime. One P2 remains: shutdown can cancel a disconnect drain already
+in progress, leaving valid queued evidence and an open marker. Actual transport
+consumer probes reproduce both stop modes 3/3 each. Next role is Sol fixes after
+the operator switch; source/tests are unchanged and trading remains disabled.
+
 ## Continuity shutdown ownership fixes — 2026-09-20
 
 D-047 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md)

@@ -1,5 +1,12 @@
 # D-047 — Continuity shutdown ownership fixes
 
+Review update, September 21: [Astra review](REVIEW_D047_ASTRA.md) verifies the
+exact original reproductions but identifies one remaining P2 overlap: stopping
+while disconnect teardown is already draining. The ownership claims below
+describe this implementation's tested paths and are qualified by that finding.
+[D-048](BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md) subsequently implements the
+retained connection-finalizer follow-up, pending independent review.
+
 Date: September 20, 2026. Native Windows; execution disabled. Implements both
 P2 findings from [the D-046 Astra re-review](REVIEW_D046_ASTRA.md) after the
 operator switched to 5.6 Sol and assigned the work. No real account, credential,

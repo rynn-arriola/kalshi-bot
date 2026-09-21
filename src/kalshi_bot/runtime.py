@@ -409,40 +409,9 @@ class RecoveryRuntime:
             reader = asyncio.create_task(reader_owner.run(consume), name='kalshi-'+spec.name)
             lost = (asyncio.create_task(self.lost[spec.name].wait())
                     if spec.name in self.lost else None)
-            try:
-                # Missing/rejected acknowledgments cannot park a connection forever.
-                handshake = asyncio.create_task(ready.wait())
-                try:
-                    done, _ = await asyncio.wait((reader, handshake), timeout=10,
-                                                 return_when=asyncio.FIRST_COMPLETED)
-                    if reader in done:
-                        await reader
-                        raise InvalidData("reader ended before subscription")
-                    if handshake not in done:
-                        raise InvalidData("subscription acknowledgment timed out")
-                finally:
-                    handshake.cancel()
-                    await asyncio.gather(handshake, return_exceptions=True)
-                if lost is None:
-                    # Connection cancellation enters the controlled teardown
-                    # below; it must not implicitly cancel an in-flight private
-                    # callback before that callback is accounted for.
-                    await asyncio.shield(reader)
-                else:
-                    await asyncio.wait((reader, lost), return_when=asyncio.FIRST_COMPLETED)
-                    if reader.done():
-                        await reader
-                raise InvalidData("reader ended or book proof lost")
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                # Bounded retry, no raw response/credential logging. Writer/engine
-                # failure is permanent for this runtime and cannot be retried away.
-                self.reader_states[spec.name] = "disconnected"
-                reader_error = True
-                self.diagnostics.emit('reader_failed', error=exc, stream=spec.name,
-                                      generation=generation, attempt=attempt+1)
-            finally:
+            async def finalize():
+                """Own this generation's teardown after every exit path."""
+                nonlocal delivery_failed, drain_error
                 self.reader_states[spec.name] = "stopped" if self.stop_requested.is_set() else "disconnected"
                 if spec.name == "account":
                     self.account_subscribed = False
@@ -531,6 +500,53 @@ class RecoveryRuntime:
                     self.diagnostics.emit('reader_failed', error=drain_error,
                         stream=spec.name, generation=generation, attempt=attempt+1)
                     raise InvalidData('account reader drain failed; reconciliation required') from None
+            try:
+                # Missing/rejected acknowledgments cannot park a connection forever.
+                handshake = asyncio.create_task(ready.wait())
+                try:
+                    done, _ = await asyncio.wait((reader, handshake), timeout=10,
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if reader in done:
+                        await reader
+                        raise InvalidData("reader ended before subscription")
+                    if handshake not in done:
+                        raise InvalidData("subscription acknowledgment timed out")
+                finally:
+                    handshake.cancel()
+                    await asyncio.gather(handshake, return_exceptions=True)
+                if lost is None:
+                    # Connection cancellation enters the controlled teardown
+                    # below; it must not implicitly cancel an in-flight private
+                    # callback before that callback is accounted for.
+                    await asyncio.shield(reader)
+                else:
+                    await asyncio.wait((reader, lost), return_when=asyncio.FIRST_COMPLETED)
+                    if reader.done():
+                        await reader
+                raise InvalidData("reader ended or book proof lost")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Bounded retry, no raw response/credential logging. Writer/engine
+                # failure is permanent for this runtime and cannot be retried away.
+                self.reader_states[spec.name] = "disconnected"
+                reader_error = True
+                self.diagnostics.emit('reader_failed', error=exc, stream=spec.name,
+                                      generation=generation, attempt=attempt+1)
+            finally:
+                # Teardown can already be active when runtime shutdown cancels
+                # this connection. Keep one retained owner for the reader join,
+                # fill drain and marker close through every later cancellation.
+                finalizer = asyncio.create_task(finalize(), name='kalshi-'+spec.name+'-finalize')
+                finalizer_cancelled = False
+                while not finalizer.done():
+                    try:
+                        await asyncio.shield(finalizer)
+                    except asyncio.CancelledError:
+                        finalizer_cancelled = True
+                finalizer.result()
+                if finalizer_cancelled:
+                    raise asyncio.CancelledError
             if attempt+1 < self.attempt_limit and not self.writer.failed and not self.engine.failed:
                 await self.sleep(min(30, 2**attempt)*self.jitter())
         self.reader_states[spec.name] = "retry_exhausted"

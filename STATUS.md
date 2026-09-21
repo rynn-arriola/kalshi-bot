@@ -1,6 +1,31 @@
 # Current status
 
-## Current update — 2026-09-20
+## Current update — 2026-09-21
+
+D-048 Sol implemented the P2 fix from the D-047
+[Astra review](docs/REVIEW_D047_ASTRA.md); see
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md). Each connection
+now retains one finalizer through stop/repeated cancellation until its reader is
+joined, valid tail fills are durable, the marker is closed and gaps are refreshed.
+Three new regressions cover real transport queue/byte accounting, ordinary stop,
+caller cancellation and marker-close cancellation. All 231 focused and exact
+804 full tests pass; continuity/history resource checks and disabled preflight
+pass. STOP for Astra review under D-037. Venue handoff, starting basis, Phase
+2/3 and trading remain unauthorized.
+
+### D-047 Astra review before finalizer fix
+
+D-047 [Astra review](docs/REVIEW_D047_ASTRA.md) requires one P2 follow-up:
+runtime shutdown cancels a connection already draining after a disconnect,
+leaving a valid tail fill queued and an open epoch with a stale gap cache.
+The real WebSocket consumer reproduces this 3/3 times on ordinary stop and
+3/3 on caller cancellation. Both exact D-046 reproductions are fixed, and the
+three new tests detect the previous implementation's defects. All 228 focused
+tests and native disabled preflight pass; the full suite/resource results below
+remain Sol's evidence. Only review/handoff documents changed. STOP for the
+operator's Sol switch and R1 fixes under D-037. Trading remains disabled.
+
+### D-047 implementation evidence before independent review
 
 D-047 Sol implemented both P2 fixes from the D-046
 [Astra re-review](docs/REVIEW_D046_ASTRA.md); see

@@ -11,6 +11,7 @@ from kalshi_bot.account import UnscopedPositionUpdate
 from kalshi_bot.continuity import PrivateEpoch, assess_continuity
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.rest import ReadResult, RestReads, TokenBudget
+from kalshi_bot.transport import WebSocketReaders
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_auto_recovery import EXEC, NOW
@@ -239,6 +240,129 @@ class ReaderEpochTests(unittest.IsolatedAsyncioTestCase):
     async def launch(self):
         self.task = asyncio.create_task(self.runtime.run())
         await self.eventually(lambda: self.runtime.account_subscribed)
+
+    async def disconnect_drain_case(self, *, cancel):
+        """Stop a real transport consumer after disconnect teardown has begun."""
+        disconnect = asyncio.Event()
+        draining = asyncio.Event()
+        release = asyncio.Event()
+        original_factory = self.runtime.reader_factory
+        readers = []
+        def factory(spec):
+            if spec.name != 'account':
+                return original_factory(spec)
+            reader = WebSocketReaders(None, (spec,), capacity=256,
+                                      byte_capacity=2*1024*1024)
+            class AckThenHoldQueue(asyncio.Queue):
+                """Let the real consumer take ACKs; retain post-ACK fill tuples."""
+                def __init__(self):
+                    super().__init__(maxsize=256)
+                    self.gets = 0
+                    self.hold = asyncio.Event()
+                async def get(self):
+                    self.gets += 1
+                    if self.gets > len(spec.channels):
+                        await self.hold.wait()
+                    return await super().get()
+            reader.queue = AckThenHoldQueue()
+            async def pump(source):
+                for sid, channel in enumerate(source.channels, 1):
+                    event = dict(type='subscribed', id=1,
+                                 msg=dict(channel=channel, sid=sid))
+                    reader.queue.put_nowait((source.name, event, 100))
+                    reader.queued_bytes += 100
+                await disconnect.wait()
+                for index in range(3):
+                    reader.queue.put_nowait((source.name,
+                        fill_event('disconnect-'+str(index)), 100))
+                    reader.queued_bytes += 100
+                raise InvalidData('injected transport disconnect')
+            reader._pump = pump
+            readers.append(reader)
+            self.connections.setdefault(spec.name, []).append(reader)
+            return reader
+        self.runtime.reader_factory = factory
+        original_stage = self.writer.stage_fill
+        blocked = False
+        async def delay_first_drain(*args, **kwargs):
+            nonlocal blocked
+            result = await original_stage(*args, **kwargs)
+            if not blocked and self.runtime.reader_states['account'] == 'disconnected':
+                blocked = True
+                draining.set()
+                await release.wait()
+            return result
+        with patch.object(self.writer, 'stage_fill', side_effect=delay_first_drain):
+            await self.launch()
+            await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+            disconnect.set()
+            await asyncio.wait_for(draining.wait(), 4)
+            if cancel:
+                self.task.cancel()
+            else:
+                self.runtime.stop()
+            await self.eventually(lambda: self.runtime._shutdown_task is not None)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            finalizer_alive = any(task.get_name() == 'kalshi-account-finalize'
+                                  and not task.done() for task in asyncio.all_tasks())
+            if cancel:
+                self.task.cancel()  # Repeated cancellation cannot abandon it.
+            release.set()
+            if cancel:
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(self.task, 4)
+            else:
+                await asyncio.wait_for(self.task, 4)
+            self.assertTrue(finalizer_alive)
+        reader = readers[0]
+        epochs = await self.runtime.inspect_private_epochs()
+        self.assertFalse(self.runtime.running)
+        self.assertTrue(reader.invalid)
+        self.assertTrue(reader.queue.empty())
+        self.assertEqual(reader.queued_bytes, 0)
+        self.assertEqual(len(await self.writer.pending_fills(0)), 3)
+        self.assertEqual((len(epochs), epochs[0].closed_at is not None,
+                          epochs[0].clean_local_delivery), (1, True, False))
+        self.assertEqual(self.runtime._persisted_epoch_gaps, 1)
+        self.assertEqual(await self.writer.private_epoch_gap_count(subaccount=0), 1)
+        self.assertFalse(any(task.get_name() in {'kalshi-account',
+            'kalshi-account-finalize'} and not task.done() for task in asyncio.all_tasks()))
+
+    async def test_orderly_stop_cannot_interrupt_active_disconnect_drain(self):
+        await self.disconnect_drain_case(cancel=False)
+
+    async def test_cancellation_cannot_interrupt_active_disconnect_drain(self):
+        await self.disconnect_drain_case(cancel=True)
+
+    async def test_repeated_cancellation_during_marker_close_finishes_finalizer(self):
+        await self.launch()
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        committed = asyncio.Event()
+        release = asyncio.Event()
+        original = self.writer.close_private_epoch
+        async def delayed_close(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            committed.set()
+            await release.wait()
+            return result
+        with patch.object(self.writer, 'close_private_epoch', side_effect=delayed_close):
+            self.runtime.stop()
+            await asyncio.wait_for(committed.wait(), 4)
+            finalizer_alive = any(task.get_name() == 'kalshi-account-finalize'
+                                  and not task.done() for task in asyncio.all_tasks())
+            self.task.cancel()
+            await asyncio.sleep(0)
+            self.task.cancel()
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(self.task, 4)
+            self.assertTrue(finalizer_alive)
+        epoch = (await self.runtime.inspect_private_epochs())[0]
+        self.assertFalse(self.runtime.running)
+        self.assertIsNotNone(epoch.closed_at)
+        self.assertFalse(any(task.get_name().endswith('-finalize') and not task.done()
+                             for task in asyncio.all_tasks()))
 
     async def test_ack_opens_durable_marker_and_orderly_stop_closes_locally(self):
         await self.launch()

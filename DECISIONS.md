@@ -714,6 +714,20 @@ them accepted without an explicit operator instruction.
   fixes. No Phase 2/3, baseline, policy/risk change, account/credential call,
   order action, deployment or live activation. Return to Astra re-review.
 
+### D-048 — Fix D-047 connection-finalization finding
+
+- **Status:** ACCEPTED fix scope, 2026-09-21.
+- **Decision owner:** Operator: "Fix it", after switching to the implementation
+  model following the D-047 Astra review.
+- **Scope:** Retain connection finalization when ordinary stop or cancellation
+  overlaps a disconnect drain; preserve valid transport-tail fills, finish marker
+  close/gap refresh and add the review's real-queue/repeated-cancel regressions.
+  `docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md` records implementation and
+  verification. Return to Astra review under D-037.
+- **Boundary:** Preserve the evidence-only architecture and all prior limits.
+  No Phase 2/3, baseline, policy/risk change, account/credential call, order
+  action, deployment or live activation.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a
