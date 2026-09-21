@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-21. Follow D-011 through D-049 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow D-011 through D-050 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -8,6 +8,13 @@ GitHub `master` branch. Future source/doc changes belong here and can be reviewe
 with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
+
+D-050 supervisor design takes priority at the operator's request; see
+[native Windows supervisor](docs/DESIGN_WINDOWS_SUPERVISOR.md). Design is complete.
+Next: operator approval and switch to **5.6 Sol** for S1 policy/control foundation
+with fake processes only. Proposed architecture/restart limits are not approved
+settings. No live launcher, service/task or bot start. S2/runtime integration
+still requires the independent D-048 review below and a separate assignment.
 
 D-048 Sol fixes for the D-047 finding are implemented and verified; see
 `docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. STOP for independent Astra
@@ -21,7 +28,7 @@ MANDATORY D-049: before every substantive task, give the short Astra/Sol
 recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
 for the listed material reasoning/review cases. Stop before development on a
 model mismatch, except urgent safety action. D-037 is superseded where routing
-differs. The active D-048 independent review specifically recommends Astra.
+differs. D-050 S1 recommends Sol after approval; D-048 review recommends Astra.
 Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking
@@ -201,8 +208,10 @@ reopen the superseded $400 proposal or derive budgets from current occupancy.
    book, writer and terms authority. Keep ambiguous mutations blocked. Quote math and three
    informational ranking views now exist; automatic selection/repricing remains
    unapproved. Confirm variable-band reward ticks before supporting those grids.
-4. Complete Windows supervised launch/stop, metrics and outage protection around
-   the ownership/stop primitives; wire one D-033 diagnostic sink into every
+4. Follow the proposed D-050 supervisor phases after approval; design priority
+   and S1 do not waive D-048 or production proof. Complete Windows supervised
+   launch/stop, metrics and outage protection around the ownership/stop primitives;
+   wire one D-033 diagnostic sink per process into every
    component, verify enabled/healthy logging, and close it after ledger drain.
    Final end-to-end integration tests. A local stop
    request is not cancellation or flat proof. Do not install live services/start.

@@ -2,13 +2,23 @@
 
 ## Current update — 2026-09-21
 
+D-050 supervisor design is complete; see
+[native Windows proposal](docs/DESIGN_WINDOWS_SUPERVISOR.md). Polymarket source
+was traced at `c5029321`; six isolated host-recovery tests passed. Recommended
+shape: one supervisor, one runtime child, bounded automatic recovery and durable
+stop/restart controls. No supervisor is implemented or installed. Next: operator
+approval and 5.6 Sol S1 offline implementation. D-048 independent review remains
+pending before S2/runtime integration. Only design/handoff documentation changed.
+
+### Prior D-049 workflow update
+
 D-049 records the operator's permanent usage-efficient two-model workflow.
 `AI_OPERATOR.md` is canonical: every substantive task starts with one short
 Astra/Sol recommendation; Sol is the default, Astra is reserved for material
 design/uncertainty/risk and meaningful live-money review, and mismatches stop
 before development. D-037 is superseded where routing differs. Documentation
-only; bot logic, configuration, data and runtime state are unchanged. The next
-project task remains D-048 independent Astra review.
+only; bot logic, configuration, data and runtime state are unchanged. D-050 above
+now takes design priority; D-048 independent Astra review is still outstanding.
 
 ### D-048 implementation awaiting Astra review
 

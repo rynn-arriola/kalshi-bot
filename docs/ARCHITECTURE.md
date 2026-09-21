@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
+one process supervisor and one runtime child, durable operator control and bounded
+automatic recovery. Design only; S1 approval and implementation are pending.
+It does not clear D-048, establish account proof or authorize live operation.
+
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
 whose [review findings](REVIEW_D045_ASTRA.md) are addressed by the D-046

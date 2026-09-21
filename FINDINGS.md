@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 71. Polymarket supervisor recovery has explicit limits — 2026-09-21
+
+VERIFIED SOURCE / OFFLINE: clean Poly `c5029321` separates process restart from
+host recovery, persists stop/generation/attempt state, and refuses some exits.
+Its restartable exit 5 can also mean a startup transport failure; it is not
+flat-account proof. Six isolated host-recovery tests pass in 0.056 s using fake
+launches/temporary state. Bash/POSIX supervision was inspected, not run on WSL.
+Kalshi's quota supervisor is not process supervision; current runtime liveness
+does not prove readers recovered or entries are safe. D-050's
+[Windows design](docs/DESIGN_WINDOWS_SUPERVISOR.md) records proposed adaptation
+and limits. No runtime or Poly files changed; D-048 review is still outstanding.
+
 ## 70. Two-model routing has one canonical owner — 2026-09-21
 
 VERIFIED DOCUMENTATION: D-049 records the operator's new model-selection rule.

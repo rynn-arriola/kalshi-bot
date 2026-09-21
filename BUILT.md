@@ -1,5 +1,12 @@
 # What exists
 
+## Native Windows supervisor design — 2026-09-21
+
+D-050 [proposal](docs/DESIGN_WINDOWS_SUPERVISOR.md) traces Polymarket source and
+defines process ownership, durable stop/restart controls, recovery classification
+and S1-S3 implementation gates. Six isolated Poly host-recovery tests pass.
+Design only: no Kalshi supervisor implementation, installation or runtime change.
+
 ## Mandatory two-model routing — 2026-09-21
 
 D-049 makes `AI_OPERATOR.md` the canonical usage-efficient routing rule for the

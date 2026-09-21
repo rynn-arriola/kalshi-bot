@@ -750,6 +750,21 @@ them accepted without an explicit operator instruction.
   authority, safety, testing, deployment, restart, capital, risk or live-action
   rules. `AI_OPERATOR.md` is the canonical detailed procedure.
 
+### D-050 — Design a Polymarket-like native Windows supervisor
+
+- **Status:** ACCEPTED requirement/design scope, 2026-09-21; detailed proposal
+  awaits operator approval and the D-049 implementation handoff.
+- **Decision owner:** Operator requests a supervisor that survives errors and
+  recovers automatically, before returning to the D-048 review.
+- **Scope:** Trace Polymarket's actual supervisor/recovery source and design
+  native Windows process supervision, bounded recovery, persistent stops,
+  diagnostics and restart safety. See
+  [the proposed design](docs/DESIGN_WINDOWS_SUPERVISOR.md).
+- **Boundary:** This request does not approve proposed restart/timing values,
+  automatic source-code fixes, live auto-resume, services/tasks, deployment,
+  account calls or trading. Preserve all existing risk/authority rules. D-048
+  review remains pending; design priority does not waive its integration gate.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a
