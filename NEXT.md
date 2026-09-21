@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-21. Follow D-011 through D-048 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow D-011 through D-049 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -17,9 +17,12 @@ failure. Verify transport queue/byte accounting, fill durability, marker/gap
 consistency, task ownership and original-fault propagation. Do not implement
 findings in the review role. No baseline/live action or Phase 2/3 is approved.
 
-MANDATORY D-037: Astra designs only, then ALWAYS STOPS for the operator to switch
-to 5.6 Sol. Sol implements/tests, Astra reviews, Sol fixes. Do not automatically
-advance phases or switch models. Sol implemented R1-R4 from
+MANDATORY D-049: before every substantive task, give the short Astra/Sol
+recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
+for the listed material reasoning/review cases. Stop before development on a
+model mismatch, except urgent safety action. D-037 is superseded where routing
+differs. The active D-048 independent review specifically recommends Astra.
+Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking
 findings: 87 focused tests and the integrated reconnect probe passed. See

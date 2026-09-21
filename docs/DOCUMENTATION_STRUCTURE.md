@@ -20,7 +20,7 @@ line budgets and local links. This structure, not its risk settings, is our mode
 
 | File | Purpose |
 |---|---|
-| [AI_OPERATOR.md](../AI_OPERATOR.md) | Single agent-neutral contract and session routing |
+| [AI_OPERATOR.md](../AI_OPERATOR.md) | Single agent-neutral contract, model selection and session routing |
 | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md) | Thin compatibility pointers |
 | [AI_ENGINEERING.md](../AI_ENGINEERING.md) | Permanent safety, WebSocket-first, CPU and scalability rules |
 | [STATUS.md](../STATUS.md) | Current project truth and blockers |

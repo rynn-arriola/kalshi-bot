@@ -27,8 +27,9 @@ operator authority and completed readiness gates.
 
 ## Required boot sequence for every new session
 
-Before acting, follow the mandatory phase gates below (D-037), including for
-"continue" or "do next" requests. Existing build authority does not waive them.
+Before acting, follow the mandatory model-selection and phase gates below
+(D-049), including for "continue" or "do next" requests. Existing build
+authority does not waive them.
 
 Read these files before proposing or changing anything:
 
@@ -60,31 +61,51 @@ Read D-014 and `AI_ENGINEERING.md` before any design or implementation.
 Use WebSocket information first, with REST for information unavailable through
 the documented streams. CPU efficiency and scalability are required from design.
 
-## Mandatory development workflow — D-037
+## Mandatory model selection and development workflow — D-049
 
-The operator controls model switching. Do not silently combine roles or advance
-from planning into implementation, automatically change models, or claim a switch
-occurred without evidence. This is the permanent workflow for future development:
+Only **GPT-6 Astra** and **GPT-5.6 Sol** are used. Before every substantive task,
+give the operator one short recommendation in exactly one of these forms:
 
-1. **Astra — architecture/design.** Analyze requirements and the existing repo.
-   Design architecture, modules, data flow, interfaces, failure handling and
-   implementation phases. Do not implement. At the end of planning, ALWAYS STOP
-   and hand the plan to the operator so they can switch to **5.6 Sol**.
-2. **5.6 Sol — implementation.** Implement Phase 1 (or the explicitly assigned
-   subsequent phase) according to that architecture and its interfaces/file
-   structure. Add tests and verify. Hand off for Astra review.
-3. **Astra — difficult problems/review.** Inspect the implementation and current
-   Git diff for architectural violations, races, edge cases, security issues and
-   incorrect assumptions. Report findings without implementing fixes; stop for
-   the operator to switch to 5.6 Sol. If Git diff is unavailable, disclose that
-   limitation and inspect available code/evidence without claiming diff coverage.
-4. **5.6 Sol — fixes.** Implement the review findings while preserving the
-   architecture, add regressions and verify. Architectural changes return to
-   Astra design and its mandatory stop/handoff gate.
+`Recommended agent: Astra — [reason]`
 
-Record the current phase, completed work, verification gaps and next model role
-in STATUS/NEXT so the next session can continue without guessing. Human decisions,
-scope/risk limits and separate live-operation authorization remain unchanged.
+`Recommended agent: 5.6 Sol — [reason]`
+
+Recommend **5.6 Sol by default** for approved-plan implementation, focused fixes
+with an established cause, tests and verification, routine logs/status/reports/
+data checks, documentation and formatting, deployment/restart/standard operations,
+and fixes requested by an Astra review.
+
+Recommend **Astra only when deeper reasoning is materially needed**: new feature
+architecture or end-to-end design; strategy, risk or business-logic changes;
+difficult incidents with an uncertain cause; cross-system concurrency, recovery,
+security or account-state problems; API research that may affect architecture,
+strategy, compliance or risk; and final review of meaningful or high-risk
+live-money code changes.
+
+The recommendation follows the task, not the currently selected model. If the
+selected model does not match, stop before development so the operator can
+switch. Do not repeatedly switch models within one phase. Sol escalates to Astra
+only when evidence reveals material architectural uncertainty or risk. Astra is
+not used for routine work Sol can reliably complete. Urgent safety actions such
+as stopping a live bot or preventing exposure never wait for a model switch.
+
+For work requiring the full development flow:
+
+1. **Astra — analysis/design only.** Analyze requirements and the repo; design
+   architecture, modules, data flow, interfaces, failure handling and phases;
+   then stop for the operator's switch.
+2. **5.6 Sol — implementation.** Implement the approved design, test and verify;
+   then stop for Astra review when the change is meaningful or high risk.
+3. **Astra — review only.** Review the implementation and Git diff for
+   architectural violations, races, security problems, edge cases and incorrect
+   assumptions; then stop for the operator's switch. If the diff is unavailable,
+   disclose that limitation.
+4. **5.6 Sol — review fixes.** Implement the findings and rerun verification.
+
+Small, low-risk changes may be implemented and verified by Sol without Astra
+review. Model routing never grants operational authority: preserve every existing
+safety, testing, deployment, restart and live-action rule. Record the current
+phase, completed work, verification gaps and next recommended model in STATUS/NEXT.
 
 ## Authority boundary
 

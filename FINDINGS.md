@@ -1,5 +1,14 @@
 # Findings — kalshi-bot
 
+## 70. Two-model routing has one canonical owner — 2026-09-21
+
+VERIFIED DOCUMENTATION: D-049 records the operator's new model-selection rule.
+`AI_OPERATOR.md` owns the detailed routing and exact recommendation format;
+DECISIONS owns acceptance, while STATUS/NEXT/BUILT only summarize or route to
+it. D-037 is marked superseded where its blanket flow differs. No bot logic,
+configuration, data, process or runtime state changed.
+Verification: `git diff --check` and the repository Markdown local-link audit pass.
+
 ## 69. Disconnect finalization survives stop/cancellation offline — 2026-09-21
 
 VERIFIED OFFLINE under D-048: one retained connection finalizer now owns reader

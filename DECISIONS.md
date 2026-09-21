@@ -562,7 +562,7 @@ them accepted without an explicit operator instruction.
 
 ### D-037 — Mandatory Astra / 5.6 Sol development handoffs
 
-- **Status:** ACCEPTED, 2026-09-20; permanent rule from the operator.
+- **Status:** SUPERSEDED by D-049 on 2026-09-21; retained as workflow history.
 - **Decision owner:** Operator, explicitly requiring this flow from now on.
 - **Decision:** Astra analyzes the repo/requirements and designs architecture,
   modules, data flow, interfaces, failure handling and implementation phases,
@@ -727,6 +727,28 @@ them accepted without an explicit operator instruction.
 - **Boundary:** Preserve the evidence-only architecture and all prior limits.
   No Phase 2/3, baseline, policy/risk change, account/credential call, order
   action, deployment or live activation.
+
+### D-049 — Mandatory usage-efficient model selection
+
+- **Status:** ACCEPTED permanent rule, 2026-09-21.
+- **Decision owner:** Operator, explicitly requiring model selection before every
+  substantive task and limiting the repository to GPT-6 Astra and GPT-5.6 Sol.
+- **Decision:** GPT-5.6 Sol is the default for approved implementation, focused
+  fixes, verification, routine checks/reports/docs, standard operations and Astra
+  review fixes. GPT-6 Astra is reserved for material architecture/design,
+  strategy/risk/business logic, uncertain difficult incidents, cross-system
+  concurrency/recovery/security/account state, architecture/risk-sensitive API
+  research and final review of meaningful or high-risk live-money code.
+- **Workflow:** Before substantive work, print `Recommended agent: Astra — ...`
+  or `Recommended agent: 5.6 Sol — ...`. A model mismatch stops development for
+  the operator's switch. Full development remains Astra design -> Sol implement/
+  verify -> Astra review -> Sol fixes/verify, with a stop at each handoff. Small,
+  low-risk Sol changes need no Astra review; urgent exposure-prevention actions
+  never wait for switching. Do not switch repeatedly within a phase; escalate
+  Sol only on evidence of material architectural uncertainty or risk.
+- **Boundary:** This supersedes D-037 where routing differs. It does not alter
+  authority, safety, testing, deployment, restart, capital, risk or live-action
+  rules. `AI_OPERATOR.md` is the canonical detailed procedure.
 
 ### Earlier recovery-import question — superseded by D-025
 

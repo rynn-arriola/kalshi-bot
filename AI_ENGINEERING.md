@@ -4,9 +4,9 @@ These are design/review requirements, not claims about implemented behavior.
 Current state belongs in [STATUS.md](STATUS.md), authorization in
 [DECISIONS.md](DECISIONS.md), and session routing in [AI_OPERATOR.md](AI_OPERATOR.md).
 
-D-037 is mandatory: follow the Astra design -> operator switch -> 5.6 Sol
-implementation -> Astra review -> 5.6 Sol fixes gates in `AI_OPERATOR.md`.
-Always stop after planning; engineering checks do not waive that handoff.
+D-049 supersedes D-037's blanket routing. Follow the mandatory two-model
+selection and phase gates in `AI_OPERATOR.md`: Sol is the default; Astra is
+reserved for material design, uncertainty, risk and meaningful live-money review.
 
 ## Standing operator rules — D-014
 

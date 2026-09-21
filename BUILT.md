@@ -1,5 +1,13 @@
 # What exists
 
+## Mandatory two-model routing — 2026-09-21
+
+D-049 makes `AI_OPERATOR.md` the canonical usage-efficient routing rule for the
+only two agents: GPT-6 Astra and GPT-5.6 Sol. Every substantive task begins with
+a short recommendation; Sol defaults to routine/approved work, while Astra is
+reserved for material design, uncertainty, risk and meaningful live-money review.
+D-037 is superseded where different. Documentation only; no runtime change.
+
 ## Retained connection finalization — 2026-09-21
 
 D-048 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md)

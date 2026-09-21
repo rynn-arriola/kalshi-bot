@@ -6,7 +6,8 @@ This folder tracks the [canonical GitHub repository](https://github.com/rynn-arr
 on `master`; see [publication record](docs/GITHUB_PUBLICATION.md).
 
 **AI operators:** begin with [AI_OPERATOR.md](AI_OPERATOR.md), then follow its
-required routing. AGENTS/CLAUDE are compatibility pointers, not separate rules.
+required two-model recommendation and routing. AGENTS/CLAUDE are compatibility
+pointers, not separate rules.
 Permanent requirements: [AI_ENGINEERING.md](AI_ENGINEERING.md).
 Design: [WebSocket-first architecture](docs/ARCHITECTURE.md).
 Documentation layout: [Polymarket-derived structure](docs/DOCUMENTATION_STRUCTURE.md).
