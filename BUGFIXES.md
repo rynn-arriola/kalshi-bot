@@ -10,6 +10,20 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Native child identity and pipe-close/process-exit race
+
+**Mechanisms.** The Windows virtual-environment launcher briefly spawned the real
+interpreter, so the retained `Popen` handle/PID did not identify the pipe client.
+After switching to the real base executable with the pinned virtual environment,
+an intentional `os._exit` could still close IPC just before its retained process
+handle became signaled; under full-suite load the host misclassified that first
+crash as an IPC fault. **Fix under D-056.** Launch the real interpreter process,
+pass only the fixed virtual-environment identity, validate the exact pipe peer,
+and allow a 250 ms bounded wait on that retained process handle before classifying
+a live-child IPC failure. **Verification.** Native parent/child identity tests,
+10/10 repeated crash-budget runs, 81 focused and 885 complete tests pass. No live
+runtime, account or network use.
+
 ### Clock fault loss and unstable default boot estimate
 
 **Mechanisms.** Stale child filtering returned before local clock distrust was

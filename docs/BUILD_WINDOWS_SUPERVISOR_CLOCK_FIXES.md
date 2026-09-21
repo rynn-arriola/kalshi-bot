@@ -2,7 +2,8 @@
 
 Date: September 21, 2026. Native Windows; execution disabled. Implements R1/R2
 from the [D-053 independent Astra review](REVIEW_D053_ASTRA.md) after operator
-approval. This is Sol implementation evidence and requires Astra re-review.
+approval. This is Sol implementation evidence; the subsequent
+[independent Astra review](REVIEW_D054_ASTRA.md) clears R1/R2 within S1.
 
 ## Fix mapping
 
@@ -49,5 +50,5 @@ and store are loaded in memory, proving they detect the reviewed parent defects.
 
 No process launcher, IPC, runtime wiring, service/task, bot restart, account or
 network access, credentials, orders, cancels or live authority were added. S2
-requires independent Astra re-review, the separate D-048 review and a new
-operator assignment.
+still requires the separate D-048 review and a new operator assignment; S1's
+independent review is complete. Native integration/live readiness is not implied.

@@ -2,6 +2,46 @@
 
 ## Current update — 2026-09-21
 
+D-056 implements the approved D-055 S2A inert-process foundation; see
+[build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md). Protected account-scoped
+Windows role objects, one thread-owned control mutex, inherited child/stop/parent
+handles, transactional reservations, strict bounded named-pipe IPC, a fixed inert
+child and retained fail-closed shutdown are present. Native acceptance tests cover
+duplicate ownership, abandoned control, DACL squatting, crash/hang, parent death,
+cold orphan release and exact stop/exit behavior. The 60-second/100-cycle resource
+fixture passes all targets: parent CPU 0.990%, event-loop p99 16.372 ms, added
+working set 34,140,160 bytes, backlog 1, no retained supervisor thread and handle
+delta -2. All 81 focused and 885 complete tests pass; the crash race passes
+10/10 repeated runs, and disabled preflight remains side-effect-free. **STOP for independent Astra review under D-049. Recommended agent:
+Astra.** S2B, production runtime/CLI/service integration and all live operation
+remain unimplemented and unauthorized.
+
+### D-048 review before S2 design
+
+D-048 [independent Astra review](docs/REVIEW_D048_ASTRA.md) clears D-047 R1
+with no new blocking findings. All 868 full tests pass (79.456 seconds), plus
+205 targeted tests, nine repeated shutdown regressions and two independent
+writer-failure/cancellation probes. Preflight remains disabled with no side
+effects. D-048 and supervisor S1 prerequisite reviews are now complete; S2 is
+still unbuilt and requires separate assignment. **STOP under D-049.** Next
+recommended agent: Astra for detailed native S2 ownership/IPC design on operator
+assignment, then Sol implementation after approval. Local review docs remain
+uncommitted; no code, configuration, runtime or live action changed.
+
+### D-054 review before the separate D-048 review
+
+D-054 [independent Astra review](docs/REVIEW_D054_ASTRA.md) clears both D-053
+clock findings with no new blocking findings in the execution-disabled S1 diff.
+All 64 focused and 868 full tests pass (full: 78.100 seconds); 48 additional
+failure-sequence cases pass and four regressions detect the parent defects.
+Disabled preflight remains exit 2 with no side effects. Supervisor S1 review is
+complete, not production readiness. **STOP under D-049.** Next recommended
+agent: Astra for the separate D-048 review, on operator assignment. S2 remains
+unbuilt and needs D-048 clearance plus separate assignment. Only local review/
+handoff documents changed; no runtime, configuration or live action.
+
+### D-054 implementation evidence before Astra review
+
 D-054 implements both findings from the D-053
 [Astra review](docs/REVIEW_D053_ASTRA.md); see
 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md). Local clock

@@ -841,6 +841,34 @@ them accepted without an explicit operator instruction.
   bot restart, orders or live action. Independent Astra re-review is mandatory
   before S2; D-048 remains a separate S2 gate.
 
+### D-055 — Design supervisor S2 native lifecycle
+
+- **Status:** ACCEPTED design scope only, 2026-09-21.
+- **Decision owner:** Operator: “Astra design s2,” after S1 and D-048 review
+  clearance. This does not approve the resulting design's implementation.
+- **Scope:** Specify native Windows ownership, process/IPC interfaces, stop and
+  crash recovery, bounded resources, offline runtime integration and acceptance.
+  See [S2 design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md).
+- **Proposed handoff:** Approve S2A inert-process foundations for Sol first;
+  stop for Astra review before a separately assigned S2B offline runtime/fence
+  phase. The split and new fixture thresholds await approval.
+- **Boundary:** Design/documentation only. No code/configuration change, process
+  launch, service/task, laptop suspend/reboot, credentials, venue/account access,
+  order action, deployment or live authority. Preserve D-049's design stop.
+
+### D-056 — Implement supervisor S2A inert-process foundations
+
+- **Status:** ACCEPTED and implemented offline, 2026-09-21; Astra review pending.
+- **Decision owner:** Operator: “Sol implement,” after the D-055 Astra design.
+- **Scope:** Implement only D-055 S2A: protected native role objects, serialized
+  control/reservation state, bounded strict local pipe IPC, one fixed inert child,
+  retained graceful shutdown, cold orphan release, native fault tests and resource
+  evidence. See [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md).
+- **Boundary:** No S2B runtime adapter or recovery-fence transfer, production start
+  command, service/task, bot configuration/runtime change, credentials, network,
+  venue/account access, order action, deployment or live authority. Stop for Astra
+  review under D-049.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

@@ -4,6 +4,9 @@ Date: September 21, 2026. Native Windows; execution disabled. Implements the
 P2 finding from [the D-047 Astra review](REVIEW_D047_ASTRA.md). No credential,
 account, network, order or Polymarket action was used.
 
+Subsequent [independent Astra review](REVIEW_D048_ASTRA.md) clears D-047 R1;
+the measurements below remain the original Sol implementation evidence.
+
 ## Behavior
 
 Every connection generation now creates one retained finalizer when its reader
@@ -58,7 +61,8 @@ local engineering fixtures, not venue throughput evidence.
 
 ## Handoff
 
-Return to Astra for independent review under D-037. Venue history/stream
+Independent review is complete; follow the current D-049 handoff in `../NEXT.md`.
+Venue history/stream
 handoff, opening basis, settlements/corrections, account exclusivity and cash
 proof remain unresolved. Entry and live gates remain false; Phase 2/3 and live
 operation remain unauthorized.

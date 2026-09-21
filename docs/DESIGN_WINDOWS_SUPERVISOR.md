@@ -4,8 +4,10 @@ Date: September 21, 2026. D-050 requirement; design approved for S1.
 The operator requested a Polymarket-like supervisor before returning to the
 D-048 review. D-049 requires an Astra design stop before Sol implementation.
 D-051 now implements the execution-disabled S1 policy/control foundation; see
-[build evidence](BUILD_WINDOWS_SUPERVISOR_S1.md). It awaits independent Astra
-review. S2/S3 remain unimplemented and this design adds no live launch,
+[build evidence](BUILD_WINDOWS_SUPERVISOR_S1.md). Subsequent
+[S1](REVIEW_D054_ASTRA.md) and [D-048](REVIEW_D048_ASTRA.md) reviews are clear.
+[D-055](DESIGN_WINDOWS_SUPERVISOR_S2.md) now details S2's proposed interfaces
+and phase gates. S2/S3 remain unimplemented and this design adds no live launch,
 installation or order authority.
 
 ## Source evidence
@@ -249,8 +251,8 @@ and the earlier 804-test implementation result was not rerun.
 
 ## Handoff
 
-S1 is implemented under D-051. Stop for independent **Astra** review of its
-policy, journal and fail-closed boundaries. Timing/restart values are approved
-only as offline S1 policy, not as deployed operating settings; future live
-auto-resume remains unapproved. The independent D-048 review also remains
-outstanding before S2/runtime integration.
+S1 and D-048 reviews are complete. Follow the
+[D-055 S2 proposal](DESIGN_WINDOWS_SUPERVISOR_S2.md): stop for operator approval
+and the Sol switch, with S2A recommended first. Timing/restart values are approved
+only as offline S1 policy, not deployed settings; S2's added fixture settings,
+implementation and future live auto-resume remain unapproved.

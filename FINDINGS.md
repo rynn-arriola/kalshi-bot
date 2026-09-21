@@ -1,5 +1,60 @@
 # Findings — kalshi-bot
 
+## 82. S2A native ownership is implemented and meets resource targets — 2026-09-21
+
+VERIFIED OFFLINE under D-056: one native parent and one fixed inert child now use
+protected account-scoped role objects, an OS-thread-owned serialized control
+mutex, explicit inherited child/stop/parent handles, a schema-4 transactional
+reservation and strict bounded local pipe frames. Parent death makes the child
+exit through its retained parent handle; a cold parent never adopts by PID and
+clears only a lease-proven orphan while remaining in attention. Crash attempts
+remain durable, hung shutdown never starts a replacement, permissive named-object
+squatting is rejected, and no operational path force-kills a child.
+
+MEASURED on native Windows with the fixed inert fixture: 60.002 seconds idle and
+100 exact child cycles produced parent CPU 0.990% of one core, child CPU 0.651%,
+event-loop p99 16.372 ms, policy p99 7.491 ms, 34,140,160 added working-set bytes,
+backlog 1, handle delta -2 and no retained supervisor thread. See
+[D-056 evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md). This proves S2A software
+correctness/resource bounds only. All 81 focused and 885 complete tests pass;
+disabled preflight remains side-effect-free. S2B runtime/fence transfer, real suspend/reboot,
+production launch and live readiness remain unimplemented/unverified; Astra review
+is next.
+
+## 81. S2 needs native ownership and cross-process restriction contracts — 2026-09-21
+
+VERIFIED SOURCE at `ebb9892`: current Windows lease is presence-based, not a
+transaction mutex; the supervisor journal has no native parent/session model;
+runtime teardown is retained, while quota cooldown/retry evidence is local to
+its process. Official Windows/Python contracts were checked for mutex ownership,
+handle inheritance, pipe access, overlapped cancellation and power callbacks.
+The [D-055 S2 design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md) proposes explicit
+interfaces and native acceptance tests. These are design requirements, not
+measured implementation behavior. No source, runtime or configuration changed;
+S2A/S2B implementation and any live operation remain unapproved.
+
+## 80. D-048 retained connection finalization passes review — 2026-09-21
+
+VERIFIED OFFLINE: independent review of `b27cb0c` against `ecf04c3`, unchanged
+in current `ebb9892`, clears D-047 R1. All 868 full tests and 205 targeted tests
+pass, plus nine repeated shutdown regressions. Two independent writer-command
+failure probes retain the error through stop/repeated cancellation and preserve
+an open durable gap after reopening. Both disconnect regressions detect the
+parent defect. See [review evidence and limits](docs/REVIEW_D048_ASTRA.md).
+This completes the D-048 gate, not venue continuity or live readiness. S2 still
+needs separate assignment. Only review documents changed.
+
+## 79. D-054 clears both supervisor clock findings — 2026-09-21
+
+VERIFIED OFFLINE at `ebb9892`: independent Astra review clears D-053 R1/R2
+with no new blocking findings in the diff. All 64 focused and 868 full tests
+pass (78.100 seconds), plus 48 independent transactional fault sequences;
+four regressions reproduce the parent defects. Preflight stays disabled.
+See [review evidence and limits](docs/REVIEW_D054_ASTRA.md). Supervisor S1
+review is complete, not native process/reboot or live-readiness proof. D-048
+review and a separate operator assignment remain S2 gates. No source/runtime
+changes or live action occurred.
+
 ## 78. D-053 clock findings are fixed offline — 2026-09-21
 
 VERIFIED OFFLINE under D-054: independent local clock distrust now takes safety

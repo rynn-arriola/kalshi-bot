@@ -1,11 +1,18 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-055 [S2 detailed design](DESIGN_WINDOWS_SUPERVISOR_S2.md) is the current
+native-process/IPC proposal after S1 and D-048 clearance. It specifies S2A inert
+lifecycle foundations followed by separately assigned S2B offline runtime and
+restriction transfer. D-056 [implements S2A](BUILD_WINDOWS_SUPERVISOR_S2A.md)
+offline and now awaits Astra review. S2B remains unimplemented and separately
+gated.
+
 D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
 one process supervisor and one runtime child, durable operator control and bounded
 automatic recovery. D-051 [S1 implementation](BUILD_WINDOWS_SUPERVISOR_S1.md)
-adds only the immutable execution-disabled transition policy and separate
-transactional control journal. Process handles, IPC and runtime integration are
-not built and require independent Astra review plus the separate D-048 gate.
+adds the immutable execution-disabled transition policy and separate transactional
+control journal. D-056 adds only S2A native process handles and inert IPC; runtime
+integration still requires separately assigned S2B after the reviews below.
 This does not establish account proof or authorize live operation.
 The [D-051 review](REVIEW_D051_ASTRA.md) required policy/contract and resource-
 verification fixes. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
@@ -13,9 +20,11 @@ offline. The [D-052 re-review](REVIEW_D052_ASTRA.md) clears original hold/crash/
 benchmark findings but requires five follow-ups before S2. D-053
 [implements those follow-ups](BUILD_WINDOWS_SUPERVISOR_REVIEW_FOLLOWUPS.md)
 offline. [D-053 Astra review](REVIEW_D053_ASTRA.md) clears four D-052 findings
-but requires two clock-continuity corrections. S2 remains unbuilt and blocked.
+but requires two clock-continuity corrections.
 D-054 [implements those corrections](BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md)
-offline and awaits independent Astra re-review.
+offline. [D-054 Astra review](REVIEW_D054_ASTRA.md) clears both clock findings
+and completes S1 review. D-048 is also cleared below. D-056 now supplies S2A
+native fixture evidence, not S2B runtime/reboot behavior or live operation.
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
@@ -25,7 +34,8 @@ whose [review findings](REVIEW_D045_ASTRA.md) are addressed by the D-046
 addressed by [D-047](BUILD_ACCOUNT_CONTINUITY_SHUTDOWN_FIXES.md). Its
 [Astra review](REVIEW_D047_ASTRA.md) verifies those exact fixes but requires
 one follow-up for stop overlapping an already-active disconnect drain, now
-implemented under [D-048](BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md) pending review.
+implemented under [D-048](BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md).
+[D-048 Astra review](REVIEW_D048_ASTRA.md) clears that finding in offline scope.
 It does not establish a venue history/stream
 barrier, opening inventory or live-entry authority.
 

@@ -30,6 +30,8 @@ class EventKind(StrEnum):
     CHILD_STATUS = "child_status"
     CHILD_RESULT = "child_result"
     HOLDS_RESOLVED = "holds_resolved"
+    LOCAL_SAFETY_FAULT = "local_safety_fault"
+    ORPHAN_RELEASED = "orphan_released"
     TICK = "tick"
 
 
@@ -67,6 +69,20 @@ class AttentionReason(StrEnum):
     PROGRESS_STALLED = "progress_stalled"
     STARTUP_TIMEOUT = "startup_timeout"
     SHUTDOWN_TIMEOUT = "shutdown_timeout"
+    OWNER_LOST = "owner_lost"
+    CONTROL_ABANDONED = "control_abandoned"
+    IPC_FAILURE = "ipc_failure"
+    POWER_STATE_CHANGED = "power_state_changed"
+    RECOVERY_FENCE_UNKNOWN = "recovery_fence_unknown"
+
+
+LOCAL_SAFETY_REASONS = frozenset({
+    AttentionReason.OWNER_LOST,
+    AttentionReason.CONTROL_ABANDONED,
+    AttentionReason.IPC_FAILURE,
+    AttentionReason.POWER_STATE_CHANGED,
+    AttentionReason.RECOVERY_FENCE_UNKNOWN,
+})
 
 
 def _time(value, field):
@@ -154,11 +170,11 @@ class ControlState:
     retry_holds: tuple[str, ...]
     recovery_reasons: tuple[str, ...]
     updated_utc: float
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self):
         identity(self.scope_id)
-        integer(self.schema_version, 2, 2)
+        integer(self.schema_version, 3, 3)
         integer(self.generation, 0, 2**63-1)
         object.__setattr__(self, "state", _enum(self.state, SupervisorState, "supervisor state"))
         if type(self.desired_armed) is not bool or type(self.stop_latched) is not bool:
@@ -293,6 +309,7 @@ class SupervisorEvent:
     cleanup_complete: bool = False
     cleanup_failed: bool = False
     unresolved_work: bool = False
+    attention_reason: AttentionReason | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "kind", _enum(self.kind, EventKind, "event kind"))
@@ -320,6 +337,14 @@ class SupervisorEvent:
             raise InvalidData("event booleans required")
         if self.cleanup_complete and self.cleanup_failed:
             raise InvalidData("cleanup cannot be complete and failed")
+        if self.attention_reason is not None:
+            object.__setattr__(self, "attention_reason",
+                _enum(self.attention_reason, AttentionReason, "attention reason"))
+        if (self.kind == EventKind.LOCAL_SAFETY_FAULT
+                and self.attention_reason not in LOCAL_SAFETY_REASONS):
+            raise InvalidData("local safety fault requires a local reason")
+        if self.kind != EventKind.LOCAL_SAFETY_FAULT and self.attention_reason is not None:
+            raise InvalidData("attention reason is only valid for a local safety fault")
 
     def to_dict(self):
         return dict(kind=self.kind.value, observed_utc=self.observed_utc,
@@ -332,7 +357,8 @@ class SupervisorEvent:
             work_deadline_utc=self.work_deadline_utc,
             retry_holds=list(self.retry_holds), process_exited=self.process_exited,
             cleanup_complete=self.cleanup_complete, cleanup_failed=self.cleanup_failed,
-            unresolved_work=self.unresolved_work)
+            unresolved_work=self.unresolved_work,
+            attention_reason=(self.attention_reason.value if self.attention_reason else None))
 
 
 @dataclass(frozen=True)
@@ -430,7 +456,8 @@ def _expired_child_deadline(state, event, policy):
 
 def _child_event_stale(state, event):
     if event.kind not in {EventKind.SPAWN_FAILED, EventKind.CHILD_STARTED,
-                          EventKind.CHILD_STATUS, EventKind.CHILD_RESULT}:
+                          EventKind.CHILD_STATUS, EventKind.CHILD_RESULT,
+                          EventKind.ORPHAN_RELEASED}:
         return False
     if (state.child_id is None or state.child_generation is None
             or event.child_id is None or event.expected_generation is None
@@ -454,6 +481,8 @@ def _child_event_stale(state, event):
                                    SupervisorState.DEGRADED}
             or (event.child_phase == ChildPhase.STARTING
                 and state.state != SupervisorState.STARTING))
+    if event.kind == EventKind.ORPHAN_RELEASED:
+        return state.state != SupervisorState.ATTENTION_REQUIRED
     return False
 
 
@@ -514,6 +543,21 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
         return _attention(state, transition, clock_reason,
                           request_stop=True)
     event = transition
+
+    if event.kind == EventKind.LOCAL_SAFETY_FAULT:
+        return _attention(state, event, event.attention_reason,
+                          request_stop=True)
+
+    if event.kind == EventKind.ORPHAN_RELEASED:
+        # Absence of the account-scoped native child lease proves only that a
+        # conforming process no longer owns this reservation.  It cannot claim
+        # clean shutdown, clear holds/attempts or restore launch authority.
+        return SupervisorDecision(_updated(state, event,
+            child_id=None, child_generation=None, start_requested_utc=None,
+            child_started_utc=None, last_heartbeat_utc=None,
+            last_progress_utc=None, progress_sequence=0,
+            work_deadline_utc=None, healthy_since_utc=None,
+            stop_requested_utc=None))
 
     if event.kind == EventKind.ARM:
         if (event.expected_generation != state.generation or state.child_id is not None

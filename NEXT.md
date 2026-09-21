@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-21. Follow D-011 through D-054 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow D-011 through D-056 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -9,29 +9,26 @@ with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
 
-D-054 implements both findings from the D-053
-[Astra review](docs/REVIEW_D053_ASTRA.md), with evidence in
-`docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md`. **STOP for independent Astra
-re-review under D-049.** Review the full diff against `b051067`, especially
-local clock-fault precedence, stale-event journaling, persisted default
-continuity and genuine boot/clock discontinuities. Do not implement in the
-review phase. Preserve execution-disabled S1: no launcher, service/task or bot
-start. S2/runtime integration still requires clearance, the independent D-048
-review below and a separate assignment.
+D-054 [independent Astra review](docs/REVIEW_D054_ASTRA.md) clears both D-053
+clock findings and completes the execution-disabled supervisor S1 review.
+D-048 [independent Astra review](docs/REVIEW_D048_ASTRA.md) also clears the
+retained connection-finalization finding. Both prerequisite review gates are
+complete; no Sol fix phase is needed for either review.
 
-D-048 Sol fixes for the D-047 finding are implemented and verified; see
-`docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. STOP for independent Astra
-review under D-049. Inspect retained connection finalization across disconnect,
-ordinary stop, caller/repeated cancellation, marker close and genuine storage
-failure. Verify transport queue/byte accounting, fill durability, marker/gap
-consistency, task ownership and original-fault propagation. Do not implement
-findings in the review role. No baseline/live action or Phase 2/3 is approved.
+D-056 [S2A implementation](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md) is complete
+offline against the D-055 design. **STOP for independent Astra review under
+D-049. Recommended agent: Astra.** Review native ownership/DACLs, spawn/STOP
+linearization, parent/child death, IPC close/cancellation, cold orphan release,
+resource evidence and the complete diff. Do not start S2B until this review is
+cleared and separately assigned. No service/task installation, bot start,
+account call, baseline or live authority; account-continuity Phase 2/3 remains
+separately unapproved.
 
 MANDATORY D-049: before every substantive task, give the short Astra/Sol
 recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
 for the listed material reasoning/review cases. Stop before development on a
 model mismatch, except urgent safety action. D-037 is superseded where routing
-differs. D-054 and D-048 reviews recommend Astra.
+differs. The next S2A phase is meaningful concurrency/security review by Astra.
 Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking

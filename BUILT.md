@@ -1,5 +1,43 @@
 # What exists
 
+## D-056 native Windows supervisor S2A — 2026-09-21
+
+D-056 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md) implements the
+approved inert-process half of the [D-055 design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md).
+It adds protected role/stop/control objects, inherited lifetime handles,
+transactional native reservations, strict bounded local IPC, one fixed child
+fixture, cold orphan release and native acceptance/resource tests. The 60-second
+idle and 100-cycle run meets every S2A target; 81 focused and 885 complete tests
+pass, and disabled preflight remains fail-closed. There is no production start CLI,
+runtime adapter, account/network/order path or live authority. Independent Astra
+review is mandatory before any separately approved S2B work.
+
+## D-055 S2 design artifact — not implementation — 2026-09-21
+
+[S2 architecture and acceptance](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md) defines
+the native lifecycle/IPC interfaces, inherited ownership, durable stop/unknown
+recovery behavior and resource tests. Proposes S2A inert child first, then S2B
+offline runtime and restriction transfer. Source and official Windows/Python
+contracts were inspected. D-056 above now implements S2A only and awaits Astra
+review; S2B remains unimplemented.
+
+## D-048 Astra review — retained finalization cleared — 2026-09-21
+
+[Independent review](docs/REVIEW_D048_ASTRA.md) clears D-047 R1 with no new
+blocking findings. All 868 full and 205 targeted tests pass, plus nine repeated
+shutdown regressions and two writer-thread failure/cancellation probes. Both
+D-048 and supervisor S1 review gates are complete. S2 remains unbuilt and needs
+separate assignment; venue continuity and live readiness remain unproven.
+
+## D-054 Astra review — supervisor S1 cleared — 2026-09-21
+
+[Independent review](docs/REVIEW_D054_ASTRA.md) clears both D-053 clock
+findings with no new blocking findings in this diff. All 64 focused and 868 full
+tests pass, plus 48 independent fault-sequence cases and four parent-defect
+detections. Disabled preflight remains fail-closed. This completes offline S1
+review only; D-048 review and separate assignment still gate S2. No runtime or
+native reboot/process-integration readiness is claimed.
+
 ## D-054 supervisor clock review fixes — 2026-09-21
 
 D-054 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md) implements
@@ -9,7 +47,8 @@ durable and the payload remains labeled stale. Default wall/monotonic continuity
 uses tolerated deltas and retains its persisted identity instead of comparing a
 fresh quantized estimate. All 64 focused and 868 full tests pass, including
 10/10 repeats, counterfactual parent checks, resource checks and disabled
-preflight. This is Sol evidence pending Astra review; S2 and D-048 remain gated.
+preflight. This is Sol implementation evidence; the independent review above
+now clears it within S1. D-048 and separate assignment still gate S2.
 
 ## D-053 Astra review — two clock fixes required — 2026-09-21
 
@@ -92,7 +131,8 @@ D-048 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md)
 addresses the D-047 review finding. Connection teardown now has one retained
 owner through disconnect/stop overlap, fill drain and marker/gap finalization.
 Three new regressions pass with 231 focused and 804 full tests, resource checks
-and disabled preflight. Independent Astra review is next; live gates remain false.
+and disabled preflight. The subsequent [Astra review](docs/REVIEW_D048_ASTRA.md)
+now clears this fix in scope; live gates remain false.
 
 ## D-047 review — disconnect/stop overlap remains — 2026-09-21
 
