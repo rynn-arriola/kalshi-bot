@@ -1,5 +1,35 @@
 # Findings — kalshi-bot
 
+## 65. Reviewed continuity races are fixed offline — 2026-09-20
+
+VERIFIED OFFLINE under D-046: controlled reader teardown retains queued fills,
+gives in-flight delivery a bounded join and records interrupted spans invalid.
+Runtime owns marker identity before awaiting its accepted open and reloads
+durable gaps after an uncertain acknowledgement; reconnect cannot hide the old
+marker. Quota transition now precedes status capture. New regressions reproduce
+the reviewed boundaries and pass; 196 focused and all 798 tests pass. The quota
+weak-reference test passes 10/10 after its legitimate callback turn. The newly
+instrumented eight-epoch reconnect fixture passes at 30/120 markets with p99
+3.141/3.062 ms, loop p99 0.970/0.886 ms and <1.5 MiB peak. See
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md). These results
+remain local engineering evidence, not a venue continuity or live-readiness
+claim. No account, credential, network, order or Polymarket action.
+
+## 64. Continuity review exposes local delivery/gap races — 2026-09-20
+
+VERIFIED OFFLINE at `07e8984`: stop can discard a queued fill yet persist a
+clean marker (3/3 probes); a handshake timeout after durable epoch-open can
+leave an orphan marker while cached gap count stays zero. Quota expiry can
+also return stale continuity in one status response. See canonical
+[R1-R5 review and reproduction evidence](docs/REVIEW_D045_ASTRA.md).
+The prior quota weak-reference failure was traced to a queued task callback:
+10/10 original failures, 10/10 process-local passes after callback drain; no
+lasting production retention demonstrated. Review suites passed 192 focused
+and 794 full tests, but did not cover these races. The continuity benchmark's
+reconnect burst precedes its instrumentation, so only its assessment-loop
+resource numbers are measured. These findings qualify section 63's earlier
+verification claims. No source fixes, live account/credential use or trading.
+
 ## 63. Local continuity evidence is built, venue handoff remains unknown — 2026-09-20
 
 VERIFIED OFFLINE: D-045 opens a durable local reader marker only after all four

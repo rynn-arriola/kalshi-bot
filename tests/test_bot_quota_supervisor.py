@@ -124,6 +124,9 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.guard,'install',observe):
             await self.drain()
         await eventually(lambda:self.reads.budget_refresh is None)
+        # budget_refresh clears before every done callback holding the completed
+        # task has run. Test lasting ownership only after that callback turn.
+        await asyncio.sleep(0)
         gc.collect()
         self.assertIsInstance(self.supervisor.rollover,RolloverBoundary)
         self.assertEqual(len(candidate_refs),1)

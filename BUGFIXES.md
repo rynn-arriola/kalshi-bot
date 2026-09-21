@@ -10,6 +10,21 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-20 — development components, no live account use
 
+### Private-reader shutdown and epoch-open ownership
+
+**Mechanisms.** Stop could cancel a reader after it dequeued a fill but before
+durable staging, then infer a clean span from an empty queue. A committed epoch
+open whose caller acknowledgement was cancelled could remain orphaned while the
+current run retained a stale zero-gap cache. Status also captured continuity
+before quota polling could synchronously revoke it. **Fix under D-046.** Bounded
+in-flight ownership and post-join queue draining retain fill evidence and mark
+interrupted spans invalid. Marker identity is owned before the accepted write;
+uncertain acknowledgements close/reload durable gaps. Quota polling precedes
+status capture. **Verification.** Queued/in-flight fill, cancelled/failed-open,
+reconnect and quota-boundary regressions pass; 196 focused and 798 full tests,
+resource checks and disabled preflight pass. See
+`docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md`. No live use.
+
 ### Position pagination and unscoped private updates
 
 **Mechanisms.** The development REST collector treated an omitted positions

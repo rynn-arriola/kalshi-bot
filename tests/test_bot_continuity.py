@@ -14,6 +14,7 @@ from kalshi_bot.rest import ReadResult, RestReads, TokenBudget
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_auto_recovery import EXEC, NOW
+from test_bot_quota import candidate as quota_candidate, setup as quota_setup
 from test_bot_recovery_runtime import AccountReads, FakeReader
 from test_bot_recovery_runtime import event as fill_event
 
@@ -184,6 +185,25 @@ class AssessmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.runtime._epoch)
         self.assertFalse(self.runtime.verification_status()['continuity']['venue_handoff_proven'])
 
+    async def test_status_captures_continuity_after_quota_revocation(self):
+        clock, reads, guard = quota_setup()
+        try:
+            self.runtime.quota = guard
+            self.runtime._quota_available = False
+            guard.listen(self.runtime._quota_transition)
+            guard.install(quota_candidate(guard))
+            self.assertTrue(await self.runtime.recover_once())
+            self.runtime._epoch = PrivateEpoch('quota-boundary', 0,
+                self.runtime.account.generation, self.writer.epoch, CHANNELS, NOW)
+            self.assertTrue(self.runtime._refresh_continuity().local_evidence_consistent)
+            clock.t = guard.lease.deadline_mono
+            status = self.runtime.verification_status()
+            self.assertFalse(status['local_snapshot_consistent'])
+            self.assertFalse(status['continuity']['local_evidence_consistent'])
+            self.assertIn('quota_unavailable', status['blockers'])
+        finally:
+            await reads.close()
+
 
 class ReaderEpochTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -267,20 +287,81 @@ class ReaderEpochTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(epoch.clean_local_delivery)
         self.assertEqual(epoch.terminal_reason, 'cancelled')
 
-    async def test_orderly_stop_with_reader_backlog_is_not_clean(self):
+    async def test_orderly_stop_with_real_queued_fill_is_durable_and_not_clean(self):
         await self.launch()
-        # Fault injection: the reader is already waiting on its original queue.
-        # Expose a distinct nonempty ingress queue at teardown to simulate
-        # buffered bytes that the callback never acknowledged.
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
         reader = self.connections['account'][0]
-        reader.queue = asyncio.Queue()
-        reader.queue.put_nowait({'type': 'market_position',
-            'msg': {'market_ticker': 'A', 'position_fp': '1', 'position_cost_dollars': '.5'}})
+        reader.queue.put_nowait(fill_event())
         self.runtime.stop()
         await asyncio.wait_for(self.task, 4)
         epoch = (await self.runtime.inspect_private_epochs())[0]
         self.assertFalse(epoch.clean_local_delivery)
         self.assertEqual(epoch.terminal_reason, 'undrained')
+        self.assertEqual(epoch.durable_fill_count, 1)
+        self.assertEqual(len(await self.writer.pending_fills(0)), 1)
+
+    async def test_cancelled_inflight_fill_stays_durable_and_invalidates_drain(self):
+        await self.launch()
+        committed = asyncio.Event()
+        original = self.writer.stage_fill
+        async def delayed(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            committed.set()
+            await asyncio.Event().wait()
+            return result
+        with patch.object(self.writer, 'stage_fill', side_effect=delayed):
+            self.connections['account'][0].queue.put_nowait(fill_event())
+            await committed.wait()
+            self.runtime.stop()
+            await asyncio.wait_for(self.task, 4)
+        epoch = (await self.runtime.inspect_private_epochs())[0]
+        self.assertFalse(epoch.clean_local_delivery)
+        self.assertEqual(epoch.terminal_reason, 'undrained')
+        self.assertEqual(len(await self.writer.pending_fills(0)), 1)
+
+    async def test_cancelled_epoch_open_ack_is_owned_and_closed_as_gap(self):
+        committed = asyncio.Event()
+        original = self.writer.open_private_epoch
+        async def delayed(epoch):
+            result = await original(epoch)
+            committed.set()
+            await asyncio.Event().wait()
+            return result
+        with patch.object(self.writer, 'open_private_epoch', side_effect=delayed):
+            self.task = asyncio.create_task(self.runtime.run())
+            await asyncio.wait_for(committed.wait(), 4)
+            self.task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await self.task
+        epochs = await self.runtime.inspect_private_epochs()
+        self.assertEqual(len(epochs), 1)
+        self.assertFalse(epochs[0].clean_local_delivery)
+        self.assertEqual(epochs[0].terminal_reason, 'cancelled')
+        self.assertEqual(await self.writer.private_epoch_gap_count(subaccount=0), 1)
+
+    async def test_failed_epoch_open_ack_is_reconciled_before_reconnect(self):
+        self.runtime.attempt_limit = 2
+        self.runtime.sleep = lambda _: asyncio.sleep(0)
+        original = self.writer.open_private_epoch
+        calls = 0
+        async def uncertain(epoch):
+            nonlocal calls
+            calls += 1
+            result = await original(epoch)
+            if calls == 1:
+                raise TimeoutError('injected lost epoch-open acknowledgement')
+            return result
+        with patch.object(self.writer, 'open_private_epoch', side_effect=uncertain):
+            self.task = asyncio.create_task(self.runtime.run())
+            await self.eventually(lambda: self.runtime.account_subscribed
+                                  and self.runtime.connection_attempts['account'] == 2)
+            status = self.runtime.verification_status()['continuity']
+            self.assertEqual(status['persisted_gap_count'], 1)
+            self.assertFalse(status['local_evidence_consistent'])
+            epochs = await self.runtime.inspect_private_epochs()
+            self.assertEqual((len(epochs), sum(e.closed_at is None for e in epochs)), (2, 1))
+            self.runtime.stop()
+            await asyncio.wait_for(self.task, 4)
 
     async def test_engine_failure_closes_marker_with_specific_reason(self):
         await self.launch()

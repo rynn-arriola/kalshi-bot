@@ -2,7 +2,9 @@
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
-pending independent review. It does not establish a venue history/stream
+whose [review findings](REVIEW_D045_ASTRA.md) are addressed by the D-046
+[review fixes](BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md), pending Astra re-review.
+It does not establish a venue history/stream
 barrier, opening inventory or live-entry authority.
 
 Status: **D-021 implementation underway; component foundation only, no live trader**.

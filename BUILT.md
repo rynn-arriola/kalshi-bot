@@ -1,5 +1,25 @@
 # What exists
 
+## Continuity Phase 1 review fixes — 2026-09-20
+
+D-046 [implementation evidence](docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md)
+addresses all R1-R5 findings: bounded shutdown owns queued/in-flight fill
+evidence, accepted epoch opens cannot become hidden orphans, quota status is
+coherent, the retention test drains its callback, and reconnect work is now
+measured. All 196 focused and 798 full tests pass, as do resource/preflight
+checks. Independent Astra re-review is next. Venue proof and live authority
+remain false.
+
+## Continuity Phase 1 review findings — fixed by D-046 — 2026-09-20
+
+[D-045 Astra review](docs/REVIEW_D045_ASTRA.md) found two P2 lifecycle bugs
+and three P3 status/verification issues. Review reran 192 focused and 794 full
+tests successfully, but separate probes reproduce missed shutdown fills and
+hidden orphan markers. The quota failure was a callback-timing test flake;
+reconnect resource activity was outside the original benchmark measurement.
+This records the review-time state; D-046 above fixes all five findings and now
+awaits Astra re-review. All live/venue-handoff gates remain false.
+
 ## Evidence-only account continuity Phase 1 — 2026-09-20
 
 D-045 [implementation and verification](docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md)

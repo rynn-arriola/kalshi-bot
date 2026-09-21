@@ -686,6 +686,20 @@ them accepted without an explicit operator instruction.
   real account calls, credential use, live order action or activation. All
   entry and live-readiness gates remain false.
 
+### D-046 — Implement D-045 independent-review fixes
+
+- **Status:** ACCEPTED fix scope, 2026-09-20.
+- **Decision owner:** Operator: "Ok fix it" after receiving the independent
+  Astra review and switching back to the implementation model.
+- **Scope:** Implement R1-R5 from `docs/REVIEW_D045_ASTRA.md`: private-event
+  shutdown ownership, accepted epoch-open cancellation/gap reconciliation,
+  coherent quota-boundary status, quota-test callback synchronization and a
+  correctly instrumented reconnect resource fixture. Add regressions and rerun
+  focused/full/resource/preflight verification.
+- **Boundary:** Preserve D-044's evidence-only architecture. No Phase 2/3,
+  approved baseline, risk/policy change, real account/credential call, order
+  action, deployment or live activation. Return to Astra re-review under D-037.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

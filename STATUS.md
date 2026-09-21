@@ -2,6 +2,34 @@
 
 ## Current update — 2026-09-20
 
+D-046 Sol implemented all R1-R5 fixes from the D-045 independent
+[Astra review](docs/REVIEW_D045_ASTRA.md); see
+[build evidence](docs/BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md). Real queued and
+in-flight fills are retained during bounded shutdown and invalidate clean local
+delivery; accepted epoch-open cancellation is owned, closed and gap-reconciled;
+quota-boundary status is coherent. The quota retention test now waits for its
+legitimate callback turn, and reconnect work is inside resource instrumentation.
+All 196 focused tests and the exact 798-test suite pass. The quota regression
+passes 10/10 repetitions; continuity and inherited history resource fixtures
+pass. Native preflight remains exit 2 and `live_ready=false` without files,
+credentials or network. STOP for Astra re-review under D-037. Venue handoff,
+starting basis, Phase 2/3 and all live actions remain unproven/unauthorized.
+
+### D-045 independent review before fixes
+
+D-045 independent [Astra review](docs/REVIEW_D045_ASTRA.md) requires changes:
+R1 queued fills can be dropped during stop while recording a clean marker;
+R2 a cancelled epoch-open acknowledgement can hide a durable gap until restart.
+R3 is a stale status response, R4 an inherited quota-test callback scheduling
+flake, and R5 an unmeasured reconnect-resource claim. Review reran 192 focused
+tests and all 794 tests successfully, but additional probes reproduce R1-R3;
+the original quota regression failed 10/10 isolated repetitions and passed
+10/10 with a process-local callback-drain wait. Passing suites do not clear these
+findings. Only review/handoff documents changed. STOP for the operator's
+5.6 Sol switch and fixes; trading and Phases 2/3 remain unauthorized.
+
+### D-045 implementation evidence before independent review
+
 D-045 Sol implemented [evidence-only continuity Phase 1](docs/BUILD_ACCOUNT_CONTINUITY_PHASE1.md).
 Durable local private-epoch markers, scoped baseline candidates, source-bound
 assessment and position-stream/pagination safety are built. All 168 directly

@@ -262,13 +262,23 @@ class RecoveryRuntime:
                 await self.management.refresh(ticker)
 
     async def _consume(self, spec, event, generation, acknowledged, ready=None):
-        if self.stop_requested.is_set():
-            return
-        if spec.name == "account" and generation != self.account.generation:
-            return
-        if spec.name in self.engine.shards and generation != self.engine.shards[spec.name].generation:
-            return
         kind = event.get("type")
+        if self.stop_requested.is_set():
+            # The transport may already have removed this event from its bounded
+            # queue when shutdown begins. Positive fill evidence must still reach
+            # the durable inbox; every event crossing this boundary invalidates a
+            # clean drain because it will not be dispatched normally.
+            if spec.name == "account" and kind == "fill":
+                self._revoke()
+                await self._stage(event)
+                if (self._epoch is not None and self._epoch.generation == generation
+                        and self._epoch.closed_at is None):
+                    self._epoch_fills += 1
+            return False
+        if spec.name == "account" and generation != self.account.generation:
+            return True
+        if spec.name in self.engine.shards and generation != self.engine.shards[spec.name].generation:
+            return True
         if kind == "subscribed":
             msg = event.get("msg", {})
             channel = msg.get("channel")
@@ -281,13 +291,24 @@ class RecoveryRuntime:
             if acknowledged == set(spec.channels):
                 if spec.name == "account":
                     if not self.account.connected:
-                        return
-                    self._epoch = await self.writer.open_private_epoch(PrivateEpoch(
+                        return True
+                    marker = PrivateEpoch(
                         uuid4().hex, self.account.subaccount, generation, self.writer.epoch,
-                        tuple(sorted(acknowledged)), self.now()))
+                        tuple(sorted(acknowledged)), self.now())
+                    # Own the identity before awaiting its accepted writer command.
+                    # Writer commands survive caller cancellation, so teardown can
+                    # close this exact marker even if its acknowledgement is lost.
+                    self._epoch = marker
                     self._epoch_ingress = self._epoch_fills = 0
                     self._epoch_ambiguous = self._unscoped_position_requested = False
-                    self._refresh_continuity()
+                    try:
+                        self._epoch = await self.writer.open_private_epoch(marker)
+                    except BaseException:
+                        self._persisted_epoch_gaps = None
+                        self._refresh_continuity()
+                        raise
+                    else:
+                        self._refresh_continuity()
                 self.reader_states[spec.name] = "subscribed"
                 if spec.name=='lifecycle' and self.market_inputs is not None:
                     self.market_inputs.subscribed(generation,msg['sid'])
@@ -297,7 +318,7 @@ class RecoveryRuntime:
                 if spec.name == "account":
                     self.account_subscribed = True
                     self.request_recovery()
-            return
+            return True
         if kind == "error":
             raise InvalidData("subscription rejected")
         if spec.name == "account":
@@ -323,6 +344,7 @@ class RecoveryRuntime:
             if self.market_inputs is not None:
                 self.market_inputs.ingest(event,generation=generation)
             await self.lifecycle_handler(event)
+        return True
 
     async def _connection(self, spec):
         for attempt in range(self.attempt_limit):
@@ -349,10 +371,36 @@ class RecoveryRuntime:
             acknowledged = set()
             ready = asyncio.Event()
             reader_error = False
+            delivery_inflight = 0
+            delivery_failed = False
+            delivery_idle = asyncio.Event()
+            delivery_idle.set()
+            epoch_open_confirmed = False
             async def consume(name, event):
+                nonlocal delivery_inflight, delivery_failed, epoch_open_confirmed
                 if name != spec.name:
                     raise InvalidData("reader source mismatch")
-                await self._consume(spec, event, generation, acknowledged, ready)
+                tracked = spec.name == 'account' and event.get('type') != 'subscribed'
+                if tracked:
+                    delivery_inflight += 1
+                    delivery_idle.clear()
+                try:
+                    delivered = await self._consume(spec, event, generation, acknowledged, ready)
+                    if (spec.name == 'account' and event.get('type') == 'subscribed'
+                            and self.account_subscribed and self._epoch is not None
+                            and self._epoch.generation == generation):
+                        epoch_open_confirmed = True
+                    if tracked and delivered is False:
+                        delivery_failed = True
+                except BaseException:
+                    if tracked:
+                        delivery_failed = True
+                    raise
+                finally:
+                    if tracked:
+                        delivery_inflight -= 1
+                        if delivery_inflight == 0:
+                            delivery_idle.set()
             # Factory/construction faults must be observed by the runtime owner,
             # not treated as successful connections or silently retried forever.
             reader_owner = self.reader_factory(spec)
@@ -374,7 +422,10 @@ class RecoveryRuntime:
                     handshake.cancel()
                     await asyncio.gather(handshake, return_exceptions=True)
                 if lost is None:
-                    await reader
+                    # Connection cancellation enters the controlled teardown
+                    # below; it must not implicitly cancel an in-flight private
+                    # callback before that callback is accounted for.
+                    await asyncio.shield(reader)
                 else:
                     await asyncio.wait((reader, lost), return_when=asyncio.FIRST_COMPLETED)
                     if reader.done():
@@ -401,15 +452,44 @@ class RecoveryRuntime:
                     if self.market_inputs is not None:
                         self.market_inputs.disconnect()
                     self._revoke()
+                if spec.name == 'account' and delivery_inflight:
+                    try:
+                        async with asyncio.timeout(1):
+                            await delivery_idle.wait()
+                    except TimeoutError:
+                        delivery_failed = True
                 reader.cancel()
                 if lost:
                     lost.cancel()
                 await asyncio.gather(reader, *([lost] if lost else []), return_exceptions=True)
+                if spec.name == 'account':
+                    # The joined reader is now the only possible prior consumer.
+                    # Retain positive fills still buffered at teardown before the
+                    # marker closes. Other buffered events cannot be applied as a
+                    # normal ordered stream and therefore invalidate the span.
+                    local_queue = getattr(reader_owner, 'queue', None)
+                    if local_queue is not None and callable(getattr(local_queue, 'get_nowait', None)):
+                        for _ in range(256):
+                            try:
+                                item = local_queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+                            delivery_failed = True
+                            event = item
+                            if isinstance(item, tuple) and len(item) == 3:
+                                _, event, wire_bytes = item
+                                if hasattr(reader_owner, 'queued_bytes'):
+                                    reader_owner.queued_bytes = max(0,
+                                        reader_owner.queued_bytes-wire_bytes)
+                            if isinstance(event, dict) and event.get('type') == 'fill':
+                                await self._stage(event)
+                                self._epoch_fills += 1
                 if (spec.name == "account" and self._epoch is not None
                         and self._epoch.generation == generation and self._epoch.closed_at is None):
                     local_queue = getattr(reader_owner, 'queue', None)
                     reader_drained = (local_queue is not None and callable(getattr(local_queue, 'empty', None))
-                        and local_queue.empty() and getattr(reader_owner, 'queued_bytes', 0) == 0)
+                        and local_queue.empty() and getattr(reader_owner, 'queued_bytes', 0) == 0
+                        and delivery_inflight == 0 and not delivery_failed)
                     clean = (self.stop_requested.is_set() and not self._run_cancelled
                         and not reader_error and not self.engine.failed and not self.writer.failed
                         and reader_drained and self.engine.private_idle.is_set()
@@ -423,7 +503,14 @@ class RecoveryRuntime:
                         closed_at=self.now(), ingress_count=self._epoch_ingress,
                         durable_fill_count=self._epoch_fills, terminal_reason=reason,
                         clean_local_delivery=clean)
-                    self._persisted_epoch_gaps = (self._persisted_epoch_gaps or 0) + int(not clean)
+                    if epoch_open_confirmed and self._persisted_epoch_gaps is not None:
+                        self._persisted_epoch_gaps += int(not clean)
+                    else:
+                        # The open acknowledgement was interrupted or failed after
+                        # submission. Re-read the durable truth rather than infer
+                        # whether that accepted command committed.
+                        self._persisted_epoch_gaps = await self.writer.private_epoch_gap_count(
+                            subaccount=self.account.subaccount)
                     self._refresh_continuity()
             if attempt+1 < self.attempt_limit and not self.writer.failed and not self.engine.failed:
                 await self.sleep(min(30, 2**attempt)*self.jitter())
@@ -646,8 +733,10 @@ class RecoveryRuntime:
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):
-        continuity = self._refresh_continuity()
         quota_available = self.quota is None or self.quota.poll()
+        # poll() may synchronously revoke account/history evidence through its
+        # listener. Capture all status fields only after that transition.
+        continuity = self._refresh_continuity()
         report = self.account.current_report(self.now())
         history = self.last_reports[0] if self.last_reports else None
         blockers = list(report.blockers) if report else ["current_account_snapshot_missing"]

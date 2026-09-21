@@ -1,5 +1,13 @@
 # D-045 — Account continuity Phase 1 implementation
 
+Independent review update: [R1-R5 require fixes](REVIEW_D045_ASTRA.md).
+Shutdown delivery and cancelled-open gap caching are not cleared; the reconnect
+burst below ran before resource instrumentation, so those numbers measure only
+the assessment/candidate loop. Preserve the implementation-run evidence below
+as history, not current review clearance. D-046 subsequently implemented the
+[review fixes and corrected measurement](BUILD_ACCOUNT_CONTINUITY_REVIEW_FIXES.md),
+pending Astra re-review.
+
 Date: September 20, 2026. Native Windows; execution disabled. Implements only
 Phase 1 of [D-044](DESIGN_ACCOUNT_CONTINUITY.md), following the operator's
 explicit assignment and confirmation of the 5.6 Sol switch. Independent Astra
