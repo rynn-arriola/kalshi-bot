@@ -752,18 +752,36 @@ them accepted without an explicit operator instruction.
 
 ### D-050 — Design a Polymarket-like native Windows supervisor
 
-- **Status:** ACCEPTED requirement/design scope, 2026-09-21; detailed proposal
-  awaits operator approval and the D-049 implementation handoff.
+- **Status:** ACCEPTED requirement/design scope, 2026-09-21; operator approved
+  the S1 design and offline policy values through “Implement.”
 - **Decision owner:** Operator requests a supervisor that survives errors and
   recovers automatically, before returning to the D-048 review.
 - **Scope:** Trace Polymarket's actual supervisor/recovery source and design
   native Windows process supervision, bounded recovery, persistent stops,
   diagnostics and restart safety. See
   [the proposed design](docs/DESIGN_WINDOWS_SUPERVISOR.md).
-- **Boundary:** This request does not approve proposed restart/timing values,
-  automatic source-code fixes, live auto-resume, services/tasks, deployment,
-  account calls or trading. Preserve all existing risk/authority rules. D-048
-  review remains pending; design priority does not waive its integration gate.
+- **Boundary:** Approval covers the execution-disabled S1 policy/control
+  foundation only. It does not approve automatic source-code fixes, live
+  auto-resume, services/tasks, deployment, account calls or trading. Preserve
+  all existing risk/authority rules. D-048 review remains pending; design
+  priority does not waive its integration gate.
+
+### D-051 — Implement native Windows supervisor S1
+
+- **Status:** ACCEPTED implementation scope and implemented, 2026-09-21.
+- **Decision owner:** Operator: “Implement,” after the D-050 Astra design stop.
+- **Scope:** Add immutable execution-disabled supervisor contracts and pure
+  transition policy, a separate transactional bounded SQLite control journal,
+  fake event/process tests and offline resource fixtures. Persist stop and
+  generation state, reserve attempts before spawn requests, reject stale child
+  events, bound restart/backoff and base health on useful progress.
+- **Evidence:** See
+  [D-051 build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md): 32 focused and
+  836 full tests pass, with resource and disabled-preflight checks.
+- **Boundary:** No real process launcher, IPC, runtime integration, service/task,
+  credential/network/account access, live auto-resume or trading. Independent
+  Astra review is mandatory before S2. D-048's separate review also remains an
+  S2 gate.
 
 ### Earlier recovery-import question — superseded by D-025
 

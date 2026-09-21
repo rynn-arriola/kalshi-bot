@@ -1,6 +1,6 @@
 # Active work queue
 
-Updated 2026-09-21. Follow D-011 through D-050 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow D-011 through D-051 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -9,12 +9,15 @@ with Git. See `docs/GITHUB_PUBLICATION.md`. Live operation remains disabled.
 AI performs approved work; present undecided project choices to the operator
 and record their decisions before implementation.
 
-D-050 supervisor design takes priority at the operator's request; see
-[native Windows supervisor](docs/DESIGN_WINDOWS_SUPERVISOR.md). Design is complete.
-Next: operator approval and switch to **5.6 Sol** for S1 policy/control foundation
-with fake processes only. Proposed architecture/restart limits are not approved
-settings. No live launcher, service/task or bot start. S2/runtime integration
-still requires the independent D-048 review below and a separate assignment.
+D-051 supervisor S1 is implemented and verified; see
+[build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md). **STOP for independent
+Astra review under D-049.** Review the pure transition policy and separate
+SQLite journal for architectural violations, stop/arm and transaction races,
+generation handling, cleanup proof, clock/restart-budget edge cases, security
+issues and any path that could leak live authority. Do not implement findings in
+the review role. No live launcher, service/task or bot start. S2/runtime
+integration still requires this review, the independent D-048 review below and
+a separate assignment.
 
 D-048 Sol fixes for the D-047 finding are implemented and verified; see
 `docs/BUILD_ACCOUNT_CONTINUITY_FINALIZER_FIX.md`. STOP for independent Astra
@@ -28,7 +31,7 @@ MANDATORY D-049: before every substantive task, give the short Astra/Sol
 recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
 for the listed material reasoning/review cases. Stop before development on a
 model mismatch, except urgent safety action. D-037 is superseded where routing
-differs. D-050 S1 recommends Sol after approval; D-048 review recommends Astra.
+differs. D-051 and D-048 reviews recommend Astra.
 Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking

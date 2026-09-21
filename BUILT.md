@@ -1,11 +1,21 @@
 # What exists
 
+## Native Windows supervisor S1 — 2026-09-21
+
+D-051 [implementation evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md) adds an
+immutable execution-disabled process-supervision policy and separate
+transactional SQLite control journal. Durable stop/generation state,
+attempt-before-spawn ordering, bounded recovery, useful-progress health and
+fail-closed outcomes have 32 focused and 836 full passing tests plus resource
+and disabled-preflight checks. It has no process launcher or runtime wiring and
+awaits independent Astra review before S2.
+
 ## Native Windows supervisor design — 2026-09-21
 
 D-050 [proposal](docs/DESIGN_WINDOWS_SUPERVISOR.md) traces Polymarket source and
 defines process ownership, durable stop/restart controls, recovery classification
-and S1-S3 implementation gates. Six isolated Poly host-recovery tests pass.
-Design only: no Kalshi supervisor implementation, installation or runtime change.
+and S1-S3 implementation gates. Six isolated Poly host-recovery tests pass. Its
+offline S1 is now implemented under D-051 above; later gates remain pending.
 
 ## Mandatory two-model routing — 2026-09-21
 

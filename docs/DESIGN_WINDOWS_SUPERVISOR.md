@@ -1,9 +1,12 @@
 # Native Windows supervisor and automatic recovery
 
-Date: September 21, 2026. D-050 requirement; **proposed design, not implemented**.
+Date: September 21, 2026. D-050 requirement; design approved for S1.
 The operator requested a Polymarket-like supervisor before returning to the
 D-048 review. D-049 requires an Astra design stop before Sol implementation.
-This proposal adds no live launch, restart, installation or order authority.
+D-051 now implements the execution-disabled S1 policy/control foundation; see
+[build evidence](BUILD_WINDOWS_SUPERVISOR_S1.md). It awaits independent Astra
+review. S2/S3 remain unimplemented and this design adds no live launch,
+installation or order authority.
 
 ## Source evidence
 
@@ -246,7 +249,8 @@ and the earlier 804-test implementation result was not rerun.
 
 ## Handoff
 
-Design complete: stop for operator approval and switch to **5.6 Sol** for S1.
-The requirement is accepted; the proposed architecture, timing/restart limits
-and future live auto-resume policy are not yet accepted operating settings.
-The independent D-048 review remains outstanding before S2/runtime integration.
+S1 is implemented under D-051. Stop for independent **Astra** review of its
+policy, journal and fail-closed boundaries. Timing/restart values are approved
+only as offline S1 policy, not as deployed operating settings; future live
+auto-resume remains unapproved. The independent D-048 review also remains
+outstanding before S2/runtime integration.

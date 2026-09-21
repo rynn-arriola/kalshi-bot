@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 72. Supervisor S1 is fail-closed and execution-disabled — 2026-09-21
+
+VERIFIED OFFLINE under D-051: immutable policy and a separate transactional
+SQLite control journal persist stop/generation state, reject stale children,
+commit attempt reservations before spawn requests, bound restart budgets and
+distinguish heartbeats from useful progress. Every state/decision keeps
+`entry_allowed=false` and `live_ready=false`; no process, runtime, account,
+credential or network path is connected. Thirty-two focused tests and all 836
+tests pass. The 30/120-label policy benchmark stayed below 0.094 ms p99 and
+169 KiB peak; the 60-second parent-idle fixture passed its one-percent CPU bound.
+See [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md). Independent Astra
+review is next; D-048 and S2/runtime gates remain open.
+
 ## 71. Polymarket supervisor recovery has explicit limits — 2026-09-21
 
 VERIFIED SOURCE / OFFLINE: clean Poly `c5029321` separates process restart from

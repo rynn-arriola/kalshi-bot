@@ -2,8 +2,11 @@
 
 D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
 one process supervisor and one runtime child, durable operator control and bounded
-automatic recovery. Design only; S1 approval and implementation are pending.
-It does not clear D-048, establish account proof or authorize live operation.
+automatic recovery. D-051 [S1 implementation](BUILD_WINDOWS_SUPERVISOR_S1.md)
+adds only the immutable execution-disabled transition policy and separate
+transactional control journal. Process handles, IPC and runtime integration are
+not built and require independent Astra review plus the separate D-048 gate.
+This does not establish account proof or authorize live operation.
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)

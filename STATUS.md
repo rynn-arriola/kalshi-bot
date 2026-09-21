@@ -2,13 +2,23 @@
 
 ## Current update — 2026-09-21
 
-D-050 supervisor design is complete; see
-[native Windows proposal](docs/DESIGN_WINDOWS_SUPERVISOR.md). Polymarket source
-was traced at `c5029321`; six isolated host-recovery tests passed. Recommended
-shape: one supervisor, one runtime child, bounded automatic recovery and durable
-stop/restart controls. No supervisor is implemented or installed. Next: operator
-approval and 5.6 Sol S1 offline implementation. D-048 independent review remains
-pending before S2/runtime integration. Only design/handoff documentation changed.
+D-051 implements the approved D-050 supervisor S1 foundation; see
+[build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S1.md). Immutable execution-
+disabled policy and a separate transactional SQLite control journal now cover
+durable stop/generation state, stale children, attempt-before-spawn ordering,
+bounded backoff/retries, useful-progress health and fail-closed outcomes. All 32
+focused and exact 836 full tests pass; the 30/120-market and 60-second idle
+resource fixtures and disabled preflight pass. No process launcher, runtime
+wiring, service/task, credential/network access or live action was added. STOP
+for independent Astra review. D-048's separate review remains pending before
+S2/runtime integration.
+
+### Prior D-050 supervisor design
+
+D-050 [native Windows proposal](docs/DESIGN_WINDOWS_SUPERVISOR.md) traced
+Polymarket source at `c5029321`; six isolated host-recovery tests passed. The
+operator approved its S1 design through “Implement.” D-051 above implements only
+the offline policy/control foundation, not deployment or live auto-resume.
 
 ### Prior D-049 workflow update
 
