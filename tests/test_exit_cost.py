@@ -32,6 +32,9 @@ def snapshot(ts: float, bid: float = 0.40, offer: float = 0.60) -> dict:
 
 
 class ExitCostTests(unittest.TestCase):
+    def test_exact_fee_boundary_does_not_round_up_twice(self):
+        self.assertEqual(taker_fee(1, 0.50), 0.0175)
+
     def test_timed_book_never_uses_a_pre_deadline_snapshot(self) -> None:
         series = [snapshot(100), snapshot(110), snapshot(121), snapshot(130)]
         found = book_at_or_after(series, 0, 120, 5)

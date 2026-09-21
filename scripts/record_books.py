@@ -40,6 +40,11 @@ BASE = "https://api.elections.kalshi.com/trade-api/v2"
 # Observed 2026-08-16: depth=200 returns HTTP 400, depth=100 is accepted.
 MAX_BOOK_DEPTH = 100
 
+# urllib has no response object when the TLS connection fails before an HTTP
+# status exists. 599 is a local capture sentinel, never a venue response.
+NETWORK_ERROR_STATUS = 599
+GET_ATTEMPTS = 3
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS capture_runs (
     run_id      TEXT PRIMARY KEY,
@@ -281,16 +286,33 @@ class Capture:
                 "markets": markets, "errors": errors}
 
 
-def get_json(limiter: Limiter, url: str, timeout: float = 30.0):
-    """Return (status, parsed) and never raise for an HTTP error status."""
+def get_json(limiter: Limiter, url: str, timeout: float = 30.0,
+             attempts: int = GET_ATTEMPTS):
+    """Return ``(status, parsed)`` without killing a long capture.
 
-    limiter.wait()
+    HTTP errors retain their venue status. Connection/TLS failures and invalid
+    response bodies are retried with short bounded backoff, then returned as
+    local status 599 so the caller records the failed observation in SQLite.
+    """
+
+    if attempts <= 0:
+        raise ValueError("attempts must be positive")
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return exc.code, None
+    for attempt in range(1, attempts + 1):
+        limiter.wait()
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.status, json.loads(
+                    response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            return exc.code, None
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            print(f"[{utc_now()}] transient GET failure"
+                  f" attempt {attempt}/{attempts}:"
+                  f" {type(exc).__name__}: {exc}")
+            if attempt < attempts:
+                time.sleep(min(2 ** (attempt - 1), 5))
+    return NETWORK_ERROR_STATUS, None
 
 
 def fetch_programs(limiter: Limiter, capture: Capture,

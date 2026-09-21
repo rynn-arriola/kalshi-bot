@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "capital_usd": "500",
+  "entry_contracts": "10",
+  "max_resting_entries": 30,
+  "window_stop_usd": "25",
+  "managed_market_slots": 20,
+  "live_enabled": false,
+  "book_connections": 2,
+  "event_queue_capacity": 8192,
+  "max_levels_per_side": 4096,
+  "max_managed_markets": 128
+}

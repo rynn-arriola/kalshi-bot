@@ -4,8 +4,9 @@
 *.pem
 *.key
 kalshi-bot.txt
+Kalshi-Bot2.txt
 credentials.py
-.env
+.env*
 
 # Captured data. Raw books grow fast and are reproducible by re-running the
 # recorder; the analysis derived from them is what belongs in git.
@@ -14,7 +15,18 @@ data/
 *.db-wal
 *.db-shm
 *.log
+logs/
+*.jsonl
+*.jsonl.*
 
 __pycache__/
 *.pyc
 .venv/
+.docs-venv/
+*.egg-info/
+build/
+dist/
+
+# Machine-local transfer and deployment state, not project source.
+DEPLOYED_COMMIT
+TRANSFER_MANIFEST.json

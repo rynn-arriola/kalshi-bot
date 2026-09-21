@@ -1,0 +1,528 @@
+{
+  "generated_utc": "2026-09-19T22:18:31.500174+00:00",
+  "retrieved_pages": 240,
+  "rest_operations": {
+    "openapi.yaml": 116,
+    "perps_openapi.yaml": 48,
+    "perps_scm_openapi.yaml": 27
+  },
+  "rest_total": 191,
+  "websocket_channels": {
+    "asyncapi.yaml": 15,
+    "perps_asyncapi.yaml": 8
+  },
+  "websocket_operations": {
+    "asyncapi.yaml": 41,
+    "perps_asyncapi.yaml": 22
+  },
+  "source_failures": [],
+  "unresolved_schema_references": [],
+  "root_operations_without_page": [
+    [
+      "perps_scm_openapi.yaml",
+      "delete",
+      "/fcm/margin/api_keys/{api_key_id}"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "delete",
+      "/fcm/margin/subtrader_groups/{group_id}"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/fcm/margin/api_keys"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/fcm/margin/subtrader_groups"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/active_obligations"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/estimate_maintenance_margin/metadata"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/funding_estimate_by_asset_class"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/funding_payments"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/funding_schedule"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/guaranty_fund_balance"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/large_trader_positions"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/obligation_history"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/obligations/{obligation_id}/funding_payments"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/obligations/{obligation_id}/maintenance_margin_details"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/obligations/{obligation_id}/settlement_details"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/reports"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/settlement_balance"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/settlement_balance_history"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/settlement_balance_withdrawal"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/settlement_estimate_by_asset_class"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "get",
+      "/margin/settlement_prices"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "post",
+      "/fcm/margin/api_keys"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "post",
+      "/fcm/margin/api_keys/generate"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "post",
+      "/fcm/margin/subtrader_groups"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "post",
+      "/margin/estimate_maintenance_margin"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "post",
+      "/margin/withdraw_settlement_balance"
+    ],
+    [
+      "perps_scm_openapi.yaml",
+      "put",
+      "/fcm/margin/subtrader_groups/{group_id}"
+    ]
+  ],
+  "page_only_operations": [],
+  "operation_definition_differences": [
+    {
+      "spec": "openapi.yaml",
+      "method": "post",
+      "path": "/account/api_usage_level/upgrade",
+      "url": "https://docs.kalshi.com/api-reference/account/upgrade-account-api-usage-level.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "put",
+      "path": "/communications/quotes/{quote_id}/accept",
+      "url": "https://docs.kalshi.com/api-reference/communications/accept-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "put",
+      "path": "/communications/quotes/{quote_id}/confirm",
+      "url": "https://docs.kalshi.com/api-reference/communications/confirm-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "put",
+      "path": "/communications/rfqs/{rfq_id}/quotes/{quote_id}/confirm",
+      "url": "https://docs.kalshi.com/api-reference/communications/confirm-rfq-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "post",
+      "path": "/communications/quotes",
+      "url": "https://docs.kalshi.com/api-reference/communications/create-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "delete",
+      "path": "/communications/quotes/{quote_id}",
+      "url": "https://docs.kalshi.com/api-reference/communications/delete-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "delete",
+      "path": "/communications/rfqs/{rfq_id}/quotes/{quote_id}",
+      "url": "https://docs.kalshi.com/api-reference/communications/delete-rfq-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "get",
+      "path": "/communications/quotes/{quote_id}",
+      "url": "https://docs.kalshi.com/api-reference/communications/get-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "get",
+      "path": "/communications/rfqs/{rfq_id}/quotes/{quote_id}",
+      "url": "https://docs.kalshi.com/api-reference/communications/get-rfq-quote.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "post",
+      "path": "/portfolio/events/orders/{order_id}/amend",
+      "url": "https://docs.kalshi.com/api-reference/orders/amend-order-v2.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "delete",
+      "path": "/portfolio/events/orders/batched",
+      "url": "https://docs.kalshi.com/api-reference/orders/batch-cancel-orders-v2.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "post",
+      "path": "/portfolio/events/orders/batched",
+      "url": "https://docs.kalshi.com/api-reference/orders/batch-create-orders-v2.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "delete",
+      "path": "/portfolio/events/orders",
+      "url": "https://docs.kalshi.com/api-reference/orders/cancel-all-orders.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "delete",
+      "path": "/portfolio/events/orders/{order_id}",
+      "url": "https://docs.kalshi.com/api-reference/orders/cancel-order-v2.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "openapi.yaml",
+      "method": "get",
+      "path": "/portfolio/orders/{order_id}",
+      "url": "https://docs.kalshi.com/api-reference/orders/get-order.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "perps_openapi.yaml",
+      "method": "post",
+      "path": "/margin/orders/{order_id}/amend",
+      "url": "https://docs.kalshi.com/margin-rest/orders/amend-order.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "perps_openapi.yaml",
+      "method": "delete",
+      "path": "/margin/orders",
+      "url": "https://docs.kalshi.com/margin-rest/orders/cancel-all-orders.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    },
+    {
+      "spec": "perps_openapi.yaml",
+      "method": "get",
+      "path": "/margin/balance",
+      "url": "https://docs.kalshi.com/margin-rest/portfolio/get-balance.md",
+      "different_keys": [
+        "x-mint"
+      ],
+      "classification": "presentation extension"
+    }
+  ],
+  "component_definition_differences": [
+    {
+      "spec": "openapi.yaml",
+      "url": "https://docs.kalshi.com/api-reference/historical/get-historical-cutoff-timestamps.md",
+      "components": [
+        "schemas/GetHistoricalCutoffResponse"
+      ],
+      "classification": "trailing whitespace"
+    }
+  ],
+  "technical_extracts": {
+    "https://docs.kalshi.com/cfbenchmarks/rest-passthrough.md": {
+      "code_blocks": 7,
+      "tables": 2
+    },
+    "https://docs.kalshi.com/changelog.md": {
+      "code_blocks": 11,
+      "tables": 1
+    },
+    "https://docs.kalshi.com/changelog/index.md": {
+      "code_blocks": 11,
+      "tables": 1
+    },
+    "https://docs.kalshi.com/fix-margin/authentication.md": {
+      "code_blocks": 3,
+      "tables": 4
+    },
+    "https://docs.kalshi.com/fix-margin/connectivity.md": {
+      "tables": 4,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix-margin/drop-copy.md": {
+      "tables": 3,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix-margin/error-handling.md": {
+      "tables": 6,
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/fix-margin/listener-sessions.md": {
+      "tables": 2
+    },
+    "https://docs.kalshi.com/fix-margin/market-data.md": {
+      "code_blocks": 8,
+      "tables": 4
+    },
+    "https://docs.kalshi.com/fix-margin/order-entry.md": {
+      "tables": 10,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix-margin/order-groups.md": {
+      "tables": 7,
+      "code_blocks": 5
+    },
+    "https://docs.kalshi.com/fix/authentication.md": {
+      "code_blocks": 3,
+      "tables": 4
+    },
+    "https://docs.kalshi.com/fix/common-components.md": {
+      "tables": 9
+    },
+    "https://docs.kalshi.com/fix/connectivity.md": {
+      "tables": 4,
+      "code_blocks": 2
+    },
+    "https://docs.kalshi.com/fix/drop-copy.md": {
+      "tables": 3,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix/error-handling.md": {
+      "tables": 6,
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/fix/listener-sessions.md": {
+      "tables": 2,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix/market-data.md": {
+      "code_blocks": 11,
+      "tables": 6
+    },
+    "https://docs.kalshi.com/fix/market-settlement.md": {
+      "tables": 5,
+      "code_blocks": 2
+    },
+    "https://docs.kalshi.com/fix/order-entry.md": {
+      "tables": 11,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/fix/order-groups.md": {
+      "tables": 8,
+      "code_blocks": 6
+    },
+    "https://docs.kalshi.com/fix/rfq-messages.md": {
+      "code_blocks": 18,
+      "tables": 17
+    },
+    "https://docs.kalshi.com/fix/subpenny-pricing.md": {
+      "tables": 3,
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/getting_started/api_environments.md": {
+      "tables": 2,
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/getting_started/api_keys.md": {
+      "code_blocks": 6
+    },
+    "https://docs.kalshi.com/getting_started/demo_env.md": {
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/exchange_sharding.md": {
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/fee_rounding.md": {
+      "tables": 2,
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/getting_started/fixed_point_migration.md": {
+      "code_blocks": 2,
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/historical_data.md": {
+      "tables": 3
+    },
+    "https://docs.kalshi.com/getting_started/maintenance_and_pauses.md": {
+      "tables": 2
+    },
+    "https://docs.kalshi.com/getting_started/market_lifecycle.md": {
+      "tables": 4
+    },
+    "https://docs.kalshi.com/getting_started/order_direction.md": {
+      "tables": 2
+    },
+    "https://docs.kalshi.com/getting_started/order_groups.md": {
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/orderbook_responses.md": {
+      "code_blocks": 9,
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/pagination.md": {
+      "code_blocks": 4
+    },
+    "https://docs.kalshi.com/getting_started/quick_start_authenticated_requests.md": {
+      "tables": 2,
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/getting_started/quick_start_create_order.md": {
+      "code_blocks": 3
+    },
+    "https://docs.kalshi.com/getting_started/quick_start_market_data.md": {
+      "code_blocks": 7
+    },
+    "https://docs.kalshi.com/getting_started/quick_start_websockets.md": {
+      "code_blocks": 11,
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/rate_limits.md": {
+      "tables": 4,
+      "code_blocks": 2
+    },
+    "https://docs.kalshi.com/getting_started/rfqs.md": {
+      "tables": 2
+    },
+    "https://docs.kalshi.com/getting_started/subaccounts.md": {
+      "tables": 1
+    },
+    "https://docs.kalshi.com/getting_started/targets_and_milestones.md": {
+      "code_blocks": 1
+    },
+    "https://docs.kalshi.com/margin.md": {
+      "tables": 6
+    },
+    "https://docs.kalshi.com/websockets.md": {
+      "tables": 1
+    }
+  },
+  "verification": {
+    "operation_blocks_verified": 191,
+    "component_blocks_verified": 423,
+    "asyncapi_blocks_verified": 2,
+    "source_hashes_verified": 247,
+    "unique_explicit_anchors": 614,
+    "indexed_pages_verified": 240
+  },
+  "markdown_bytes": 1419092,
+  "markdown_sha256": "5af65690a50d5dc0f4e5ce97a53fd875b5f7b3deb69df5d1044f97a93fb1e098"
+}

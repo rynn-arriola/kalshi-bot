@@ -1,5 +1,551 @@
 # Findings — kalshi-bot
 
+## 60. Quota follow-ups cleared by independent review — 2026-09-20
+
+VERIFIED: 62 focused quota tests pass; reverting each D-042 fix in memory makes
+its regression fail without teardown errors. An additional injected probe
+confirms the frozen boundary preserves pending timing and failure count while
+retaining no exception and leaving the caller's original traceback intact.
+Both D-041 P3 findings are cleared; no new findings in the reviewed scope.
+No source/test edits or live account use. The 778-test full-suite and resource
+results remain implementation evidence. [Review](docs/REVIEW_D042_ASTRA.md).
+
+## 59. Review follow-ups fixed, pending independent re-review — 2026-09-20
+
+D-042 stores only validated rollover boundary/provenance scalars and reports
+`running=False` in an unconditional final path after repeated cancellation.
+Injected regressions verify the deferred candidate is garbage collected and the
+late-429 worker remains owned until drain. All 62 focused and 778 full-suite
+tests pass; quota 30/120 and idle resource checks pass. This is offline evidence,
+not live-readiness approval. See [implementation](docs/BUILD_QUOTA_REVIEW_FOLLOWUPS.md).
+
+## 58. Quota fixes pass re-review with two small follow-ups — 2026-09-20
+
+VERIFIED: the original three failure cases are fixed; current review's 60 focused
+and 776 complete tests pass. A repeated-cancellation probe retains physical wire
+ownership and applies a late 429, but leaves running=True after drain. A separate
+probe shows pending rollover holds the caught exception and its raw quota pair
+frames after garbage collection. These are P3 lifecycle/retention follow-ups;
+neither restores read/trading authority. See [review](docs/REVIEW_D041_ASTRA.md).
+No implementation or test edits, private account use or live actions in review.
+
+## 57. Reviewed quota gaps are fixed in source pending re-review — 2026-09-20
+
+D-041 adds a one-time grant-boundary deferral without extending the old hard
+deadline; keeps actual wire ownership across cancelled close; and releases
+explicit refresh waiters on terminal clock/service state. The full 776-test suite
+and 60 focused quota tests pass. New rollover fixtures make six quota GETs for
+bootstrap, deferral and boundary at both 30/120 market counts; idle remains
+zero extra GETs. Two process-local guard reversals were detected. See
+[build evidence](docs/BUILD_QUOTA_REVIEW_FIXES.md). This is offline code evidence,
+not observed Kalshi entitlement or approval to trade. Astra re-review pending.
+
+## 56. Grant-boundary deferral must not certify quota — 2026-09-20
+
+D-040 design correction: a valid but non-installable near-expiry pair needs a
+distinct scheduling result, not a successful lease or ordinary failure. Proposed
+one-deferral bound preserves the original hard cutoff and real failure count;
+post-boundary reads still require completely new validated evidence. Changed
+read evidence revokes the old lease. Cancellation-safe drain and terminal waiter
+contracts are specified alongside it. [Design and acceptance](docs/DESIGN_QUOTA_REVIEW_FIXES.md).
+Current code and public limit/cost documentation were inspected; no new tests,
+implementation or account observations. R1-R3 remain open. Exact policy awaits
+the operator's implementation handoff; it is not a new live quota allowance.
+
+## 55. Quota review exposes grant rollover and cancellation gaps — 2026-09-20
+
+VERIFIED with injected clocks/transports: a valid unchanged finite grant exhausts
+automatic refresh before expiry; cancelling shutdown during timeout drain loses
+ownership of an actual worker and drops its late 429; clock fault during retry
+cooldown leaves an explicit refresh waiting indefinitely. The first issue is an
+inherited Astra design conflict, not an implementation deviation. Section 54's
+ownership claim covers tested ordinary consumer cancellation, not cancelled close.
+See [review evidence and acceptance](docs/REVIEW_D039_ASTRA.md).
+46 focused tests pass, but this review's full 762-test run has one wire-entry
+timeout; the affected 31-test module passes on rerun. Scheduling sensitivity is
+suspected, not established. STATUS owns timings and the next handoff. No source
+or test fixes, new design approval, account use or trading occurred in review.
+
+## 54. Quota holds can preserve stream processing and retry ownership — 2026-09-20
+
+VERIFIED in injected tests under D-039: expired or superseded quota evidence
+blocks unsent REST work and cannot certify a late response. Pair timeout/caller
+cancellation retains actual worker ownership until drain. Shared 429 pauses and
+token spending remain intact. Healthy private-stream fills still enter the durable
+inbox during an authentication/quota outage; quota restoration does not reset
+independent recovery/metadata exhaustion or grant entry authority.
+MEASURED: 30/120 explicit and automatic quota fixtures pass unchanged resource
+budgets, with two coalesced bootstrap GETs, zero leftover tasks and explicit
+admission refusal under saturation. Ten idle seconds cause ten health wakes and
+zero extra GETs. 46 focused tests and two guard reversals pass; STATUS owns the
+final full-suite result. [Details and limits](docs/BUILD_QUOTA_FRESHNESS.md).
+No actual account quota, server token balance or live behavior is inferred.
+
+## 53. Quota freshness needs source age and a bounded recovery path — 2026-09-20
+
+VERIFIED in current `rest.py`: explicit refresh installs numeric settings but
+does not retain grant expiry or an observation-age lease. Configuration age alone
+cannot revoke an old entitlement. Cancellation leaves actual wire work owned by
+RestReads, so a future timeout must also prevent late installation.
+
+VERIFIED from the official limits/cost pages and local exact schemas: grants are
+lane-scoped; account limits and endpoint costs are separate documents. UNKNOWN:
+null expiry semantics (schema permits null; the guide defines absent expiry as
+permanent), server snapshot/version consistency and any guaranteed validity TTL.
+No current account quota was fetched. Proposed strict lease/probe handling,
+sources, interfaces and phased acceptance are recorded in
+[quota design](docs/DESIGN_QUOTA_FRESHNESS.md). Design only, no new test results.
+
+## 52. D-036 review found four gaps outside the existing tests — 2026-09-20
+
+Update after Astra review: Sol implemented R1-R4 with nine focused regressions;
+both 30/120 resource fixtures pass. Independent Astra re-review cleared R1-R4
+without new blocking findings in scope. All 87 focused tests and a combined
+REST/service/scheduler reconnect probe passed. See
+[re-review evidence](docs/REVIEW_D036_ASTRA_R2.md); STATUS records Sol's prior
+716-test full-suite outcome. The original reproduction evidence follows.
+
+VERIFIED with isolated injected probes: a valid milestone-review replacement
+exceeds the lifetime dependency-key cap even after reconnect; background read
+admission can reject a critical request while a reserved transport slot is free;
+a new metadata generation waits on old work and charges its stale rejection to
+the new retry budget; quota reconfiguration cannot interrupt the head token wait.
+All four were open P2 findings, with precise reproduction and fix acceptance in
+[Astra review](docs/REVIEW_D036_ASTRA.md). No source/test fixes applied in review.
+At the original review, the 707-test suite passed in 54.564s, confirming missing
+scenarios rather than existing failing regressions. Preflight remains false
+(native exit 2). No account use, trading or Polymarket changes. Git metadata is
+unavailable, limiting review to present source rather than a verified Git diff.
+
+## 51. Quota capacity is not current tokens; metadata needs bounded refresh ownership — 2026-09-20
+
+VERIFIED from current official rate/limits/cost documentation: account payloads
+supply actual refill/capacity and separate Read/Write limits; endpoint overrides
+must be charged. The guide's Basic capacity description differs from the earlier
+dated account observation. Preserve both, configure from fresh documents, and
+never infer available tokens or entitlement from tier name. No new account call.
+Source links and exact implementation boundaries: [rate limits](docs/RATE_LIMITS.md).
+
+D-036 adds an optional runtime-owned metadata coordinator, shared priority reads,
+explicit atomic quota refresh and final/late-429 handling. Automatic quota-age /
+grant-expiry enforcement and write-side transport remain unfinished. Fixture
+bootstrap exposed a book-before-snapshot race, now guarded. MEASURED: 30/120-market
+scheduling uses exactly 35/125 cold reads and zero extra warm reads; workers <=2.
+30/120-request token fixtures spend exactly 300/1200 tokens and pass CPU, memory
+and loop-lag budgets. 24 scheduler and 13 quota tests, plus two in-memory fault
+reversals, verify the new components. No live capacity/profitability claim.
+[Scheduler evidence and boundaries](docs/BUILD_METADATA_SCHEDULER.md).
+
+## 50. Completed history reads need durable scope and omission checks — 2026-09-20
+
+VERIFIED locally: staged fill evidence previously survived restart, but completed
+read intervals/source provenance did not. An empty later response could leave
+no newly missing keys and allow a locally repaired label despite retained unknown
+fills. D-035 persists complete enumeration receipts and blocks that label on known
+omissions, without reclassifying or deleting fills. Future requested time is never
+credited. Current official pagination/private-fill docs still do not establish a
+shared stream/REST watermark; full continuity remains UNKNOWN.
+MEASURED: 128/4,096-row fixtures with 30/120 receipts and inspections pass bounded
+resource checks; indexed batch validation reduces the larger finalization from
+340.425ms to 215.938ms. All 670 tests (31 focused) and two guard reversals pass. No account
+use or actual launch baseline. [Evidence and sources](docs/BUILD_HISTORY_COVERAGE.md).
+
+## 49. Event timing needs reviewed bindings; fee rounding depends on membership — 2026-09-20
+
+VERIFIED in current official API docs: lifecycle carries tick/close/state and
+event-fee updates; event overrides supersede series fees. Milestone primary and
+related events differ; expected expiry is not universal event start. Rounding
+guidance distinguishes direct/non-direct precision and fractional-fill effects.
+D-034 implements source-bound adapters with explicit review/profile gaps, not
+guessed live facts. Pending/expired-baseline REST cannot erase stream observations.
+MEASURED: shared 30/120-market fixtures used exactly 35/125 reads with no extra
+reads for warm/stream-supported updates; both resource budgets pass. 41 focused
+tests and two reversals verified. No account use or live execution.
+[Exact source links, fee-bound derivation and scope](docs/BUILD_MARKET_INPUTS.md).
+
+## 48. Diagnostic causes retained without raw exception text — 2026-09-20
+
+VERIFIED: writer and REST sanitization previously discarded useful causes;
+reader/recovery catches exposed state but no structured failure trace. D-033
+records stable codes, typed safe stacks and bounded context before sanitization.
+The standard rotating handler can suppress I/O failures, so the dedicated sink
+overrides that behavior and latches failure. Secret, saturation and fault tests
+exercise these paths; two in-memory safeguard reversals are detected.
+MEASURED: 3,000/12,000-event diagnostics pass predeclared limits with zero drops
+and producer p99 0.414/0.408ms. All 598 tests pass. No account access, third-party logger interception,
+live execution or maximum-throughput claim. [Details](docs/LOGGING_AND_ERRORS.md).
+
+## 47. Exact exit plans now preserve cancellation and fill proof — 2026-09-20
+
+VERIFIED against current Poly source at `51cf59548b8e339be790e0662b6594ff0af77ddc`:
+conditional one-tick improvement, 900-second evaluation, size-10 $8 ordinary
+projected-loss threshold, depth haircut and bounded IOC confirmation/retry rules.
+Kalshi adaptation keeps quantity exact and rejects IOC expiry; expected/latest
+expiration is not a verified event-risk clock. The new planner remains advisory.
+569 local tests and 104 reference tests pass. MEASURED 30/120-market diagnostics
+pass their predeclared budgets. Production fee bounds, event-time provenance,
+account completeness and live execution remain UNKNOWN/unimplemented, not proved
+by fixtures. [Trace, measurements and boundaries](docs/BUILD_INVENTORY_EXITS.md).
+
+## 46. Poly exposure follows configured reference, not occupancy — 2026-09-20
+
+VERIFIED at current local Poly HEAD `51cf59548b8e339be790e0662b6594ff0af77ddc`:
+source and launchers default to 20 slots; no local runtime override. Actual
+diagnostic config at Kalshi size 10 yields $300 portfolio/$90 market exposure.
+This is not running-process evidence. D-031 follows that calibration rather than
+the proposed fixed $400. Actual Kalshi breadth stays limits-driven and the dollar
+budget never grows with occupancy. Config/default/CLI now agree; 510 Kalshi tests,
+104 reference tests and two fault reversals verified. No account use or trading.
+[Trace and exact boundaries](docs/BUILD_POLY_EXPOSURE.md).
+
+## 45. Private subscriptions and re-subscription accepted — 2026-09-20
+
+VERIFIED on the actual account from 21:56:59 to 21:57:30 UTC: `user_orders`,
+`fill`, `market_positions` and `order_group_updates` acknowledged on two
+sequential connections, closing the first before opening the second. Aggregate
+acknowledgment latency 263.521/256.770 ms; 15 seconds observation per session.
+No actual account events arrived. This establishes access/re-subscription only,
+not event economics, gap recovery, stream/history continuity or reward eligibility.
+No concurrent four-socket bot, orders, cancellations or trading ledger was used.
+
+D-030 accepts keeping prior fills separate while preserving reconciliation
+evidence; not a reset, ownership waiver or installed launch boundary. Fixed $400
+portfolio exposure remains a proposal awaiting the operator; configuration is
+unchanged. 498 tests pass and two in-memory guard reversals are detected.
+[Exact artifact, limits, evidence and unfinished scope](docs/BUILD_PRIVATE_STREAM_CHECK.md).
+
+## 44. Matching ID accepted; bounded account inspection — 2026-09-20
+
+VERIFIED: the new `kalshi-bot.txt` contains a valid UUID-form API-key ID.
+Together with `Kalshi-Bot2.txt`, it authenticated a successful production
+`GET /portfolio/balance`, followed by a bounded inspection from
+2026-09-20 21:32:07.641695 to 21:32:15.862745 UTC (17:32 Eastern).
+Credentials were read into memory, not printed, copied into documentation,
+edited or installed into environment configuration. Both filenames already
+have explicit `.gitignore` entries. Section 43's missing-ID blocker is superseded.
+
+Observed using the existing GET-only signer/transport against
+`https://external-api.kalshi.com/trade-api/v2`, with redirects/proxies disabled:
+
+| Read | Scope / result |
+|---|---|
+| Balance | Primary account, all shards; `balance_dollars=500.4268`, legacy integer cents `balance=50042`, `portfolio_value=0`. Same monetary values before/after inspection; update timestamps differed. Actual cash is separate from the unchanged $500 strategy ceiling. |
+| Resting orders | Explicit `subaccount=0`, `status=resting`; zero rows, one page, cursor exhausted. |
+| Nonzero positions | Explicit `subaccount=0`, `count_filter=position`; zero rows, one page, cursor exhausted. Other subaccount positions were not inspected. |
+| Recent fills | Explicit `subaccount=0`, no time filter; 18 rows, one page, cursor exhausted. Returned timestamps range from `2026-08-16T15:14:31.096698Z` to `2026-09-15T00:31:54.862931Z`. |
+| Archived fills | Member-wide endpoint has no subaccount filter; zero rows, one page, cursor exhausted. |
+| Historical cutoffs | All four supplied cutoff fields were `2026-07-22T00:00:00Z`, unchanged before/after enumeration. |
+| API limits | Basic tier; read refill 200 tokens/s, capacity 600; write refill/capacity 100 tokens. Reading write limits did not test write permission. |
+| Endpoint costs | Default 10 tokens; returned GET overrides parsed successfully. No runtime budget configuration changed. |
+
+All 18 recent fills carried subaccount 0 and the canonical fields checked:
+`fill_id`, `trade_id`, `ticker`, `market_ticker`, `book_side`,
+`yes_price_dollars`, `count_fp`, `fee_cost`, `created_time`, `exchange_index`.
+Field presence alone does not validate aliases, economics or recovery import.
+No raw fills or account identifiers were persisted; no trading ledger was opened.
+
+Enumeration limits: 10 pages / 1,000 rows / 4 MiB per endpoint, existing
+30-second enumeration deadline and transport/retry bounds; conservative shared
+one-request-per-second diagnostic throttle. No limit was reached. Live account
+limits/costs were obtained, but this was not a production rate-budget exercise.
+REST was used for one-time cash/bootstrap/history information not supplied as
+a complete account snapshot by private update streams; no polling service or
+WebSocket/trading process was started.
+
+UNKNOWN: atomic account/private-stream continuity, lifetime history completeness,
+other subaccount inventory, corrections/settlements, order ownership and a
+human-approved starting baseline. Empty inventory and exhausted cursors do not
+establish those guarantees. The final fill timestamp is not a bot stop time.
+No profit/reward or trading-loss figure is inferred from the cash balance.
+No write permissions tested, account mutations, ledger imports or live activation.
+Next decision remains the starting-account/history coverage policy, not a key fix.
+
+Contracts checked against the local API operation/schema snapshot and current
+official [balance](https://docs.kalshi.com/api-reference/portfolio/get-balance),
+[recent fills](https://docs.kalshi.com/api-reference/portfolio/get-fills) and
+[historical fills](https://docs.kalshi.com/api-reference/historical/get-historical-fills)
+documentation on September 20. Only documentation changed; no test suite rerun.
+Prior 479-test result remains historical, not a new result. Git status/diff is
+unavailable because this relocated directory has no `.git` metadata.
+
+## 43. Supplied credential is a private key only — 2026-09-20
+
+VERIFIED locally: `Kalshi-Bot2.txt` contains one parseable 2048-bit RSA private
+key and no text outside the PEM block. No project `.env` or process/user/machine
+`KALSHI_API_KEY_ID` configuration was present. Only booleans/type/size were
+reported; secret contents stayed undisclosed and the file was unchanged.
+Matching API-key ID is required before the read-only account check can proceed.
+Venue acceptance and account state remain UNKNOWN; no network calls were made.
+
+## 42. Windows relocation verified — 2026-09-20
+
+VERIFIED: `C:/Users/rynna/Bots/kalshi` is now the active project, alongside
+`liquidity-bot`. Tree SHA-256 matched for 3,453 transferred files, including
+historical data; separate credential content also matched. The old OneDrive
+project now contains only routing notices. Relocated virtual environments
+required regeneration of activation/launcher and editable-install paths.
+Pinned runtime versions retained; 479 tests pass from the new directory and
+preflight remains blocked. Polymarket stayed clean. Credential presence is not
+proof of key validity, API-key ID availability or account access; inspection pending.
+
+## 41. Local account agreement is now explicit and atomic — 2026-09-20
+
+VERIFIED locally: D-028 compares exact owned resting terms, foreign/absent
+orders, all retained owned order fill totals, unbound intents, pending inbox,
+position quantities and account/shard scope in one writer transaction. Matching
+flat net inventory cannot hide opposite unaccounted fills. Subsequent local
+mutations revoke reports. Recovery retains interval/source provenance without
+claiming a documented venue watermark. 479 tests pass; two reversals detected.
+
+MEASURED: batching capacity validation reduced the 120-market diagnostic from
+16.4618s to 5.6195s wall, inspection p99 174.951ms to 71.887ms; unchanged workload
+and safety limits. This is local engineering evidence only. Published fill/order
+updates and balance timestamps do not establish complete cross-source proof;
+starting basis, history continuity and production cash authority remain UNKNOWN.
+[Primary links, trace, exact conditions and blockers](docs/BUILD_ACCOUNT_VERIFICATION.md).
+
+## 40. Shared exposure and advisory inventory integration — 2026-09-20
+
+VERIFIED from current Poly executable source: inventory basis risk, working
+orders (including reducers) and unbound PLACE intents share the portfolio sum;
+row-backed intents are not added twice. Exact passive reducers require confirmed
+removal of incompatible orders. Poly's conditional one-tick improvement is a
+distinct unfinished Kalshi pricing step, not implicit in touch-only plans.
+D-027 adds single-writer projections/offline reservations and event-driven
+advisory management, never live authority. 450 tests pass; two reversals detected.
+MEASURED on disposable 30/120-market fixtures: market-read p99 .937/1.001ms,
+global projection p99 6.238/23.952ms, loop-lag p99 4.950/15.836ms. Not a live SLA,
+fill-probability estimate or reward forecast. [Evidence/boundaries](docs/BUILD_INVENTORY_RISK.md).
+
+## 39. Recovery connected without blocking book/deadline processing — 2026-09-20
+
+VERIFIED locally: D-026 durable pending fills survive disconnect/restart;
+WebSocket order evidence can complete their ownership without REST. Missing
+terminal-order updates require positive GET/archive evidence, not an absence
+inference. Account evidence is revoked at ingress before disk/queue waits.
+One coalesced recovery worker and independent connection retries remain bounded.
+410 tests pass, including 39 new tests; two temporary safety reversals detected
+and restored. Entry authorization remains false even after successful repairs.
+
+MEASURED: 128/1024 injected fills, 30/120 synthetic markets; wall .5940/4.4918s,
+durable processing p99 5.834/6.496ms, loop-lag p99 3.747/3.372ms. All 8/64
+scheduled deadlines ran. This is not network latency, production load acceptance
+or profitability evidence. [Conditions and gaps](docs/BUILD_RECOVERY_ENGINE.md).
+No real keys/account requests/orders, historical migration or Poly edits.
+
+## 38. Poly-style recovery is positive evidence, not full account proof — 2026-09-20
+
+VERIFIED: the reference automatically applies backfilled executions, rejects
+immutable conflicts, and has executable venue-cost basis fallback despite older
+strict-basis comments. Kalshi D-025 now adopts those concepts with explicit
+order ownership/scope, separate cost observations and no fabricated correction
+signal. Matching quantities or cursor exhaustion still cannot authorize entries.
+
+371 local tests pass, including 36 new tests. Two intentional safety reversals
+were detected and restored. MEASURED: 128/1024 fills across 30/120 synthetic
+markets complete in .2208/1.6215 seconds; replay-batch p99 41.714/46.784ms;
+loop-lag p99 14.976/15.626ms. Initial larger run exceeded the five-second token;
+transactional incremental sums and unique-lot counting fixed the measured work.
+[Evidence, exact budgets and remaining gaps](docs/BUILD_AUTO_RECOVERY.md).
+No keys, account calls, live changes, data migration/deletion or Poly edits.
+
+## 37. Archived terminal orders no longer fall outside recovery — 2026-09-20
+
+VERIFIED: current official archive contract supplies canceled/executed orders
+missing from recent order routes. It has no documented subaccount filter, so
+recovery requires explicit row scope. Cursor exhaustion and stable cutoff do not
+prove atomic account state. Exact durable intent terms establish bot ownership;
+terminal status without accounted fills still holds the reservation.
+
+335 local tests pass; intentional removal of the 404-only fallback guard and
+terminal-fill agreement each caused a regression failure; both restored.
+Also fixed history staging's previously unchecked execution-time conflicts and
+cleared stale auxiliary reports when starting a new reconciliation.
+
+MEASURED: 128/4096 synthetic owned terminal orders; .0728/1.8863 seconds wall;
+loop-lag p99 7.760/13.216ms; batch-ack p99 14.613/18.977ms. Local diagnostic
+budgets passed, not network/recovery-completeness/live scalability acceptance.
+[Source links, conditions and pending decisions](docs/BUILD_ARCHIVE_RECOVERY.md).
+No real account reads/writes, credentials, data deletion or Poly changes.
+
+## 36. Approved partial-close accounting implemented — 2026-09-20
+
+VERIFIED locally under D-024: weighted-average basis, immediate observed fees,
+partial-match gross realization, receipt-window late-fill attribution and
+restart-persistent risk caps/holds. 306 tests pass. Seeded comparison against
+actual Poly `MatchedInventory.apply` over 10,000 fills/30 synthetic markets:
+exact positions and max per-fill numerical difference 3.8830065389158e-27 dollars
+(Kalshi precision 40 versus reference default 28; tolerance 1e-24).
+This verifies arithmetic for identical application order, not historical replay
+or live-runtime equivalence. Schema 1 is refused, not automatically converted.
+
+MEASURED: existing sparse WAL/FULL writer fixture, 240/960 fills; durable-ack p99
+4.656/10.172ms. The larger run is slower than the earlier milestone; window sums
+still scan indexed journal rows on the worker, now including opening fees.
+Do not claim long-history scalability or live acceptance. [Full report](docs/BUILD_ACCOUNTING.md).
+No real keys, account calls, orders, historical deletion or Poly edits occurred.
+
+## 35. Poly accounting is not FIFO/prorated fees or execution-time risk — 2026-09-20
+
+VERIFIED from executable call paths and 216 passing reference tests: Poly realizes
+matched partial quantities immediately, uses weighted-average basis and incurs
+all observed fill fees immediately. Its six-hour stop meter uses durable receipt
+time; historical reports may use venue execution time. The earlier proposed
+execution-time late-fill allocation was not a verified Poly copy. Kalshi candidate
+accounting remains unchanged pending approval, especially unmatched entry fees.
+
+Selection filters precede projected-reward ranking and restrained per-slot top-up;
+restart does not clear ownership or loss holds. Passive reducer pricing also has
+a conditional one-tick improvement, while existing exact touch orders are kept.
+[Source locations, detailed limits and verification](docs/POLYMARKET_POLICY_CODE_AUDIT.md).
+D-023 accepts limits-driven capacity, not any invented fixed slot/exposure value.
+
+## 34. Quote/ranking and event/command components — 2026-09-20
+
+VERIFIED locally: 280 tests pass, including 68 new checks. Current official
+scoring and V2 create/cancel contracts rechecked. Snapshot math preserves whole
+cutoff levels, own-order replacement and separate sides. Rankings never claim
+net profit or automatic permission to trade. The V2 acknowledgement journal
+does not fabricate terminal state, executions or fee accounting.
+
+MEASURED: bounded 30/120-market injected workloads passed diagnostic budgets
+after fixing long synchronous batches and redundant validation. Final 120-market
+p99 loop lag: 15.102ms; event-to-rank: 481.628ms. Limited ranking headroom means
+no live scaling claim. [Full scope, results and unfinished work](docs/BUILD_ENGINE_RANKING.md).
+No keys, venue sessions/orders, paper run, historical deletion or Poly edits.
+
+## 33. Owned orders and bounded recovery evidence — 2026-09-20
+
+VERIFIED locally: 212 tests pass; 53 new recovery/order checks establish exact
+intent ownership, stale/terminal-state protection, terminal-fill accounting
+agreement, history boundary/scope checks and bounded evidence staging. Removing
+terminal-fill and required-cursor guards caused focused tests to fail; restored.
+The passive reducer path was rechecked against executable Polymarket code,
+including the no-touch branch; the reference checkout is unchanged.
+
+MEASURED: short 30/120-market injected account-event workloads and 1,000/4,000-row
+history staging. Exact numbers and exclusions are in the
+[recovery/order report](docs/BUILD_RECOVERY_ORDERS.md). No live performance or
+profitability claim follows. Staged missing fills do not alter P&L; replay needs
+the operator's accounting decision. No real keys, account calls or writes used.
+
+## 32. Durable account-I/O milestone verified — 2026-09-20
+
+VERIFIED locally: 159 tests pass (49 new integration/fault tests), including
+atomic fill+risk rollback, restart-persistent intermediate loss tiers, bounded
+writer/REST failure behavior and rejection of REST snapshots overtaken by account
+events. Reversing the transaction and generation guards caused expected failures.
+MEASURED: sparse local WAL/FULL writer fixture, 30/120 synthetic tickers; exact
+workloads, latency percentiles and limitations in [the milestone report](docs/BUILD_ACCOUNT_IO.md).
+This is software correctness/performance evidence, not profitability or live readiness.
+
+Current-position agreement and cursor exhaustion do not establish execution-history
+completeness or private-stream continuity. The new reconciliation report keeps
+those blockers and cannot enable trading. No policy decisions, real key access,
+venue account calls, historical data deletion or Polymarket changes occurred.
+
+## 31. First Windows foundation verified — 2026-09-19
+
+Implemented D-021's initial component milestone. 110 tests passed on native
+Python 3.14.7, including the 45 existing research regressions. Deliberate removal
+of persisted-cap and sequence-gap guards caused their focused tests to fail;
+restored before final verification. No user credentials or venue calls used.
+A sparse offline book/scheduler fixture measured about 23k updates/sec for
+30 and 120 synthetic markets; excludes network/storage/strategy and is not
+live-capacity proof. Exact scope and remaining integration:
+[build report](docs/BUILD_FOUNDATION.md). No paper-trading or production start.
+
+## 30. Direct inventory code audit and native Windows verification — 2026-09-19
+
+Traced CLI configuration -> computed exposure -> reconciler admission and
+portfolio reservations, plus positioned-market cancellation/reduction and exit
+branches. Corrected section 29's shorthand: $420 is conditional on 32 slots;
+the code counts reducer exposure as well as building orders. All 104 tests
+in test_commissioning.py/test_reconciler.py passed on Windows after supplying
+the source import path. No live runtime state or full-suite result is claimed.
+Details: [code audit](docs/POLYMARKET_INVENTORY_CODE_AUDIT.md).
+D-019 makes future Kalshi work Windows-native; this update was not mirrored
+to WSL, and no old data or processes were touched.
+
+## 29. Polymarket inventory reference verified — 2026-09-19
+
+Read-only code/policy review at unchanged clean reference HEAD
+`54ac71a241d1ad6f02e3445655bb7115247bac02` verifies $90 market/$420
+portfolio exposure in its documented size-10/32-slot setup, exact reducing
+management after fills, a 900-second exit evaluation, and a five-minute
+pre-kickoff override. `reconciler.py` can defer ordinary IOC for depth or
+projected loss beyond its configured early-exit allowance ($8 at size 10);
+15 minutes is not guaranteed liquidation. D-018 records the user's instruction
+to follow these inventory rules, with Kalshi-specific contracts still to map.
+This is code/document evidence, not a live process/account check.
+
+## 28. Multi-WebSocket design review — 2026-09-19
+
+Read-only Polymarket history/code review at unchanged clean
+`54ac71a241d1ad6f02e3445655bb7115247bac02` found documented shared-recovery
+fanout, private-state proof gaps, read backpressure, self-chasing reducers,
+cash-timing P&L errors and host-outage resting-order exposure. These are
+historical records, not current live observations. Relevant Kalshi stream
+pages were rechecked publicly; no numeric simultaneous-connection allowance
+was established. Sources, limits and the proposed four-socket/one-engine
+response are in [the design review](docs/MULTI_WEBSOCKET_DESIGN.md).
+D-016 records the operator's accepted size/count/window parameters separately.
+No credentials, runtime changes, trading or performance measurements occurred.
+
+## 27. Polymarket documentation pattern inspected — 2026-09-19
+
+**VERIFIED read-only:** the working reference is
+`C:/Users/rynna/Bots/liquidity-bot`, clean HEAD
+`54ac71a241d1ad6f02e3445655bb7115247bac02`. Its AGENTS/CLAUDE files route to
+one `AI_OPERATOR.md`; `AI_ENGINEERING.md` owns permanent rules, current state
+and decisions are separate, and dated history is routed by indexes. It also
+has a documentation audit for routes, line budgets and links. The old OneDrive
+folder lacked those root documents. No live runtime claim follows from this.
+
+Kalshi adopted the core routing pattern under D-014. WebSocket-first data,
+REST for unavailable information, and CPU-efficient scalable design are now
+standing operator requirements. Polymarket's REST account mode, risk settings,
+capacity and numeric API budgets are not Kalshi defaults. No source, account,
+runtime or strategy mutation occurred. See `docs/DOCUMENTATION_STRUCTURE.md`.
+
+**Current source note (2026-09-19):** use section 26 and
+`docs/LIQUIDITY_REWARD_RESEARCH.md` for current liquidity rules and API evidence.
+Older eligibility, best-bid reference, post-only, reward-unit and mandatory
+paper-stage statements below are historical, not current authority.
+
+## 26. Current liquidity research and public reward API audit — 2026-09-19
+
+**VERIFIED:** official help explicitly applies the $1 minimum per individual
+program. The July clean filing defines the reference at one fifth of target,
+includes the entire cutoff price level, and scales for excluded snapshots.
+Full price weight is not full pool ownership. Current help and clean filing
+eligibility wording differ; the old blanket MM-agreement exclusion must not be
+reused as established current general-LIP policy.
+
+**MEASURED:** at 22:52 UTC, the complete active listing had 5,251 liquidity
+programs, one volume program and no margin programs. All LIP rows used discount
+0.50. Of a purposive 40-book sample, 27 met both-side target depth. A static
+new-entrant calculation cleared $1 remaining gross reward on one size-5 pair
+and five size-9 pairs. Neither sample selection nor assumptions establish
+profitability. A $13.97/day-normalized example had only $0.85 remaining reward.
+
+**VERIFIED API SCOPE:** 191 REST operations, two WS specs and cached FIX docs
+revealed only `GET /incentive_programs` as a dedicated reward endpoint. All
+documented type/status filters, exact description and cursor pagination were
+checked; 102 logged public GETs succeeded. No documented personal earnings or
+reward-credit-history endpoint was found. Program `paid_out` is not a personal
+payment receipt. 4,383 LIP rows had fractional-second boundaries, differing
+from the filing's whole-second wording; exact edge treatment remains unknown.
+
+**INFERRED:** Reference Price is the initial candidate rather than a fixed
+best-bid offset, but selection must include the individual payout minimum,
+remaining time, whole-level competition, costs and correlated inventory risk.
+No additional paper run is required or proposed. No keys/account APIs/orders
+were used; no strategy or exit policy was approved by this research.
+
+Canonical details, primary citations and dated evidence:
+[liquidity-reward research](docs/LIQUIDITY_REWARD_RESEARCH.md).
+
 Research pinned 2026-08-16. Ported context: `D:\polybot\liquidity-bot` (Polymarket US)
 is the reference implementation. Its `SAFETY_INVARIANTS.md` (63 invariants) is the
 asset being carried over; its *calibrations* are Polymarket measurements and are NOT
@@ -1857,6 +2403,270 @@ Unknown fills are not assigned zero, and no complete net can be calculated
 until they are bounded and this loss path shares the fixed reward clock.
 
 ---
+
+## 21. The isolated read-only server shadow is operational
+
+### VERIFIED — deployment did not share the Polymarket project or process
+
+On 2026-08-27 UTC, tracked commit
+`c13524201819c3f771b9b8193e168a9ae85e1372` was installed at
+`/root/kalshi-bot` with its own virtual environment, database, logs, and
+transient service. The recorder source scan found only the public
+`api.elections.kalshi.com` base and default-method `urllib` requests; it found
+no order/portfolio endpoint or write HTTP method. All 25 measurement tests
+passed on the server.
+
+The pre-canary and post-canary Polymarket supervisor/trader PIDs and start times
+were identical. This verifies process separation for the deployment/canary; it
+does not prove that future resource use can never interfere, which is why the
+service is capped at 20% CPU and 256 MB RAM and remains monitored.
+
+### MEASURED — two-minute canary, not strategy economics
+
+Dataset `data/canary-20260827.db`, run
+`cap-20260827T023150Z-a419d203`, 2026-08-27 02:31:50–02:34:07 UTC, five tracked
+markets and 50 density candidates:
+
+- 65 raw book snapshots and five market-metadata rows;
+- zero non-200 book responses and zero recorded errors;
+- SQLite integrity check `ok`;
+- 16,371 first-seen program rows and one exchange-status row.
+
+This canary verifies collection mechanics only. It contains no strategy fills
+and cannot support a reward, trading-loss, or profitability claim.
+
+### VERIFIED — 14-day collection started
+
+The read-only service `kalshi-readonly-capture-14d` started at
+2026-08-27 02:35:40 UTC, using run id
+`cap-20260827T023541Z-dcee8aea`, 75 tracked markets, 60-second sweeps, at most
+five public reads per second, and hourly density scans. Planned checkpoints are
+2026-09-03 and completion on 2026-09-10. The initial service state was active
+with one process and about 16 MB memory. This is an operational observation,
+not evidence that the strategy is profitable.
+
+### MEASURED — eight-hour operational checkpoint
+
+Dataset `data/shadow-14d-20260827.db`, run
+`cap-20260827T023541Z-dcee8aea`, observation window 2026-08-27
+02:36:20–10:49:22 UTC:
+
+- 41,501 raw book rows across 1,262 density-candidate tickers;
+- 75 active tickers in the preceding five minutes and 5,241 captured trades;
+- zero non-200 book responses and zero recorded errors;
+- 60.0-second median active-market sample gap, 107.9-second p95, and
+  267.1-second maximum over the preceding two hours;
+- database plus WAL about 58 MB after 8.2 hours.
+
+The service had zero restarts and its newest book was 30 seconds old. The
+longer gaps coincide with hourly density scans that take about 200 seconds.
+Those gaps are a known capture bias: downstream reward/fill analysis must mark
+them missing rather than infer continuous qualification or no trades.
+
+**VERIFIED capacity observation:** 461 MB host memory was available; Kalshi
+used 105 MB with a 113 MB peak under its 256 MB cap; the one-core load averages
+were 0.00/0.03/0.00; 19.4 GB disk remained; and the kernel recorded no OOM
+event. Linear storage growth implies roughly 2.4 GB for 14 days. No server
+upgrade is indicated at this checkpoint.
+
+**UNKNOWN process event:** the Polymarket supervisor/trader observed at launch
+were replaced by processes started at 04:02:57 UTC. The Kalshi unit did not
+restart, there was no kernel OOM event, and later host load was low. Those facts
+do not identify the restart's cause, so it must not be attributed to Kalshi
+without additional evidence.
+
+---
+
+## 22. Current server data rejects broad pure spread scalping
+
+### MEASURED — closed 9h51m server dataset
+
+Dataset `data/server-shadow-20260827-closed.db`, run
+`cap-20260827T023541Z-dcee8aea`, 2026-08-27 02:35:41–12:27:03 UTC, 50,038
+books, 5,626 trades, size 10. The run ended early on a transient TLS EOF; it is
+not a complete day and contains hourly density-scan gaps.
+
+Non-overlapping quote windows produced:
+
+| policy/window | windows | pairs | one-sided | neither | one-sided:pairs |
+|---|---:|---:|---:|---:|---:|
+| touch / 900s | 8,620 | 11 (0.1%) | 88 (1.0%) | 8,521 | 8.0:1 |
+| inside / 900s | 8,620 | 21 (0.2%) | 140 (1.6%) | 8,459 | 6.7:1 |
+| touch / 3600s | 6,574 | 12 (0.2%) | 48 (0.7%) | 6,514 | 4.0:1 |
+| inside / 3600s | 6,574 | 26 (0.4%) | 70 (1.1%) | 6,478 | 2.7:1 |
+
+Completed pairs earned positive gross spread, but they are too rare to define
+the economics. At 900 seconds, a realized-exit replay priced 86 of 100 touch
+fills for `-$50.9463` total and 236 of 277 inside fills for `-$108.7736`;
+14 and 41 exits respectively remain unknown. The exit replay is not on the
+same non-overlapping sampling clock, so these totals must not be subtracted
+from pair edge as if they formed one portfolio. Directionally, however, both
+instruments agree: broad pure spread scalping creates inventory much more often
+than it captures both sides, and getting flat is adverse.
+
+### INFERRED — reward may rescue selected markets, but this is not net yet
+
+The current-rule same-clock proxy for the audited Polymarket entry policy,
+size 10 and `$300` modeled capital, selected 30 markets and reported 93.1%
+uptime, 201.3 partial fills/day, `$28.36/day` modeled reward,
+`-$9.75/day` 300-second markout, and `+$18.61/day` proxy. Reward-only selection
+of 20 markets reported `$25.385/day` after minimums on `$189.30` collateral.
+
+These positive figures are **INFERRED**, not profitability: they extrapolate
+partial program coverage, include sparse hourly candidate samples, use markout
+instead of realized exit, omit maker/exit fees, and do not bound unknown exits.
+The corrected current-policy exit replay found 106 fills, priced 92 for
+`-$54.8268` total, and left 14 unknown. A fixed-universe replay that puts
+reward, pair completion, realized exits, and unknown bounds on one clock is
+still required.
+
+### VERIFIED — retry-hardened replacement capture started
+
+Commit `b97065485cbcf10b6c7c0a34d23c0d8c090e4f5e` passed the read-only endpoint
+scan and all 27 tests on the server. Replacement run
+`cap-20260828T003459Z-44ea69de` started at 2026-08-28 00:34:59 UTC as
+`kalshi-readonly-capture-14d-r2`, with the same 20% CPU quota, 256 MB memory
+limit, five-read/s limiter, and separate database/log. The Polymarket process
+was absent and was not touched. This verifies deployment and start, not yet
+survival of a real transport failure.
+
+### VERIFIED — host reboot stopped R2; R3 restarted from a fresh database
+
+The host shut down at 2026-08-28 01:22 UTC and booted again at 01:24 UTC.
+Systemd recorded R2 stopping cleanly with an 87.6 MB memory peak and no kernel
+OOM event. Because R2 was a transient unit, it no longer existed after boot;
+this was a host-lifecycle interruption, not a recorder exception.
+
+After all 27 tests and the read-only endpoint scan passed again at deployed
+commit `b970654`, run `cap-20260828T021706Z-2e9d1d6b` started at 02:17:05 UTC
+as `kalshi-readonly-capture-14d-r3`. It uses the same 20% CPU, 256 MB memory,
+five-read/s, 75-market, 60-second-sweep boundaries and writes a fresh database
+and log. At 02:19:17 UTC it was active as PID 3898 with zero restarts; the
+database quick check was `ok`, 450 book rows, 17,069 program rows and one
+exchange-status row were present, and zero errors were recorded. The live
+Polymarket trader remained PID 2251 across the R3 start.
+
+### VERIFIED — R3 survived a real transient network failure
+
+At 2026-08-28 10:27:03 UTC, R3 logged an attempt-1/3 `URLError` caused by a
+connection reset by peer. At the 12:58 UTC inspection it retained PID 3898 with
+zero restarts and no traceback, its newest book was about 11 seconds old, and
+the database had zero recorded errors and zero non-200 book rows. The bounded
+retry fix has therefore survived a real transport interruption of the same
+general class that ended the first capture. This verifies recorder resilience;
+it does not turn the partial capture into profitability evidence.
+
+---
+
+## 23. Measurement relocated to the operator's laptop
+
+### VERIFIED — identical tracked state and isolated Kalshi runtime
+
+The former server was destroyed by the operator, so R3 is no longer running and
+its unmirrored data cannot be treated as part of the new continuous window.
+Under accepted decision D-009, exact commit
+`0043c3aa1b1fbf51bc1a951bc391cf7b4c119953` was installed on 2026-08-29 UTC
+at the standalone laptop WSL path `/home/polybot/kalshi-bot`. That commit matches
+this PC and GitHub `main`; the laptop checkout was clean. The deployed collector
+scan found no account, order, or write endpoint, all 27 tests passed, and both
+collector modules compiled.
+
+The laptop presented 16 logical CPUs, 15,545 MB WSL RAM with 14,782 MB
+available, and 952 GB free inside WSL. Windows AC sleep and hibernation are
+disabled by the active `Server Mode` plan. The collector remains capped at 20%
+of one CPU and 256 MB memory; the laptop must remain plugged in because its
+battery power policy can still suspend it.
+
+### MEASURED — laptop canary and R1 start
+
+The two-minute canary `cap-20260829T033425Z-33ba5758` ran from 03:34:25 to
+03:36:37 UTC and closed cleanly with 70 books, 2,189 trades, 16,859 program
+rows, five market-metadata rows, one exchange-status row, zero errors, zero
+non-200 book rows, no traceback, and SQLite quick check `ok`.
+
+Long run `cap-20260829T033905Z-a7cc8324` started at 03:39:05 UTC as systemd unit
+`kalshi-readonly-capture-14d-laptop-r1`. At the 03:44 UTC check it remained PID
+785 with zero restarts and held 1,094 books, 5,407 trades, 16,859 program rows,
+75 market-metadata rows, zero errors and zero non-200 books; quick check was
+`ok`. The initial density scan found 757 two-sided candidates among 5,379 and
+took 210 seconds. This is operational verification, not profitability evidence.
+
+A consistent SQLite online-backup checkpoint at 03:44 UTC contained 1,139 books
+and 5,477 trades and passed quick check. It and the matching log were copied to
+this PC as ignored files under `data/`. Runtime data is intentionally not stored
+on GitHub; code and documentation are synchronized by Git commit instead.
+
+---
+
+## 25. Official API contract snapshot — 2026-09-19
+
+**VERIFIED from published documentation, not live account behavior.**
+`docs/KALSHI_API_REFERENCE.md` consolidates 240 pages discovered through the
+official `https://docs.kalshi.com/llms.txt` and sitemap, three OpenAPI specs,
+and two AsyncAPI specs. It includes 191 REST operations (116 Predictions,
+48 margin, 27 clearing-member), 423 shared components, 23 WebSocket channels,
+63 WebSocket operations, and technical material from all 20 FIX pages.
+The CF Benchmarks passthrough is documented outside the OpenAPI operation count.
+All 247 sources retrieved; no schema reference is unresolved. Manifest and
+verification audit are next to the Markdown.
+
+Current order writes use `/portfolio/events/orders` and YES-frame bid/ask
+pricing. The documentation also specifies fractional fills, per-band price
+grids, token-based rate limits, six-decimal fees with rounding rebates, and
+shard-specific routing/collateral. Old project assumptions are not live API
+contracts. Exact source links and implementation cautions are in the reference.
+
+Eighteen operation/page differences are `x-mint` presentation metadata; one
+component difference is a trailing newline. Both versions are preserved.
+A separate narrative discrepancy remains: FIX connectivity says RFQ quote
+accepts use the unscoped Write bucket, while the rate-limit guide says shard 1.
+The changelog includes a future September 24 entry even though retrieved on
+September 19; that entry is not evidence of already-deployed behavior.
+
+No credentials were read and no account, order, or transfer endpoint was called.
+The WSL ledger had D-009/D-010 and a D-008 clarification missing in the Windows
+copy; those existing decisions were preserved when updating documentation.
+The local Git repository remains unusable; no commit or remote parity claimed.
+
+## 24. The 12.97-day laptop replay rejects the transferred strategy
+
+**MEASURED 2026-09-14.** Dataset
+`data/shadow-14d-laptop-r1-20260829.db` spans 2026-08-29 03:39 UTC through
+2026-09-11 02:52 UTC: 1,567,512 books, 41,868 trades, 14 status-599 book
+failures, and SQLite quick check `ok`.
+
+The previous sizing report was invalid on this dataset because it assigned the
+last program row for each ticker to every earlier book and then summed top
+programs from different dates as though simultaneous. The corrected replay:
+
+- matches each book to stable reward program IDs observed and active then;
+- excludes 4,287 edited program IDs and 1,234 invalid program rows;
+- uses the current July one-fifth rule and Polymarket-current quote policy;
+- requires program duration >=1 day, >=80% observed span, and >=100 snapshots
+  per observed day, excluding hourly candidate-scan samples;
+- integrates a maximum 30-market/$300 portfolio on the actual capture clock;
+- quotes only while a selected reward program qualifies on that book.
+
+At size 10, the hindsight-ranked portfolio averages 13.6 markets and $130.45
+collateral. Modeled reward is $100.55 over 12.97 days, or **+$7.75/day**. This
+is optimistic because selection uses future full-period reward density.
+
+Same-clock whole-fill/queue replay results, including the unverified 0.0175
+maker fee-rate estimate:
+
+| passive exit deadline | fills | unknown | central/day | max-loss bound/day |
+|---:|---:|---:|---:|---:|
+| 300s | 1,104 | 67 | -$30.41 | -$55.91 |
+| 900s | 870 | 43 | -$21.12 | -$37.03 |
+| 3600s | 603 | 13 | -$7.36 | -$11.65 |
+
+At 3600 seconds with maker fees forced to zero and all unknown exits valued at
+zero, combined P&L is still **-$4.98/day**. Charging unknown exits at maximum
+terminal loss gives **-$9.24/day**. Since the favorable bound is negative, the
+Stage 1 stop gate is met: do not build the Polymarket strategy transfer or
+collect more of the same data. This does not establish that every possible
+Kalshi reward strategy is unprofitable; it rejects this measured policy,
+selection method, size, and tested exit family.
 
 ## 7. Open questions
 

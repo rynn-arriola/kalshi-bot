@@ -83,8 +83,8 @@ def taker_fee(contracts: float, price: float) -> float:
     if contracts <= 0:
         return 0.0
     price = min(max(price, 0.0), 1.0)
-    return math.ceil(TAKER_RATE * contracts * price * (1.0 - price)
-                     * 10_000.0) / 10_000.0
+    raw_units = TAKER_RATE * contracts * price * (1.0 - price) * 10_000.0
+    return math.ceil(raw_units - 1e-12) / 10_000.0
 
 
 def walk_for_size(levels: list[tuple[float, float]], size: float,

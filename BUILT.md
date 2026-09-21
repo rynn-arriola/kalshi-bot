@@ -1,14 +1,292 @@
 # What exists
 
+## Quota review correction design — 2026-09-20
+
+D-042 [follow-up fixes](docs/BUILD_QUOTA_REVIEW_FOLLOWUPS.md) address the two P3
+findings from the D-041 re-review. All 62 focused quota tests, 778 full-suite tests
+and quota resource fixtures pass. [Astra re-review](docs/REVIEW_D042_ASTRA.md)
+clears both: 62 focused tests, two process-local reversals and a boundary/caller
+probe passed. The full suite/resource results are implementation evidence.
+
+D-040 supplied [the design contract](docs/DESIGN_QUOTA_REVIEW_FIXES.md); D-041
+implemented [the fixes](docs/BUILD_QUOTA_REVIEW_FIXES.md). The exact full suite
+and resource checks pass. [Astra re-review](docs/REVIEW_D041_ASTRA.md) clears the
+original findings with two P3 follow-ups; current review tests pass.
+
+## Quota leases and automatic refresh — 2026-09-20
+
+D-039 implements BOTH phases of the [Astra design](docs/DESIGN_QUOTA_FRESHNESS.md):
+expiring account-scoped quota evidence, guarded shared GETs, restricted same-bucket
+recovery, automatic supervision and runtime holds without stopping healthy stream
+fills. 46 focused tests, two guard reversals, 30/120 resource fixtures and the idle
+check passed during implementation. The initial Astra review found three P2 issues
+and a full-suite test timeout; see [review](docs/REVIEW_D039_ASTRA.md).
+Current verification outcomes belong in STATUS; D-041/D-042 fixes are now cleared.
+[Scope, verification and remaining limits](docs/BUILD_QUOTA_FRESHNESS.md).
+No production allowance or live activation is established.
+
+## Metadata scheduling and shared read-rate controls — 2026-09-20
+
+Review status: Astra's four additional probes identified reliability defects.
+Sol implemented the four fixes and added nine focused regressions; 30/120
+scheduler and token resource checks pass. Astra re-review cleared all four in
+scope with 87 focused tests and an integrated reconnect probe; see
+[re-review evidence and limits](docs/REVIEW_D036_ASTRA_R2.md) and STATUS for the
+prior complete-suite outcome. This is not live-readiness approval.
+
+D-036 adds `metadata_scheduler.py`, optional runtime ownership, coalesced lifecycle
+refresh, deadline revocation, bounded retries and generation-safe shutdown.
+`RestReads` adds explicit coalesced quota refresh; its shared token budget now
+prioritizes account reads, reserves background headroom and honors final/late
+429 pauses. No guessed tier capacity or per-socket budget multiplication.
+25 scheduler and 18 rate tests, prior two guard reversals and 30/120-market/request
+resource checks pass. See [scheduler](docs/BUILD_METADATA_SCHEDULER.md),
+[rate limits](docs/RATE_LIMITS.md) and STATUS for the full-suite outcome.
+D-039 above subsequently adds quota-freshness/grant enforcement. No production write limiter,
+real market/profile approvals, account calls or trading activation are supplied.
+
+## Durable history enumeration receipts — 2026-09-20
+
+D-035 adds `history_coverage.py`, receipt persistence after staged-row validation,
+restart interval-gap inspection and recovery/status wiring. Omitted prior fills
+remain discrepancies, not silently forgotten history. No new financial accounting
+or launch boundary. All 670 tests (31 focused), two guard reversals and 128/4,096-row
+diagnostics pass. [Contract, measurements and gaps](docs/BUILD_HISTORY_COVERAGE.md).
+
+## Source-bound market inputs — 2026-09-20
+
+D-034 adds typed `market_inputs.py`, five scoped GET metadata adapters and
+optional runtime lifecycle/publication wiring. Shared caches preserve stream
+updates across stale REST and invalidate terms before changes. No automatic
+market-rule interpretation or member-profile assumption; no autonomous refresh
+controller/live feed started. All 639 tests pass (41 focused), two safeguard reversals and
+30/120-market diagnostics pass. [Contracts and gaps](docs/BUILD_MARKET_INPUTS.md).
+
+## Structured logging and safe error handling — 2026-09-20
+
+D-033: `observability.py` supplies bounded secret-safe JSONL, rotation, Windows
+exclusive ownership, correlation and health counters. Runtime/engine, recovery,
+REST, ledger writer, injected commands and inventory transitions are instrumented;
+CLI has opt-in `--log-dir`. No default filesystem side effects or trading start.
+598 full-suite tests (29 focused fault tests), two safeguard reversals and 30/120-market logging
+diagnostics pass. [Usage, scope and evidence](docs/LOGGING_AND_ERRORS.md).
+
+## Source-verified inventory exit plans — 2026-09-20
+
+D-032 adds `exits.py`, durable mutation-attempt projection, versioned exit inputs
+and ingress-fresh book gating in advisory inventory management. Cancel races,
+partial IOC fills and ambiguous restarts retain proof gates; nothing dispatches.
+569 Kalshi tests, 104 Poly reference tests, two in-memory safeguard reversals and
+30/120-market diagnostics pass. No production fee/event-time producer or live
+execution authority is supplied. [Evidence and gaps](docs/BUILD_INVENTORY_EXITS.md).
+
+## Poly-derived exposure default — 2026-09-20
+
+D-031 rechecks actual Poly source/defaults and sets the formula reference to 20:
+size 10 yields $300 aggregate exposure, independently of live market occupancy.
+Existing pure admission and atomic writer gates enforce it; CLI exposes the
+reference. 510 Kalshi tests (12 new), 104 Poly tests and two in-memory safeguard
+reversals verified. Preflight remains blocked; no live calls or trading.
+[Source, scope and boundaries](docs/BUILD_POLY_EXPOSURE.md).
+
+## Bounded private-stream check — 2026-09-20
+
+`diagnostics.py` and `scripts/check_private_streams.py` provide a manually
+opted-in, count-only private-channel probe using the existing read-only reader.
+Actual account accepted all four channels on two sequential connections;
+close/re-subscription succeeded. No account events occurred, so delivery and
+gap recovery are not live-verified. 19 new tests; 498 total pass; two in-memory
+safeguard reversals detected. No trading start, ledger import or risk changes.
+See [scope/results](docs/BUILD_PRIVATE_STREAM_CHECK.md). D-030 baseline direction
+is recorded, not an installed production accounting baseline.
+
+## Windows project relocation — 2026-09-20
+
+D-029: active folder is `C:/Users/rynna/Bots/kalshi`, beside Polymarket, outside
+OneDrive. All 3,453 files (272,372,691 bytes) passed tree SHA-256 verification
+immediately after the move; the separately supplied credential also matched
+before/after hashes without displaying its contents. Native environments,
+editable-package path and launchers repaired with unchanged pinned runtime
+versions. All 479 tests pass in 28.163s; preflight correctly exits 2. Historical
+data moved intact; only relocation pointers remain at the old project root.
+No account validation, trading start, Polymarket changes or WSL migration.
+
+## Atomic local account verification — 2026-09-20
+
+`verification.py` and writer/coordinator integration check exact account-wide
+order/fill/position/reservation agreement in one transaction. Epoch/revision
+guards reject stale reports; runtime retains history scope and ingress provenance
+and rejects foreign orders even with matching aggregate counts. `observe_costs`
+checks active capacity once per snapshot. 479 tests pass (29 new); two reversals,
+20 Poly source tests and resource diagnostics verified.
+[Scope/results](docs/BUILD_ACCOUNT_VERIFICATION.md). Complete starting basis,
+history/stream/cash proof and live execution remain unimplemented/unverified.
+
+## Inventory/risk integration — 2026-09-20
+
+`portfolio.py` builds bounded shared exposure views and atomic OFFLINE-only
+entry reservations. `management.py` maintains revision-checked passive advisory
+plans; runtime refreshes on account events, recovery, books and deadlines.
+Ledger position clocks persist through partial closes/restart; missing old
+clocks block age assumptions. 450 tests pass, including 40 new tests; two
+reversals detected/restored and both resource diagnostics pass.
+[Scope/results/remaining gaps](docs/BUILD_INVENTORY_RISK.md). No mutation
+dispatch, live authority, complete-account proof or chosen portfolio cap.
+
+## Recovery-connected event engine — 2026-09-20
+
+`runtime.py` supervises independent read-only reader generations and a single
+bounded recovery worker. `inbox.py` durably retains fills until exact ownership
+is resolved; writer applies/deletes atomically. Engine integration preserves
+book/deadline progress during network recovery and revokes account reports at
+private ingress. 410 tests pass, two safety reversals detected/restored; offline
+128/1024-fill diagnostics pass. [Scope/results](docs/BUILD_RECOVERY_ENGINE.md).
+No live CLI/start, mutation attachment, complete account proof or venue use.
+
+## Automatic fill recovery and exit-basis fallback — 2026-09-20
+
+D-025 imports verified owned fills automatically in bounded transactions,
+resolves missing order bindings and preserves immutable deduplication and
+receipt-window risk. New `position_basis.py` provides a separate, fresh,
+owned-quantity venue-cost fallback for exit planning only. Incremental durable
+window totals avoid repeated journal scans. 371 tests pass; two safety reversals
+detected/restored; 128/1024-fill diagnostics pass unchanged local budgets.
+[Scope/results/gaps](docs/BUILD_AUTO_RECOVERY.md). No live trading or migration.
+
+## Archived-order recovery milestone — 2026-09-20
+
+GET-only archive support, strict bounded normalization and exact owned-intent
+binding; typed 404 fallback for previously bound orders; stale-generation guards
+and missing-fill reservation retention. 335 tests pass; two fault reversals
+detected/restored. Local 128/4096-order diagnostics passed; no live readiness or
+automatic fill replay. [Scope/results](docs/BUILD_ARCHIVE_RECOVERY.md).
+
+## Approved accounting implementation — 2026-09-20
+
+D-024 implemented in ledger/normalization: weighted-average basis, immediate
+matched partial-close P&L and full actual fees, durable receipt windows and
+separate execution-time evidence. Schema 2 fails closed on old accounting files.
+306 tests pass; 10,000 actual Poly arithmetic comparisons agree within 1e-24
+dollars per fill; two intentional reversals detected/restored. No live start,
+automatic historical replay or migration. [Details](docs/BUILD_ACCOUNTING.md).
+
+## Further executable Poly policy audit — 2026-09-20
+
+[Capacity, accounting, selection, exits and restart trace](docs/POLYMARKET_POLICY_CODE_AUDIT.md).
+216 relevant reference tests passed on Windows; Poly stayed unchanged. Identified
+immediate fee charging, weighted-average basis and receipt-time risk attribution,
+plus the conditional passive-exit tick improvement omitted from short summaries.
+Documentation only: no Kalshi accounting/config/trading-runtime changes.
+
+## Event/command engine and quote/ranking components — 2026-09-20
+
+Added `quoting.py`, `ranking.py`, `metadata.py`, `engine.py`, `execution.py`,
+an additive mutation journal and native Windows stop-request controls. These
+are execution-disabled components, not a production trader. 280 tests passed,
+including combined injected lifecycle and cross-process Windows checks.
+Two safety reversals detected/restored. 30/120-market diagnostic workloads passed
+after scheduling/duplicate-work fixes. [Scope/results/gaps](docs/BUILD_ENGINE_RANKING.md).
+Rankings remain gross estimates, without automatic selection or a live feed.
+
+## Owned-order management and recovery evidence — 2026-09-20
+
+Added `orders.py` and `recovery.py`; integrated private order/position projections,
+owned-fill accounting gates, order bootstrap/direct GET, durable terminal/fill
+agreement and bounded current/archive history staging. Pure inventory plans
+preserve exact reducers and cancellation-before-replacement; no executor sends
+them. 212 tests passed, two safety reversals detected/restored, offline resource
+measurements recorded. [Scope and gaps](docs/BUILD_RECOVERY_ORDERS.md).
+Automatic replay still awaits accounting policy; no live readiness is claimed.
+
+## Durable writer and account-evidence integration — 2026-09-20
+
+Added `writer.py`, `rest.py` and `account.py`: bounded off-loop SQLite owner,
+atomic per-fill risk persistence, GET-only token-governed reads, complete-page
+enumeration and stale-generation rejection. Current-position agreement never
+enables entries or pretends to prove complete history. 159 tests passed; two
+additional safety reversals detected and restored. Offline writer latency measured.
+See [scope, source map and remaining gaps](docs/BUILD_ACCOUNT_IO.md).
+No keys, live venue sessions, writes, paper run or deployment used.
+
+## Windows-native component foundation — 2026-09-19
+
+`src/kalshi_bot` implements strict config/Decimal boundaries, ledger/intents,
+candidate closed-fill accounting, persistent six-hour caps, exposure admission,
+incremental sequenced books, a bounded dirty/deadline scheduler, V2 payload
+construction, read-only multi-WebSocket readers, native Windows ownership and
+credential-free CLI/preflight. Dedicated `.venv`, dependency lock and PowerShell
+test/preflight scripts are installed. No live command, executor or integrated
+trading engine exists yet. [Scope/tests/limitations](docs/BUILD_FOUNDATION.md).
+110 tests passed; offline microbenchmark and two expected reversal failures
+recorded. All historical instruments remain intact; no keys or venue writes used.
+
+## Direct Polymarket code audit — 2026-09-19
+
+`docs/POLYMARKET_INVENTORY_CODE_AUDIT.md` traces inventory settings into
+execution decisions and records 104 passing reference tests on native Windows.
+No Kalshi implementation or Windows runtime has been built. D-019 ends further
+WSL mirroring; the Windows docs are now the active handoff.
+
+## Multi-WebSocket architecture recommendation — 2026-09-19
+
+`docs/MULTI_WEBSOCKET_DESIGN.md` records a proposed four-connection,
+single-engine design, official source checks and Polymarket incident lessons.
+D-016 records accepted requirements; the detailed design remains for review.
+This is documentation only, not implemented code or performance acceptance.
+
+## Documentation architecture — 2026-09-19
+
+Core Polymarket-style routing is adopted: `AI_OPERATOR.md` is the shared
+contract, AGENTS/CLAUDE are thin pointers, and `AI_ENGINEERING.md` carries
+D-014's permanent WebSocket-first/REST-fallback/CPU/scalability rules.
+`docs/ARCHITECTURE.md` is a design boundary, not implemented runtime code.
+`docs/DOCUMENTATION_STRUCTURE.md` records the inspected checkout and ownership
+map. `WATCHLIST.md` separates ideas from decisions; prior Claude text is
+preserved under `docs/history/`. Whole-root compaction remains pending.
+
+## Verified liquidity-reward research — 2026-09-19
+
+`docs/LIQUIDITY_REWARD_RESEARCH.md` records current rules, the complete dedicated
+reward endpoint contract, supporting APIs, missing personal reward interfaces,
+current program statistics, static book examples, risks, and unresolved items.
+`scripts/inspect_reward_apis.py` is a one-shot public GET-only inspector with
+no credential or execution path. Its dated evidence is under
+`data/reward-research/20260919T225211Z/`: 102 successful requests, complete
+5,252-program active inventory (5,251 liquidity), and 40 book inspections.
+Existing 45 unit tests passed; no strategy/trading implementation changed.
+`scripts/audit_reward_research.py` independently verified 252 static scenarios
+with Decimal arithmetic and produced `docs/LIQUIDITY_REWARD_AUDIT.json` with
+evidence hashes and local-link checks.
+The examples assume static books and exclude fills/fees: not live-income evidence.
+
+## Verified documentation update — 2026-09-19
+
+`docs/KALSHI_API_REFERENCE.md` is the local official API contract reference.
+It contains 191 REST operations and 423 shared components, both full AsyncAPI
+definitions (23 channels / 63 operations), FIX field tables and examples,
+source links, authentication/price/fee/rate-limit notes, and discrepancy notes.
+`docs/api-specs/` retains the five byte-identical published specifications.
+The manifest records 247 successful fetches (240 pages, five specifications,
+and two discovery indexes); the audit verifies all 191 operation blocks,
+423 component blocks, source hashes, and 614 unique explicit anchors.
+
+`scripts/build_api_reference.py` refreshes public documentation and generates
+the Markdown; it has no account/credential/trading path. Its isolated dependency
+is PyYAML 6.0.3 in `.docs-venv`. Raw source cache stays under ignored
+`data/api-docs/`. `docs/API_REFERENCE_NOTES.md` is the maintained interpretation
+input. No live bot implementation was added.
+
+Older inventory below is historical; current authority is D-011/D-012.
+
 Inventory of everything built, what it does, and how it was verified. Updated
 when something is finished — not when it is started.
 
 Companion files: `NEXT.md` (what to do next), `FINDINGS.md` (what we learned),
 `BUGFIXES.md` (what broke and why).
 
-Last updated 2026-08-26.
+Last updated 2026-08-27 22:19 America/New_York.
 
-Current authority and scope are in `AGENTS.md`, `STATUS.md`, and
+Current authority and scope are in `AI_OPERATOR.md`, `STATUS.md`, and
 `DECISIONS.md`. Reproducing an old table means an instrument is operational; it
 does not validate the reward-rule interpretation or establish profitability.
 
@@ -27,7 +305,7 @@ does not validate the reward-rule interpretation or establish profitability.
 | Analysis | End-date concentration | **not started** |
 | Experiment 0 | Rule and accounting audit | **done** |
 | Experiment 1 | Fixed-universe replay | **active** |
-| Experiment 2 | Read-only live shadow | gated |
+| Experiment 2 | Read-only live shadow | **replacement R3 active at `b970654`** |
 | Experiment 3 | Minimal live evidence run | **not authorized** |
 | Full bot phases | Package, executor, scheduler, deployment | **paused by D-001** |
 
@@ -50,7 +328,7 @@ the price grid. No Polymarket API or project import is used at runtime.
 the current reference function for wide, tight, locked, and half-cent books;
 all quote pairs matched exactly.
 
-### `scripts/record_books.py` — 547 lines
+### `scripts/record_books.py`
 
 Raw capture of liquidity-incentive programs, order books, trades, and exchange
 status. **Interprets nothing**: stores exact venue JSON with a timestamp.
@@ -88,6 +366,50 @@ and comparison-only: `reward/target` is anti-correlated with revenue (FINDINGS
 11). Density now uses the July reward reference through `reward_rules.py`; the
 private February scorer was removed before the first server shadow. Real sample
 spacing is the sweep duration, not `--interval` — read the timestamps.
+
+**Server verification 2026-08-27 UTC:** deployed tracked commit `c135242` to
+the standalone `/root/kalshi-bot` directory without copying credentials. All 25
+tests passed there. A two-minute canary made public Kalshi reads only and wrote
+65 book snapshots, zero non-200 responses, zero errors, and an integrity-clean
+database. The 14-day transient service `kalshi-readonly-capture-14d` then
+started with 75 tracked markets, 60-second sweeps, a 5-read/s limiter, hourly
+density ranking, 20% CPU quota, 256 MB memory maximum, separate data/logs, and
+no authenticated or order endpoint.
+
+At the eight-hour operational checkpoint the service still had zero restarts,
+zero recorder errors, and zero non-200 book responses. It was tracking 75
+markets; the newest book was 30 seconds old. Hourly 1,000-candidate density
+rescans take about 200 seconds and create a measured maximum active-market gap
+of 267 seconds, which downstream reports must treat as missing capture time.
+
+**Corrected after the first run:** one TLS EOF raised `URLError` outside the
+HTTP-status handler and closed the intended 14-day capture at 9h51m. Public GET
+requests now retry up to three times with bounded backoff; exhausted failures
+return local status 599 so callers record the missing observation instead of
+killing the process. Two network-failure fixtures raise the full suite to 27
+tests. The exact commit passed the endpoint scan and all 27 tests on the server;
+replacement R2 started at 2026-08-28 00:34:59 UTC with the original CPU,
+memory, request-rate, process, data, and log isolation.
+
+R2 was stopped cleanly by a host shutdown at 2026-08-28 01:22:04 UTC and its
+transient unit did not return after boot. The same tested commit passed all 27
+tests and the endpoint scan again; replacement R3 started at 02:17:05 UTC in a
+fresh database/log with the same isolation and limits.
+
+**Transport fix verified against a real failure:** at 10:27:03 UTC, R3 logged
+an attempt-1/3 `URLError` caused by a connection reset, recovered without a
+restart or traceback, and continued writing fresh books through the 12:58 UTC
+check. No exhausted status-599 observation was required.
+
+**Relocated to laptop 2026-08-29 UTC:** exact commit `0043c3a` was installed in
+the standalone WSL path `/home/polybot/kalshi-bot` from a verified Git bundle.
+The deployed checkout is clean and matches this PC and GitHub. The endpoint scan
+found no account, order, or write method; all 27 tests and compilation passed.
+A two-minute public-read canary closed cleanly with 70 books, 2,189 trades,
+zero errors/non-200 books and SQLite quick check `ok`. Laptop R1 then started at
+03:39:05 UTC with the same 75-market, 60-second, five-read/s, 20%-CPU and 256 MB
+boundaries. A SQLite-consistent start checkpoint was mirrored to this PC; raw
+data and logs remain gitignored and are not stored on GitHub.
 
 ### `scripts/kalshi_auth.py` — 127 lines
 
@@ -296,6 +618,24 @@ from the answers.
   contracts with a bootstrap CI excluding zero
 - A later-book exit replay measures adverse trading losses and preserves
   missing/thin exits as unknown instead of zero
+
+### `scripts/program_timeline.py`, corrected `scripts/sizing.py`, and `scripts/portfolio_exit.py`
+
+Program histories are matched to each book timestamp and accounted per program
+ID. Edited program IDs and invalid periods are excluded rather than assigned a
+favorable version. The reward portfolio integrates programs on the actual
+capture clock, shares collateral across simultaneous programs on one ticker,
+and excludes sparse hourly candidate scans. `portfolio_exit.py` replays entry
+fills only while the selected program qualifies, persists displayed queue,
+prices passive or timed-cross exits, charges estimated maker/taker fees, stops
+reward during inventory, and carries unknown exits at zero and maximum-loss
+bounds.
+
+**Verified 2026-09-14:** 38 tests pass. The 12.97-day laptop R1 replay at size
+10, 80% coverage, 100 snapshots/day, 30 markets and $300 produces $7.75/day
+modeled hindsight reward. Combined central results are -$30.41/day (300s),
+-$21.12/day (900s), and -$7.36/day (3600s). At 3600s with maker fees forced to
+zero, central remains -$4.98/day.
 
 ## Still unanswered, and why
 

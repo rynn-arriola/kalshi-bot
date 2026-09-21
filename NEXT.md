@@ -1,112 +1,262 @@
 # Active work queue
 
-Last updated: 2026-08-26.
+Updated 2026-09-20. Follow D-011 through D-042 and `AI_OPERATOR.md`.
+Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
+Native Windows only; no further WSL mirroring or execution.
+AI performs approved work; present undecided project choices to the operator
+and record their decisions before implementation.
 
-This file contains executable next work only. Current truth is in `STATUS.md`;
-operator authority is in `DECISIONS.md`; the experiment contract is in
-`EXPERIMENT.md`.
+MANDATORY D-037: Astra designs only, then ALWAYS STOPS for the operator to switch
+to 5.6 Sol. Sol implements/tests, Astra reviews, Sol fixes. Do not automatically
+advance phases or switch models. Sol implemented R1-R4 from
+`docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
+and token resource checks. Astra re-review cleared R1-R4 without new blocking
+findings: 87 focused tests and the integrated reconnect probe passed. See
+`docs/REVIEW_D036_ASTRA_R2.md`. Git diff remains unavailable. The exact prior
+full-suite outcome after the last source edit is recorded in STATUS.
+D-039 explicitly authorized implementing BOTH D-038 phases in one assignment.
+Both are implemented; the initial Astra review found three issues. See
+`docs/REVIEW_D039_ASTRA.md`: R1 is an inherited grant-rollover design conflict;
+R2/R3 concern shutdown ownership and a clock-fault waiter. D-040 design and
+D-041 Sol fixes are complete and Astra cleared original R1-R3 in scope. See
+`docs/REVIEW_D041_ASTRA.md` for two P3 follow-ups: truthful run status after repeated
+cancellation, and a pending record that does not retain exception/payload frames.
+D-042 Sol fixed both and added regressions. Astra re-review now clears both with
+no new findings in scope; see `docs/REVIEW_D042_ASTRA.md` and STATUS. No additional
+Sol fixes are required from this review. Next: Astra design for the next selected
+milestone below, followed by the mandatory stop before Sol implementation.
+Git diff remains unavailable. Live operation remains disabled.
 
-## 1. Build the fixed-universe size replay
+Credential blocker resolved: the new ID file and supplied RSA private key
+successfully authenticated the one-time account inspection. See `FINDINGS.md`
+section 44. D-030 now approves separating pre-bot history; it does not install
+a launch boundary or authorize a loss-accounting reset. Private subscription
+and controlled re-subscription access verified; no actual account event occurred.
+Exposure decision resolved by D-031: Poly's verified reference 20 gives $300
+at size 10, not the fixed $400 proposal. Existing atomic entry gate enforces it;
+actual breadth remains limits-driven. D-032 implements advisory exit/deadline
+logic. D-034 now supplies source-bound input adapters and runtime seams, but real
+market-rule reviews and member-fee profile are not installed. D-036 now provides
+bounded metadata scheduling and explicit shared quota refresh. D-035 adds durable
+history-read receipts, restart gap inspection
+and known-omission blocking, not complete venue proof or a launch boundary.
+Supervised quota freshness/grant expiry (item 3) is implemented under D-039 and
+its fixes are cleared by D-041/D-042 reviews. Account/history/private-stream/cash proof remains a
+launch prerequisite.
+Do not rebuild the completed adapters or history receipts.
+Credentials and subscription acknowledgments do not authorize live activation.
 
-**Why first:** the existing size sweep changes markets at every size, so it
-cannot identify the per-market size response or a trustworthy optimum.
+## Completed
 
-Tasks:
+- D-039 both quota phases: opt-in lease/dispatch enforcement and one automatic
+  supervisor, same-bucket recovery probes, runtime holds and diagnostics. No
+  production probe allowance selected or live activation. Independent review
+  found three P2 issues, fixed under D-041 and cleared. D-042 follow-ups are also
+  cleared; see `docs/REVIEW_D042_ASTRA.md`.
+  `docs/REVIEW_D039_ASTRA.md` owns the original findings.
+- D-036 optional runtime-owned metadata scheduler: bounded ACK/bootstrap,
+  lifecycle coalescing, expiry revocation and retries. Shared read limits now
+  support explicit coalesced quota refresh, account-read priority and all-429
+  pauses; capacity is not assumed available tokens. The fixed milestone has
+  25 scheduler and 18 rate tests; 30/120-market/request checks pass. See
+  `docs/BUILD_METADATA_SCHEDULER.md`, `docs/RATE_LIMITS.md` and STATUS. No live use.
+- D-035 durable completed-enumeration receipts and source provenance, exact
+  interval-gap inspection across restart, and omitted-known-fill recovery guard.
+  All 670 tests (31 focused), two guard reversals and 128/4,096-row diagnostics pass.
+  `docs/BUILD_HISTORY_COVERAGE.md` records limits and unanswered venue questions.
+  No real launch boundary, old-fill classification/import or account calls.
+- D-034 typed metadata, fees, ticks, reviewed milestone binding and optional
+  runtime publication/revocation. All 639 tests (41 focused), two reversals and shared
+  30/120-market diagnostics pass. `docs/BUILD_MARKET_INPUTS.md` records source
+  contracts and remaining real-profile/review/scheduling gaps. No account use.
+- D-033 structured local logs and safe failure context across runtime, recovery,
+  engine, REST, writer, injected execution and inventory transitions. All 598
+  tests (29 focused), two reversals and 30/120-market log diagnostics pass. Runtime logging
+  failure stops local processing; it never claims venue cancellation/flatness.
+  See `docs/LOGGING_AND_ERRORS.md`. Share this sink in the future launcher.
+- D-032 exact inventory-exit planner and timer integration, cancellation/fill
+  proof and restart-safe attempt projection. 569 Kalshi tests, 104 Poly tests,
+  two reversals and 30/120-market diagnostics pass. No trading or paper process.
+  See `docs/BUILD_INVENTORY_EXITS.md`; live input producers remain unfinished.
+- D-031 Poly exposure calibration: local reference default 20, $300 aggregate
+  at size 10, $90 per market. Config/default/CLI agree; 510 Kalshi tests,
+  104 current Poly reference tests and two fault reversals verified. No live
+  activation. See `docs/BUILD_POLY_EXPOSURE.md`.
+- D-030 baseline direction recorded; bounded private-stream diagnostic built.
+  All four private channels acknowledged twice on real account; clean sequential
+  re-subscription. No account events, so live delivery/gap recovery unproved.
+  498 tests pass; two in-memory safeguard reversals detected. See
+  `docs/BUILD_PRIVATE_STREAM_CHECK.md`. No trading process or account mutations.
+- Read-only account inspection, 2026-09-20 17:32 Eastern: primary account cash
+  $500.4268, zero resting orders/nonzero positions, 18 recent fills and zero
+  archived fills returned. Basic-tier budgets were read successfully. No
+  credential contents exposed, account writes, ledger imports or bot start.
+- D-029 project and supplied credential relocated beside Polymarket; bytes
+  verified unchanged before environment/routing updates. Both Python environments
+  repaired; 479 tests pass at the new path. Subsequent account evidence is
+  recorded above, separately from relocation verification.
+- D-028 atomic local account verification, exact order/fill/scope checks,
+  writer-revision freshness and recovery history/source provenance. 479 tests,
+  two reversals and passing 30/120-market diagnostics. See
+  `docs/BUILD_ACCOUNT_VERIFICATION.md`; full account completeness is NOT proved.
+- D-027 wires advisory exact passive inventory management, persistent age clocks,
+  shared exposure projection and atomic offline reservations to runtime seams.
+  450 tests; two reversals; passing 30/120-market and recovery diagnostics.
+  See `docs/BUILD_INVENTORY_RISK.md`; no live reservation or exit dispatch.
+- D-026 connects independent reader generations, event engine and bounded
+  recovery worker. Durable fill-before-order inbox, missed terminal updates,
+  startup/restart/reconnect, immediate report revocation and shutdown are tested.
+  410 tests; two safety reversals; passing 128/1024-fill diagnostics. See
+  `docs/BUILD_RECOVERY_ENGINE.md`. Full proof/live authorization remain blocked.
+- D-025 automatic verified fill import, bounded missing-order binding, immutable
+  deduplication and separate owned-quantity venue-cost exit fallback. 371 tests,
+  two safety reversals and passing 128/1024-fill diagnostics. See
+  `docs/BUILD_AUTO_RECOVERY.md`. No complete recovery/live readiness claim.
+- Added archived terminal-order retrieval/binding and 404 recovery for known
+  orders. Missing fill quantities retain reservations; absent rows prove nothing.
+  `docs/BUILD_ARCHIVE_RECOVERY.md`: 335 tests, two reversals, 128/4096-order
+  diagnostics. History execution-time conflicts are rejected during staging.
+- Implemented D-024 weighted-average partial-close accounting, immediate actual
+  fees and receipt-window attribution; retained execution timestamps separately.
+  `docs/BUILD_ACCOUNTING.md`: 306 tests, source arithmetic comparison, fault
+  reversals and latency measurements. Schema 2 rejects old ledgers without
+  automatic migration. Complete recovery is still unfinished.
+- Built and verified the first Windows-native component foundation under D-021.
+  See `docs/BUILD_FOUNDATION.md`: 110 tests, safety reversals and bounded core
+  microbenchmark. This is not a live trader or complete integration.
+- Added bounded single-writer durability, atomic per-fill risk updates, GET-only
+  token-budgeted REST fallback and stale-generation account evidence guards.
+  See `docs/BUILD_ACCOUNT_IO.md`: 159 total tests, two further safety reversals
+  and an offline writer latency fixture. Complete account recovery is not done.
+- Added owned-order persistence/stream projection, terminal/fill agreement,
+  REST order recovery, current/archive fill evidence staging and exact passive
+  inventory plans. `docs/BUILD_RECOVERY_ORDERS.md`: 212 tests and resource checks.
+- Added Reference Price quote/ranking components, versioned cache, priority event
+  owner, injected mutation journal/executor and Windows stop-request primitive.
+  `docs/BUILD_ENGINE_RANKING.md`: 280 tests, two reversals and 30/120-market load
+  checks. These are not a supervised production runtime or live market ranking.
 
-1. Split each capture into an earlier selection window and later evaluation
-   window.
-2. Produce two separately labeled universes: exact-transfer sports/day-of
-   markets and an all-category Kalshi adaptation. Do not combine them.
-3. Freeze candidates from the earlier window without future information.
-4. Apply the audited 2¢ entry window, side-specific 10¢–90¢ filter, and
-   stressed-complete-exit admission.
-5. Evaluate every size on the same later snapshots and same market set.
-6. Report per market:
-   - competing discounted score;
-   - our share and marginal reward at each size;
-   - qualification fraction and score concentration;
-   - collateral convention;
-   - excluded-snapshot multiplier and payout-minimum effect.
-7. Keep reward, realized/simulated trading P&L, fees, unknown exposure, and
-   collateral in separate columns.
+## Next implementation milestone — no live activation
 
-Done when:
+Reference audit completed: `docs/POLYMARKET_POLICY_CODE_AUDIT.md`, 216 passing
+source tests. Use its actual accounting/selection/exit/restart behavior, not the
+earlier unverified execution-time accounting proposal. D-023 replaces the request
+for arbitrary 30/32 slots with limits-driven admission. D-031 now resolves
+exposure calibration using Poly's verified local reference default; do not
+reopen the superseded $400 proposal or derive budgets from current occupancy.
 
-- no size row changes the evaluated market set;
-- selection and evaluation timestamps print in every report;
-- `$ / contract`, reward/collateral, and bounded net/collateral are separate;
-- `july-2026-one-fifth` and its source date print in the result.
-- the audited Polymarket source commit prints in the result.
+1. Complete history/private-stream continuity and starting-inventory proof around
+   the D-026 recovery-connected engine. D-028 now provides coherent local
+   inventory/order/pending evidence and retains the actual history interval;
+   it must not be rebuilt or mistaken for a venue snapshot/stream barrier.
+   D-035 now records completed enumeration intervals/digests durably and flags gaps
+   and omitted known fills. It is not a complete-history certificate. D-030 accepts
+   separate pre-bot history, but an actual launch boundary and full coverage proof
+   remain open. Establish that coverage contract and seek
+   venue clarification where published sources lack cross-source guarantees.
+   The durable inbox and bounded recovery
+   worker now handle fill-before-order interruptions and missed terminal updates.
+   Resolve correction/reversal/settlement and starting-inventory completeness
+   contracts before implementing those branches. No verified Kalshi BUSTED
+   equivalent is established; conflicts block rather than reverse speculatively.
+   Exit-only venue cost is not complete accounting. Old-ledger migration remains
+   separately scoped. Never invent fills or release a reservation on 404.
+2. Complete production authority around D-027's offline atomic reservations and
+   advisory inventory plans, then selection/rankings and bounded discovery/read-
+   budget bootstrap. Account cash/order snapshots need coherent proof; the
+   conservative fixture cash subtraction is not production balance accounting.
+   D-031 supplies the explicit $300 exposure calibration; connect it to production
+   cash/admission authority without changing the budget. Reader adapters
+   now exist; D-030 checked private subscription access only. Other callbacks remain injected
+   seams, not integrated production proofs. Add long-history retention
+   and outage/reconnect-storm checks; never duplicate healthy-feed data polling.
+3. D-034 supplies typed input producers and runtime lifecycle seams. Establish
+   the real account fee profile and reviewed market-specific milestone/rule
+   bindings when selecting markets. D-036 now implements bounded control-plane
+   bootstrap, expiry and missing-data refresh scheduling around the shared service.
+   D-039 implements both phases of `docs/DESIGN_QUOTA_FRESHNESS.md`; its reviewed
+   fixes are cleared through D-042. Production probe configuration
+   still needs verification/approval at launch; no current account quota inferred.
+   Reuse
+   sufficient stream fields; do not turn book ticks into metadata polls or treat
+   fixture profiles/expiry dates as evidence. The exact exit planner exists;
+   connect production transport/write budgets only behind complete account,
+   book, writer and terms authority. Keep ambiguous mutations blocked. Quote math and three
+   informational ranking views now exist; automatic selection/repricing remains
+   unapproved. Confirm variable-band reward ticks before supporting those grids.
+4. Complete Windows supervised launch/stop, metrics and outage protection around
+   the ownership/stop primitives; wire one D-033 diagnostic sink into every
+   component, verify enabled/healthy logging, and close it after ledger drain.
+   Final end-to-end integration tests. A local stop
+   request is not cancellation or flat proof. Do not install live services/start.
+5. Preserve D-031's limits-driven admission/exposure calibration and D-032's
+   explicit deadline rules; verify each selected market's timing and resume
+   integration. Then finish integrated review and seek separate
+   explicit live-run authorization. Account/stream eligibility remains unverified.
 
-## 2. Integrate corrected later-book exits into the same clock
+The percentage entry-cap rule is accepted. No additional paper stage is required.
 
-`exit_cost.py` now prices the first usable book at/after the deadline and labels
-missing or thin books unknown. The final replay must use that path instead of
-five-minute markout.
+## Earlier planning checklist — review with D-021 build authority
 
-Tasks:
+- Inspected the correct Polymarket checkout read-only and adopted its core
+  shared-entry-point/document-ownership pattern. Recorded WebSocket-first,
+  REST missing-data fallback, CPU-efficiency and scalability as permanent rules.
 
-1. Carry the actual filled quantity and signed YES-equivalent position.
-2. Report passive close, timed cross, settlement, and unknown separately.
-3. Charge known taker fees at VWAP and keep maker fees explicitly unknown.
-4. Stop reward accrual until each position is closed or settled.
-5. Bound every unknown position at maximum loss, a stated central assumption,
-   and zero-loss optimism; never silently drop it.
-6. Add time splits and bootstrap/sign bounds where sample size permits.
+- Collected and verified public Kalshi API documentation into
+  `docs/KALSHI_API_REFERENCE.md`, with exact published schemas, source dates,
+  checksums, a coverage audit, and implementation cautions.
+- Preserved historical data. No collector restart, account API calls, orders,
+  or bot implementation occurred in the documentation task.
+- Researched liquidity rules and all documented reward interfaces; checked
+  every incentive filter, paginated the active universe, and inspected 40
+  current books. See `docs/LIQUIDITY_REWARD_RESEARCH.md`. This was one-time
+  public research, not a paper-trading stage.
 
-Done when every simulated fill is priced, settled, or counted as unknown and
-the conservative result follows `docs/PNL_ACCOUNTING.md`.
+## Next: finish the live-run plan
 
-## 3. Run the corrected read-only decision replay
+The percentage reducer now means the accepted source-verified entry-cap rule.
+It changes order count, not quote size or exact-quantity inventory exits.
 
-Combine tasks 1–2 on `capture_long.db` and at least one other capture.
+Apply `AI_ENGINEERING.md` and `docs/ARCHITECTURE.md` to every item below.
 
-Required report:
+1. Confirm account reward eligibility and a final reward-credit reconciliation
+   route; public APIs do not expose a personal LIP reward ledger. Then use the
+   research/API reference to specify the Reference Price quote policy,
+   repricing, partial fills, exits, reconciliation, expiry, and stop behavior.
+2. Respect D-016: $500 capital, 10-contract entries, max 30 resting entries
+   excluding position-management orders, $25 settled-loss stops in fixed
+   six-hour ET windows. Apply D-018/D-020's verified inventory policy and
+   $90 market / `10 * (market slots + 10)` portfolio exposure formula.
+   Confirm managed-market capacity separately from the 30-entry-order cap.
+   Review Kalshi-specific exit/deadline mapping, any additional
+   event-concentration limit, resumption policy, market list and duration.
+   Under D-017 count opened-and-closed trade results only; specify partial-close,
+   fee-allocation and late-fill/window accounting for review.
+3. Build under D-021 and retain live-readiness gates. No paper-testing stage
+   is requested. The assistant's suggested $10 stop is not an accepted limit.
+4. Credentials may be used when needed under D-012. Verify setup privately
+   when account data is needed; do not include keys in documentation.
+5. Before live integration, complete the field-level stream/REST map, recovery
+   proof and bounded scheduling/resource design. Define workload and CPU,
+   memory/latency acceptance budgets; offline engineering checks are not a
+   paper-trading stage. Do not copy Polymarket numeric limits.
 
-- selection and evaluation windows;
-- frozen market universe;
-- current reward rule and source date;
-- conservative, central, and optimistic reward/cost/net;
-- sensitivity to size, qualification uptime, and exit delay;
-- count and contracts for every unknown exit;
-- explicit reasons the result can or cannot support Stage 2.
+6. Review `docs/MULTI_WEBSOCKET_DESIGN.md` with the operator. Multiple
+   connections are required; four sockets and the detailed topology remain
+   recommendations. Confirm venue/account connection allowance, approve
+   final live architecture and finish risk settings before live authorization.
 
-Decision outcome:
+## Reference maintenance
 
-- If the optimistic bound is negative, recommend stopping.
-- If the conservative bound is positive across time splits, recommend designing
-  the read-only live shadow.
-- Otherwise name the cheapest measurement that separates the cases.
+Continue the Windows-native foundation with graceful stop/recovery and
+non-cloud-synced runtime data. Environment and ownership primitive now exist.
+Do not install live services/tasks, relocate historical data or start trading
+without separate authorization.
 
-## 4. Prepare the isolated server shadow
+Compact older root narratives into dated history with preserved links, then
+add a routing/context/link audit modeled on Polymarket. No automated audit
+or full history migration is claimed implemented yet.
 
-Only after the historical replay is internally consistent:
-
-1. Use a new standalone Kalshi folder, environment, process, data, and logs.
-2. Connect only to read-only Kalshi endpoints.
-3. Make no Polymarket API call and do not read or write its project directory.
-4. Verify rate/resource limits before leaving the capture running.
-5. Record the exact deployed commit and data timestamps in `STATUS.md`.
-
-No order endpoint or live mutation is authorized.
-
-## 5. Design—not build—the minimal evidence probe
-
-This task may produce a specification and safety review only. Live order code is
-not authorized by D-004.
-
-The design must fix one exact market/program, size, duration, predicted payout
-margin, operator-selected maximum capital/loss, post-only behavior, durable
-intent, unknown-order recovery, cancel/flatten procedure, complete accounting,
-and success/stop/inconclusive criteria.
-
-## Do not start
-
-- Production package or autonomous market selector.
-- Multi-market scheduler or live order adapter.
-- Authenticated write endpoint.
-- Trading deployment/supervision system.
-- Capital sizing or a live candidate recommendation.
-
-Those require a new operator decision after the experiment produces a
-build/no-build recommendation.
+Check the reference's source links and snapshot timestamp before implementation.
+The snapshot is not an immutable venue guarantee. Git currently cannot inspect
+this local checkout; preserve files and do not claim a commit or remote parity.

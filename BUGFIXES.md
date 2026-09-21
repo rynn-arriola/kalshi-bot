@@ -8,6 +8,318 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-20 — development components, no live account use
+
+### Supervisor liveness and rollover-record retention
+
+**Mechanisms.** A second cancellation during `run()` shutdown skipped the
+`running=False` assignment. Holding a pending exception also held its traceback
+and completed quota response frames. **Fix under D-042.** Publish liveness in
+an unconditional final block; copy validated boundary/provenance fields into an
+immutable record. Do not abandon the physical worker or mutate the exception.
+**Verification.** Two injected regressions, 62 focused tests, 778 complete tests
+and quota resource checks pass. Astra re-review clears both with 62 focused
+tests and two process-local reversals; see `docs/REVIEW_D042_ASTRA.md` and
+`docs/BUILD_QUOTA_REVIEW_FOLLOWUPS.md`.
+
+### Grant rollover, close ownership and cooldown waiter
+
+**Mechanisms.** A valid unchanged finite grant was counted as a failed refresh
+at the scheduled lead; cancelling a close could cancel the owner of a still
+running thread; a clock fault could leave an explicit refresh waiting forever.
+**Fix under D-041.** One bounded typed rollover observation, retained close/drain
+task with non-propagating joins, and terminal checks on each refresh wait.
+The wire-entry timeout test now controls its deadline after entry.
+**Verification.** 60 focused tests, 776 complete tests, both 30/120 resource
+fixtures and two in-memory reversals pass/detect as documented in
+`docs/BUILD_QUOTA_REVIEW_FIXES.md`. Independent Astra re-review pending.
+
+### Quota holds must not consume unrelated recovery attempts
+
+**Mechanism.** A generic invalid-read failure can be counted as a failed market
+refresh or swallowed as missing order-binding evidence, even when shared quota
+authority is unavailable. **Fix under D-039.** Propagate typed QuotaUnavailable;
+metadata/recovery wait without charging their attempts and retain earlier exhausted
+states. A restored lease wakes eligible recovery only, never clears risk holds.
+**Verification.** Injected runtime and scheduler regressions, including a durable
+private fill during quota outage. Both quota phases await independent Astra review.
+
+### Valid review changes exhausted metadata keys
+
+**Mechanism.** Historical dependency epochs were retained indefinitely under a
+six-per-market cap, so replacing a fully reviewed market's milestone blocked new
+inputs even after reconnect. **Fix.** Retire unreferenced cache/dependency keys
+against the current market/review graph; use globally unique epochs so delayed
+old tasks cannot publish after a key is recreated. Keep dependencies referenced
+by other markets. **Verification.** 25 successive replacements, shared milestone,
+pending old read and reconnect regressions; 30/120-market resource checks pass.
+
+### Background reads could fill admission before account work reached priority
+
+**Mechanism.** A reserved transport slot did not reserve entries in the bounded
+in-flight map. **Fix.** Bound background admissions below total capacity so two
+entries remain for critical reads when capacity allows. Existing deduplication,
+token priority and transport limits remain. At capacity one, reservation is
+impossible and requests honestly fail. **Verification.** Saturated 32-entry and
+small-capacity regressions; 30/120 token resource checks pass.
+
+### Old metadata wire reads could consume a new generation's retry
+
+**Mechanism.** Shared pending and REST deduplication keys lacked generation and
+revision provenance. **Fix.** Disconnect retires service-owned pending tasks;
+metadata REST coalescing includes service/generation/revision scope. Old wire
+work remains owned and bounded by the shared REST service until it finishes.
+**Verification.** Reconnect with an old gated dependency at a one-attempt limit,
+separate old/new wire payloads, stale-review task and shutdown tests pass.
+
+### Token head slept through quota reconfiguration
+
+**Mechanism.** Only follower waiters listened for a queue/configuration change;
+the head slept on its old refill timer. **Fix.** The head awaits either the timer
+or a change signal, then recalculates cost/refill/throttle without granting extra
+tokens. Both wait tasks are joined on cancellation. **Verification.** Higher/lower
+rate, throttle extension, priority and cancellation tests plus token load checks.
+
+### Background token waits could delay account reads; terminal 429 lost the pause
+
+**Mechanism.** The old bucket held its lock while awaiting refill, preventing
+new critical reads from using available tokens. A final rejected retry raised
+before notifying the shared limiter. **Fix.** Bounded priority/FIFO waiters, no
+lock across sleep, a reserved transport slot for account work when concurrency
+allows, and shared throttling before final/deadline error handling. Quota documents
+start the local estimate empty and refresh atomically. Tiny positive waits round
+up to one microsecond to avoid non-advancing floating-clock loops, never extra
+token grants. **Verification.** 13 focused tests, reversed-throttle assertion
+failure and 30/120-request resource fixtures. No live 429 experiment.
+
+### Metadata bootstrap can precede the first orderbook snapshot
+
+**Mechanism.** The new scheduler can publish terms and dirty a market before its
+book exists; unconditional book indexing then raises KeyError. **Fix.** Skip
+advisory processing until a snapshot exists; snapshot ingestion marks it dirty
+normally. **Verification.** Injected runtime bootstrap/shutdown regression.
+
+### Canceled shield consumers could expose raw background exceptions
+
+**Mechanism found during D-036 verification.** Python 3.14 shield cancellation
+could log the later underlying exception despite our consuming done callback.
+**Fix.** Shared REST/metadata consumers use non-propagating `asyncio.wait`, with
+explicit result/exception consumption and safe dependency diagnostics. Underlying
+work remains bounded and service-owned. **Verification.** Pending disconnect,
+reconnect and timeout cases in the 24-test scheduler suite; no raw account data
+is supplied by fixtures or included in logs.
+
+### Later empty history could hide previously remembered missing fills
+
+**Mechanism.** Recovery inspected missing ownership only among rows in the current
+response. A later empty enumeration could therefore get a locally repaired label
+while earlier staged, unaccounted fills remained. Global live-entry gates still
+blocked trading. **Fix.** Durable enumeration completion compares returned rows
+with retained same-account/same-interval evidence; omissions remain visible and
+block the repaired label. It never deletes evidence or infers correction/ownership.
+**Verification.** Empty-after-positive and interrupted-staging regressions, restart
+inspection, rollback and an in-memory reversed runtime guard. No live use.
+
+### Stream metadata can arrive before a REST baseline or after its expiry
+
+**Mechanism found during D-034 build.** Invalidating only a pending REST request
+could lose the known stream update when no fresh baseline existed; the next old
+REST response could then publish obsolete state. **Fix.** Preserve bounded
+field overlays and require later REST agreement, in addition to revision/generation
+checks and immediate published-term revocation. **Verification.** Pre-bootstrap,
+expired-baseline, in-flight and conflicting-REST regressions pass. No live use.
+
+### Sanitized failures discarded root-cause locations
+
+**Mechanism.** Writer/REST failures deliberately suppressed raw exceptions, and
+reader/recovery catches only updated state. Debugging could not identify the
+failing code path. Writer close errors could also escape its worker cleanup.
+**Fix.** Schema-limited error events preserve exception type/category and stack
+locations before returning sanitized errors; close failures poison the writer
+and are logged. Unexpected runtime exceptions still propagate after cleanup.
+**Verification.** Focused writer/REST/runtime faults and credential sentinel tests
+pass. Strict logging I/O, queue saturation and idle-runtime health failure are
+also tested. No live account used; see `docs/LOGGING_AND_ERRORS.md`.
+
+### Delayed public messages must not refresh an old book
+
+**Mechanism.** Book sequence validity alone did not prove wall-clock freshness;
+using processing time would make queued old data appear newly received.
+**Fix.** Capture monotonic ingress time with the bounded public queue, retain it
+on book application and reject inventory-plan books older than five seconds.
+Reconnect generations and failed shards continue to invalidate book authority.
+**Verification.** Delayed-queue, stale-book and terms-replacement races are in
+`tests/test_bot_exits.py`; all 569 tests pass. No live account was used.
+
+### Moving the project retained old Python environment paths
+
+**Symptom/mechanism.** The copied environment's editable `.pth`, activation
+scripts and executable launchers still referred to the old OneDrive location.
+**Fix.** Regenerate both environments in the new location, reinstall the same
+pinned runtime packages and editable project, and regenerate pip launchers.
+**Verification.** Package imports and executable launchers resolve
+`C:/Users/rynna/Bots/kalshi`; 479 tests pass there and preflight exits 2.
+
+### Separate account reads and aggregate counts could mislabel recovery
+
+**Symptom/mechanism.** Reconciliation read inventory before a separate venue-cost
+write. A local reservation could overtake publication without changing the
+private revision. Runtime aggregate intent/order counts did not detect foreign
+resting orders and incremented completed passes even when checks failed.
+**Fix.** Atomic account audit with exact terms/scope/fill gaps and writer revision;
+current-report consumers reject intervening local writes. Runtime requires the
+audit and source provenance; only passing repairs increment completion.
+**Verification.** Stale-read, foreign-order and matching-flat/missing-opposite-fill
+regressions; removing the stale guard or foreign blocker fails its test. Full
+479-test suite passes. No live state or money was involved.
+
+### Position snapshot capacity validation repeatedly scanned all positions
+
+**Symptom/mechanism.** Each venue-cost write scanned the whole observation table,
+making a full snapshot's capacity checks quadratic in active positions.
+**Fix.** Batch observations and check active capacity once inside the same
+transaction. **Verification.** Capacity-overflow rollback and original-age tests;
+120-market diagnostic p99 reduced from 174.951ms to 71.887ms. No limits weakened.
+
+### Advisory inventory plans could outlive local writer evidence
+
+**Symptom/mechanism.** Account/book revisions alone missed an intervening local
+intent reservation; an awaited read could also be overtaken by a writer command.
+**Fix.** Attach owner epoch/revision to immutable inventory reads and check it
+before publication and retrieval. **Verification.** Regressions revoke both
+published and in-flight plans after local writer mutation; full 450 tests pass.
+
+### Historical flat observations could exhaust active-market capacity
+
+**Symptom/mechanism.** Zero-quantity, zero-cost venue history inserted empty
+exposure entries and counted them against the active-market limit.
+**Fix.** Exclude only fully flat zero-cost historical rows; preserve positive
+costs, mismatches and active order risk. **Verification.** 130 old flat rows
+produce zero active exposure without poisoning the owner.
+
+### Fill-before-order delivery could permanently fail event dispatch
+
+**Symptom/mechanism.** The prior coordinator rejected an unbound fill; propagating
+that exception through the engine marked the entire dispatcher failed. It had
+no durable inbox for a fill whose order evidence arrived later.
+
+**Fix.** Persist normalized fill evidence before enqueueing; apply/delete in the
+single writer transaction only after exact ownership/scope. Later stream order
+evidence drains the matching inbox; missing evidence uses bounded recovery.
+Stale epochs cannot publish current projections and never delete pending fills.
+
+**Verification.** Startup/restart, disconnect-before-dispatch, later stream
+binding, duplicate/conflict, rollback and queue/inbox overflow tests pass.
+Full suite 410. No production trader was operated.
+
+### Recovery integration needed ingress revocation and missed terminal repair
+
+**Symptom/mechanism.** Dispatch-only invalidation leaves a REST report visible
+while a newer private event waits in a queue. Fill recovery alone can leave a
+durable order incorrectly marked resting after a missed terminal update.
+
+**Fix.** Revoke reports before ingestion's first await; generation/revision checks
+reject overtaken reads. Repair missing/mismatched owned orders by positive
+GET/404-archive evidence within a shared 32-lookup pass budget. Pending fills
+cannot exceed positive terminal fill quantity; atomic failures retain the inbox.
+
+**Verification.** Both races and terminal-quantity rollback are covered. Removing
+ingress revocation or the pending terminal-quantity guard each failed its targeted
+test; restored afterward. Exact bounds/results in `docs/BUILD_RECOVERY_ENGINE.md`.
+
+### Automatic recovery exceeded its existing freshness deadline
+
+**Symptom/mechanism.** The first 1024-fill offline recovery took 5.0559 seconds
+and could not return a completed report. Every fill summed the entire current
+receipt window and allocated rows for every active inventory market.
+
+**Fix.** Transactional Decimal window totals with an append-only journal cursor;
+cold windows use the time index, subsequent observations read new rowids only.
+Cache updates roll back with fills and risk caps. Count the uniquely indexed
+one-lot-per-ticker table without allocating all tickers on each fill. No freshness,
+per-fill ratchet, durability or diagnostic budget was weakened.
+
+**Verification.** Nine dedicated total/rollback/restart/boundary tests; 371 tests
+overall. Latest 1024-fill run: 1.6215 seconds, batch p99 46.784ms. Deliberately
+recounting the cursor row caused four regressions; fix restored. Journal pruning
+or corrections must invalidate/rebuild derived totals transactionally and are
+not supported by this optimization. No production ledger was opened.
+
+### History staging accepted conflicting execution-time evidence
+
+**Symptom/mechanism.** Staging compared durable fill economics, but not the new
+D-024 execution timestamp. An identical fill identity with a contradictory time
+could be stored as apparently matching recovery evidence.
+
+**Fix.** Compare history time against the durable source precision. Reject a
+conflict atomically; permit finer evidence within the stored coarse interval.
+Do not move the receipt clock, replay P&L or charge fees again.
+
+**Verification.** Conflicting-time rollback and compatible finer-time tests pass
+within the complete 335-test suite. No existing account database was operated.
+
+### Starting reconciliation retained older auxiliary reports
+
+**Symptom/mechanism.** The coordinator cleared its main report, but could leave
+the preceding history/archive report visible while a replacement attempt ran.
+
+**Fix.** Clear all auxiliary recovery reports at reconciliation start, as well
+as on private events/disconnects. A stale/incomplete attempt cannot appear current.
+
+**Verification.** Focused replacement-report test and disconnect/generation/
+incomplete-batch tests pass. Readiness remains false throughout.
+
+### New ranking batches starved the event loop in an offline load check
+
+**Symptom.** The first 120-market book/ranking fixture exceeded declared event
+loop and ranking latency budgets. No real trading process was involved.
+
+**Mechanism.** Async decision callbacks could perform synchronous Decimal work
+without yielding across 32 markets. Quote planning also rebuilt/validated the
+same book twice, and snapshot levels repeated value validation in ladder insertion.
+
+**Fix.** Eight-market maximum decision batches yield after every market and
+preempt for arriving private events/timers. Reuse already validated local book
+copies and use internal validated insertion only after snapshot boundary checks.
+Continue pending dirty work even when no new market event arrives.
+
+**Verification.** Priority, dirty-drain, sequence and numeric regressions pass;
+all 280 tests pass. The final 30/120-market diagnostic checks pass their unchanged
+budgets. Exact results, limited headroom and measurement caveats are in
+`docs/BUILD_ENGINE_RANKING.md`. This is not a live latency SLA.
+
+### Unbound account fills could enter the bot-only accounting path
+
+**Symptom/mechanism.** The previous coordinator checked subaccount scope but
+forwarded unbound private fills to the ledger. It did not yet distinguish this
+bot's trades from other activity on the same account.
+
+**Fix.** Require a durable exact owned-order binding before accounting a private
+fill; validate its market/direction and account. Missing optional subaccount may
+be resolved only through that binding. Unbound/foreign fills halt for explicit
+order/history recovery, including the legitimate fill-before-order race.
+
+**Verification.** Updated old fixtures to create owned bindings; new regression
+proves an unbound fill cannot change the bot ledger. This is a development-path
+correction, not evidence that a live loss meter or account was affected.
+
+### Required pagination cursor was treated as optional
+
+**Symptom.** An injected malformed orders/fills response containing rows but no
+`cursor` could be returned as an exhausted enumeration.
+
+**Mechanism.** The generic pager defaulted every absent cursor to an empty string.
+The published Orders/Fills response schemas require that field; Positions and
+Incentives permit optional cursors. These contracts cannot share that assumption.
+
+**Fix.** Reject missing cursors for orders, current fills and historical fills;
+retain the documented optional behavior for other supported paged endpoints.
+
+**Verification.** Focused offline regression covers all three required-cursor
+operations and the optional positions case. No venue account calls or money were
+involved. Final full-suite and deliberate reversal evidence is recorded in the
+recovery milestone report.
+
 ## 2026-08-17
 
 ### Trade capture recorded zero trades across 40 markets
@@ -247,3 +559,86 @@ unaltered venue JSON.
 
 **Verification.** A hand fixture that scores 60 under July and 35 under
 February now asserts the recorder returns 60. The full measurement suite passes.
+
+---
+
+## 2026-09-19 — Documentation import verification
+
+The first discovery parser accidentally joined a truncated link in an index
+description to the next entry. Restricting matching to complete index bullets
+removed the synthetic URL; the fresh manifest has no failed source requests.
+
+The initial technical extractor missed indented MDX fences/tables and HTML
+tables. It now retains their surrounding section/tab labels, host constants,
+and technical contents. All 20 FIX pages have technical extracts. Generated
+YAML is checked against all 191 REST operations and 423 components, both full
+AsyncAPI blocks, all 247 retrieval hashes, and 614 unique explicit anchors.
+No trading code was changed.
+
+## 2026-09-14
+
+### Latest program row contaminated historical reward replay
+
+**Symptom.** `sizing.py` indexed programs only by market ticker, overwriting
+every prior record. It then applied the last observed terms to every earlier
+book and summed high-return programs from different dates as if simultaneous.
+
+**Mechanism.** A ticker can have several program IDs and program terms can be
+edited. Ticker-only lookup erased both program identity and time. Ranking all
+period rows without integrating boundaries erased portfolio time as well.
+
+**Fix.** `program_timeline.py` performs as-of matching by program ID, enforces
+start/end time, and excludes edited/invalid histories. `sizing.py` integrates
+the funded portfolio on the capture clock, shares collateral for simultaneous
+programs on one ticker, and excludes sparse candidate scans. The emitted
+schedule carries selected program terms into `portfolio_exit.py`, which quotes
+only on books that qualify.
+
+**Verification.** Unit fixtures cover pre-observation books, ended programs,
+multiple IDs, edited terms, non-overlapping periods, shared collateral, and
+nonqualifying fill suppression. The full 12.97-day run produces the measured
+results in `FINDINGS.md` section 24.
+
+### Exact fee boundary rounded up from 1.75 cents to 1.76 cents
+
+**Symptom.** At one contract and 50 cents, floating-point error made `ceil`
+charge 0.0176 instead of the exact 0.0175 fee.
+
+**Mechanism.** The binary product was infinitesimally above 175 units before
+the four-decimal ceiling.
+
+**Fix.** Subtract a 1e-12 arithmetic tolerance before applying `ceil` in both
+exit calculators. This changes only representational overshoot at an exact
+boundary.
+
+**Verification.** Dedicated tests assert taker 0.0175 and estimated maker
+0.0044 at 50 cents.
+
+## 2026-08-27
+
+### One transient TLS EOF ended the intended 14-day capture
+
+**Symptom.** The isolated server recorder ended after 9h51m. Its SQLite run was
+closed cleanly and contained zero recorded errors, while the log ended with
+`urllib.error.URLError` wrapping an SSL EOF.
+
+**Mechanism.** `get_json()` converted HTTP error responses into data but caught
+no connection, TLS, timeout, or invalid-JSON exception. The outer `finally`
+flushed and closed SQLite, but the transient transport failure still terminated
+the process. Because failure occurred before an HTTP response, no status row
+was available for the caller to record.
+
+**Fix.** Public GETs now retry three times with 1s/2s bounded backoff. If every
+attempt fails, `get_json()` returns local sentinel status 599 and the existing
+caller records the missing observation instead of ending the run. It still
+does not retry venue HTTP statuses or any write operation; no write endpoint
+exists.
+
+**Verification.** One fixture fails once then succeeds and asserts two limiter
+calls plus one backoff. A second exhausts all attempts and asserts status 599,
+three limiter calls, and two backoffs. All 27 tests pass locally and on the
+server, the module compiles, and exact commit `b970654` passed the endpoint
+scan. R3 then encountered a real connection-reset `URLError` at 2026-08-28
+10:27:03 UTC on attempt 1/3. It recovered without a restart or traceback and
+continued writing fresh books through at least 12:58 UTC, with zero recorded
+errors and zero non-200 book rows. Real-failure survival is now verified.

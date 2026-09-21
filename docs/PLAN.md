@@ -1,5 +1,9 @@
 # kalshi-bot — historical end-to-end plan
 
+> Current design authority: D-014 and [ARCHITECTURE.md](ARCHITECTURE.md).
+> This old plan cannot override WebSocket-first data, CPU efficiency,
+> scalability or the operator's planning-only/no-paper-testing boundaries.
+
 > **PAUSED 2026-08-26 by operator decision D-001.** Do not execute the package,
 > phase, or "first concrete steps" sections in this file. The current objective
 > is to measure whether the Polymarket strategy can work on Kalshi without
