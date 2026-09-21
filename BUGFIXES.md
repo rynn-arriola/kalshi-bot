@@ -10,6 +10,21 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### S2A retained ownership, launch permission and shutdown evidence
+
+**Mechanisms.** Repeated cancellation and protocol exceptions could abandon a
+live child; a nonstale policy denial was mistaken for spawn permission. Queued
+terminal IPC could be discarded on close, and child identity/age checks, both-
+process power invalidation, protected control files and diagnostic ownership
+were incomplete. Session/native writes bypassed journal pruning.
+**Fix under D-057.** A retained lifecycle owner, explicit committed launch grant,
+native-write receipts, protocol/power gates, protected/pinned control files,
+bounded diagnostics and shared pruning address R1-R8. Uncertain creation remains
+held, never automatically retried. **Verification.** Thirty regressions and three
+safeguard reversals; 915 complete tests run, 914 pass and one native symlink-
+privilege skip. See [evidence and limits](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md).
+Independent review is pending. No live runtime, account or configuration change.
+
 ### Native child identity and pipe-close/process-exit race
 
 **Mechanisms.** The Windows virtual-environment launcher briefly spawned the real

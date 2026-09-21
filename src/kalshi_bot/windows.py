@@ -149,7 +149,9 @@ def _security_sddl(advapi, descriptor, information):
         api.LocalFree(text)
 
 
-def _validate_handle_security(handle, user_sid, *, access_mask):
+def _validate_handle_security(handle, user_sid, *, access_mask=0,
+                              object_type=SE_KERNEL_OBJECT, expected_dacl=None,
+                              owner_only=False):
     """Require the approved owner class and exact protected user/System DACL."""
     approved = validate_identity(user_sid)
     advapi = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -163,7 +165,7 @@ def _validate_handle_security(handle, user_sid, *, access_mask):
     advapi.ConvertSidToStringSidW.restype = wintypes.BOOL
     owner = ctypes.c_void_p()
     descriptor = ctypes.c_void_p()
-    status = advapi.GetSecurityInfo(handle, SE_KERNEL_OBJECT,
+    status = advapi.GetSecurityInfo(handle, object_type,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         ctypes.byref(owner), None, None, None, ctypes.byref(descriptor))
     if status:
@@ -180,13 +182,139 @@ def _validate_handle_security(handle, user_sid, *, access_mask):
             api.LocalFree.argtypes = [ctypes.c_void_p]
             api.LocalFree.restype = ctypes.c_void_p
             api.LocalFree(owner_text)
+        if owner_only:
+            return
         actual = _security_sddl(advapi, descriptor, DACL_SECURITY_INFORMATION)
+        if object_type == 1:
+            # Windows may retain SE_DACL_AUTO_INHERITED after protection. P is
+            # mandatory; ACEs must still be exact, explicit user/System grants.
+            actual = actual.replace("D:PAI(", "D:P(")
         mask = f"0x{access_mask:x}"
-        expected = f"D:P(A;;{mask};;;SY)(A;;{mask};;;{approved})"
+        expected = expected_dacl or f"D:P(A;;{mask};;;SY)(A;;{mask};;;{approved})"
         if actual != expected:
             raise InvalidData("Windows object DACL differs")
     finally:
         api.LocalFree(descriptor)
+
+
+def _file_handle(path, *, create=False, write_dacl=False, share_delete=False,
+                 user_sid=None):
+    api = _native_api()
+    api.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    api.CreateFileW.restype = wintypes.HANDLE
+    access = READ_CONTROL | 0x80 | (0x40000 if write_dacl else 0)
+    with WindowsSecurity(user_sid) as security:
+        handle = api.CreateFileW(str(path), access, 7 if share_delete else 3,
+            ctypes.byref(security) if create else None, 1 if create else 3,
+            0x02000000 | 0x00200000, None)  # BACKUP_SEMANTICS | OPEN_REPARSE_POINT
+    if not handle or handle == wintypes.HANDLE(-1).value:
+        raise InvalidData("protected control file unavailable")
+    return handle
+
+
+def _control_path(path, *, directory):
+    path = Path(path)
+    if (not path.is_absolute() or str(path).startswith("\\\\")
+            or "onedrive" in str(path).casefold()):
+        raise InvalidData("local unredirected control path required")
+    for part in (path, *path.parents):
+        info = part.lstat()
+        if info.st_file_attributes & 0x400:
+            raise InvalidData("control reparse path refused")
+    if path.is_dir() != directory or (not directory and
+            (not path.is_file() or path.stat().st_nlink != 1)):
+        raise InvalidData("control file type differs")
+
+
+def _file_dacl(user_sid, *, directory=False):
+    flags = "OICI" if directory else ""
+    return f"D:P(A;{flags};FA;;;SY)(A;{flags};FA;;;{user_sid})"
+
+
+def protect_fresh_control_root(root, user_sid):
+    """Only explicit initialization may protect an empty operator-supplied root."""
+    _control_path(root, directory=True)
+    handle = _file_handle(root, write_dacl=True, user_sid=user_sid)
+    try:
+        _validate_handle_security(handle, user_sid, object_type=1, owner_only=True)
+        if any(Path(root).iterdir()):
+            raise InvalidData("fixture control root must be empty")
+        advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+        advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+            wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p),
+            ctypes.POINTER(wintypes.ULONG)]
+        advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW.restype = wintypes.BOOL
+        advapi.GetSecurityDescriptorDacl.argtypes = [ctypes.c_void_p,
+            ctypes.POINTER(wintypes.BOOL), ctypes.POINTER(ctypes.c_void_p),
+            ctypes.POINTER(wintypes.BOOL)]
+        advapi.GetSecurityDescriptorDacl.restype = wintypes.BOOL
+        advapi.SetSecurityInfo.argtypes = [wintypes.HANDLE, ctypes.c_int,
+            wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        advapi.SetSecurityInfo.restype = wintypes.DWORD
+        descriptor, dacl = ctypes.c_void_p(), ctypes.c_void_p()
+        present, defaulted = wintypes.BOOL(), wintypes.BOOL()
+        if not advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                _file_dacl(user_sid, directory=True), 1, ctypes.byref(descriptor), None):
+            raise InvalidData("control file security unavailable")
+        try:
+            if (not advapi.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present),
+                    ctypes.byref(dacl), ctypes.byref(defaulted)) or not present.value
+                    or not dacl or advapi.SetSecurityInfo(handle, 1,
+                    DACL_SECURITY_INFORMATION | 0x80000000, None, None, dacl, None)):
+                raise InvalidData("fresh control root protection failed")
+        finally:
+            api = _native_api()
+            api.LocalFree.argtypes = [ctypes.c_void_p]
+            api.LocalFree.restype = ctypes.c_void_p
+            api.LocalFree(descriptor)
+    finally:
+        _close_handle(handle)
+
+
+class ProtectedControlFiles:
+    """Pin root/database against deletion; validate, never repair existing ACLs."""
+    def __init__(self, path, user_sid, *, create=False, readonly=False):
+        self.path, self.user_sid = Path(path), user_sid
+        self.handles = []
+        try:
+            for target, directory in ((self.path.parent, True), (self.path, False)):
+                if not directory and create:
+                    # CREATE_NEW cannot truncate or replace an existing file.
+                    handle = _file_handle(target, create=True, user_sid=user_sid)
+                else:
+                    _control_path(target, directory=directory)
+                    handle = _file_handle(target, user_sid=user_sid)
+                self.handles.append(handle)
+                _control_path(target, directory=directory)
+                _validate_handle_security(handle, user_sid, object_type=1,
+                    expected_dacl=_file_dacl(user_sid, directory=directory))
+            self.validate_sidecars(create_missing=not readonly)
+        except BaseException:
+            self.close()
+            raise
+
+    def validate_sidecars(self, *, create_missing=False):
+        for suffix in ("-wal", "-shm", "-journal"):
+            target = Path(str(self.path)+suffix)
+            create = not target.exists() and create_missing and suffix != "-journal"
+            if not target.exists() and not create:
+                continue
+            if not create:
+                _control_path(target, directory=False)
+            handle = _file_handle(target, create=create, share_delete=True,
+                                  user_sid=self.user_sid)
+            try:
+                _control_path(target, directory=False)
+                _validate_handle_security(handle, self.user_sid, object_type=1,
+                    expected_dacl=_file_dacl(self.user_sid))
+            finally:
+                _close_handle(handle)
+
+    def close(self):
+        while self.handles:
+            _close_handle(self.handles[-1])
+            self.handles.pop()
 
 
 def role_object_name(scope_id, role):
@@ -234,8 +362,8 @@ class WindowsRoleLease:
         return duplicate_inheritable_handle(self.handle)
 
     def __exit__(self, *_):
-        handle, self.handle = self.handle, None
-        _close_handle(handle)
+        _close_handle(self.handle)
+        self.handle = None
 
 
 class WindowsControlMutex:
@@ -300,8 +428,8 @@ class WindowsControlMutex:
     def close(self):
         if self.owned:
             raise InvalidData("cannot close an owned Windows control mutex")
-        handle, self.handle = self.handle, None
-        _close_handle(handle)
+        _close_handle(self.handle)
+        self.handle = None
 
 
 class WindowsStopLatch:
@@ -379,8 +507,8 @@ class WindowsStopLatch:
             raise
 
     def __exit__(self, *_):
-        handle, self.handle = self.handle, None
-        _close_handle(handle)
+        _close_handle(self.handle)
+        self.handle = None
 
 
 def duplicate_inheritable_handle(handle, *, desired_access=0):
@@ -465,9 +593,9 @@ class WindowsPowerMonitor:
     def __exit__(self, *_):
         if self.handle:
             result = self.api.PowerUnregisterSuspendResumeNotification(self.handle)
-            self.handle = wintypes.HANDLE()
             if result:
                 raise InvalidData("Windows power notification close failed")
+            self.handle = wintypes.HANDLE()
 
 
 def suggested_data_directory() -> Path:

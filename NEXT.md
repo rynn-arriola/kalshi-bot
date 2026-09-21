@@ -15,20 +15,24 @@ D-048 [independent Astra review](docs/REVIEW_D048_ASTRA.md) also clears the
 retained connection-finalization finding. Both prerequisite review gates are
 complete; no Sol fix phase is needed for either review.
 
-D-056 [S2A implementation](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md) is complete
-offline against the D-055 design. **STOP for independent Astra review under
-D-049. Recommended agent: Astra.** Review native ownership/DACLs, spawn/STOP
-linearization, parent/child death, IPC close/cancellation, cold orphan release,
-resource evidence and the complete diff. Do not start S2B until this review is
-cleared and separately assigned. No service/task installation, bot start,
-account call, baseline or live authority; account-continuity Phase 2/3 remains
-separately unapproved.
+D-057 [implements the S2A corrections](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
+from the [D-056 review](docs/REVIEW_D056_ASTRA.md), under the operator's explicit
+Astra fix-phase exception. **STOP after verification for independent Astra review.**
+Review retained ownership through spawn/bind/IPC/control/diagnostic teardown,
+conservative uncertain-creation handling, launch grants, file security and
+protocol/power ordering against the deterministic tests. Verify the qualified
+resource evidence: corrected parent CPU is 2.135% against <1%, and cold-baseline
++13 handles are unattributed despite stable 100-cycle ownership. Require focused
+CPU/handle attribution before performance clearance; do not infer 30/120-market
+or unsupervised-baseline coverage. Do not weaken security to reach a target.
+S2B remains blocked and separately assigned; no service/task, bot start, account
+call, baseline or live authority. Account-continuity Phase 2/3 remains unapproved.
 
 MANDATORY D-049: before every substantive task, give the short Astra/Sol
 recommendation required by `AI_OPERATOR.md`. Sol is the default; use Astra only
 for the listed material reasoning/review cases. Stop before development on a
 model mismatch, except urgent safety action. D-037 is superseded where routing
-differs. The next S2A phase is meaningful concurrency/security review by Astra.
+differs. D-057 is a one-task exception only; the next S2A phase is Astra review.
 Sol implemented R1-R4 from
 `docs/REVIEW_D036_ASTRA.md` with nine new regressions and passing 30/120 scheduler
 and token resource checks. Astra re-review cleared R1-R4 without new blocking

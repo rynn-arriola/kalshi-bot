@@ -1,5 +1,11 @@
 # D-056 — Native Windows supervisor S2A
 
+Review status: [independent Astra review](REVIEW_D056_ASTRA.md) requires R1-R8
+corrections and does not clear S2A. The implementation measurements below are
+historical Sol evidence; the review qualifies their scope and reproduces faults
+outside the existing test coverage. D-057 [implements the corrections](BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
+and awaits independent review. S2B remains blocked.
+
 Date: September 21, 2026. Native Windows; execution disabled. Implements only
 S2A from the approved [D-055 design](DESIGN_WINDOWS_SUPERVISOR_S2.md). This is
 Sol implementation evidence and must receive independent Astra review before any

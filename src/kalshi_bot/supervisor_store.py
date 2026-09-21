@@ -107,7 +107,7 @@ class SupervisorStore:
                  monotonic_clock=time.monotonic,
                  boot_id=None,
                  event_limit: int = MAX_EVENTS,
-                 mode: str = "create_if_missing"):
+                 mode: str = "create_if_missing", security_sid=None):
         self.path = Path(path) if str(path) != ":memory:" else Path(":memory:")
         self.scope_id = identity(scope_id)
         if mode not in {"create_if_missing", "create_only", "open_existing"}:
@@ -123,12 +123,35 @@ class SupervisorStore:
         if boot_id is not None and not callable(boot_id):
             identity(boot_id)
         self.boot_id = boot_id
-        self.connection = sqlite3.connect(str(path), timeout=5)
-        self.connection.row_factory = sqlite3.Row
+        self.file_guard = None
+        target = (Path(path).resolve().as_uri()+"?mode=rw"
+                  if mode == "open_existing" and str(path) != ":memory:" else str(path))
         try:
+            if security_sid is not None:
+                from .windows import ProtectedControlFiles
+                self.file_guard = ProtectedControlFiles(path, security_sid,
+                    create=mode == "create_only", readonly=True)
+                if mode == "open_existing":
+                    # Schema is immutable in S2A and checkpointed by fixture
+                    # initialization. Inspect it without creating sidecars first.
+                    check = sqlite3.connect(Path(path).resolve().as_uri()+
+                                            "?mode=ro&immutable=1", uri=True)
+                    try:
+                        meta = dict(check.execute("SELECT key,value FROM meta"))
+                        if meta != {"schema": SCHEMA_VERSION, "scope": self.scope_id}:
+                            raise InvalidData("supervisor schema or scope mismatch")
+                    finally:
+                        check.close()
+                self.file_guard.validate_sidecars(create_missing=True)
+            self.connection = sqlite3.connect(target, timeout=5,
+                                             uri=mode == "open_existing")
+            self.connection.row_factory = sqlite3.Row
             self._open()
         except BaseException:
-            self.connection.close()
+            if hasattr(self, "connection"):
+                self.connection.close()
+            if self.file_guard:
+                self.file_guard.close()
             raise
 
     def _open(self):
@@ -141,6 +164,9 @@ class SupervisorStore:
             raise InvalidData("supervisor control store already exists")
         if self.mode == "open_existing" and not tables:
             raise InvalidData("supervisor control store is empty")
+        if tables and dict(self.connection.execute("SELECT key,value FROM meta")) != {
+                "schema": SCHEMA_VERSION, "scope": self.scope_id}:
+            raise InvalidData("supervisor schema or scope mismatch")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         if not tables:
@@ -174,15 +200,20 @@ class SupervisorStore:
         return cls(path, scope_id=scope_id, mode="open_existing", **values)
 
     @staticmethod
-    def read_only_snapshot(path, *, scope_id):
+    def read_only_snapshot(path, *, scope_id, security_sid=None):
         """Read the existing S2 control view without creating WAL/files."""
         path = Path(path)
         if not path.is_file():
             raise InvalidData("supervisor control store does not exist")
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True,
-                                     timeout=5)
-        connection.row_factory = sqlite3.Row
+        guard = connection = None
         try:
+            if security_sid is not None:
+                from .windows import ProtectedControlFiles
+                guard = ProtectedControlFiles(path, security_sid, readonly=True)
+            connection = sqlite3.connect(path.resolve().as_uri()+"?mode=ro", uri=True,
+                                         timeout=5)
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN")
             meta = dict(connection.execute("SELECT key,value FROM meta"))
             if meta != {"schema": SCHEMA_VERSION, "scope": identity(scope_id)}:
                 raise InvalidData("supervisor schema or scope mismatch")
@@ -198,7 +229,10 @@ class SupervisorStore:
                     ControlState.from_dict(_load(row["payload"], "control state")),
                     NativeState(**dict(native)))
         finally:
-            connection.close()
+            if connection is not None:
+                connection.close()
+            if guard is not None:
+                guard.close()
 
     def _clock_sample(self):
         wall_utc = float(self.clock())
@@ -255,7 +289,11 @@ class SupervisorStore:
             yield
 
     def close(self):
-        self.connection.close()
+        try:
+            self.connection.close()
+        finally:
+            if self.file_guard:
+                self.file_guard.close()
 
     def __enter__(self):
         return self
@@ -323,14 +361,17 @@ class SupervisorStore:
             (new_revision, after.generation, event.kind.value, event.observed_utc,
              control_utc, int(clock_trusted), int(decision.stale),
              before.state.value, after.state.value, _dump(event.to_dict())))
-        self.connection.execute("DELETE FROM events WHERE sequence <= ("
-            "SELECT coalesce(max(sequence),0)-? FROM events)", (self.event_limit,))
+        self._prune_events()
         if before.child_id is not None and after.child_id is None:
             native = self.read_native()
             self._write_native(NativeState(native.parent_session, None, None,
                 "orphan_released" if event.kind == EventKind.ORPHAN_RELEASED else "exited",
                 None, native.build_fingerprint, native.config_fingerprint))
         return decision
+
+    def _prune_events(self):
+        self.connection.execute("DELETE FROM events WHERE sequence <= ("
+            "SELECT coalesce(max(sequence),0)-? FROM events)", (self.event_limit,))
 
     def apply(self, event: SupervisorEvent, policy=SupervisorPolicy()):
         if not isinstance(event, SupervisorEvent):
@@ -363,6 +404,7 @@ class SupervisorStore:
                     (revision+1, state.generation, "parent_session", observed,
                      state.updated_utc, 1, 0, state.state.value, state.state.value,
                      _dump({"parent_session": session_id})))
+                self._prune_events()
             self._write_native(NativeState(session_id, native.child_id,
                 native.child_generation, native.stage, native.diagnostic_pid,
                 native.build_fingerprint, native.config_fingerprint))
@@ -416,6 +458,7 @@ class SupervisorStore:
                  state.updated_utc, 1, 0, state.state.value, state.state.value,
                  _dump({"child_id": child_id, "child_generation": child_generation,
                         "stage": stage, "diagnostic_pid": diagnostic_pid})))
+            self._prune_events()
         return updated
 
     def history(self, *, limit=64):

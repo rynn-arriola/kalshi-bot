@@ -248,3 +248,48 @@ class SequenceTracker:
         if lane == "control" and envelope.sequence != previous+1:
             raise InvalidData("missing supervisor control message")
         setattr(self, lane, envelope.sequence)
+
+
+def validate_peer(envelope, *, scope_digest, parent_session, child_id,
+                  child_generation, allowed, tracker, now_ns):
+    """Shared same-boot identity/age gate; invalid frames cannot advance lanes."""
+    if ((envelope.scope_digest, envelope.parent_session, envelope.child_id,
+         envelope.child_generation) !=
+            (scope_digest, parent_session, child_id, child_generation)
+            or envelope.kind not in allowed):
+        raise InvalidData("supervisor peer envelope identity or direction mismatch")
+    age = now_ns-envelope.sent_monotonic_ns
+    if not 0 <= age <= 4_000_000_000:
+        raise InvalidData("stale supervisor peer envelope")
+    tracker.accept(envelope)
+    return age/1_000_000_000
+
+
+class ParentProtocol:
+    """S2A child-side phase gate; S2B controls confer no authority."""
+    def __init__(self, scope_digest, parent_session, child_id, child_generation):
+        self.identity = dict(scope_digest=scope_digest, parent_session=parent_session,
+                             child_id=child_id, child_generation=child_generation)
+        self.tracker = SequenceTracker()
+        self.admitted = self.stopped = False
+        self.revision = -1
+
+    def accept(self, message, *, now_ns, current_revision=None):
+        validate_peer(message, **self.identity, allowed={MessageKind.ADMIT,
+            MessageKind.PULSE, MessageKind.STOP_HINT}, tracker=self.tracker, now_ns=now_ns)
+        if self.stopped:
+            raise InvalidData("supervisor control after stop")
+        if message.kind == MessageKind.STOP_HINT:
+            self.stopped = True
+        else:
+            revision = message.payload["control_revision"]
+            if (current_revision is None or revision > current_revision
+                    or revision < self.revision):
+                raise InvalidData("supervisor control revision differs")
+            if message.kind == MessageKind.ADMIT:
+                if self.admitted or revision != current_revision:
+                    raise InvalidData("duplicate or revoked supervisor admission")
+                self.admitted = True
+            elif not self.admitted:
+                raise InvalidData("supervisor pulse before admission")
+            self.revision = revision

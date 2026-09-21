@@ -2,6 +2,36 @@
 
 ## Current update — 2026-09-21
 
+D-057 implements the [S2A review corrections](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
+under the operator's explicit Astra fix-phase exception. Retained ownership,
+affirmative launch permission, terminal IPC completion, child protocol/power
+validation, protected control files, bounded diagnostics and journal pruning are
+corrected with 30 new regressions. Complete suite: **915 run, 914 passed, one
+native symlink-privilege skip, 114.296 seconds**. Three safeguard reversals detect
+their defects; credential-free preflight remains disabled, expected exit 2, with
+no side effects. The 100-cycle ownership/retention assertions pass, but corrected
+idle parent CPU is **2.135% of one core against <1%**; cold-baseline +13 handles
+also remain unattributed. Memory and loop-latency targets pass in the inert scope.
+**Independent Astra review and focused resource follow-up are next; S2B remains
+blocked.** No live runtime/configuration/account use,
+deployment or restart. Changes are local and uncommitted.
+
+### D-056 review before D-057 corrections
+
+D-056 [independent Astra review](docs/REVIEW_D056_ASTRA.md) requires changes
+before S2B. Native probes reproduce lost ownership on repeated cancellation or
+malformed messages, premature cold-parent completion, spawn after policy denial,
+lost terminal IPC frames, missing child envelope validation, a setup-handle leak
+and unbounded session history. Source review also identifies missing child/power
+invalidation, persistent-file protection and bounded diagnostics. All 81 existing
+focused tests pass (12.268 seconds); disabled preflight remains side-effect-free.
+The 885-test and resource numbers below are historical Sol evidence, not review
+clearance. **STOP under D-049. Recommended next agent: 5.6 Sol for the bounded
+R1-R8 corrections and verification in the review.** No S2B or live authority.
+Review/handoff documentation is local and uncommitted; source/config unchanged.
+
+### D-056 implementation evidence before independent review
+
 D-056 implements the approved D-055 S2A inert-process foundation; see
 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md). Protected account-scoped
 Windows role objects, one thread-owned control mutex, inherited child/stop/parent

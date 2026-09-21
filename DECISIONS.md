@@ -869,6 +869,19 @@ them accepted without an explicit operator instruction.
   venue/account access, order action, deployment or live authority. Stop for Astra
   review under D-049.
 
+### D-057 — Astra implements the S2A review fixes
+
+- **Status:** ACCEPTED and implemented offline, 2026-09-21; independent review pending.
+- **Decision owner:** Operator: “I recommend astra to fix this since sol took so
+  long to solve it,” after the D-056 review and correction handoff.
+- **Scope:** Astra implements R1-R8 from [the review](docs/REVIEW_D056_ASTRA.md)
+  and verifies the inert S2A foundation. This is a task-specific exception to
+  D-049's Sol fix phase, not a permanent change to model routing.
+- **Boundary:** Preserve the D-055 architecture and all safety gates. No S2B,
+  live runtime, configuration, account access, deployment, restart or trading.
+  Stop after fixes/verification for independent review; implementation is not
+  self-clearance.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

@@ -1,5 +1,45 @@
 # Findings — kalshi-bot
 
+## 84. S2A review corrections have native regression evidence — 2026-09-21
+
+VERIFIED OFFLINE under D-057: targeted barriers now retain process/lease ownership
+through repeated cancellation and pending spawn/bind/IPC/control closure. Clock
+denial cannot launch, uncertain creation keeps its reservation, terminal controls
+have completed-write receipts, and parent/child identity/power and file-security
+checks refuse invalid authority. Diagnostics and native/session journals remain
+bounded. See [implementation evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md).
+
+The final complete suite ran 915 tests: 914 passed, one native symlink-privilege
+skip (114.296 seconds). Three process-local safeguard reversals were detected.
+This is implementation evidence, not an independent re-review or production
+readiness claim. Native symlink creation and actual sleep/reboot remain unverified;
+resource scope must not be inflated to a 30/120-market runtime comparison.
+MEASURED: 100 cycles pass result/exit/lease and bounded-log/journal assertions,
+with warmed handle delta -2 and no retained supervisor/diagnostic threads. A
+correctly timed 60-second idle sample still misses the parent CPU target:
+2.135% versus <1%; loop p99 16.475 ms and 39,014,400 working-set bytes pass their
+inert-fixture targets. Cold-baseline +13 handles remain unattributed. Resource
+acceptance is therefore **not cleared**; the evidence record preserves both runs.
+No live process, account, credential, configuration or Polymarket reference use.
+
+## 83. Native S2A failure paths do not yet satisfy the design — 2026-09-21
+
+VERIFIED OFFLINE at `6992fed`: [Astra review](docs/REVIEW_D056_ASTRA.md)
+reproduces a spawn call after durable clock-denial with no child reservation;
+host completion while an inert child remains alive after repeated cancellation
+or wrong-identity STATUS; cold-parent completion while the old lease remains;
+discarded queued RESULT; child acceptance of wrong/stale parent messages; a leaked
+inherited duplicate on setup failure; and 300 retained session events at limit
+256. Native inspection also finds an unprotected database DACL; source inspection
+finds missing child/power invalidation and D-033 diagnostic integration.
+
+All 81 existing focused tests pass, demonstrating missing failure-sequence
+coverage rather than clearance. Section 82's broad correctness/resource conclusion
+is qualified: its measurements are historical Sol results for one inert workload,
+not proof of complete ownership/security or all D-055 acceptance cases. No long
+benchmark/full-suite rerun or live access was needed in this review. R1-R8 define
+the bounded Sol correction phase; S2B remains blocked.
+
 ## 82. S2A native ownership is implemented and meets resource targets — 2026-09-21
 
 VERIFIED OFFLINE under D-056: one native parent and one fixed inert child now use

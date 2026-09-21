@@ -9,11 +9,12 @@ from queue import Queue
 from threading import Thread
 import time
 
-from .supervision import (AttentionReason, EventKind, SupervisorEvent,
+from .supervision import (AttentionReason, EventKind, SupervisorAction, SupervisorEvent,
                           SupervisorPolicy)
 from .supervisor_store import SupervisorStore
 from .values import InvalidData, identity, integer
-from .windows import (WindowsControlMutex, WindowsStopLatch, current_user_sid)
+from .windows import (WindowsControlMutex, WindowsStopLatch, current_user_sid,
+                      protect_fresh_control_root)
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ class ControlReceipt:
     state: object = None
     native: object = None
     value: object = None
+    spawned: bool = False
 
     def __post_init__(self):
         integer(self.revision, 0, 2**63-1)
@@ -71,14 +73,18 @@ class ControlReceipt:
 class ControlOwner:
     """One thread owns SQLite and the thread-affine Windows transaction mutex."""
     def __init__(self, scope: ScopeSpec, *, policy=SupervisorPolicy(),
-                 clock=time.time, monotonic_clock=time.monotonic, boot_id=None):
+                 clock=time.time, monotonic_clock=time.monotonic, boot_id=None,
+                 diagnostics=None):
         if not isinstance(scope, ScopeSpec):
             raise InvalidData("typed supervisor scope required")
         self.scope, self.policy = scope, policy
         self.clock, self.monotonic_clock, self.boot_id = clock, monotonic_clock, boot_id
+        self.diagnostics = diagnostics
         self.commands = Queue(maxsize=64)
         self.ready = Future()
         self.closed = False
+        self._close_task = None
+        self.failure = None
         self.thread = Thread(target=self._run, name="kalshi-supervisor-control", daemon=False)
         self.thread.start()
 
@@ -88,20 +94,31 @@ class ControlOwner:
             raise InvalidData("typed supervisor scope required")
         if any(scope.control_root.iterdir()):
             raise InvalidData("fixture control root must be empty")
-        with SupervisorStore.initialize_fixture(scope.store_path,
-                scope_id=scope.scope_id, **clock_values):
-            pass
+        with WindowsControlMutex(scope.scope_id, user_sid=scope.approved_user_sid):
+            protect_fresh_control_root(scope.control_root, scope.approved_user_sid)
+            with SupervisorStore.initialize_fixture(scope.store_path,
+                    scope_id=scope.scope_id, security_sid=scope.approved_user_sid,
+                    **clock_values):
+                pass
 
     def _run(self):
         store = None
         control_mutex = None
         try:
-            store = SupervisorStore.open_existing(self.scope.store_path,
-                scope_id=self.scope.scope_id, clock=self.clock,
-                monotonic_clock=self.monotonic_clock, boot_id=self.boot_id)
             control_mutex = WindowsControlMutex(self.scope.scope_id,
                 user_sid=self.scope.approved_user_sid, retain_handle=True)
             control_mutex.open()
+            with control_mutex:
+                store = SupervisorStore.open_existing(self.scope.store_path,
+                    scope_id=self.scope.scope_id, clock=self.clock,
+                    monotonic_clock=self.monotonic_clock, boot_id=self.boot_id,
+                    security_sid=self.scope.approved_user_sid)
+                if control_mutex.abandoned:
+                    store.apply(SupervisorEvent(EventKind.LOCAL_SAFETY_FAULT,
+                        self.clock(), attention_reason=AttentionReason.CONTROL_ABANDONED),
+                        self.policy)
+                    WindowsStopLatch.request(self.scope.scope_id,
+                        user_sid=self.scope.approved_user_sid)
             self.ready.set_result(None)
             while True:
                 item = self.commands.get()
@@ -110,11 +127,14 @@ class ControlOwner:
                 operation, args, future = item
                 try:
                     with control_mutex as mutex:
+                        store.file_guard.validate_sidecars()
                         if mutex.abandoned:
                             held = store.apply(SupervisorEvent(
                                 EventKind.LOCAL_SAFETY_FAULT, self.clock(),
                                 attention_reason=AttentionReason.CONTROL_ABANDONED),
                                 self.policy)
+                            WindowsStopLatch.request(self.scope.scope_id,
+                                user_sid=self.scope.approved_user_sid)
                             if not (operation == "apply" and args[0].kind == EventKind.STOP):
                                 result = ControlReceipt(store.revision(), held,
                                     held.state, store.read_native())
@@ -123,8 +143,11 @@ class ControlOwner:
                         result = self._execute(store, operation, args)
                     future.set_result(result)
                 except BaseException as exc:
+                    if self.diagnostics is not None:
+                        self.diagnostics.emit("supervisor_control_failed", error=exc)
                     future.set_exception(exc)
         except BaseException as exc:
+            self._failure(exc)
             if not self.ready.done():
                 self.ready.set_exception(exc)
             while not self.commands.empty():
@@ -133,9 +156,28 @@ class ControlOwner:
                     item[2].set_exception(InvalidData("supervisor control owner stopped"))
         finally:
             if store is not None:
-                store.close()
+                while True:
+                    try:
+                        with control_mutex:
+                            store.close()
+                        break
+                    except BaseException as exc:
+                        self._failure(exc)
+                        time.sleep(1)
             if control_mutex is not None:
-                control_mutex.close()
+                while control_mutex.handle is not None:
+                    try:
+                        control_mutex.close()
+                    except BaseException as exc:
+                        self._failure(exc)
+                        time.sleep(1)
+
+    def _failure(self, exc):
+        if self.failure is None:
+            from .observability import safe_error
+            self.failure = safe_error(exc)
+            if self.diagnostics is not None:
+                self.diagnostics.emit("supervisor_control_failed", error=exc)
 
     def _execute(self, store, operation, args):
         if operation == "read":
@@ -164,14 +206,27 @@ class ControlOwner:
             try:
                 decision = store.reserve_start(event, parent_session=session,
                                                policy=self.policy)
-                if decision.stale:
+                native = store.read_native()
+                state = decision.state
+                if (decision.stale
+                        or SupervisorAction.SPAWN_RECOVERY not in decision.actions
+                        or not state.desired_armed or state.stop_latched
+                        or (state.child_id, state.child_generation) !=
+                           (event.child_id, event.expected_generation)
+                        or (native.parent_session, native.child_id,
+                            native.child_generation, native.stage) !=
+                           (session, event.child_id, event.expected_generation, "reserved")):
+                    if SupervisorAction.REQUEST_GRACEFUL_STOP in decision.actions:
+                        WindowsStopLatch.request(self.scope.scope_id,
+                            user_sid=self.scope.approved_user_sid)
                     factory.release_presence()
                     return ControlReceipt(store.revision(), decision, decision.state,
                                           store.read_native())
                 try:
+                    factory.validate_launch(state)
                     value = factory.spawn()
                 except BaseException:
-                    if not factory.created:
+                    if not factory.created and not getattr(factory, "creation_attempted", False):
                         store.apply(SupervisorEvent(EventKind.SPAWN_FAILED,
                             self.clock(), expected_generation=event.expected_generation,
                             child_id=event.child_id), self.policy)
@@ -182,9 +237,9 @@ class ControlOwner:
                     child_generation=decision.state.child_generation,
                     stage="created", diagnostic_pid=value.process.pid)
                 return ControlReceipt(store.revision(), decision, decision.state,
-                                      native, value)
+                                      native, value, spawned=True)
             except BaseException:
-                if not factory.created:
+                if not factory.created and not getattr(factory, "creation_attempted", False):
                     factory.release_presence()
                 raise
         raise InvalidData("unknown supervisor control operation")
@@ -201,21 +256,43 @@ class ControlOwner:
         return future
 
     async def submit(self, operation, *args):
+        # Never block the event loop on worker initialization.
+        await retain(asyncio.wrap_future(self.ready))
         wrapped = asyncio.wrap_future(self._submit_future(operation, *args))
         wrapped.add_done_callback(lambda value: None if value.cancelled() else value.exception())
-        return await asyncio.shield(wrapped)
+        return await retain(wrapped)
 
     def submit_sync(self, operation, *args, timeout=10):
         return self._submit_future(operation, *args).result(timeout=timeout)
 
     async def close(self):
-        if self.closed:
-            return
-        self.closed = True
-        self.commands.put(None)
-        await asyncio.to_thread(self.thread.join, 10)
+        if self._close_task is None:
+            self.closed = True
+            self._close_task = asyncio.create_task(self._close_owned())
+        await retain(self._close_task)
+
+    async def _close_owned(self):
         if self.thread.is_alive():
-            raise InvalidData("supervisor control owner did not stop")
+            await asyncio.to_thread(self.commands.put, None)
+        # A timeout is not permission to abandon a thread owning SQLite/mutex.
+        while self.thread.is_alive():
+            await asyncio.to_thread(self.thread.join, 1)
+
+
+async def retain(task):
+    """Join an owned operation despite repeated caller cancellation."""
+    cancelled = False
+    while not task.done():
+        try:
+            # wait() does not cancel the owned future or install shield's raw
+            # exception logger when its waiter is cancelled (Python 3.14).
+            await asyncio.wait((task,))
+        except asyncio.CancelledError:
+            cancelled = True
+    result = task.result()
+    if cancelled:
+        raise asyncio.CancelledError
+    return result
 
 
 class SupervisorController:

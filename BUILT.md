@@ -1,5 +1,24 @@
 # What exists
 
+## D-057 S2A review corrections — 2026-09-21
+
+[Fixes and evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md) cover D-056 R1-R8:
+retained native ownership, explicit spawn permission, completed terminal writes,
+protocol/power gates, protected files, bounded diagnostics and journal pruning.
+Thirty new regressions; complete suite 915 run / 914 pass / one privilege skip,
+plus three detected safeguard reversals. 100-cycle ownership assertions pass;
+parent idle CPU misses its target and cold-start handle retention is unattributed.
+Independent review remains required;
+S2B and all live operation remain blocked. No production configuration changed.
+
+## D-056 Astra review — changes required — 2026-09-21
+
+[Independent review](docs/REVIEW_D056_ASTRA.md) reproduces lifecycle, launch,
+IPC, protocol, handle and journal defects despite 81 passing existing focused
+tests. Persistent-file security, power invalidation and diagnostic requirements
+also remain incomplete. S2A is not cleared; the implementation/resource evidence
+below is qualified by this review. Sol corrections are next; S2B remains blocked.
+
 ## D-056 native Windows supervisor S2A — 2026-09-21
 
 D-056 [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2A.md) implements the

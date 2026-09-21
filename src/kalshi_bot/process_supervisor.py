@@ -1,7 +1,6 @@
 """Native Windows S2A supervisor for one fixed inert child only."""
 import asyncio
 from collections import deque
-import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -13,10 +12,12 @@ from .supervision import (AttentionReason, ChildOutcome, ChildPhase, EventKind,
                           SupervisorAction, SupervisorEvent, SupervisorPolicy,
                           SupervisorState)
 from .supervisor_control import ControlOwner, ScopeSpec
+from .supervisor_control import retain
+from .observability import Diagnostics, safe_error
 from .supervisor_fixture import (build_fingerprint, config_fingerprint,
                                  fixture_path, repository_root, source_path)
 from .supervisor_protocol import (CHILD_KINDS, Envelope, MessageKind,
-                                  SequenceTracker)
+                                  SequenceTracker, validate_peer)
 from .values import InvalidData, identity
 from .windows import (WindowsPowerMonitor, WindowsRoleLease, WindowsStopLatch,
                       _close_handle, inheritable_parent_handle)
@@ -26,26 +27,39 @@ from .windows_ipc import PipeServer, supervisor_pipe_name
 class OwnedChild:
     """Spawn preparation retained by the host even after uncertain failures."""
     def __init__(self, scope, stop_latch, *, parent_session, child_id,
-                 child_generation, mode):
+                 child_generation, mode, launch_guard=None):
         self.scope, self.stop_latch = scope, stop_latch
         self.parent_session = identity(parent_session)
         self.child_id = identity(child_id)
         self.child_generation = child_generation
         self.mode = mode
+        self.launch_guard = launch_guard
         self.lease = WindowsRoleLease(scope.scope_id, "child",
                                       user_sid=scope.approved_user_sid)
         self.server = None
         self.endpoint = None
         self.process = None
         self.created = False
+        self.creation_attempted = False
         self.result = None
         self.stop_hint_sent = False
+        self._bind_task = None
+        self._close_task = None
+        self.cleanup_error = None
+
+    def validate_launch(self, state):
+        if (self.stop_latch.requested or not state.desired_armed or state.stop_latched
+                or state.build_fingerprint != build_fingerprint()
+                or state.config_fingerprint != config_fingerprint(self.mode)):
+            raise InvalidData("native launch authority revoked")
+        if self.launch_guard is not None:
+            self.launch_guard()
 
     def acquire_presence(self):
         self.lease.__enter__()
 
     def release_presence(self):
-        if self.created:
+        if self.created or self.creation_attempted:
             return
         if self.server is not None:
             self.server.close()
@@ -64,13 +78,30 @@ class OwnedChild:
         return allowed
 
     def spawn(self):
+        handles = []
+        try:
+            return self._spawn_owned(handles)
+        finally:
+            # Protect partial setup too: every successful acquisition is tracked.
+            error = None
+            for handle in reversed(handles):
+                try:
+                    _close_handle(handle)
+                except BaseException as exc:
+                    error = error or exc
+            if error is not None:
+                raise error
+
+    def _spawn_owned(self, handles):
         nonce = uuid4().hex
         pipe = supervisor_pipe_name(self.scope.digest, nonce)
         self.server = PipeServer(pipe, user_sid=self.scope.approved_user_sid)
         lifetime = self.lease.duplicate_inheritable()
+        handles.append(lifetime)
         stop = self.stop_latch.duplicate_inheritable()
+        handles.append(stop)
         parent = inheritable_parent_handle()
-        handles = (lifetime, stop, parent)
+        handles.append(parent)
         startup = subprocess.STARTUPINFO()
         startup.lpAttributeList = {"handle_list": list(handles)}
         venv_launcher = Path(sys.executable).resolve(strict=True)
@@ -92,19 +123,25 @@ class OwnedChild:
             "--lifetime-handle", str(lifetime),
             "--stop-handle", str(stop),
             "--parent-handle", str(parent)]
-        try:
-            self.process = subprocess.Popen(command, cwd=repository_root(),
+        if self.launch_guard is not None:
+            self.launch_guard()
+        if self.stop_latch.requested:
+            raise InvalidData("native launch stopped during setup")
+        self.creation_attempted = True
+        self.process = subprocess.Popen(command, cwd=repository_root(),
                 env=self._environment(venv_launcher), stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 shell=False, close_fds=True, startupinfo=startup,
                 creationflags=subprocess.CREATE_NO_WINDOW)
-            self.created = True
-            return self
-        finally:
-            for handle in handles:
-                _close_handle(handle)
+        self.created = True
+        return self
 
     async def bind(self):
+        if self._bind_task is None:
+            self._bind_task = asyncio.create_task(self._bind_owned())
+        return await retain(self._bind_task)
+
+    async def _bind_owned(self):
         if not self.created or self.process.poll() is not None:
             raise InvalidData("native child exited before IPC binding")
         self.endpoint = await asyncio.to_thread(self.server.accept, timeout=10,
@@ -121,17 +158,36 @@ class OwnedChild:
         self.stop_latch.request_owned()
 
     async def close_after_exit(self):
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close_owned())
+        await retain(self._close_task)
+
+    async def _close_owned(self):
         if self.process is None or self.process.poll() is None:
             raise InvalidData("native child exit is not confirmed")
         if self.endpoint is not None:
-            await asyncio.to_thread(self.endpoint.close_and_join)
+            while not self.endpoint.closed:
+                try:
+                    await asyncio.to_thread(self.endpoint.close_and_join, 1)
+                except InvalidData:
+                    self.cleanup_error = [{"category": "ipc", "type": "ClosePending", "frames": []}]
+                    await asyncio.sleep(.1)
             self.endpoint = None
         if self.server is not None:
-            self.server.close()
+            await self._retry_close(self.server.close)
             self.server = None
         if self.lease.handle is not None:
+            await self._retry_close(self.lease.__exit__)
             self.created = False
-            self.lease.__exit__()
+
+    async def _retry_close(self, operation):
+        while True:
+            try:
+                operation()
+                return
+            except BaseException as exc:
+                self.cleanup_error = safe_error(exc)
+                await asyncio.sleep(1)
 
 
 class SupervisorHost:
@@ -155,7 +211,29 @@ class SupervisorHost:
         self._inbound = SequenceTracker()
         self.loop_wakes = 0
         self.max_incoming_backlog = 0
+        self.child_exits = 0
+        self.validated_results = 0
         self.policy_latencies_ms = deque(maxlen=4096)
+        self.diagnostics = Diagnostics(scope.control_root / "parent-logs",
+                                       max_bytes=262144, backups=2)
+        self._power = None
+        self._stop_latch = None
+        self._run_task = None
+
+    def _guard(self):
+        self.diagnostics.ensure_healthy()
+        if self.shutdown_requested or (self._power and self._power.changed.is_set()):
+            raise InvalidData("supervisor authority invalidated")
+
+    def _record_fault(self, exc):
+        if self.last_error is None:
+            self.last_error = safe_error(exc)
+            self.diagnostics.emit("supervisor_failed", error=exc,
+                                  operation=self.parent_session)
+
+    def _signal_stop(self):
+        if self._stop_latch is not None:
+            self._stop_latch.request_owned()
 
     @property
     def fingerprints(self):
@@ -167,29 +245,26 @@ class SupervisorHost:
         self.policy_latencies_ms.append((time.perf_counter()-began)*1000)
         self.controller_state = receipt.state
         for action in (() if receipt.decision is None else receipt.decision.actions):
-            if action == SupervisorAction.REQUEST_GRACEFUL_STOP and self.child is not None:
-                self.child.request_stop()
+            if action == SupervisorAction.REQUEST_GRACEFUL_STOP:
+                self._signal_stop()
         return receipt
 
     async def request_shutdown(self):
         self.shutdown_requested = True
-        if self.owner is not None:
-            await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
-        WindowsStopLatch.request(self.scope.scope_id,
-            user_sid=self.scope.approved_user_sid)
+        try:
+            if self.owner is not None and not self.owner.closed:
+                await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
+        finally:
+            WindowsStopLatch.request(self.scope.scope_id,
+                user_sid=self.scope.approved_user_sid)
 
     def _validate_common(self, envelope):
-        if (envelope.scope_digest != self.scope.digest
-                or envelope.parent_session != self.parent_session
-                or self.child is None
-                or envelope.child_id != self.child.child_id
-                or envelope.child_generation != self.child.child_generation
-                or envelope.kind not in CHILD_KINDS):
+        if self.child is None:
             raise InvalidData("supervisor child envelope identity mismatch")
-        age = time.monotonic_ns()-envelope.sent_monotonic_ns
-        if age < 0 or age > 4_000_000_000:
-            raise InvalidData("stale supervisor child envelope")
-        self._inbound.accept(envelope)
+        return validate_peer(envelope, scope_digest=self.scope.digest,
+            parent_session=self.parent_session, child_id=self.child.child_id,
+            child_generation=self.child.child_generation, allowed=CHILD_KINDS,
+            tracker=self._inbound, now_ns=time.monotonic_ns())
 
     def _outbound(self, kind, payload, *, coalesced=False):
         if coalesced:
@@ -203,6 +278,7 @@ class SupervisorHost:
             time.monotonic_ns(), payload)
 
     async def _spawn(self, state):
+        self._guard()
         build, config = self.fingerprints
         if (state.build_fingerprint != build
                 or state.config_fingerprint != config):
@@ -212,7 +288,8 @@ class SupervisorHost:
         child_id = uuid4().hex
         factory = OwnedChild(self.scope, self._stop_latch,
             parent_session=self.parent_session, child_id=child_id,
-            child_generation=state.generation, mode=self.fixture_mode)
+            child_generation=state.generation, mode=self.fixture_mode,
+            launch_guard=self._guard)
         event = SupervisorEvent(EventKind.START_REQUESTED, time.time(),
             expected_generation=state.generation, child_id=child_id)
         self.child = factory
@@ -220,12 +297,14 @@ class SupervisorHost:
             receipt = await self.owner.submit("spawn", event, self.parent_session,
                                               factory)
         except BaseException:
-            if not factory.created:
+            if not factory.created and not factory.creation_attempted:
                 self.child = None
             raise
         self.controller_state = receipt.state
-        if receipt.decision.stale:
+        if not receipt.spawned:
             self.child = None
+            if receipt.state.stop_latched:
+                self._signal_stop()
             return
         self.child = receipt.value
         await self._apply(SupervisorEvent(EventKind.CHILD_STARTED, time.time(),
@@ -233,7 +312,9 @@ class SupervisorHost:
             child_id=self.child.child_id))
         try:
             endpoint = await self.child.bind()
+            self._guard()
             hello = await asyncio.to_thread(endpoint.receive, 10)
+            self._guard()
             if hello is None:
                 raise InvalidData("native child HELLO timed out")
             self._validate_common(hello)
@@ -248,6 +329,7 @@ class SupervisorHost:
                 child_generation=self.child.child_generation, stage="bound",
                 diagnostic_pid=self.child.process.pid))
             current = await self.owner.submit("read")
+            self._guard()
             if (current.revision != bound.revision or current.state.stop_latched
                     or current.state.child_id != self.child.child_id
                     or current.native.stage != "bound"):
@@ -255,17 +337,21 @@ class SupervisorHost:
             endpoint.send_control(self._outbound(MessageKind.ADMIT,
                 dict(control_revision=current.revision)))
         except BaseException as exc:
-            self.last_error = exc
+            self._record_fault(exc)
             await self._apply(SupervisorEvent(EventKind.LOCAL_SAFETY_FAULT,
                 time.time(), attention_reason=AttentionReason.IPC_FAILURE))
             self.child.request_stop()
 
     async def _message(self, message):
-        self._validate_common(message)
+        age = self._validate_common(message)
         if message.kind == MessageKind.STATUS:
+            if self._power and self._power.changed.is_set():
+                raise InvalidData("supervisor power state invalidated")
+            if self.child.result is not None:
+                raise InvalidData("supervisor status after result")
             phase = ChildPhase(message.payload["phase"])
             remaining = message.payload["work_remaining_ms"]
-            work_deadline = None if remaining is None else time.time()+remaining/1000
+            work_deadline = None if remaining is None else time.time()+remaining/1000-age
             await self._apply(SupervisorEvent(EventKind.CHILD_STATUS, time.time(),
                 expected_generation=self.child.child_generation,
                 child_id=self.child.child_id, child_phase=phase,
@@ -294,7 +380,10 @@ class SupervisorHost:
                         break
         payload = child.result
         if payload is None:
-            outcome = ChildOutcome.UNEXPECTED_DEATH
+            # The fixed fixture reserves 20..30 for local validation/safety
+            # refusal. Inert crash mode uses 7; never retry known safety faults.
+            outcome = (ChildOutcome.STARTUP_REFUSED if 20 <= returncode <= 30
+                       else ChildOutcome.UNEXPECTED_DEATH)
             cleanup_complete = cleanup_failed = False
             unresolved_work = True
             holds = ()
@@ -310,11 +399,15 @@ class SupervisorHost:
                 cleanup_complete = False
                 unresolved_work = True
         await child.close_after_exit()
+        if child.cleanup_error:
+            self._record_fault(InvalidData("native child cleanup encountered a fault"))
         await self._apply(SupervisorEvent(EventKind.CHILD_RESULT, time.time(),
             expected_generation=child.child_generation, child_id=child.child_id,
             outcome=outcome, process_exited=True,
             cleanup_complete=cleanup_complete, cleanup_failed=cleanup_failed,
             unresolved_work=unresolved_work, retry_holds=holds))
+        self.child_exits += 1
+        self.validated_results += int(payload is not None)
         self.child = None
         self._inbound = SequenceTracker()
         self._control_sequence = self._pulse_sequence = 0
@@ -325,10 +418,13 @@ class SupervisorHost:
             self.loop_wakes += 1
             now = time.monotonic()
             if power.changed.is_set():
-                power.changed.clear()
                 await self._apply(SupervisorEvent(EventKind.LOCAL_SAFETY_FAULT,
                     time.time(), attention_reason=AttentionReason.POWER_STATE_CHANGED))
                 self._stop_latch.request_owned()
+                return
+            self.diagnostics.ensure_healthy()
+            if self.shutdown_requested:
+                return
             if now >= next_tick:
                 receipt = await self._apply(SupervisorEvent(EventKind.TICK, time.time()))
                 if SupervisorAction.START_DUE in receipt.decision.actions and self.child is None:
@@ -376,7 +472,7 @@ class SupervisorHost:
                                     await asyncio.to_thread(
                                         self.child.process.wait, timeout=.25)
                                 except subprocess.TimeoutExpired:
-                                    self.last_error = exc
+                                    self._record_fault(exc)
                                     await self._apply(SupervisorEvent(
                                         EventKind.LOCAL_SAFETY_FAULT, time.time(),
                                         attention_reason=AttentionReason.IPC_FAILURE))
@@ -385,22 +481,33 @@ class SupervisorHost:
                         if message is None:
                             break
                         await self._message(message)
-                    if now >= next_pulse and self.child.poll_exit() is None:
+                    if (now >= next_pulse and self.child.poll_exit() is None
+                            and self.child.result is None
+                            and self.child.endpoint.error is None
+                            and not self.controller_state.stop_latched):
                         try:
                             revision = (await self.owner.submit("read")).revision
+                            self._guard()
                             self.child.endpoint.publish_latest(self._outbound(
                                 MessageKind.PULSE, dict(control_revision=revision),
                                 coalesced=True))
                         except InvalidData as exc:
-                            self.last_error = exc
+                            # Pipe closure can precede the process-handle signal.
+                            # Bound the exact owned process wait as on receive.
+                            try:
+                                await asyncio.to_thread(self.child.process.wait, timeout=.25)
+                            except subprocess.TimeoutExpired:
+                                raise exc
                         next_pulse = now+2
                 returncode = self.child.poll_exit()
                 if returncode is not None:
                     await self._finish_child(returncode)
-            if (self.shutdown_requested and self.child is None):
+            if (self.shutdown_requested and self.child is None
+                    and self.controller_state.child_id is None):
                 return
             if (self._stop_latch.requested and self.child is None
                     and self.controller_state is not None
+                    and self.controller_state.child_id is None
                     and self.controller_state.stop_latched):
                 return
             delay = max(0.0, min(1.0, next_tick-time.monotonic()))
@@ -411,54 +518,166 @@ class SupervisorHost:
                 await asyncio.sleep(delay)
 
     async def run(self):
-        if self.owner is not None:
+        if self._run_task is not None:
             raise InvalidData("supervisor host cannot be reused")
-        self.owner = ControlOwner(self.scope, policy=self.policy)
+        self._run_task = asyncio.create_task(self._run_owned())
+        cancelled = False
+        while not self._run_task.done():
+            try:
+                await asyncio.wait((self._run_task,))
+            except asyncio.CancelledError:
+                cancelled = True
+                self.shutdown_requested = True
+                try:
+                    self._signal_stop()
+                except BaseException as exc:
+                    self._record_fault(exc)
+        result = self._run_task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
+
+    async def _run_owned(self):
+        self.owner = ControlOwner(self.scope, policy=self.policy,
+                                  diagnostics=self.diagnostics)
         parent_lease = WindowsRoleLease(self.scope.scope_id, "parent",
                                         user_sid=self.scope.approved_user_sid)
+        acquired = False
+        stop_owner = power = None
         try:
-            with parent_lease:
-                before = await self.owner.submit("read")
-                try:
-                    stop_owner = WindowsStopLatch(self.scope.scope_id,
-                        user_sid=self.scope.approved_user_sid)
-                    stop_owner.__enter__()
-                except InvalidData as exc:
-                    if ("already exists" not in str(exc)
-                            or before.state.child_id is None):
-                        raise
-                    stop_owner = WindowsStopLatch(self.scope.scope_id,
-                        user_sid=self.scope.approved_user_sid, create=False)
-                    stop_owner.__enter__()
-                try:
-                    power = WindowsPowerMonitor()
-                    power.__enter__()
-                except BaseException:
-                    stop_owner.__exit__()
+            parent_lease.__enter__()
+            acquired = True
+            await asyncio.to_thread(self.diagnostics.start)
+            self.diagnostics.emit("supervisor_started", operation=self.parent_session)
+            before = await self.owner.submit("read")
+            self.controller_state = before.state
+            try:
+                stop_owner = WindowsStopLatch(self.scope.scope_id,
+                    user_sid=self.scope.approved_user_sid)
+                stop_owner.__enter__()
+            except InvalidData as exc:
+                if ("already exists" not in str(exc)
+                        or before.state.child_id is None):
                     raise
-                try:
-                    stop_latch = stop_owner
-                    self._stop_latch = stop_latch
-                    receipt = await self.owner.submit("session", self.parent_session,
-                                                      time.time())
-                    self.controller_state = receipt.state
-                    if receipt.state.child_id is not None:
-                        stop_latch.request_owned()
-                    self.started.set()
-                    try:
-                        await self._loop(power)
-                    except asyncio.CancelledError:
-                        self.shutdown_requested = True
-                        await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
-                        self._stop_latch.request_owned()
-                        await self._loop(power)
-                        raise
-                finally:
-                    power.__exit__()
-                    stop_owner.__exit__()
+                stop_owner = WindowsStopLatch(self.scope.scope_id,
+                    user_sid=self.scope.approved_user_sid, create=False)
+                stop_owner.__enter__()
+            self._stop_latch = stop_owner
+            power = WindowsPowerMonitor()
+            power.__enter__()
+            self._power = power
+            receipt = await self.owner.submit("session", self.parent_session, time.time())
+            self.controller_state = receipt.state
+            if receipt.state.child_id is not None:
+                stop_owner.request_owned()
+            self.started.set()
+            await self._loop(power)
+        except BaseException as exc:
+            if not acquired:
+                raise
+            self._record_fault(exc)
         finally:
+            if acquired and self._stop_latch is not None:
+                while True:
+                    try:
+                        await self._finalize()
+                        break
+                    except BaseException as exc:
+                        self._record_fault(exc)
+                        await asyncio.sleep(1)
             await self.owner.close()
+            if self.owner.failure and self.last_error is None:
+                self.last_error = self.owner.failure
+            if acquired:
+                self.diagnostics.emit("supervisor_stopped", operation=self.parent_session)
+            await self._close_diagnostics()
+            if power is not None:
+                await self._close_native(power.__exit__)
+            if stop_owner is not None:
+                await self._close_native(stop_owner.__exit__)
+                self._stop_latch = None
+            if acquired:
+                await self._close_native(parent_lease.__exit__)
             self.finished.set()
+        if self.last_error is not None:
+            raise InvalidData("supervisor stopped after fault; inspect diagnostics")
+
+    async def _close_native(self, close):
+        while True:
+            try:
+                close()
+                return
+            except BaseException as exc:
+                self._record_fault(exc)
+                await asyncio.sleep(1)
+
+    async def _close_diagnostics(self):
+        await asyncio.to_thread(self.diagnostics.close, 1)
+        while self.diagnostics.status()["worker_alive"]:
+            await asyncio.to_thread(self.diagnostics.close, 1)
+        if self.diagnostics.status()["failure"] is not None and self.last_error is None:
+            self.last_error = self.diagnostics.status()["failure_detail"] or [
+                {"category": "logging", "type": "DiagnosticFailure", "frames": []}]
+
+    async def _finalize(self):
+        """Never cancelled: owns child, orphan observation, IPC and final commits."""
+        self.shutdown_requested = True
+        try:
+            power_changed = self._power is not None and self._power.changed.is_set()
+            reason = (AttentionReason.POWER_STATE_CHANGED if power_changed
+                      else AttentionReason.IPC_FAILURE)
+            if self.last_error or power_changed:
+                await self._apply(SupervisorEvent(EventKind.LOCAL_SAFETY_FAULT,
+                    time.time(), attention_reason=reason))
+            elif self.controller_state is None or not self.controller_state.stop_latched:
+                await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
+        except BaseException as exc:
+            self._record_fault(exc)
+        finally:
+            try:
+                self._signal_stop()
+            except BaseException as exc:
+                self._record_fault(exc)
+        if (self.child is not None and not self.child.created
+                and not self.child.creation_attempted):
+            self.child.release_presence()
+            self.child = None
+        while self.child is not None:
+            if self.child.poll_exit() is not None:
+                try:
+                    await self._finish_child(self.child.poll_exit())
+                except BaseException as exc:
+                    self._record_fault(exc)
+                    # Faulty protocol/store evidence cannot abandon native cleanup.
+                    await self.child.close_after_exit()
+                    self.child = None
+                break
+            try:
+                await self._apply(SupervisorEvent(EventKind.TICK, time.time()))
+            except BaseException as exc:
+                self._record_fault(exc)
+            await asyncio.sleep(.25)
+        # A cold parent's lack of a Popen is not proof the old child is gone.
+        while self.controller_state is not None and self.controller_state.child_id is not None:
+            probe = WindowsRoleLease(self.scope.scope_id, "child",
+                                     user_sid=self.scope.approved_user_sid)
+            try:
+                probe.__enter__()
+            except InvalidData:
+                await asyncio.sleep(1)
+                continue
+            try:
+                state = (await self.owner.submit("read")).state
+                self.controller_state = state
+                if state.child_id is not None:
+                    await self._apply(SupervisorEvent(EventKind.ORPHAN_RELEASED,
+                        time.time(), expected_generation=state.child_generation,
+                        child_id=state.child_id))
+            except BaseException as exc:
+                self._record_fault(exc)
+                await asyncio.sleep(1)
+            finally:
+                probe.__exit__()
 
 
 def fixture_fingerprints(mode="normal"):

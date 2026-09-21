@@ -21,6 +21,13 @@ from .windows import WindowsLease
 
 # Static event names are also the error codes. Never interpolate message text.
 EVENTS = {
+    'supervisor_started': ('INFO', 'supervisor'),
+    'supervisor_stopped': ('INFO', 'supervisor'),
+    'supervisor_failed': ('ERROR', 'supervisor'),
+    'supervisor_control_failed': ('ERROR', 'supervisor'),
+    'supervisor_child_started': ('INFO', 'supervisor'),
+    'supervisor_child_stopped': ('INFO', 'supervisor'),
+    'supervisor_child_failed': ('ERROR', 'supervisor'),
     'log_started': ('INFO', 'logging'), 'log_stopped': ('INFO', 'logging'),
     'runtime_started': ('INFO', 'runtime'), 'runtime_stopped': ('INFO', 'runtime'),
     'runtime_failed': ('ERROR', 'runtime'), 'runtime_cancelled': ('INFO', 'runtime'),

@@ -34,7 +34,7 @@ def build_fingerprint():
              package/"supervisor_store.py", package/"supervisor_control.py",
              package/"supervisor_protocol.py", package/"supervisor_fixture.py",
              package/"windows.py", package/"windows_ipc.py",
-             package/"process_supervisor.py")
+             package/"process_supervisor.py", package/"observability.py")
     for path in tuple(item.resolve() for item in paths):
         digest.update(path.relative_to(repository_root()).as_posix().encode())
         digest.update(b"\0")

@@ -4,8 +4,11 @@ D-055 [S2 detailed design](DESIGN_WINDOWS_SUPERVISOR_S2.md) is the current
 native-process/IPC proposal after S1 and D-048 clearance. It specifies S2A inert
 lifecycle foundations followed by separately assigned S2B offline runtime and
 restriction transfer. D-056 [implements S2A](BUILD_WINDOWS_SUPERVISOR_S2A.md)
-offline and now awaits Astra review. S2B remains unimplemented and separately
-gated.
+offline. Its [Astra review](REVIEW_D056_ASTRA.md) identified ownership, launch,
+IPC, validation, power, security, diagnostics and journal defects. D-057
+[implements corrections](BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md) under the operator's
+Astra fix-phase exception; independent review remains required. S2B remains
+unimplemented, blocked and separately assigned.
 
 D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
 one process supervisor and one runtime child, durable operator control and bounded

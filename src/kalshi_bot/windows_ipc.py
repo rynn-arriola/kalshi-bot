@@ -1,5 +1,6 @@
 """Bounded local Windows named-pipe transport for the inert S2A harness."""
 from collections import deque
+from concurrent.futures import Future
 import ctypes
 from ctypes import wintypes
 from queue import Empty, Full, Queue
@@ -7,7 +8,7 @@ import os
 from threading import Event, Lock, Thread
 import time
 
-from .supervisor_protocol import (COALESCED_KINDS, FrameDecoder,
+from .supervisor_protocol import (COALESCED_KINDS, FrameDecoder, MessageKind,
                                   MAX_CONTROL_FRAMES, encode_frame)
 from .values import InvalidData, identity
 from .windows import WindowsSecurity, _close_handle, current_user_sid
@@ -89,6 +90,9 @@ class PipeEndpoint:
         self._slot_lock = Lock()
         self.error = None
         self.closed = False
+        self.closing = False
+        self._join_lock = Lock()
+        self._writes = set()
         self.activity = Event()
         self._close_event = self.api.CreateEventW(None, True, False, None)
         self._wake_event = self.api.CreateEventW(None, False, False, None)
@@ -101,27 +105,33 @@ class PipeEndpoint:
         self.thread.start()
 
     def send_control(self, envelope):
-        if self.closed or self.error is not None:
-            raise InvalidData("supervisor IPC unavailable")
         if envelope.kind in COALESCED_KINDS:
             raise InvalidData("coalesced message requires publish_latest")
-        try:
-            self.control.put_nowait(encode_frame(envelope))
-        except Full as exc:
-            raise InvalidData("supervisor control queue overflow") from exc
-        if not self.api.SetEvent(self._wake_event):
-            raise InvalidData("supervisor IPC wake failed")
+        frame = encode_frame(envelope)
+        receipt = Future()
+        with self._slot_lock:
+            if self.closing or self.error is not None:
+                raise InvalidData("supervisor IPC unavailable")
+            if len(self._writes) >= MAX_CONTROL_FRAMES:
+                raise InvalidData("supervisor control queue overflow")
+            self._writes.add(receipt)
+            if envelope.kind == MessageKind.RESULT:
+                self._coalesced = None
+            self.control.put_nowait((frame, receipt))
+            if not self.api.SetEvent(self._wake_event):
+                raise InvalidData("supervisor IPC wake failed")
+        return receipt
 
     def publish_latest(self, envelope):
-        if self.closed or self.error is not None:
-            raise InvalidData("supervisor IPC unavailable")
         if envelope.kind not in COALESCED_KINDS:
             raise InvalidData("retained message cannot be coalesced")
         frame = encode_frame(envelope)
         with self._slot_lock:
-            self._coalesced = frame
-        if not self.api.SetEvent(self._wake_event):
-            raise InvalidData("supervisor IPC wake failed")
+            if self.closing or self.error is not None:
+                raise InvalidData("supervisor IPC unavailable")
+            self._coalesced = (frame, None)
+            if not self.api.SetEvent(self._wake_event):
+                raise InvalidData("supervisor IPC wake failed")
 
     def receive(self, timeout=None):
         try:
@@ -227,9 +237,13 @@ class PipeEndpoint:
                     self.api.WaitForSingleObject(read_event, INFINITE)
                     break
                 if result == WAIT_OBJECT_0+1:
-                    for frame in self._take_outgoing():
+                    for frame, receipt in self._take_outgoing():
                         if not self._write(frame):
                             return
+                        if receipt is not None:
+                            with self._slot_lock:
+                                self._writes.remove(receipt)
+                            receipt.set_result(None)
                     continue
                 if result != WAIT_OBJECT_0+2:
                     raise InvalidData("supervisor pipe read wait failed")
@@ -264,7 +278,7 @@ class PipeEndpoint:
         except BaseException as exc:
             self._record_error(exc)
         finally:
-            if not self.closed:
+            if not self.closing:
                 if decoder.buffer:
                     self._record_error(InvalidData("partial supervisor frame at EOF"))
                 else:
@@ -274,23 +288,30 @@ class PipeEndpoint:
                 self.api.CancelIoEx(self.handle, ctypes.byref(overlap))
                 self.api.WaitForSingleObject(read_event, INFINITE)
             _close_handle(read_event)
+            with self._slot_lock:
+                writes, self._writes = self._writes, set()
+                self._coalesced = None
+                while not self.control.empty():
+                    self.control.get_nowait()
+            for receipt in writes:
+                receipt.set_exception(InvalidData("supervisor control write incomplete"))
 
     def close_and_join(self, timeout=10):
-        if self.closed:
-            return
-        self.closed = True
-        self.api.SetEvent(self._close_event)
-        self.api.SetEvent(self._wake_event)
-        self.api.CancelIoEx(self.handle, None)
-        self.thread.join(timeout)
-        if self.thread.is_alive():
-            raise InvalidData("supervisor IPC worker did not stop")
-        handle, self.handle = self.handle, None
-        close_event, self._close_event = self._close_event, None
-        wake_event, self._wake_event = self._wake_event, None
-        _close_handle(handle)
-        _close_handle(close_event)
-        _close_handle(wake_event)
+        with self._join_lock:
+            if self.closed:
+                return
+            with self._slot_lock:
+                self.closing = True
+                if not self.api.SetEvent(self._close_event):
+                    raise InvalidData("supervisor IPC close signal failed")
+            self.thread.join(timeout)
+            if self.thread.is_alive():
+                raise InvalidData("supervisor IPC worker did not stop")
+            # A failed join leaves handles/buffers owned and is retryable.
+            for field in ("handle", "_close_event", "_wake_event"):
+                _close_handle(getattr(self, field))
+                setattr(self, field, None)
+            self.closed = True
 
 
 class PipeServer:
@@ -351,8 +372,8 @@ class PipeServer:
             _close_handle(event)
 
     def close(self):
-        handle, self.handle = self.handle, None
-        _close_handle(handle)
+        _close_handle(self.handle)
+        self.handle = None
 
 
 def connect_pipe(name, *, timeout=10, expected_server_pid=None):
