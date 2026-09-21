@@ -69,6 +69,10 @@ class LedgerWriter:
         self._executor_owner = None
         self._dispatcher_owner = None
         self._management_owner = None
+        self._accounting_owner = None
+        self._accounting_lease = None
+        self._accounting_prepared = None
+        self._accounting_enabled = False
         self._max_backlog_observed = 0
         self._thread = Thread(target=self._run, name="kalshi-ledger", daemon=False)
 
@@ -178,6 +182,38 @@ class LedgerWriter:
     async def accounting_status(self):
         return await self._wait(self._submit('accounting_status'))
 
+    def claim_accounting_owner(self, owner):
+        from .account import AccountCoordinator
+        if not isinstance(owner, AccountCoordinator) or owner.writer is not self:
+            raise InvalidData('account coordinator required')
+        if self._accounting_owner is not None and self._accounting_owner is not owner:
+            raise InvalidData('one accounting owner per writer lifetime')
+        self._accounting_owner = owner
+
+    async def approve_opening(self, *, checkpoint_digest, reference, now):
+        return await self._wait(self._submit('approve_opening', checkpoint_digest,
+                                             identity(reference), utc(now)))
+
+    async def release_accounting(self, owner, evidence, report, continuity, fence, *, now):
+        if (owner is not self._accounting_owner or fence is not owner._accounting_fence
+                or not fence.current()):
+            raise InvalidData('current account-owner release fence required')
+        return await self._wait(self._submit('release_accounting', evidence, report,
+                                             continuity, fence, utc(now)))
+
+    def entry_accounting_current(self, receipt):
+        if receipt.kind != 'create' or receipt.request.get('reduce_only') is True:
+            return True
+        if not self._accounting_enabled:
+            return True  # Isolated legacy fixtures; never a live path.
+        lease = self._accounting_lease
+        return (lease is not None and lease.writer_epoch == self.epoch
+            and not self.failed and not self._closing
+            and self.revision in (receipt.writer_revision, receipt.writer_revision+1)
+            and self._accounting_prepared == receipt
+            and json.loads(receipt.proof_json).get('accounting_release') == lease.release_digest
+            and lease.fence.current())
+
     async def record_accounting_review(self, *, reference, checkpoint_digest, now):
         return await self._wait(self._submit('accounting_review', identity(reference),
                                              checkpoint_digest, utc(now)))
@@ -189,12 +225,12 @@ class LedgerWriter:
         return await self._wait(self._submit("portfolio", integer(subaccount, 0, 63), utc(now)))
 
     async def reserve_entry(self, request, *, attempt_id, view, config, now, free_cash,
-                            account_known=False, offline_fixture=False):
+                            account_known=False, offline_fixture=False, fee_per_contract_bound=None):
         frozen = json.dumps(request, allow_nan=False, separators=(",", ":"))
         if len(frozen.encode()) > 16384:
             raise InvalidData("entry request exceeds byte budget")
         return await self._wait(self._submit("reserve_entry", identity(attempt_id), frozen, view, config, utc(now),
-                                            free_cash, account_known, offline_fixture))
+                                            free_cash, account_known, offline_fixture, fee_per_contract_bound))
 
     async def cancel_evidence(self, order_id):
         return await self._wait(self._submit('cancel_evidence', identity(order_id)))
@@ -259,6 +295,9 @@ class LedgerWriter:
                 and decision['book_revision'] == plan.book_revision
                 and decision['terms_observed_at'] == plan.terms.observed_at.isoformat()
                 and decision['terms_valid_until'] == plan.terms.valid_until.isoformat()
+                and decision['fee_per_contract_bound'] == (
+                    str(plan.terms.taker_fee_per_contract_bound)
+                    if plan.terms.taker_fee_per_contract_bound is not None else None)
                 and decision['mode'] == plan.exit.mode
                 and decision['limit_price'] == str(plan.exit.limit_price)
                 and count(decision['quantity']) == count(
@@ -424,7 +463,28 @@ class LedgerWriter:
         return await self._wait(self._submit("mutations"))
 
     def _execute(self, ledger, command, args):
+        if command == 'approve_opening':
+            from .account_release import approve_opening
+            result = approve_opening(ledger, *args)
+            self._accounting_enabled = bool(ledger.connection.execute(
+                'SELECT 1 FROM accounting_baseline WHERE id=1').fetchone())
+            self._accounting_lease = None
+            return result
+        if command == 'release_accounting':
+            from .accounting import capture
+            from .account_release import release
+            evidence, report, continuity, fence, now = args
+            self._accounting_lease = None
+            with ledger.transaction():
+                capture(ledger, evidence, report, source_current=fence.current(),
+                    writer_epoch=self.epoch, writer_revision=self._revision,
+                    post_revision=self._revision+1, capacity=self.market_capacity)
+                result, lease = release(ledger, evidence, report, continuity, fence,
+                    epoch=self.epoch, revision=self._revision, now=now, capacity=self.market_capacity)
+            self._accounting_lease = lease
+            return result
         if command == 'capture_accounting':
+            self._accounting_lease = None
             from .accounting import capture
             return capture(ledger, args[0], args[1], source_current=args[2], writer_epoch=self.epoch,
                            writer_revision=self._revision, post_revision=self._revision+1,
@@ -433,6 +493,7 @@ class LedgerWriter:
             from .accounting import inspect
             return inspect(ledger)
         if command == 'accounting_source_failed':
+            self._accounting_lease = None
             from .accounting import record_failure, inspect
             record_failure(ledger, command)
             return inspect(ledger)
@@ -483,12 +544,16 @@ class LedgerWriter:
                                   revision=self._revision, now=now, capacity=self.market_capacity)
         if command == "reserve_entry":
             from .portfolio import reserve_entry
-            attempt_id, encoded, view, config, now, cash, known, fixture = args
-            return reserve_entry(ledger, request=json.loads(encoded), attempt_id=attempt_id,
+            attempt_id, encoded, view, config, now, cash, known, fixture, fee_bound = args
+            result = reserve_entry(ledger, request=json.loads(encoded), attempt_id=attempt_id,
                 view=view, epoch=self.epoch, revision=self._revision,
                 post_revision=self._revision+1, config=config, now=now, free_cash=cash,
                 account_known=known, offline_fixture=fixture, capacity=self.market_capacity,
-                command_policy=self.command_policy)
+                command_policy=self.command_policy, accounting_lease=self._accounting_lease,
+                fee_per_contract_bound=fee_bound)
+            if result.receipt is not None and self._accounting_enabled:
+                self._accounting_prepared = result.receipt
+            return result
         if command == 'cancel_evidence':
             order_id = args[0]
             row = ledger.connection.execute('SELECT payload FROM order_evidence WHERE order_id=?',
@@ -549,6 +614,8 @@ class LedgerWriter:
                 'writer_revision': inventory.writer_revision,
                 'terms_observed_at': terms.observed_at.isoformat(),
                 'terms_valid_until': terms.valid_until.isoformat(),
+                'fee_per_contract_bound': (str(terms.taker_fee_per_contract_bound)
+                    if terms.taker_fee_per_contract_bound is not None else None),
                 'mode': exit_plan.mode,
                 'limit_price': str(exit_plan.limit_price),
                 'quantity': str(quantity),
@@ -576,7 +643,8 @@ class LedgerWriter:
             from .execution import begin_send
             with ledger.transaction():
                 return begin_send(ledger, args[0], writer_epoch=self.epoch,
-                    writer_revision=self._revision, post_revision=self._revision+1)
+                    writer_revision=self._revision, post_revision=self._revision+1,
+                    accounting_current=self.entry_accounting_current(args[0]))
         if command == 'abort_prepared':
             from .execution import abort_prepared
             with ledger.transaction():
@@ -752,6 +820,8 @@ class LedgerWriter:
         try:
             ledger = Ledger(self.path)  # Construct/use/close on this thread only.
             validate_capacity(ledger, self.command_policy)
+            self._accounting_enabled = bool(ledger.connection.execute(
+                'SELECT 1 FROM accounting_baseline WHERE id=1').fetchone())
             self._ready.set_result(None)
             while True:
                 item = self._queue.get()
@@ -768,17 +838,24 @@ class LedgerWriter:
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'reduction_evidence', 'command_capacity', 'accounting_status'}
                     post_revision = {'reserve_entry', 'prepare_cancel', 'prepare_reduction',
-                                     'begin_send', 'abort_prepared', 'capture_accounting'}
+                                     'begin_send', 'abort_prepared', 'capture_accounting', 'release_accounting'}
+                    # External evidence writes revoke authority even when a
+                    # caller bypasses coordinator ingress. Local reservation /
+                    # send steps retain the lease but recompute obligations.
+                    if command not in read_only | {'reserve_entry', 'prepare_cancel',
+                            'prepare_reduction', 'begin_send', 'abort_prepared'}:
+                        self._accounting_lease = None
+                        self._accounting_prepared = None
                     if command not in read_only and command not in post_revision:
                         self._revision += 1
                     result = self._execute(ledger, command, args)
-                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction', 'capture_accounting'}:
+                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction', 'capture_accounting', 'release_accounting'}:
                         self._revision += 1
                     elif command in {'begin_send', 'abort_prepared'} and result.writer_revision == self._revision+1:
                         self._revision += 1
                 except Exception as exc:
                     if command in {'fill', 'apply_pending', 'recover_fills', 'order',
-                                   'order_batch', 'capture_accounting'}:
+                                   'order_batch', 'capture_accounting', 'release_accounting'}:
                         try:
                             from .accounting import record_failure
                             record_failure(ledger, command)

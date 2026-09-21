@@ -156,6 +156,8 @@ class AccountCoordinator:
         self._processing = False
         self._loop = None
         self._opening_task = None
+        self._accounting_fence = None
+        self._report_monotonic = None
 
     def _check_owner(self):
         loop = asyncio.get_running_loop()
@@ -165,11 +167,17 @@ class AccountCoordinator:
             raise InvalidData("account owner cannot cross event loops")
 
     def _invalidate(self):
+        self.revoke_accounting()
         self.revision += 1
         self.report = None
         self._token = None
         self.history_report = None
         self.archive_report = None
+
+    def revoke_accounting(self):
+        if self._accounting_fence is not None:
+            self._accounting_fence.revoked.set()
+
 
     def connect_generation(self) -> int:
         self._check_owner()
@@ -498,6 +506,7 @@ class AccountCoordinator:
 
     def begin_reconciliation(self, now: datetime) -> ReconcileToken:
         self._check_owner()
+        self.revoke_accounting()
         if not self.connected or self._processing or self.writer.failed:
             raise InvalidData("account cannot start reconciliation")
         self.report = None
@@ -537,6 +546,7 @@ class AccountCoordinator:
         blockers.extend(audit.blockers)
         self.report = ReconciliationReport(snapshot, now, audit.positions_match, audit.unresolved_intents,
                                            tuple(blockers), audit=audit)
+        self._report_monotonic = token.started_monotonic
         self._token = None  # Cannot reuse a snapshot token.
         return self.report
 
@@ -610,13 +620,20 @@ class AccountCoordinator:
             raise
 
     async def inspect_opening_account(self, reads: RestReads, *, proposed_boundary,
-                                      continuity, now, persist=False):
+                                      continuity, now, persist=False, release=False):
         """Bounded inspection; optional durable restrictions, never live authority."""
         self._check_owner()
         if self._opening_task is not None:
             raise InvalidData('opening inspection already active')
+        if release:
+            self.writer.claim_accounting_owner(self)
+        if persist:
+            self.revoke_accounting()
+        from threading import Event
+        cancelled = Event()
         task = asyncio.create_task(self._inspect_opening_account(reads,
-            proposed_boundary=proposed_boundary, continuity=continuity, now=now, persist=persist),
+            proposed_boundary=proposed_boundary, continuity=continuity, now=now, persist=persist,
+            release=release, cancelled=cancelled),
             name='kalshi-opening-inspection')
         self._opening_task = task
         def completed(result):
@@ -627,23 +644,32 @@ class AccountCoordinator:
         task.add_done_callback(completed)
         # A cancelled consumer cannot release the single inspection slot while
         # bounded reads or the pure normalization thread still own work.
-        return await asyncio.shield(task)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled.set()
+            if release:
+                self.revoke_accounting()
+            raise
 
-    async def reconcile_accounting(self, reads: RestReads, *, proposed_boundary, continuity, now):
+    async def reconcile_accounting(self, reads: RestReads, *, proposed_boundary, continuity, now, release=False):
         """Explicit account-owner integration; no background polling is created."""
         return await self.inspect_opening_account(reads, proposed_boundary=proposed_boundary,
-            continuity=continuity, now=now, persist=True)
+            continuity=continuity, now=now, persist=True, release=release)
 
-    async def _inspect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist=False):
+    async def _inspect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist=False,
+                                      release=False, cancelled=None):
         try:
             return await self._collect_opening_account(reads, proposed_boundary=proposed_boundary,
-                continuity=continuity, now=now, persist=persist)
+                continuity=continuity, now=now, persist=persist, release=release, cancelled=cancelled)
         except BaseException:
+            self.revoke_accounting()
             if persist and not self.writer.failed:
                 await self.writer.accounting_source_failed()
             raise
 
-    async def _collect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist):
+    async def _collect_opening_account(self, reads, *, proposed_boundary, continuity, now, persist,
+                                     release=False, cancelled=None):
         from .opening_account import build_opening_evidence_async
         observed = utc(now())
         boundary = utc(proposed_boundary)
@@ -687,12 +713,35 @@ class AccountCoordinator:
             intra_exchange_transfers=intra_transfers, deposits=deposits,
             withdrawals=withdrawals, observed_at=current)
         if persist:
-            source_current = (not source_changed and self.current_report(utc(now())) is report
+            source_current = (not source_changed and not (cancelled and cancelled.is_set())
+                and (not release or (self._report_monotonic is not None
+                                     and 0 <= self.clock()-self._report_monotonic <= 5))
+                and self.current_report(utc(now())) is report
                 and (generation, revision, writer_epoch, writer_revision) ==
                     (self.generation, self.revision, self.writer.epoch, self.writer.revision))
-            receipt = await self.writer.capture_accounting(evidence, report, source_current=source_current)
-            if (generation, revision) != (self.generation, self.revision):
+            if release and source_current:
+                from .account_release import SourceFence
+                fence = SourceFence(generation=generation, revision=revision,
+                    observed_at=report.observed_at, clock=self.clock, now=now,
+                    started=self._report_monotonic, revoked=cancelled)
+                self._accounting_fence = fence
+                receipt = await self.writer.release_accounting(self, evidence, report,
+                    continuity, fence, now=utc(now()))
+                if not receipt.released:
+                    fence.revoked.set()
+            else:
+                receipt = await self.writer.capture_accounting(evidence, report, source_current=source_current)
+                if release:
+                    from .account_release import ReleaseResult
+                    receipt = ReleaseResult(False, ('accounting_source_stale',))
+            if ((generation, revision) != (self.generation, self.revision)
+                    or (release and receipt.released and
+                        (not fence.current() or self.writer._accounting_lease is None))):
+                self.revoke_accounting()
                 await self.writer.accounting_source_failed()
+                if release:
+                    from .account_release import ReleaseResult
+                    return ReleaseResult(False, ('accounting_source_stale',))
             return receipt
         if (self.current_report(utc(now())) is not report or generation != self.generation
                 or revision != self.revision or writer_epoch != self.writer.epoch

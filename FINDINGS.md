@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 96. Operational reconciliation without claiming a venue barrier — 2026-09-21
+
+VERIFIED CODE/OFFLINE: D-068's new positive path releases only transient holds
+after actual writer-owned audits, current history receipts/private epoch and a
+separately approved synthetic baseline. Local cash accounts for YES/NO buys,
+matched collateral and actual fees. Global and per-exchange cash ceilings are
+independent; working obligations are not deducted twice from venue availability.
+The [build record](docs/BUILD_ACCOUNT_RECONCILIATION.md) records tests and resource
+measurements. The actual Poly reference uses exact owned-order reconciliation,
+freshness gates and local buying-power decrements, not a stronger venue guarantee.
+
+LIMITATION: a common REST/WS delay is explicitly not detected by agreeing stale
+sources; the test preserves `venue_handoff_proven=false` even on successful
+operational release. D-068 approves this criterion. Economic settlement/funding/
+correction restrictions still require their cause resolved. No real-account
+verification, trading, runtime changes or boundary approval occurred.
+
 ## 95. Release policy, not an undocumented timestamp guarantee — 2026-09-21
 
 VERIFIED SOURCE: [Get User Data Timestamp](https://docs.kalshi.com/api-reference/exchange/get-user-data-timestamp)

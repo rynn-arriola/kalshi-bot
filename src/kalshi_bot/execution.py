@@ -11,7 +11,7 @@ from .command_capacity import (DEFAULT_POLICY, active_episode_evidence,
     validate_capacity)
 from .command_types import (CancelEvidence, CommandDenied, PreparationResult,
     PreparedMutation, ReductionEvidence, SendResult)
-from .values import InvalidData, count, identity, integer, price, utc
+from .values import InvalidData, count, decimal, identity, integer, price, utc
 from .observability import NO_LOG
 
 
@@ -367,11 +367,23 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
         subject_id=request['client_order_id'], episode_id=evidence.episode_id,
         now=now, proof=evidence.decision_json,
         reauthorize=reusable is not None)
+    if ledger.connection.execute('SELECT 1 FROM accounting_baseline WHERE id=1').fetchone():
+        bound = json.loads(evidence.decision_json)['fee_per_contract_bound']
+        ledger.connection.execute('DELETE FROM accounting_fees WHERE client_id=?',
+                                  (request['client_order_id'],))
+        # Preserve existing exit safety. Missing passive fee metadata blocks new
+        # entry cash proof; it does not add a new restriction to inventory exits.
+        if bound is not None:
+            fee = decimal(bound)
+            if fee < 0:
+                raise InvalidData('reduction fee cash bound invalid')
+            ledger.connection.execute('INSERT INTO accounting_fees VALUES (?,?)',
+                                      (request['client_order_id'], str(fee)))
     validate_capacity(ledger, policy, full=False)
     return PreparationResult(prepared, (), status(ledger), request['client_order_id'])
 
 
-def begin_send(ledger, receipt, *, writer_epoch, writer_revision, post_revision):
+def begin_send(ledger, receipt, *, writer_epoch, writer_revision, post_revision, accounting_current=False):
     if not isinstance(receipt, PreparedMutation):
         raise InvalidData('typed prepared mutation required')
     if receipt.ledger_id != ledger_id(ledger) or receipt.writer_epoch != writer_epoch:
@@ -392,6 +404,10 @@ def begin_send(ledger, receipt, *, writer_epoch, writer_revision, post_revision)
         if receipt.request.get('reduce_only') is not True:
             from .accounting import entry_blockers
             restrictions = entry_blockers(ledger)
+            if accounting_current:
+                restrictions = tuple(code for code in restrictions if code != 'accounting_lease_required')
+            if not accounting_current and json.loads(receipt.proof_json).get('accounting_release'):
+                restrictions += ('accounting_lease_stale',)
             if restrictions:
                 return SendResult(False, restrictions, writer_revision)
         state = ledger.connection.execute('SELECT state,payload FROM intents WHERE client_id=?',
@@ -531,6 +547,7 @@ class InjectedExecutor:
                 self.diagnostics.emit('mutation_sending', operation=receipt.authorization_id)
                 self.diagnostics.ensure_healthy()
                 if (self.writer.revision != send.writer_revision
+                        or not self.writer.entry_accounting_current(receipt)
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
                     _, outcome_cancelled = await self._retain(
                         self.writer.record_outcome('unknown', receipt, {}, self.now()))
@@ -551,6 +568,8 @@ class InjectedExecutor:
                         if inspect.iscoroutine(edge_result):
                             edge_result.close()
                         raise InvalidData('send-edge check must not await')
+                if not self.writer.entry_accounting_current(receipt):
+                    raise CommandDenied(('accounting_lease_stale',))
                 async with asyncio.timeout(self.timeout):
                     reply = await self.invoke(receipt.kind, dispatch_request)
                 ack = acknowledgement(receipt.kind, durable_request, reply)

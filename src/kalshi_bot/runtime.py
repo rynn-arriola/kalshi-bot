@@ -53,11 +53,14 @@ class RecoveryRuntime:
                  history_start, now, evaluate, deadline_handler, lifecycle_handler,
                  invalidate=lambda ticker: None, clock=time.monotonic,
                  sleep=asyncio.sleep, jitter=lambda: random.uniform(.8, 1.2), attempts=3,
-                 diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None):
+                 diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None,
+                 accounting_boundary=None):
         self.diagnostics = diagnostics
         self.writer, self.reads, self.reader_factory = writer, reads, reader_factory
         self.now, self.clock, self.sleep, self.jitter = now, clock, sleep, jitter
         self.history_start = utc(history_start)
+        self.accounting_boundary = utc(accounting_boundary) if accounting_boundary is not None else None
+        self.accounting_result = None
         if self.history_start >= utc(now()):
             raise InvalidData("explicit nonempty startup history scope required")
         self.attempt_limit = integer(attempts, 1, 8)
@@ -180,13 +183,13 @@ class RecoveryRuntime:
             self._persisted_epoch_gaps = max(self._persisted_epoch_gaps or 0, count)
             self._refresh_continuity()
 
-    def _refresh_continuity(self):
+    def _refresh_continuity(self, *, operational=False):
         report = self.account.current_report(self.now())
         history = self.last_reports[0] if self.last_reports else None
         self.continuity_assessment = assess_continuity(subaccount=self.account.subaccount,
             generation=self.account.generation, writer_epoch=self.writer.epoch,
             writer_revision=self.writer.revision, report=report, recovery=history,
-            coverage=self.history_inspection, epoch=self._epoch,
+            coverage=None if operational else self.history_inspection, epoch=self._epoch,
             history_ingress_revision=self.history_ingress_revision,
             ingress_revision=self.ingress_revision,
             persisted_gap_count=self._persisted_epoch_gaps,
@@ -625,6 +628,11 @@ class RecoveryRuntime:
                     (self.account.generation, self.account.subaccount))
         self.recovery_passes += int(repaired)
         self._refresh_continuity()
+        if repaired and self.accounting_boundary is not None:
+            self.accounting_result = await self.account.reconcile_accounting(
+                reads, proposed_boundary=self.accounting_boundary,
+                continuity=self._refresh_continuity(operational=True), now=self.now, release=True)
+            repaired = self.accounting_result.released
         return repaired
 
     async def _recover(self):

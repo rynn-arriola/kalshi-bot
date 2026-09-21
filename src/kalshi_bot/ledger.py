@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS closes (
   id INTEGER PRIMARY KEY, fill_id TEXT NOT NULL, ticker TEXT NOT NULL,
   quantity TEXT NOT NULL, pnl TEXT NOT NULL, received_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS closes_time ON closes(received_at);
+CREATE INDEX IF NOT EXISTS closes_fill ON closes(fill_id);
 CREATE TABLE IF NOT EXISTS realized_events (
   fill_id TEXT PRIMARY KEY, gross_pnl TEXT NOT NULL, fee TEXT NOT NULL,
   pnl TEXT NOT NULL, received_at TEXT NOT NULL);
@@ -173,6 +174,12 @@ CREATE INDEX IF NOT EXISTS accounting_event_key ON accounting_events(kind,event_
 CREATE INDEX IF NOT EXISTS accounting_event_kind ON accounting_events(kind);
 CREATE TABLE IF NOT EXISTS accounting_holds (
   code TEXT PRIMARY KEY, evidence_digest TEXT NOT NULL, first_seen_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS accounting_baseline (
+  id INTEGER PRIMARY KEY CHECK(id=1), digest TEXT NOT NULL, payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS accounting_cash (
+  exchange_index INTEGER PRIMARY KEY, cash TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS accounting_fees (
+  client_id TEXT PRIMARY KEY, fee TEXT NOT NULL);
 """
 
 
@@ -187,7 +194,7 @@ class Ledger:
         if tables:
             version = (self.connection.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
                        if "meta" in tables else None)
-            if version is None or version[0] != "4":
+            if version is None or version[0] != "5":
                 self.close()
                 raise InvalidData("incompatible ledger accounting schema; explicit migration required")
             counter_columns = ({row[1] for row in self.connection.execute(
@@ -199,14 +206,15 @@ class Ledger:
             if ("used" not in counter_columns or
                     "proof" not in authorization_columns or
                     not {'accounting_state', 'opening_checkpoint',
-                         'accounting_events', 'accounting_holds'} <= tables):
+                         'accounting_events', 'accounting_holds', 'accounting_baseline',
+                         'accounting_cash', 'accounting_fees'} <= tables):
                 self.close()
                 raise InvalidData("incompatible development ledger schema; recreate explicitly")
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.executescript(SCHEMA)
         with self.connection:
-            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','4')")
+            self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema','5')")
             self.connection.execute("INSERT OR IGNORE INTO meta VALUES ('ledger_id',?)", (uuid4().hex,))
             self.connection.executemany(
                 "INSERT OR IGNORE INTO command_capacity_counters VALUES (?,0,0)",
@@ -216,6 +224,8 @@ class Ledger:
         try:
             from .accounting import validate_accounting
             validate_accounting(self)
+            from .account_release import validate_cash
+            validate_cash(self)
         except BaseException:
             self.close()
             raise
@@ -267,6 +277,7 @@ class Ledger:
                 raise InvalidData("receipt clock moved backwards; reconcile before continuing")
             direction = 1 if fill.book_side == "bid" else -1
             remaining, basis, gross = fill.quantity, fill.yes_price, Decimal(0)
+            matched = Decimal(0)
             lot = self.connection.execute("SELECT * FROM lots WHERE ticker=?", (fill.ticker,)).fetchone()
             if lot:
                 qty, old_basis = Decimal(lot["quantity"]), Decimal(lot["yes_price"])
@@ -303,6 +314,8 @@ class Ledger:
             self.connection.execute("INSERT INTO fills VALUES (?,?,?,?,?)",
                                     (fill.key, fill.payload, stamp, fill.executed_us, fill.execution_precision_us))
             self.connection.execute("INSERT OR REPLACE INTO meta VALUES ('fill_clock',?)", (stamp,))
+            from .account_release import apply_fill_cash
+            apply_fill_cash(self, fill, matched, received_at)
         return True
 
     def position(self, ticker: str) -> Decimal:

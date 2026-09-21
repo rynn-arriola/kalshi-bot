@@ -10,6 +10,22 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### D-068 release ownership and cancel/reducer integration
+
+**Mechanism found before publication.** A retained reconciliation could outlive
+its cancelled consumer; measuring age only after collection renewed stale
+evidence. The first reducer-fee integration was accidentally placed in cancel
+preparation. Derived fractional cash also needed accounting precision rather
+than wire precision on reread.
+**Fix.** Shared revocation survives cancellation; the monotonic fence starts
+with snapshot collection. Every financial/source write revokes authority, and
+the final synchronous send edge checks it. Fee reservations belong only to
+reducing creates; cancels retain their existing path. Missing passive fee bounds
+block subsequent entries, not safety exits. Derived cash is read as exact Decimal.
+**Verification.** Dedicated cancelled-read, frozen-clock, post-commit ingress,
+last-send-edge, approved-baseline cancel/reducer and fractional-cash regressions
+pass in disposable ledgers. See [build evidence](docs/BUILD_ACCOUNT_RECONCILIATION.md).
+
 ### Offline dispatcher spent write permit before durable SENDING await
 
 **Mechanism.** The dispatcher consumed a fresh local write permit before

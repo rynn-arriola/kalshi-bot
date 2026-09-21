@@ -1,17 +1,18 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
 Priority-3 [opening-account accounting design](DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
-now has [D-067 durable enforcement](BUILD_DURABLE_ACCOUNTING.md): schema-4
-candidate/evidence/hold tables, source-fenced account-owner capture and
-transactional entry/send restrictions. The checkpoint remains a candidate;
-venue handoff, cash semantics, launch boundary and reconciliation release are
-unproved. New ledgers only; no existing-ledger migration or live activation.
+now has [D-068 operational release](BUILD_ACCOUNT_RECONCILIATION.md) on top of
+[D-067 durable restrictions](BUILD_DURABLE_ACCOUNTING.md). Schema 5 adds explicit
+baseline approval, derived cash/fee obligations and ephemeral source-fenced
+release authority. Global venue handoff stays unproved; lower independent cash
+ceilings avoid assuming exact venue holds. Real boundary approval and live
+activation are separate. New ledgers only; no existing-ledger migration.
 
 D-062 adds [opening-account/cash evidence](BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
 and an [offline write-budget primitive](BUILD_WRITE_BUDGET.md) with
 [bounded offline dispatcher](BUILD_WRITE_DISPATCHER.md). These remain
-non-authorizing; durable opening/cash accounting, runtime integration and
-production transport are unfinished. D-063 restores development in the primary session without
+non-authorizing; production candidate/dispatch and supervised runtime integration
+remain unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.
 
 D-059 [command capacity/handoff design](DESIGN_COMMAND_CAPACITY_HANDOFF.md),

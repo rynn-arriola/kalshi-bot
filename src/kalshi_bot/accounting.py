@@ -1,7 +1,8 @@
 """Writer-owned accounting evidence and entry restrictions. No P&L invention.
 
-An opening checkpoint is a durable *candidate*. Missing venue handoff/cash
-proof is deliberately ungrantable; review acknowledgement cannot clear it.
+An opening checkpoint starts as a candidate. D-068's separate operational
+release never asserts global venue proof; a review acknowledgement cannot
+clear economic restrictions or approve the actual opening boundary.
 """
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ HOLD_CODES = frozenset({
     'settlement_reconciliation_required', 'settlement_economics_conflict',
     'cash_activity_unattributed', 'cash_observation_changed', 'cash_clock_regressed',
     'cash_snapshot_disagrees', 'accounting_journal_full', 'accounting_review_required',
-    'fill_boundary_unproven', 'accounting_source_failed',
+    'fill_boundary_unproven', 'accounting_source_failed', 'accounting_economics_failed',
 })
 
 
@@ -123,7 +124,8 @@ def validate_accounting(ledger):
         if (source['ledger_id'] != owner or source['boundary'] != opening['boundary']
                 or source['subaccount'] != opening['subaccount']):
             raise InvalidData('opening checkpoint identity invalid')
-    if (actual[0] or opening is not None) and not holds:
+    released = conn.execute("SELECT 1 FROM accounting_events WHERE kind='operational_release' LIMIT 1").fetchone()
+    if (actual[0] or opening is not None) and not holds and not released:
         raise InvalidData('accounting evidence lost its entry restrictions')
     for row in conn.execute('SELECT digest,kind,event_key,payload FROM accounting_events'):
         if digest(encode([row['kind'], row['event_key'], row['payload']])) != row['digest']:
@@ -138,6 +140,8 @@ def entry_blockers(ledger, *, require_checkpoint=False):
     if require_checkpoint and ledger.connection.execute(
             'SELECT 1 FROM opening_checkpoint WHERE id=1').fetchone() is None:
         return holds + ('opening_checkpoint_missing',)
+    if not holds and ledger.connection.execute('SELECT 1 FROM accounting_baseline WHERE id=1').fetchone():
+        return ('accounting_lease_required',)
     return holds
 
 
@@ -149,8 +153,10 @@ def inspect(ledger):
                         "WHERE kind='cash' ORDER BY rowid DESC LIMIT 1").fetchone()
     holds = entry_blockers(ledger)
     blockers = list(holds)
+    if not conn.execute('SELECT 1 FROM accounting_baseline WHERE id=1').fetchone():
+        blockers.append('operator_boundary_not_approved')
     blockers.extend(('venue_history_stream_handoff_unproven', 'cash_snapshot_not_atomic',
-                     'operator_boundary_not_approved', 'cash_hold_semantics_unverified',
+                     'cash_hold_semantics_unverified',
                      'live_activation_not_authorized'))
     if opening is None:
         blockers.append('opening_checkpoint_missing')
@@ -188,7 +194,7 @@ def capture(ledger, evidence, report, *, writer_epoch, writer_revision,
     created = False
     conn = ledger.connection
     with ledger.transaction():
-        # Permanent until a separately proved opening/reconciliation protocol exists.
+        # Only the D-068 operational protocol may clear transient restrictions.
         _hold(ledger, 'opening_proof_unresolved', fingerprint, at)
         _append(ledger, 'inspection', fingerprint, payload, at)
         opening = conn.execute('SELECT * FROM opening_checkpoint WHERE id=1').fetchone()
@@ -289,3 +295,5 @@ def record_failure(ledger, command):
     at = datetime.now(timezone.utc)
     with ledger.transaction():
         _hold(ledger, 'accounting_source_failed', digest(command), at)
+        if command in {'fill', 'apply_pending', 'recover_fills', 'order', 'order_batch'}:
+            _hold(ledger, 'accounting_economics_failed', digest(command), at)

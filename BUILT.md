@@ -1,12 +1,15 @@
 # What exists
 
-## Release-path design, pending D-068 — 2026-09-21
+## D-068 operational reconciliation release — 2026-09-21
 
-The [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md) now records
-current official source checks, the proposed bot-owned reconciliation/cash
-protocol, residual risk, affected components and acceptance tests. This is a
-completed investigation/design artifact, not an implemented or approved release
-path. Existing D-067 code and its verification state are unchanged.
+[Build/verification record](docs/BUILD_ACCOUNT_RECONCILIATION.md): accepted
+Polymarket-style operational reconciliation, explicit baseline approval,
+per-exchange exact cash, bounded obligations and transactional hold release.
+The existing account/recovery owners issue revocable leases; entry preparation
+and injected sending consume them. Cancel/reducer safety remains independent.
+Restart, cancellation, stale generations and economic ambiguity fail closed.
+Synthetic positive paths and 30/120-market resource checks exist; this is not
+global venue proof or live-transport/launch clearance. Fresh schema 5 only.
 
 ## D-067 durable accounting and entry restrictions — 2026-09-21
 

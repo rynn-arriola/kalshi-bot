@@ -180,7 +180,8 @@ def portfolio_view(ledger, *, subaccount, epoch, revision, now, capacity):
 
 def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
                   post_revision, config, now, free_cash, account_known,
-                  offline_fixture, capacity, command_policy=DEFAULT_POLICY):
+                  offline_fixture, capacity, command_policy=DEFAULT_POLICY,
+                  accounting_lease=None, fee_per_contract_bound=None):
     """Compare current ownership/risk and reserve in one owner transaction.
 
     This API has no live-authorized branch. The positive path is explicitly an
@@ -208,7 +209,26 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
         blockers.append("stale_account_evidence")
     with ledger.transaction():
         # Recompute in the transaction; caller-provided exposure numbers are never trusted.
-        blockers.extend(accounting_entry_blockers(ledger, require_checkpoint=not offline_fixture))
+        restrictions = accounting_entry_blockers(ledger, require_checkpoint=not offline_fixture)
+        operational = ledger.connection.execute('SELECT digest FROM opening_checkpoint WHERE id=1').fetchone()
+        fee = Decimal(0)
+        if accounting_lease is not None:
+            from .account_release import AccountingLease, cash_limit
+            if (not isinstance(accounting_lease, AccountingLease)
+                    or accounting_lease.writer_epoch != epoch or not accounting_lease.fence.current()
+                    or operational is None or operational[0] != accounting_lease.checkpoint_digest):
+                blockers.append('accounting_lease_stale')
+            else:
+                restrictions = tuple(code for code in restrictions if code != 'accounting_lease_required')
+                try:
+                    cash = cash_limit(ledger, accounting_lease.cash, request['exchange_index'])
+                    fee = decimal(fee_per_contract_bound)
+                    if not 0 <= fee <= 1:
+                        raise InvalidData('fee bound out of range')
+                except (InvalidData, TypeError):
+                    blockers.append('accounting_cash_or_fee_bound_missing')
+                account_known = True
+        blockers.extend(restrictions)
         current = portfolio_view(ledger, subaccount=request["subaccount"], epoch=epoch,
                                  revision=revision, now=now, capacity=capacity)
         blockers.extend(current.blockers)
@@ -216,6 +236,8 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
             blockers.append("client_identity_already_reserved")
         p, q = price(request["price"]), count(request["count"])
         candidate = q*(p if request["side"] == "bid" else 1-p)
+        if accounting_lease is not None and cash < candidate+q*fee:
+            blockers.append('accounting_cash_insufficient')
         window = WindowRisk(ledger).observe(now)
         blockers.extend(admit_entry(config, window=window, ticker=request["ticker"],
             current_position=dict(current.positions).get(request["ticker"], Decimal(0)),
@@ -223,7 +245,8 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
             exposure=dict(current.exposure),
             # Conservative fixture cash bound; does not infer which venue holds
             # were reflected in a non-atomic balance snapshot.
-            free_capital=max(Decimal(0), cash-current.working_risk), account_known=account_known, now=now))
+            free_capital=(cash if accounting_lease is not None else
+                          max(Decimal(0), cash-current.working_risk)), account_known=account_known, now=now))
         if request["ticker"] not in dict(current.exposure) and len(current.exposure) >= capacity:
             blockers.append("risk_market_capacity")
         episode_id = None
@@ -234,12 +257,16 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
         receipt = None
         if not blockers:
             ledger.reserve_intent(client, request, now)
+            if accounting_lease is not None:
+                ledger.connection.execute('INSERT INTO accounting_fees VALUES (?,?)', (client, str(fee)))
             receipt = insert_prepared(ledger, mutation_id=attempt_id,
                 authorization_id=attempt_id, kind='create', encoded=encoded,
                 writer_epoch=epoch, writer_revision=post_revision,
                 subject_id=client, episode_id=episode_id, now=now,
                 proof=encoded_request({'type': 'entry_reservation',
                     'portfolio_epoch': view.epoch,
-                    'portfolio_revision': view.revision}))
+                    'portfolio_revision': view.revision,
+                    'fee_per_contract_bound': str(fee) if accounting_lease else None,
+                    'accounting_release': accounting_lease.release_digest if accounting_lease else None}))
             validate_capacity(ledger, command_policy, full=False)
     return PreparationResult(receipt, tuple(dict.fromkeys(blockers)), status(ledger), client)

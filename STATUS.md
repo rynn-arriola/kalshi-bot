@@ -1,18 +1,31 @@
 # Current status
 
-## Reconciliation release investigation — 2026-09-21
+## D-068 operational reconciliation release — 2026-09-21
 
-D-068 is proposed, **not approved**. The user-data timestamp endpoint was
-rechecked: its documented approximate validation time does not establish a
-global history/stream barrier. The [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
-now specifies a practical bot-owned reconciliation gate and independent cash
-ceilings, its residual common-delay risk, affected components and acceptance
-tests. Using it to release holds changes the existing entry-safety criterion;
-the operator has been asked to choose it or retain the strict requirement.
-No bot logic, configuration, ledger, credentials or runtime changed. Existing
-D-067 restrictions remain active. Do not label the release path complete.
+The operator accepted the Polymarket-style approach. The implemented
+[release path](docs/BUILD_ACCOUNT_RECONCILIATION.md) joins existing recovery,
+exact owned orders/fills, an explicitly approved flat-opening cash baseline,
+bounded history and the active private epoch. Only temporary observation/source
+holds can clear. Five-second revocable leases gate reservation, queued SENDING
+and the final injected send edge. Restart never restores a lease; settlements,
+conflicting economics and unattributed funding remain held. New schema-5
+ledgers only; existing schemas are refused without migration.
 
-## D-067 durable accounting enforcement — 2026-09-21
+Cash uses independent venue/local ceilings per account and exchange, actual
+owned fill costs/fees and conservative working obligations. This completes the
+offline accounting release component, not a live trader. Global venue handoff
+remains unproved by design; D-068 accepts the residual common-delay risk.
+No real boundary was approved, existing ledger opened, venue contacted, bot
+started/restarted or live order changed. Verification and its limits are in the
+build record. Next: source-bound production candidate/dispatch integration,
+then ranking/admission and supervised runtime readiness.
+
+Verification: 1,074 tests run, 1,073 passed, one expected Windows
+privilege skip; after the final command guard, focused release/handoff tests
+53/53 passed (full suite not repeated after that guard). All declared synthetic
+30/120-market resource bounds passed. Disabled preflight returned native exit 2.
+
+## D-067 durable accounting enforcement — prior step, extended by D-068
 
 The writer now retains an immutable opening candidate, separate cash/funding/
 settlement observations and persistent restrictions in fresh schema-4 ledgers.

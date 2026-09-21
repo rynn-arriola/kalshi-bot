@@ -1030,22 +1030,26 @@ them accepted without an explicit operator instruction.
 
 ### D-068 — Operational reconciliation gate in place of global venue proof
 
-- **Status:** PROPOSED, awaiting explicit operator choice, 2026-09-21.
+- **Status:** ACCEPTED offline implementation, 2026-09-21.
+- **Decision owner:** Operator: “Ok follow poly,” after the actual Polymarket
+  reconciliation, freshness gates, buying-power reservations and residual
+  silent-staleness limitation were explained from executable code.
 - **Context:** The operator requested the required work to finish the release
   path. Investigation found that the reviewed user-data timestamp is explicitly
   approximate; existing source contracts do not establish global REST/stream
-  completeness. Build authorization is not approval to weaken that requirement.
-- **Recommendation:** Adopt the bot-owned, source-fenced reconciliation and
+  completeness. This explicit choice, not generic build authorization, changes
+  the entry-safety criterion.
+- **Decision:** Adopt the bot-owned, source-fenced reconciliation and
   conservative two-ceiling cash model in the
   [accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md). Continue to
   report global venue handoff as unproved. Preserve economic holds and all
   independent risk, operator-settlement, live-activation and restart rules.
 - **Tradeoff:** Common REST/stream delay can temporarily hide an event; repeated
-  matching observations cannot eliminate that residual risk. Otherwise retain
-  strict proof and seek a stronger venue contract; entries remain blocked.
-- **Authority:** Approval would authorize offline implementation/tests only,
-  not account requests, a real opening boundary, trading or deployment. Until
-  answered, do not alter positive admission/release policy.
+  matching observations cannot eliminate that residual risk. The strict-proof
+  alternative was not selected; live activation still requires separate approval.
+- **Authority:** Offline implementation/tests only, not account requests, a real
+  opening boundary, trading or deployment. Do not import Poly's venue fields,
+  risk settings or operational permissions. D-066 economic holds remain.
 
 ### Earlier recovery-import question — superseded by D-025
 

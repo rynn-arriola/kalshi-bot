@@ -6,14 +6,14 @@ accepted risk/accounting rule. The existing [evidence reader](BUILD_OPENING_ACCO
 is the input; do not rebuild it. D-067 implements the durable candidate,
 observation/restriction journal and command gates in
 [BUILD_DURABLE_ACCOUNTING.md](BUILD_DURABLE_ACCOUNTING.md). References below to
-an approved baseline or successful release remain readiness requirements.
+an approved baseline or successful release are now implemented offline under
+[D-068](BUILD_ACCOUNT_RECONCILIATION.md); real launch evidence remains required.
 
-## Release-path investigation — 2026-09-21, operator decision pending
+## Release-path investigation — 2026-09-21, accepted under D-068
 
-The request to finish the implementation authorizes investigation and design;
-it is not acceptance of a weaker completeness guarantee. D-068 below records
-the proposed policy change. Do not implement its positive admission branch
-until that decision is accepted. Existing restrictions remain active.
+D-068 accepts operational reconciliation after the operator's “Ok follow poly.”
+This permits an offline positive accounting path, not a live launch or a claim
+of globally complete venue history. D-066 economic restrictions remain active.
 
 ### What was verified
 
@@ -39,7 +39,7 @@ until that decision is accepted. Existing restrictions remain active.
   account-wide funding/equity. Matching cash cannot rule out offsetting activity
   or common REST/stream delay. The reference is not a stronger venue guarantee.
 
-### Proposed operational gate (not yet approved)
+### Accepted operational gate
 
 Replace the unconditional requirement for a globally complete venue history
 with a separately named **bot-owned reconciliation** requirement. Keep
@@ -98,7 +98,7 @@ guaranteed maximum loss. The alternative is retaining the strict requirement
 and seeking a stronger documented venue contract. This is why changing the
 entry gate needs approval, rather than silently deleting the current hold.
 
-### Implementation order after approval
+### Accepted implementation checklist
 
 - Extend existing accounting/writer ownership with scoped cash state and
   immutable release evidence; no second account reader or orchestrator.

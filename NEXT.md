@@ -1,26 +1,20 @@
 # Active work queue
 
-First resolve proposed D-068: approve operational bot-owned reconciliation
-with its explicit delayed-event risk, or retain the strict global-proof gate.
-The [release design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md) records source
-evidence, cash equations, implementation order and tests. No release-policy
-change is authorized merely by its presence in the design. Implement the
-approved branch without repeating the source investigation.
+Next: priority 4's source-bound candidate and dispatch integration, including
+verified fee metadata, account/book/exit rechecks, actual write-quota evidence,
+owned 429/outcome handling and shutdown. Keep transport disabled until separately
+authorized readiness work and launch approval. Then priority 5 ranking/admission
+and priority 6 supervised runtime integration.
 
-D-067 implements the [durable accounting restrictions](docs/BUILD_DURABLE_ACCOUNTING.md)
-in new schema-4 fixture ledgers. The opening candidate, observation journal,
-settlement/cash/fill-conflict restrictions, restart validation and entry/send
-checks exist. The account owner has an explicit persist-and-reconcile operation;
-do not rebuild these as another report-only helper.
+D-068 implements the [operational accounting release](docs/BUILD_ACCOUNT_RECONCILIATION.md)
+on top of D-067 restrictions. Do not rebuild it or re-open the accepted global-
+proof policy choice. The actual fresh flat boundary still needs explicit
+approval during a separately authorized launch. Economic discrepancies require
+their own reconciliation; ordinary review/empty history never clears them.
+Only new schema-5 synthetic ledgers were exercised; no migration or account
+request is authorized by this build.
 
-Remaining priority-3 readiness gates: prove the venue history/private-stream
-handoff and cash/reservation semantics, approve the actual opening boundary at
-launch, and reconcile any retained economic ambiguity before specifying a
-release that can grant entries. Current documents provide no shared replay
-barrier, so local agreement cannot clear that restriction. No existing schema-3
-ledger migration or account request is authorized by the offline build.
-
-Updated 2026-09-21. Follow accepted decisions through D-067 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-068 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -42,10 +36,10 @@ Priority 3 from the [overall review](docs/REVIEW_OVERALL_2026-09-21.md) now has
 Do not rebuild it. Sequential 512-row normalization now passes the bounded
 latency fixture with cross-batch conflict tests. D-064 selects exclusive primary
 subaccount 0 and requires no nonzero position or resting order before arming.
-Fresh account proof is still missing; choose the exact boundary only during a
-separately authorized launch. D-067 now durably stores the candidate and cash/
-settlement evidence and enforces their restrictions; automatic correction,
-settlement P&L attribution and live entry authority remain unavailable.
+Fresh real-account evidence is still missing; choose the exact boundary only
+during a separately authorized launch. D-067/D-068 now supply the durable
+accounting/release component. Automatic corrections, settlement P&L attribution
+and live entry authority remain unavailable.
 
 Item 4's [offline write budget](docs/BUILD_WRITE_BUDGET.md) now passes the
 synthetic 30/120-shard resource target. The
