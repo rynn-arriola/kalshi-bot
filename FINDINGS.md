@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 92. Opening-account assessment remains local evidence — 2026-09-21
+
+VERIFIED OFFLINE: a revision/scope-matched flat account snapshot can be
+classified without treating it as an approved opening basis. The new pure
+assessor preserves the venue handoff, non-atomic cash and operator-boundary
+blockers. Focused tests cover primary/nonprimary, open positions/orders,
+changed cash, settlement presence, pending fills and report/revision conflicts.
+Polymarket's checked source separates pre-bot history and account-wide equity
+from bot P&L, and treats unknown position basis as unknown; those boundaries
+inform this design, but no venue-specific Poly accounting was copied. No live
+account read or ledger write occurred. The full 1,022-test suite passes with
+one expected native privilege skip; opening benchmark passes all three fixture
+sizes and disabled preflight remains blocked as intended.
+
 ## 91. Offline write permit is checked at the send edge — 2026-09-21
 
 VERIFIED OFFLINE: the previous dispatcher consumed the local write permit

@@ -1,5 +1,15 @@
 # What exists
 
+## Offline opening-account assessment — 2026-09-21
+
+The bounded pure `assess_opening_accounting` helper checks evidence/report
+scope, writer revision, local flatness and exact cash equality, preserving
+settlement/cash-activity counts and all blockers. It cannot install a cash or
+lot basis, approve a boundary, or grant entry authority. See the
+[accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md). All 23 focused
+opening tests and the 1,022-test full suite pass (one expected native skip);
+the opening benchmark and disabled preflight also pass their offline gates.
+
 ## Offline write dispatch send-edge check — 2026-09-21
 
 The injected dispatcher now retains its write permit through the awaited

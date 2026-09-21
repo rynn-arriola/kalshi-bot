@@ -1,5 +1,12 @@
 # Active work queue
 
+Priority-3 update: the non-authorizing local opening-account assessor is built
+and tested. Next, settle how unexpected bot-owned settlement affects the
+six-hour loss meter; prove a correction/reversal contract and exact historical
+handoff before designing a durable checkpoint/journal. Do not migrate schema 3
+or bind opening authority to entries yet. See
+[accounting design](docs/DESIGN_OPENING_ACCOUNT_ACCOUNTING.md).
+
 Updated 2026-09-21. Follow accepted decisions through D-065 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.

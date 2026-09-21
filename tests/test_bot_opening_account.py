@@ -13,7 +13,8 @@ from kalshi_bot.account import AccountCoordinator, normalize_snapshot
 from kalshi_bot.continuity import ContinuityAssessment
 from kalshi_bot.opening_account import (build_opening_evidence, parse_cash,
                                         parse_settlements, parse_funding,
-                                        parse_intra_exchange_transfers)
+                                        parse_intra_exchange_transfers,
+                                        assess_opening_accounting)
 from kalshi_bot.rest import PageSet, ReadResult, request_path
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
@@ -103,6 +104,60 @@ class OpeningEvidenceTests(unittest.IsolatedAsyncioTestCase):
                         'opening_basis_not_installed'):
             self.assertIn(blocker, evidence.blockers)
         self.assertNotIn('account_exclusivity_not_approved', evidence.blockers)
+
+    async def test_accounting_assessment_is_local_only_even_when_flat(self):
+        assessment = assess_opening_accounting(self.build(), self.report)
+        self.assertTrue(assessment.local_flat_candidate)
+        self.assertTrue(assessment.cash_snapshot_agrees)
+        self.assertEqual((assessment.settlement_rows, assessment.cash_activity_rows), (0, 0))
+        self.assertFalse(assessment.approved or assessment.ready_for_entry)
+        self.assertIn('venue_history_stream_handoff_unproven', assessment.blockers)
+        self.assertIn('operator_boundary_not_approved', assessment.blockers)
+
+    async def test_accounting_assessment_rejects_inventory_orders_and_wrong_scope(self):
+        position = dict(ticker='A', exchange_index=0, position_fp='1',
+                        market_exposure_dollars='0')
+        order = dict(order_id='resting', client_order_id='client', ticker='A',
+                     exchange_index=0, book_side='bid', yes_price_dollars='0.4',
+                     remaining_count_fp='10', status='resting')
+        for orders, positions in (([], [position]), ([order], [])):
+            snapshot = normalize_snapshot(orders, positions,
+                dict(balance_dollars='500', updated_ts=1), subaccount=0)
+            report = replace(self.report, snapshot=snapshot)
+            self.assertFalse(assess_opening_accounting(
+                self.build(report=report), report).local_flat_candidate)
+        report = replace(self.report, snapshot=replace(self.report.snapshot, subaccount=1))
+        scoped = replace(self.continuity, subaccount=1)
+        pages = replace(self.pages(), query=(('subaccount', 1),))
+        evidence = self.build(subaccount=1, report=report, continuity=scoped,
+                              settlements=pages)
+        self.assertFalse(assess_opening_accounting(evidence, report).local_flat_candidate)
+
+    async def test_accounting_assessment_retains_cash_and_settlement_uncertainty(self):
+        changed_cash = balance() | dict(balance_dollars='499', balance=49900,
+            balance_breakdown=[dict(exchange_index=0, balance='299'),
+                               dict(exchange_index=1, balance='200')])
+        evidence = self.build(cash_document=changed_cash,
+            settlements=self.pages((settlement(),), 'settlements'))
+        result = assess_opening_accounting(evidence, self.report)
+        self.assertFalse(result.cash_snapshot_agrees)
+        self.assertEqual(result.settlement_rows, 1)
+        self.assertIn('cash_changed_since_account_snapshot', result.blockers)
+        self.assertIn('settlement_history_requires_ledger_contract', result.blockers)
+        self.assertFalse(result.ready_for_entry)
+
+    async def test_accounting_assessment_requires_same_audit_and_revision(self):
+        evidence = self.build()
+        with self.assertRaisesRegex(InvalidData, 'revision or scope'):
+            assess_opening_accounting(evidence, replace(self.report,
+                audit=replace(self.report.audit, writer_revision=self.writer.revision+1)))
+        with self.assertRaisesRegex(InvalidData, 'report and audit disagree'):
+            assess_opening_accounting(evidence, replace(self.report,
+                unresolved_intents=self.report.unresolved_intents+1))
+        pending_audit = replace(self.report.audit, pending_fills=1,
+                                blockers=('pending_fills',))
+        pending = replace(self.report, audit=pending_audit)
+        self.assertFalse(assess_opening_accounting(evidence, pending).local_flat_candidate)
 
     async def test_nonprimary_scope_cannot_be_opening_policy_candidate(self):
         snapshot = replace(self.report.snapshot, subaccount=1)

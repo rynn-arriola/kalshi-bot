@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+Priority-3 [opening-account accounting design](DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
+uses the existing evidence reader and a non-authorizing local assessment. The
+durable checkpoint, settlement/correction contract and runtime entry binding
+remain unimplemented and require separate approval/proof.
+
 D-062 adds [opening-account/cash evidence](BUILD_OPENING_ACCOUNT_CASH_EVIDENCE.md)
 and an [offline write-budget primitive](BUILD_WRITE_BUDGET.md) with
 [bounded offline dispatcher](BUILD_WRITE_DISPATCHER.md). These remain

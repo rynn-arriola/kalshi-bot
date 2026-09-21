@@ -232,6 +232,76 @@ class OpeningAccountEvidence:
             raise InvalidData('opening evidence cannot grant authority')
 
 
+@dataclass(frozen=True, slots=True)
+class OpeningAccountingAssessment:
+    """Local opening diagnostics; never an installed balance or risk basis."""
+    subaccount: int
+    proposed_boundary: datetime
+    writer_epoch: str
+    writer_revision: int
+    local_flat_candidate: bool
+    cash_snapshot_agrees: bool
+    settlement_rows: int
+    cash_activity_rows: int
+    blockers: tuple[str, ...]
+    approved: bool = False
+    ready_for_entry: bool = False
+
+    def __post_init__(self):
+        integer(self.subaccount, 0, 63)
+        object.__setattr__(self, 'proposed_boundary', utc(self.proposed_boundary))
+        identity(self.writer_epoch)
+        integer(self.writer_revision, 0, 2**63-1)
+        if (type(self.local_flat_candidate) is not bool
+                or type(self.cash_snapshot_agrees) is not bool):
+            raise InvalidData('boolean opening diagnostics required')
+        integer(self.settlement_rows, 0, 10000)
+        integer(self.cash_activity_rows, 0, 40000)
+        if (type(self.blockers) is not tuple or not self.blockers
+                or self.approved or self.ready_for_entry):
+            raise InvalidData('opening assessment cannot grant authority')
+
+
+def assess_opening_accounting(evidence: OpeningAccountEvidence, report):
+    """Classify exact local flat/cash observations without promoting them.
+
+    No database, network, settlement arithmetic or cash-flow attribution.
+    This remains non-authorizing even for an apparently empty account.
+    """
+    from .account import ReconciliationReport
+    if (not isinstance(evidence, OpeningAccountEvidence)
+            or not isinstance(report, ReconciliationReport)
+            or report.audit is None):
+        raise InvalidData('typed opening evidence and account audit required')
+    if ((report.snapshot.subaccount, report.audit.writer_epoch,
+         report.audit.writer_revision, utc(report.observed_at)) !=
+            (evidence.subaccount, evidence.writer_epoch,
+             evidence.writer_revision, evidence.snapshot_observed_at)):
+        raise InvalidData('opening assessment source revision or scope changed')
+    audit = report.audit
+    if (report.positions_match != audit.positions_match
+            or report.unresolved_intents != audit.unresolved_intents):
+        raise InvalidData('opening assessment report and audit disagree')
+    flat = (evidence.subaccount == 0 and report.positions_match
+            and audit.consistent and report.unresolved_intents == 0
+            and audit.pending_fills == 0
+            and not report.snapshot.orders
+            and not any(row.quantity != 0 for row in report.snapshot.positions))
+    cash_agrees = ((evidence.cash.available, evidence.cash.updated_ts) ==
+                   (report.snapshot.available_balance,
+                    report.snapshot.balance_updated_ts))
+    blockers = list(evidence.blockers)
+    if not flat:
+        blockers.append('local_flat_candidate_unproven')
+    if not cash_agrees:
+        blockers.append('cash_changed_since_account_snapshot')
+    return OpeningAccountingAssessment(evidence.subaccount,
+        evidence.proposed_boundary, evidence.writer_epoch,
+        evidence.writer_revision, flat, cash_agrees, len(evidence.settlements),
+        len(evidence.subaccount_transfers) + len(evidence.intra_exchange_transfers)
+        + len(evidence.funding), tuple(dict.fromkeys(blockers)))
+
+
 def parse_cash(document, *, subaccount):
     try:
         breakdown = []

@@ -1,5 +1,20 @@
 # Current status
 
+## Priority-3 opening accounting update — 2026-09-21
+
+The first offline accounting slice is a pure, non-authorizing assessment of
+the existing opening evidence. It distinguishes a locally flat primary account
+candidate from cash agreement and retains settlement/cash activity counts and
+every blocker. No checkpoint, settlement P&L, correction, cash/hold authority
+or live entry path was added. The design was cross-checked against the actual
+Polymarket source; its venue-specific rules were not imported. Focused opening
+tests pass (23/23). The full suite ran 1,022 tests: 1,021 passed and one
+expected Windows symlink-privilege skip. The 128/4,096/50,000-row opening
+benchmark met all declared bounds. Native disabled preflight exited 2 with
+`live_ready=false`, no file creation, credential access or network access.
+The settlement loss-meter choice and exact opening boundary remain undecided.
+Live trading remains disabled.
+
 ## Current update — 2026-09-21
 
 D-065 now requires verification, scoped diff/secret review, commit, push and
