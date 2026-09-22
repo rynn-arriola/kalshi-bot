@@ -1,5 +1,15 @@
 # Active work queue
 
+## Immediate launch blocker: candidate qualification
+
+The real public preparation currently yields zero eligible markets. Before
+supervisor checklist item 7, implement the reviewed timing-family/event-state
+scope in the [Poly reference audit and Kalshi proposal](docs/REVIEW_CANDIDATE_TIMING_POLY.md),
+including useful exclusion diagnostics. Resolve the supported family set and
+provider freshness semantics explicitly; keep current risk limits. Then run
+synthetic boundary tests and the real public refresh. Do not restore blanket
+early-close approval or assume initialization will automatically fix the scope.
+
 ## Production supervisor connection — ordered checklist
 
 The [end-to-end review](docs/REVIEW_D081_END_TO_END.md) findings R1–R7 are

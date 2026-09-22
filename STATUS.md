@@ -1,5 +1,21 @@
 # Current status
 
+## Launch blocked by candidate timing coverage — 2026-09-22
+
+The supervisor repairs below remain verified offline, but the actual launch
+inputs fail validation. All 1,024 saved automatic early-close approvals were
+withdrawn by the earlier safety correction. A fresh public preparation at
+19:58:01 UTC selected **zero** markets: 2,878 lacked early-close review, 1,943
+lacked a future primary binding, 38 had ambiguous bindings and two were imminent.
+Initialization's automatic refresh therefore cannot currently clear readiness.
+
+The [executable Poly comparison and Kalshi adaptation](docs/REVIEW_CANDIDATE_TIMING_POLY.md)
+records actual reference code, public rule/event samples and a proposed bounded
+rule-family/event-state fix. It is not implemented. No production ledger or
+trading runtime was created; failed preparation did not replace local inputs.
+Fix and verify candidate qualification against current public data before
+calling the bot launch-ready. No account or order request was made by this audit.
+
 ## End-to-end supervisor repairs verified offline — 2026-09-22
 
 All seven findings from the [D-081 review](docs/REVIEW_D081_END_TO_END.md) are

@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 119. Actual candidate preparation remains blocked; Poly comparison — 2026-09-22
+
+VERIFIED CODE/PUBLIC DATA: at 19:58:01 UTC the current public candidate loop
+accepted zero markets. The old saved 1,024-row input asserts withdrawn automatic
+early-close reviews and is correctly rejected. Removing those assertions is
+insufficient: 2,878 current markets reach the blanket early-close exclusion.
+The remaining exclusions and sampled rules are in the
+[candidate timing audit](docs/REVIEW_CANDIDATE_TIMING_POLY.md).
+
+Poly's actual executable path combines supported structure, scheduled time,
+fresh parent-event evidence, durable started state and send-time rechecking.
+Kalshi's primary-only milestone join also omits documented related-event links;
+those links alone do not establish safe timing or reward eligibility. A public
+table-tennis live-data sample reports not_started but has an older provider
+update time, so freshness semantics remain unresolved. Proposed adaptation is
+recorded; qualification logic is unchanged and live launch remains blocked.
+
 ## 118. D-081 lifecycle blockers are repaired offline — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: all seven findings in the
