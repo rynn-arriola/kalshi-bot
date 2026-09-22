@@ -13,9 +13,28 @@ from unittest.mock import patch
 from kalshi_bot.reward_tracker import RewardTracker
 from kalshi_bot.reward_checkpoint import RewardCheckpoint
 from kalshi_bot.quoting import Quote, snapshot_score
+from kalshi_bot.rest import ReadResult, request_path
 from kalshi_bot.values import InvalidData
 from test_bot_engine import NOW, BANDS, book, program
 import test_bot_selection as runtime_fixtures
+
+
+class QueueReads:
+    def __init__(self, rows):
+        self.rows, self.calls, self.before = rows, [], None
+
+    async def read(self, name, **params):
+        self.calls.append((name,params))
+        if self.before is not None:
+            await self.before()
+        return ReadResult(dict(queue_positions=deepcopy(self.rows)),100)
+
+
+async def until(predicate):
+    for _ in range(1000):
+        if predicate(): return
+        await asyncio.sleep(.001)
+    raise AssertionError('condition not reached')
 
 
 class TrackerTests(unittest.TestCase):
@@ -429,6 +448,125 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
         self.assertIsNotNone(self.r.management.current('A'))
         self.assertFalse(self.r.stop_requested.is_set())
+
+    async def test_production_queue_join_allows_estimate_across_new_plan(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        self.assertEqual(await self.rewards.reflect_once(),1)
+        self.assertEqual(self.r.reads.calls[0][0],'queue_positions')
+        self.assertEqual(self.r.reads.calls[0][1]['subaccount'],0)
+        old = self.r.management.current('A')
+        self.f.now += timedelta(seconds=1)
+        self.f.mono += 1
+        await self.r._evaluate('A',None,0)
+        self.assertIsNot(self.r.management.current('A'),old)
+        self.assertGreater(self.rewards.progress('P').sampled_gross_usd,0)
+        self.assertTrue(self.rewards.status()['production_reflection_available'])
+        self.assertFalse(self.rewards.status()['paid_rewards_verified'])
+
+    async def test_queue_mismatch_duplicate_and_bad_quantity_fail_closed(self):
+        await self.owned()
+        invalid = ([],
+            [dict(order_id='other',market_ticker='A',queue_position_fp='0')],
+            [dict(order_id='o',market_ticker='A',queue_position_fp='0')]*2,
+            [dict(order_id='o',market_ticker='A',queue_position_fp='0.001')])
+        for rows in invalid:
+            self.r.reads = QueueReads(rows)
+            await self.rewards._reflect()
+            self.assertNotIn('A',self.rewards._reflection)
+            self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
+        self.assertEqual(self.rewards.reflection_failures,len(invalid))
+        self.assertFalse(self.r.stop_requested.is_set())
+
+    async def test_account_change_during_queue_read_cannot_publish_proof(self):
+        await self.owned()
+        reads = self.r.reads = QueueReads([
+            dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        async def changed(): self.r.account._invalidate()
+        reads.before = changed
+        with self.assertRaisesRegex(InvalidData,'source changed'):
+            await self.rewards.reflect_once()
+        self.assertFalse(self.rewards._reflection)
+
+    async def test_checkpoint_service_final_flush_and_restore_before_use(self):
+        path = Path(self.f.temp.name)/'runtime-rewards.json'
+        self.rewards.checkpoint = RewardCheckpoint(path)
+        await self.rewards.start()
+        self.rewards.tracker.record(program(),at=NOW,valid_until=NOW,rate=None)
+        task = asyncio.create_task(self.rewards.run())
+        await until(lambda:self.rewards.running)
+        self.rewards.stop()
+        await task
+        self.assertTrue(path.exists())
+        self.assertEqual(self.rewards.checkpoint_saves,1)
+
+        other = RewardTracker(scope='fixture')
+        await RewardCheckpoint(path).load(other)
+        self.assertEqual(other.checkpoint(),self.rewards.tracker.checkpoint())
+        self.assertIsNone(other.records['P'].sample)
+
+        fixture = runtime_fixtures.RuntimeSelectionTests()
+        await fixture.asyncSetUp()
+        try:
+            restored = fixture.r.attach_rewards(scope='fixture',offline_fixture=True,
+                                                checkpoint_path=path)
+            await restored.start()
+            self.assertEqual(restored.tracker.checkpoint(),self.rewards.tracker.checkpoint())
+            self.assertIsNone(restored.tracker.records['P'].sample)
+        finally:
+            await fixture.asyncTearDown()
+
+    async def test_checkpoint_failure_is_visible_and_stops_only_telemetry(self):
+        self.rewards.checkpoint = RewardCheckpoint(Path(self.f.temp.name)/'rewards.json')
+        with patch.object(self.rewards.checkpoint,'save',side_effect=OSError('fixture')):
+            await self.rewards._save()
+        self.assertEqual(self.rewards.status()['blocker'],'reward_checkpoint_failed')
+        self.assertEqual(self.rewards.status()['last_checkpoint_error'],'OSError')
+        self.assertFalse(self.r.stop_requested.is_set())
+
+    async def test_runtime_owns_reward_service_and_unexpected_exit_fails(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        async def parked(*args): await asyncio.Event().wait()
+        self.r._recover = self.r._connection = parked
+        task = asyncio.create_task(self.r.run())
+        await until(lambda:self.rewards.reflection_completed or task.done())
+        if task.done(): task.result()
+        self.assertTrue(self.rewards.running)
+        self.rewards.stop()
+        with self.assertRaisesRegex(InvalidData,'reward service ended'):
+            await task
+        self.assertFalse(self.r.running)
+
+    async def test_stop_during_queue_read_cannot_publish_late_proof(self):
+        await self.owned()
+        entered,release = asyncio.Event(),asyncio.Event()
+        reads = self.r.reads = QueueReads([
+            dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        async def held():
+            entered.set()
+            await release.wait()
+        reads.before = held
+        await self.rewards.start()
+        task = asyncio.create_task(self.rewards.run())
+        await entered.wait()
+        self.rewards.stop()
+        release.set()
+        await asyncio.wait_for(task,.5)
+        self.assertFalse(self.rewards._reflection)
+        self.assertFalse(self.rewards.running)
+
+
+class RewardRestContractTests(unittest.TestCase):
+    def test_queue_positions_is_narrow_authenticated_reflection_fallback(self):
+        spec,path = request_path('queue_positions',{'subaccount':0},'reflection')
+        self.assertTrue(spec.authenticated)
+        self.assertEqual(path,'/portfolio/orders/queue_positions?subaccount=0')
+        for params,reason in (({},'metadata'),({'limit':1},'reflection'),
+                              ({'subaccount':True},'reflection')):
+            with self.assertRaises(InvalidData):
+                request_path('queue_positions',params,reason)
 
 
 if __name__ == '__main__': unittest.main()

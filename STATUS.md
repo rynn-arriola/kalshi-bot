@@ -1,5 +1,22 @@
 # Current status
 
+## D-073 reward reflection/checkpoint lifecycle — 2026-09-22
+
+[Implemented execution-disabled](docs/BUILD_REWARD_REFLECTION.md): the tracker now
+uses one bounded account-wide queue-position read to join exact resting-order
+identity to fresh private account and aggregate WebSocket book evidence. The
+runtime owns load-before-observation, periodic atomic checkpointing, stop, final
+flush and service failure propagation. Any mismatch/race/staleness remains
+UNKNOWN; estimates are not paid rewards or trading authority.
+
+47 reward/reflection tests and 196 focused integration tests pass. Final full
+suite: 1,347 run in 171.937 seconds, 1,346 passed and one expected Windows
+privilege skip. The existing 30/120-market reward resource gates pass; disabled
+preflight remains expected exit 2 and `live_ready=false`. Diff, documentation,
+secret and publication checks are recorded in the build record. No credentials,
+account/venue request, bot operation or live mutation occurred. Next: real
+fee/timing/account/quota input verification, then native supervisor/readiness.
+
 ## D-072 entry-pair dispatch and mutation transport — 2026-09-22
 
 [Implemented execution-disabled](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md): current

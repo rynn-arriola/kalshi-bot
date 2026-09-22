@@ -1,5 +1,14 @@
 # What exists
 
+## Production reward reflection/checkpoint lifecycle — 2026-09-22
+
+[Build record](docs/BUILD_REWARD_REFLECTION.md): one account-wide queue-position
+fallback now joins exact private resting orders to fresh aggregate WebSocket
+books for short-lived estimate-only scoring. The runtime loads the explicit
+checkpoint before observations, coalesces writes and joins a final flush during
+shutdown. Mismatch, source races and expected read failures revoke rates to
+UNKNOWN. This is not paid-reward proof or live authority.
+
 ## Source-bound entry pairs and bounded mutation transport — 2026-09-22
 
 [Build record](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md): selected additions now
@@ -28,10 +37,10 @@ bounded protected-owner/head/tail plans without changing subscriptions.
 `reward_tracker.py` owns exact per-program sampled estimates and unknown gaps;
 `reward_runtime.py` observes actual orders through explicit offline attachment.
 `reward_checkpoint.py` offers bounded asynchronous atomic save/load, joined across
-cancellation and refusing stale evidence overwrites. No financial-ledger mutation
-or automatic persistence scheduler. Tests exercise source races, restart gaps,
-capacity and shared-book validation; synthetic resource gates pass. Production
-reflection, subscription handoff and live runtime remain separate work.
+cancellation and refusing stale evidence overwrites. D-073 subsequently adds the
+runtime reflection/persistence owner described above. No financial-ledger
+mutation occurs. Tests exercise source races, restart gaps, capacity and
+shared-book validation; synthetic resource gates pass.
 
 ## Bounded incentive discovery/refresh — 2026-09-21
 

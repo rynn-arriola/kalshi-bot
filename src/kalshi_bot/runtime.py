@@ -171,9 +171,12 @@ class RecoveryRuntime:
         service._changed()
         return service
 
-    def attach_rewards(self, *, scope, offline_fixture=False):
+    def attach_rewards(self, *, scope, offline_fixture=False, checkpoint_path=None,
+                       reflection_interval=4, checkpoint_interval=60):
         from .reward_runtime import RuntimeRewards
-        self.rewards = RuntimeRewards(self,scope=scope,offline_fixture=offline_fixture)
+        self.rewards = RuntimeRewards(self,scope=scope,offline_fixture=offline_fixture,
+            checkpoint_path=checkpoint_path,reflection_interval=reflection_interval,
+            checkpoint_interval=checkpoint_interval)
         return self.rewards
 
     def attach_admission(self, *, offline_fixture=False):
@@ -777,6 +780,8 @@ class RecoveryRuntime:
             self.dispatch_supervisor.stop()
         if self.quota_supervisor is not None:
             self.quota_supervisor.stop()
+        if self.rewards is not None:
+            self.rewards.stop()
         self.stop_requested.set()
         self.engine.stop()
         self.account_subscribed = False
@@ -798,6 +803,11 @@ class RecoveryRuntime:
             if self.incentives is not None:
                 try:
                     await self.incentives.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            if self.rewards is not None:
+                try:
+                    await self.rewards.close()
                 except BaseException as exc:
                     failures.append(exc)
             for task in tasks:
@@ -831,9 +841,12 @@ class RecoveryRuntime:
         dispatch_task = None
         incentive_task = None
         admission_task = None
+        reward_task = None
         primary_error = None
         try:
             await self._load_continuity_history()
+            if self.rewards is not None:
+                await self.rewards.start()
             self.diagnostics.ensure_healthy()
             self.diagnostics.emit('runtime_started')
             tasks = [asyncio.create_task(self.engine.run(), name='kalshi-engine'),
@@ -847,6 +860,9 @@ class RecoveryRuntime:
             if self.admission is not None:
                 admission_task = asyncio.create_task(self.admission.run(),name='kalshi-admission')
                 tasks.append(admission_task)
+            if self.rewards is not None and self.rewards.service_required:
+                reward_task = asyncio.create_task(self.rewards.run(),name='kalshi-rewards')
+                tasks.append(reward_task)
             if self.quota_supervisor is not None:
                 tasks.append(asyncio.create_task(self.quota_supervisor.run(), name='kalshi-quota'))
             if self.dispatch_supervisor is not None:
@@ -873,6 +889,8 @@ class RecoveryRuntime:
                             raise InvalidData('incentive service ended without runtime stop')
                         if task is admission_task and not self.stop_requested.is_set():
                             raise InvalidData('admission service ended without runtime stop')
+                        if task is reward_task and not self.stop_requested.is_set():
+                            raise InvalidData('reward service ended without runtime stop')
                     if task is stop or self.engine.failed or self.writer.failed:
                         self.stop_requested.set()
                 if self.stop_requested.is_set():

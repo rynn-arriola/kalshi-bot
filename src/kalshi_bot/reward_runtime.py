@@ -1,14 +1,29 @@
 """Actual-order reward telemetry on existing runtime sources; no order authority."""
-from datetime import timedelta
+import asyncio
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 import hashlib
 
+from .quota import QuotaUnavailable
 from .quoting import Quote
+from .reward_checkpoint import RewardCheckpoint
 from .reward_tracker import RewardTracker
-from .values import InvalidData, utc
+from .values import InvalidData, count, identity, integer, utc
+
+
+@dataclass(frozen=True)
+class ReflectionProof:
+    """Short-lived join of a complete private snapshot and venue queue evidence."""
+    report: object
+    account_generation: int
+    account_revision: int
+    signature: tuple
+    valid_until: datetime
 
 
 class RuntimeRewards:
-    def __init__(self, runtime, *, scope, offline_fixture=False):
+    def __init__(self, runtime, *, scope, offline_fixture=False, checkpoint_path=None,
+                 reflection_interval=4, checkpoint_interval=60):
         from .runtime import RecoveryRuntime
         if (offline_fixture is not True or not isinstance(runtime, RecoveryRuntime)
                 or runtime.used or runtime.selection is None or runtime.rewards is not None
@@ -16,13 +31,33 @@ class RuntimeRewards:
             raise InvalidData('unused matching offline reward runtime required')
         self.runtime = runtime
         self.tracker = RewardTracker(scope=scope)
+        self.checkpoint = None if checkpoint_path is None else RewardCheckpoint(checkpoint_path)
+        self.reflection_interval = integer(reflection_interval, 1, 5)
+        self.checkpoint_interval = integer(checkpoint_interval, 10, 3600)
         self._reflection, self._proofs = {}, {}
         self.blocker = None
+        self.started = self.used = self.running = self.stopping = self.failed = False
+        self.task = None
+        self.wake = asyncio.Event()
+        self.reflection_attempts = self.reflection_completed = self.reflection_failures = 0
+        self.checkpoint_saves = self.checkpoint_failures = 0
+        self.last_reflection_at = self.last_checkpoint_at = None
+        self.last_reflection_error = self.last_checkpoint_error = None
+
+    @property
+    def service_required(self):
+        return self.runtime.reads is not None or self.checkpoint is not None
 
     def invalidate(self, ticker):
         self._reflection.pop(ticker,None)
         self._proofs.pop(ticker,None)
         self.tracker.invalidate(ticker)
+
+    def _invalidate_all(self):
+        self._reflection.clear()
+        self._proofs.clear()
+        for ticker in tuple(self.tracker._by_market):
+            self.tracker.invalidate(ticker)
 
     def _sources(self, ticker):
         r = self.runtime
@@ -48,19 +83,104 @@ class RuntimeRewards:
             return None
         return tuple(Quote(r.order.side,r.order.yes_price,r.order.remaining) for r in receipts)
 
-    def confirm_reflection_fixture(self, ticker, *, offline_fixture=False):
-        """Test-only proof injection, not an inference from aggregate depth.
+    @staticmethod
+    def _signature(plan):
+        if RuntimeRewards._orders(plan) is None:
+            return None
+        return tuple(sorted((r.order.order_id,r.order.ticker,r.order.side,r.order.yes_price,
+                             r.order.remaining,r.order.exchange_index)
+                            for r in plan.inventory.orders))
 
-        A production reflection producer remains a separate reviewed boundary.
-        The next private/book/program/management revision invalidates this claim.
-        """
+    @staticmethod
+    def _snapshot_signature(report, ticker):
+        return tuple(sorted((o.order_id,o.ticker,o.book_side,o.yes_price,o.remaining,
+                             o.exchange_index) for o in report.snapshot.orders
+                            if o.ticker == ticker))
+
+    @staticmethod
+    def _queue_rows(payload):
+        try:
+            rows = payload['queue_positions']
+            if not isinstance(rows,list) or len(rows) > 4096:
+                raise InvalidData('invalid queue-position row bound')
+            result = {}
+            for row in rows:
+                if not isinstance(row,dict):
+                    raise InvalidData('invalid queue-position row')
+                order_id = identity(row['order_id'])
+                ticker = identity(row['market_ticker'])
+                count(row['queue_position_fp'],zero=True)
+                if order_id in result:
+                    raise InvalidData('duplicate queue-position order')
+                result[order_id] = ticker
+            return result
+        except (KeyError,TypeError) as exc:
+            raise InvalidData('incomplete queue-position response') from exc
+
+    def confirm_reflection_fixture(self, ticker, *, offline_fixture=False):
+        """Test-only proof injection; production uses account-wide queue evidence."""
         if offline_fixture is not True:
-            raise InvalidData('production reflection proof is not implemented')
+            raise InvalidData('offline fixture proof flag required')
         source = self._sources(ticker)
         if source is None or self._orders(source[0]) is None:
             self.invalidate(ticker)
             raise InvalidData('current actual-order sources required')
         self._reflection[ticker] = source[:3]
+
+    def _production_known(self, ticker, source, signature, now):
+        proof = self._reflection.get(ticker)
+        if not isinstance(proof,ReflectionProof):
+            return False
+        return (proof.report is source[2] and proof.account_generation == self.runtime.account.generation
+                and proof.account_revision == self.runtime.account.revision
+                and proof.signature == signature and now < proof.valid_until)
+
+    async def reflect_once(self):
+        """Join one complete private snapshot to the all-resting queue endpoint.
+
+        The queue endpoint supplies identity evidence absent from aggregate book
+        WebSockets. It is not an atomic venue snapshot or payout confirmation.
+        """
+        r = self.runtime
+        if self.stopping or r.reads is None:
+            raise InvalidData('reflection reads unavailable')
+        report = r.account.current_report(r.now())
+        if report is None or report.audit is None or report.audit.blockers:
+            raise InvalidData('current private account snapshot required')
+        generation, revision = r.account.generation, r.account.revision
+        expected = {o.order_id:o.ticker for o in report.snapshot.orders}
+        if len(expected) != len(report.snapshot.orders) or len(expected) > 4096:
+            raise InvalidData('invalid private resting-order scope')
+        result = await r.reads.read('queue_positions',reason='reflection',
+            coalesce_scope=('reward-reflection',r.account.subaccount,generation,revision),
+            subaccount=r.account.subaccount)
+        current = r.account.current_report(r.now())
+        if (self.stopping or current is not report or (generation,revision) !=
+                (r.account.generation,r.account.revision)):
+            raise InvalidData('private account source changed during reflection')
+        actual = self._queue_rows(result.payload)
+        if actual != expected:
+            raise InvalidData('queue positions disagree with complete resting-order snapshot')
+        now = utc(r.now())
+        valid_until = min(now+timedelta(seconds=5),report.observed_at+timedelta(seconds=5))
+        if valid_until <= now:
+            raise InvalidData('reflection source expired')
+        proofs = {}
+        for ticker in sorted(set(expected.values())):
+            source = self._sources(ticker)
+            signature = None if source is None else self._signature(source[0])
+            if (source is None or source[2] is not report or signature is None
+                    or signature != self._snapshot_signature(report,ticker)):
+                continue
+            proofs[ticker] = ReflectionProof(report,generation,revision,signature,valid_until)
+        self._reflection = proofs
+        for ticker in tuple(self.tracker._by_market):
+            if ticker not in proofs:
+                self.tracker.invalidate(ticker)
+        for ticker in proofs:
+            self.refresh(ticker)
+        self.last_reflection_at = now
+        return len(proofs)
 
     def refresh(self, ticker):
         if self.blocker is not None:
@@ -68,13 +188,8 @@ class RuntimeRewards:
         try:
             self._refresh(ticker)
         except InvalidData:
-            # Bounded telemetry exhaustion/invalid clocks cannot stop inventory
-            # management. Retain history, revoke rates and expose a sticky fault.
             self.blocker = 'reward_observation_rejected'
-            self._reflection.clear()
-            self._proofs.clear()
-            for market in tuple(self.tracker._by_market):
-                self.tracker.invalidate(market)
+            self._invalidate_all()
 
     def _refresh(self, ticker):
         r = self.runtime
@@ -84,31 +199,32 @@ class RuntimeRewards:
             return
         plan, observation, report, book = source
         quotes = self._orders(plan)
+        signature = self._signature(plan)
         reflected = self._reflection.get(ticker)
-        known = quotes == () or (reflected is not None and all(
+        now = utc(r.now())
+        fixture_known = (isinstance(reflected,tuple) and all(
             a is b for a,b in zip(reflected,source[:3])))
-        # Hash only canonical order identities/terms, never credentials/payloads.
+        known = quotes == () or fixture_known or self._production_known(
+            ticker,source,signature,now)
         ownership = repr(tuple(sorted((o.order.order_id,o.order.side,str(o.order.yes_price),
                                       str(o.order.remaining)) for o in plan.inventory.orders)))
         continuity = (r.writer.epoch,plan.generation,plan.book_generation,
                       hashlib.sha256(ownership.encode()).hexdigest())
-        now = utc(r.now())
         until = min(now+timedelta(seconds=5),observation.valid_until,plan.terms.valid_until,
                     report.observed_at+timedelta(seconds=5))
+        if isinstance(reflected,ReflectionProof):
+            until = min(until,reflected.valid_until)
         if until <= now:
             self.invalidate(ticker)
             return
         programs = tuple(p for p in observation.programs
                          if plan.inventory.orders or p.program_id in self.tracker.records)
-        # Never register hypothetical candidates; validate the shared book once.
         if programs and quotes is not None:
             try:
                 self.tracker.observe_many(programs,book=book,bands=plan.terms.bands,quotes=quotes,
                     reflected_known=known,at=now,valid_until=until,continuity=continuity,
                     market_open=plan.terms.active)
             except InvalidData:
-                # Unsupported scoring is unknown. Capacity/clock rejection of
-                # this fallback reaches the sticky telemetry fault boundary.
                 for program in programs:
                     self.tracker.record(program,at=now,valid_until=until,rate=None,
                                         reason='unsupported_terms')
@@ -126,8 +242,7 @@ class RuntimeRewards:
             self.invalidate(ticker)
             return False
         proof = self._proofs.get(ticker)
-        return source is not None and proof is not None and all(
-            a is b for a,b in zip(proof,source[:3]))
+        return proof is not None and all(a is b for a,b in zip(proof,source[:3]))
 
     def progress(self, program_id):
         record = self.tracker.records[program_id]
@@ -137,8 +252,115 @@ class RuntimeRewards:
         return self.tracker.progress(program_id,now=self.runtime.now(),exit_at=exit_at,
                                      source_current=self.current(ticker))
 
+    async def start(self):
+        if self.started or self.used or self.stopping:
+            raise InvalidData('reward service cannot be started')
+        if self.checkpoint is not None:
+            if not self.checkpoint.path.parent.is_dir():
+                raise InvalidData('reward checkpoint parent does not exist')
+            if self.checkpoint.path.exists():
+                await self.checkpoint.load(self.tracker)
+        self.started = True
+
+    async def _save(self):
+        if self.checkpoint is None:
+            return
+        try:
+            await self.checkpoint.save(self.tracker)
+            self.checkpoint_saves += 1
+            self.last_checkpoint_at = utc(self.runtime.now())
+            self.last_checkpoint_error = None
+        except (InvalidData,OSError) as exc:
+            self.checkpoint_failures += 1
+            self.last_checkpoint_error = type(exc).__name__
+            self.blocker = self.blocker or 'reward_checkpoint_failed'
+            self._invalidate_all()
+
+    async def _reflect(self):
+        self.reflection_attempts += 1
+        try:
+            await self.reflect_once()
+            self.reflection_completed += 1
+            self.last_reflection_error = None
+        except (InvalidData,QuotaUnavailable,TimeoutError,OSError) as exc:
+            self.reflection_failures += 1
+            self.last_reflection_error = type(exc).__name__
+            self._invalidate_all()
+
+    def stop(self):
+        self.stopping = True
+        self._invalidate_all()
+        self.wake.set()
+
+    async def close(self):
+        self.stop()
+        task = self.task
+        if task is None or task is asyncio.current_task():
+            return
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.wait((task,))
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def run(self):
+        if not self.started or self.used or not self.service_required:
+            raise InvalidData('reward service is not ready')
+        self.used = self.running = True
+        self.task = asyncio.current_task()
+        next_reflection = self.runtime.clock()
+        next_checkpoint = self.runtime.clock()+self.checkpoint_interval
+        try:
+            while not self.stopping:
+                self.wake.clear()
+                now = self.runtime.clock()
+                if self.runtime.reads is not None and now >= next_reflection:
+                    await self._reflect()
+                    next_reflection = self.runtime.clock()+self.reflection_interval
+                if self.checkpoint is not None and self.runtime.clock() >= next_checkpoint:
+                    await self._save()
+                    next_checkpoint = self.runtime.clock()+self.checkpoint_interval
+                if self.stopping:
+                    break
+                deadlines = []
+                if self.runtime.reads is not None: deadlines.append(next_reflection)
+                if self.checkpoint is not None: deadlines.append(next_checkpoint)
+                delay = max(.01,min(deadlines)-self.runtime.clock())
+                try:
+                    await asyncio.wait_for(self.wake.wait(),delay)
+                except TimeoutError:
+                    pass
+        except Exception:
+            self.failed = True
+            raise
+        finally:
+            try:
+                if self.checkpoint is not None:
+                    await self._save()
+            finally:
+                self.running = False
+
     def status(self):
         return dict(tracked_programs=len(self.tracker.records), revision=self.tracker.revision,
-                    blocker=self.blocker,
+                    blocker=self.blocker, started=self.started, running=self.running,
+                    stopping=self.stopping, failed=self.failed,
+                    reflection_attempts=self.reflection_attempts,
+                    reflection_completed=self.reflection_completed,
+                    reflection_failures=self.reflection_failures,
+                    checkpoint_configured=self.checkpoint is not None,
+                    checkpoint_saves=self.checkpoint_saves,
+                    checkpoint_failures=self.checkpoint_failures,
+                    last_reflection_at=(self.last_reflection_at.isoformat()
+                                        if self.last_reflection_at else None),
+                    last_checkpoint_at=(self.last_checkpoint_at.isoformat()
+                                        if self.last_checkpoint_at else None),
+                    last_reflection_error=self.last_reflection_error,
+                    last_checkpoint_error=self.last_checkpoint_error,
                     estimate_only=True, paid_rewards_verified=False,
-                    production_reflection_available=False, authorized=False)
+                    production_reflection_available=(self.runtime.reads is not None
+                        and self.started and not self.stopping and not self.failed),
+                    authorized=False)

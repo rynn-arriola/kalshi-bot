@@ -1,15 +1,20 @@
 # Active work queue
 
+D-073 completes #3's execution-disabled [reward reflection and checkpoint
+lifecycle](docs/BUILD_REWARD_REFLECTION.md). Do not add per-market book polling,
+treat a queue row as atomic cross-source proof, restore live samples from disk or
+count estimates as paid rewards. The next priority is real fee/timing/account/
+quota input verification, followed by native supervisor S2B/readiness acceptance
+and a separately authorized launch decision.
+
 D-072 completes #2's execution-disabled [entry-pair dispatch and mutation
 transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md). Do not rebuild it or infer
 live authority from the presence of a network adapter. Mixed/unknown batch
 outcomes remain held for reconciliation, and live activation is unavailable.
 
-Next in priority order is #3: connect production own-order/public-book reward
-reflection to the existing tracker and give checkpoint load/flush one explicit
-runtime lifecycle owner. Preserve UNKNOWN when stream/book/order identity cannot
-be joined. After #3: verify real fee/timing/account/quota inputs, finish native
-supervisor S2B/readiness acceptance, then request a separate launch decision.
+Production own-order/public-book reward reflection and checkpoint lifecycle are
+now implemented under D-073. Preserve UNKNOWN when stream/book/order identity
+cannot be joined.
 
 Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md),
 shared [incentive discovery](docs/BUILD_INCENTIVE_DISCOVERY.md), and D-071's
@@ -28,8 +33,8 @@ explicitly removing the proposed fixed 60-market pool. The
 [offline discovery/tracker component](docs/BUILD_REWARD_TRACKER.md) now exists;
 do not rebuild it or treat time-to-$1 estimates as paid cash or exit authority.
 Its candidates now reach D-071 subscription admission and D-072 entry dispatch.
-Production reflection proof and explicit
-checkpoint load/flush ownership still need integration; unknown remains unknown.
+Production reflection proof and explicit checkpoint ownership are integrated by
+D-073; unknown remains unknown whenever its short-lived join is absent.
 New category filters, payout gates and numerical rotation thresholds require
 their own decision, not an automatic copy of Poly configuration.
 
@@ -96,8 +101,9 @@ signals recovery after persistence. The
 [runtime lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) joins dispatch outcomes
 before reader teardown and preserves restart holds. D-072 adds the bounded
 production transport adapter but not a constructible live activation.
-No live authority has been connected. Item 5's production reflection and item 6
-supervised runtime remain queued; prior reviews and resource gates still apply.
+No live authority has been connected. D-073 completes item 5's production
+reflection/checkpoint integration; item 6 supervised runtime/readiness and prior
+resource gates still apply.
 
 D-063: continue directly in this session; no delegated agents or model-switch
 steps unless the operator explicitly requests them again.

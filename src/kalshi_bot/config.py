@@ -68,7 +68,7 @@ class BotConfig:
             blockers.append("limits-driven capacity/exposure mapping is not implemented")
         blockers.extend([
             "account eligibility, stream entitlement and complete reconciliation unverified",
-            "production reward reflection, launch boundaries and restart acceptance remain unfinished",
+            "paid reward reconciliation, launch boundaries and restart acceptance remain unfinished",
             "complete history/stream proof, corrections and recovery integration remain unfinished",
         ])
         return blockers

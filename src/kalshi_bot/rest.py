@@ -52,6 +52,8 @@ ENDPOINTS = {
                                   "history gap", rows="orders"),
     "cutoff": endpoint("/historical/cutoff", "", "history gap", False),
     "balance": endpoint("/portfolio/balance", "subaccount exchange_index", "bootstrap reconcile cash"),
+    "queue_positions": endpoint("/portfolio/orders/queue_positions",
+                                "market_tickers event_ticker subaccount", "reflection"),
     "settlements": endpoint("/portfolio/settlements",
                             "limit cursor ticker event_ticker min_ts max_ts subaccount",
                             "bootstrap reconcile cash", rows="settlements"),
@@ -630,7 +632,7 @@ class RestReads:
         key = (name, path, coalesce_scope, revision)
         task = self.inflight.get(key)
         if task is None:
-            background = reason in {'metadata','incentives'}
+            background = reason in {'metadata','incentives','reflection'}
             admission_limit = self.inflight_limit-int(self.quota is not None and _control_scope is None)
             if (len(self.inflight) >= admission_limit or
                     (background and self.background_inflight >= self.background_limit)):

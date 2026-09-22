@@ -30,11 +30,11 @@ time and official paid amount (unknown). No reward offsets trading losses or
 buys an exit delay. Payout buffer and automatic better-score replacement remain
 unconfigured policy, not inferred constants.
 
-Runtime observations must bind actual owned orders to current management,
-account, public book and program versions. Private ACK and matching aggregate
-depth alone do not prove own-order reflection. Without a verified reflection
-producer, show unknown, not a made-up positive rate. Explicit fixture proof
-exercises the positive integration offline; it is not production clearance.
+Runtime observations bind actual owned orders to current management, account,
+public book and program versions. Private ACK and matching aggregate depth alone
+do not prove own-order reflection. D-073 subsequently adds the bounded
+[account-wide queue-position join](BUILD_REWARD_REFLECTION.md); without that
+current proof, show unknown rather than a made-up positive rate.
 
 Checkpoint immutable telemetry through explicit asynchronous bounded file I/O,
 not the financial ledger. Reload accumulated totals but never restore a live
@@ -108,13 +108,11 @@ file and accesses no network. No venue/account call, bot operation or risk chang
 - D-071 subsequently connects candidate results to the
   [flat/clear subscription handoff](BUILD_MARKET_ADMISSION.md). The tracker itself
   remains advisory; no reward-chasing cancellation or new repricing threshold.
-- Production order reflection is unverified. Only explicit fixture injection
-  allows positive runtime estimates. Account ACK or aggregate matching quantity
-  is insufficient; never label fixture estimates as actual earnings.
-- Checkpoint paths, load-before-observation, periodic coalescing and final flush
-  must be explicitly owned by the future supervised runtime. This component
-  opens nothing on construction and does not install an autosave loop. Keep JSON
-  telemetry in ignored local data, never the financial ledger or credentials.
+- D-073 now supplies production order-reflection evidence and explicit checkpoint
+  lifecycle ownership. Its non-atomic cross-source limitation and estimate-only
+  semantics remain mandatory; never label sampled estimates as actual earnings.
+- Keep JSON telemetry in ignored local data, never the financial ledger or
+  credentials. A real runtime must select an explicit existing parent directory.
 - Source-bound entry dispatch, production transport and existing readiness/
   authorization gates remain. This is not a finished live trader or a guarantee
   of qualifying time, reward payment or net profit.

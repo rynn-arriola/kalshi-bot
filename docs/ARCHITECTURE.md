@@ -203,6 +203,7 @@ the exact fields and semantics against the API reference before coding.
 | Full book and depth changes | `orderbook_delta`, initialized by `orderbook_snapshot` | Bounded fetch if required state cannot be obtained/validated from stream; first consider stream `get_snapshot` |
 | Ticker and public trades | `ticker` / `trade` | Missing history or metadata, not duplicate continuous polling |
 | Own order lifecycle | `user_orders` | Complete initial inventory, missing fields, gap/ambiguity proof |
+| Own order presence in aggregate book | No identifying public-book field | Bounded account-wide `/portfolio/orders/queue_positions` join; short-lived and non-atomic, estimate telemetry only |
 | Own executions | `fill` | Initial/history/gap backfill with durable execution-ID deduplication |
 | Own positions | `market_positions` | Complete startup state and reconciliation not proven by updates |
 | Market/event lifecycle, order groups | Documented lifecycle/group streams | Missing full definitions, schedules or state |
