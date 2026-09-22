@@ -223,6 +223,15 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.f.writer, 'inventory', changed):
             self.assertFalse(await verified_flat(self.runtime))
 
+    async def test_flat_proof_waits_for_queued_and_inflight_recovery(self):
+        self.runtime.last_reports = ('synthetic-complete-history',)
+        self.runtime.recovery_requested.set()
+        self.assertFalse(await verified_flat(self.runtime))
+        self.runtime.recovery_requested.clear()
+        async with self.runtime.recovery_lock:
+            self.assertFalse(await verified_flat(self.runtime))
+        self.assertTrue(await verified_flat(self.runtime))
+
     async def test_flat_proof_rejects_stale_or_missing_account_evidence(self):
         self.assertFalse(await verified_flat(self.runtime))
         self.runtime.last_reports = ('synthetic-complete-history',)

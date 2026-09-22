@@ -291,6 +291,11 @@ async def local_status(runtime):
 
 
 async def verified_flat(runtime):
+    # A current flat snapshot is not terminal while reconciliation owns or has
+    # queued more account work. Stopping there can cancel the opening/release
+    # pass and convert a clean flat recovery into accounting_source_failed.
+    if runtime.recovery_lock.locked() or runtime.recovery_requested.is_set():
+        return False
     report = runtime.account.current_report(runtime.now())
     revision = runtime.writer.revision
     if report is None or runtime.last_reports is None or not report.audit.consistent:

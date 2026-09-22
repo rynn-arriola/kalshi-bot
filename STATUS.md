@@ -32,6 +32,17 @@ now pass: 61 focused/native supervisor tests passed with one expected privilege
 skip, and the complete suite ran 1,445 tests in 218.331 seconds with 1,444
 passed and one expected skip. The next step is publication, then re-arm.
 
+Generation 3 then resumed the exact checkpoint, approved the baseline with two
+attributed cash-event digests, observed a current flat account and disarmed with
+zero orders/exposure. A shutdown race was still visible: opening approval had
+queued its required post-approval reconciliation, but the flat fence stopped
+between passes; cancellation persisted `accounting_source_failed` alongside
+`opening_proof_unresolved`. The flat fence now waits for queued/in-flight
+recovery before terminal flatness. Another verified recovery-only pass must
+transactionally clear those transient holds before normal quoting. The focused
+75-test set passed, followed by the complete 1,446-test suite in 219.163 seconds:
+1,445 passed and one expected Windows privilege skip.
+
 ## Final current-path findings repaired; final acceptance remains — 2026-09-22
 
 The four findings in the

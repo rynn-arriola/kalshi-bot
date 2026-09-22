@@ -51,6 +51,19 @@ set passed 61 tests with one expected privilege skip. The complete suite after
 this correction ran 1,445 tests in 218.331 seconds: 1,444 passed and one
 expected skip.
 
+Generation 3 subsequently resumed the exact checkpoint and installed the
+baseline, recording both attributed cash-event digests. It remained flat with
+zero orders/exposure and disarmed. That run exposed a final ordering race:
+approval queues a second recovery pass for the new writer revision, while the
+terminal-flat fence was allowed to stop between passes. The retained account
+inspection was then cancelled and correctly persisted
+`accounting_source_failed`. Terminal flatness now requires the recovery lock to
+be idle and no recovery request queued. Hold removal remains solely inside the
+fresh operational-release transaction; no runtime path deletes a hold directly.
+The focused live/account/supervisor set passed 75 tests, and the complete suite
+then ran 1,446 tests in 219.163 seconds: 1,445 passed and one expected Windows
+privilege skip.
+
 ## Verification
 
 Focused accounting/account-release/supervisor tests: 68 passed. The supported

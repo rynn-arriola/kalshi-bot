@@ -47,6 +47,26 @@ entry states whether orders, positions or exposure were observed.
   ran 1,445 tests in 218.331 seconds: 1,444 passed and one expected Windows
   privilege skip.
 
+### Recovery-only flat fence raced the required second accounting pass
+
+- **Symptom:** The resumed checkpoint was approved and the supervisor disarmed
+  flat, but shutdown left `accounting_source_failed` and
+  `opening_proof_unresolved`; normal entry would remain blocked.
+- **Mechanism:** Approval deliberately queues a second recovery pass to obtain a
+  post-approval writer revision and operational release. The flat fence checked
+  the current empty account but not the queued/in-flight recovery owner, so it
+  stopped the runtime between those passes. Cancellation of the retained account
+  inspection correctly persisted a source-failure hold.
+- **Fix:** `STOPPED_FLAT` now requires both an idle recovery lock and no queued
+  recovery request before its existing account/writer/risk checks. It never
+  clears a hold directly; the next fresh release transaction resolves the
+  transient source/opening holds with retained evidence.
+- **Verification:** A regression proves both queued and in-flight recovery block
+  flat termination and that the same flat proof succeeds after the owner is
+  idle. The 75-test focused set and complete 1,446-test suite pass; the latter
+  ran in 219.163 seconds with 1,445 passed and one expected Windows privilege
+  skip. Live recovery against the retained ledger remains the final check.
+
 ## 2026-09-22 — final current production-path integration repairs
 
 - The $25 loss hold blocked new selection but left existing entry orders live.
