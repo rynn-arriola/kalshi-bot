@@ -27,6 +27,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   The coding assistant must not submit trades or invoke the trading launcher;
   an operator-run live command is separate from software verification.
 - **Contract:** [Minimal original runtime](docs/RUN_LIQUIDITY_BOT.md).
+- **Account evidence:** On 2026-09-22 the operator confirmed this is a personal
+  account opened directly with Kalshi, not a broker/FCM account. This supports
+  the direct-member fee profile; it does not authorize a launch by itself.
 
 ### D-076 — Prioritize a minimal live profitability canary — SUPERSEDED by D-077
 

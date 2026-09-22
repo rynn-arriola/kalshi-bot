@@ -22,6 +22,15 @@ not adopt old manual trades into a new bot ledger. A past successful recovery
 label is not a current account snapshot; startup now checks both. No real order,
 baseline approval, net profit or reward payout was produced. [Evidence and limits](docs/RUN_LIQUIDITY_BOT.md).
 
+VERIFIED INPUTS, 15:15–15:19 UTC: after the operator confirmed a direct personal
+member account, the selected `KXAAAGASD-26SEP23-4.4750` scope passed exact rules,
+primary milestone, early-close review, shard and fee-bound validation through the
+real metadata adapter with no blockers. Its event-risk milestone begins at 02:00
+UTC on Sep. 23 and the market closes at 03:59 UTC. The observed-book estimate was
+$1.06 remaining reward on $9.60 combined quoted collateral. A subsequent bounded
+startup run on this exact ticker connected all required readers and stopped cleanly.
+The estimate is time-sensitive and unpaid; the startup run had no mutation owner.
+
 ## 110. A bounded same-day canary can clear the estimated $1 gate — 2026-09-22
 
 VERIFIED ACCOUNT READ: primary cash was $500.4268 with zero nonzero positions

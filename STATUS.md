@@ -15,16 +15,23 @@ missing cash proof. Real GET/WebSocket startup checks connect books, private
 channels, lifecycle, metadata, catalog and quota; they do not place orders or
 approve a production opening baseline.
 
-**Not trading-ready yet:** `config/live-inputs.local.json` has not been installed
-with current reviewed market timing/early-close bindings and fee-member evidence.
-No production account ledger has been created and no live order was submitted.
-Startup checks write only new diagnostic ledgers. Automatic supervisor restart,
-broader admission and paid-reward reconciliation are not claimed by this unit.
+**Prepared for an explicit operator launch, not yet trading:** the ignored
+`config/live-inputs.local.json` is installed for the currently reviewed
+`KXAAAGASD-26SEP23-4.4750` scope. Its exact rules digest, exchange shard and
+primary milestone binding passed the real metadata pipeline with no blockers.
+The operator confirmed this is a personal account opened directly with Kalshi;
+the conservative direct-member profile produced a $0.0276 per-contract taker-fee
+bound. No production account ledger has been created and no live order was
+submitted. First launch still requires the operator's explicit `-Initialize`
+command, which captures and approves the fresh opening before any entry can pass.
+Automatic supervisor restart, broader admission and paid-reward reconciliation
+are not claimed by this unit.
 Verification: full suite 1,384 run / 1,383 passed / one expected skip; final
 launcher regressions 18/18; ten repeated synthetic compositions passed.
-Read-only startup evidence and limits are recorded in the run guide. The account
-direct-versus-broker distinction has been requested from the operator; it is not
-inferred from bank/card funding or returned balance formatting.
+Read-only startup evidence and limits are recorded in the run guide. The selected
+market's 15:15:51 UTC book produced a $1.06 remaining-reward estimate and $9.60
+combined quoted collateral estimate; these are transient estimates, not payout
+or profitability evidence.
 
 ## D-076 historical canary — superseded; not a launch path
 

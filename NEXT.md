@@ -1,14 +1,14 @@
 # Active work queue
 
-Immediate priority under D-077: finish launch-input review for the original
-runtime, not the retired canary. Install only evidence-backed current timing
-reviews and member fee precision in ignored `config/live-inputs.local.json`;
-inspect the current quote opportunity and confirm the initial reviewed scope.
-The foreground launcher will require an explicit first-run opening approval and
-fresh flat-account evidence. The coding assistant does not execute that live
-command. After an operator launch, inspect actual orders/fills/fees and estimated
-versus paid rewards. Do not equate source checks or synthetic ACKs with trading
-or profitability. Optional supervisor/hardening work stays deferred.
+Immediate priority under D-077: the reviewed one-market launch inputs are now
+installed locally and venue-validated. The remaining step is the operator's
+explicit first foreground start with `-Initialize`; that same run captures the
+fresh opening baseline before entries are eligible. The coding assistant does
+not execute that live command. After launch, inspect actual orders/fills/fees,
+shutdown behavior and estimated versus paid rewards. Do not equate source checks
+or synthetic ACKs with trading or profitability. Re-review the scope after its
+2026-09-23 expiry; do not reuse it for another market. Optional supervisor,
+broader admission and hardening work stays deferred.
 
 The older milestone notes below describe their original execution-disabled
 scope; D-077's [run guide](docs/RUN_LIQUIDITY_BOT.md) owns current launch wiring.

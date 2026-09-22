@@ -8,7 +8,9 @@ existing accounting/source/quota gates. Native scripts provide run, local status
 and graceful drain requests. `startup.py` checks the real GET/WS graph without
 a mutation signer or production ledger. Synthetic tests cover the complete
 startup-to-pair-ACK path and existing inventory exits. Current reviewed launch
-inputs and a real opening baseline remain required; no live launch is verified.
+inputs are installed and venue-validated for one time-bounded market. A real
+opening baseline still requires the explicit first operator launch; no live
+launch is verified.
 
 ## Retired minimal canary — historical, superseded by D-077
 

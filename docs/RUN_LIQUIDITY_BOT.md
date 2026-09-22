@@ -32,9 +32,19 @@ and the reward catalog; then joined its readers. The catalog contained 4,717
 rows covering 4,711 current markets, not 4,711 launch-eligible selections.
 Its status and bounded logs remain ignored under `data/runtime-startup/`.
 
-Current blockers are reviewed launch inputs and the first real opening baseline.
-`config/live-inputs.local.json` is deliberately not fabricated from market expiry
-or a balance format. No production `data/trader/account.db` has been initialized.
+The ignored launch-input file is installed for one current reviewed market. The
+remaining live step is the first real opening baseline, captured only by an
+explicit operator `-Initialize` start. No production `data/trader/account.db` has
+been initialized.
+
+The initial scope is `KXAAAGASD-26SEP23-4.4750`. At 15:15:51 UTC on 2026-09-22,
+its book produced a $1.06 remaining-reward estimate and $9.60 combined quoted
+collateral estimate. Current rules settle from the Sep. 23 AAA US regular-gas
+average. Primary milestone `20336234-5f10-5d62-9847-85fb958c4182` begins at
+02:00 UTC and the market closes at 03:59 UTC. Runtime metadata validation returned
+no blockers and a conservative $0.0276 per-contract taker-fee bound. The timing
+review expires at 04:00 UTC; it cannot be reused for another market or date.
+These are snapshot estimates, not guaranteed rewards or profitability evidence.
 
 ## Prepare the reviewed scope
 
@@ -115,6 +125,14 @@ It uses the original read owners with a GET-only signer, cannot attach dispatch,
 does not approve opening accounting, and writes a new diagnostic ledger under
 ignored `data/runtime-startup/<run-id>/`. It joins readers and closes all owners
 before returning. This is a startup check, not another paper/profitability trial.
+
+The final exact-ticker diagnostic run was
+`2a6947d80694482590709bafd3805a86`: `startup_verified=true`, current account and
+book evidence were present, all three reader owners subscribed, the catalog held
+4,677 rows / 4,671 current markets, and the process stopped cleanly. Its expected
+`timing_review_missing`/`fee_profile_missing` labels reflect that the generic
+diagnostic intentionally does not load launch inputs. A separate real metadata
+adapter check did load the ignored inputs and returned no blockers.
 
 ## API verification
 
