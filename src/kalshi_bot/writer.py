@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from .command_capacity import (CapacityPolicy, DEFAULT_POLICY, status,
                                validate_capacity)
-from .command_types import (CancelEvidence, PreparationResult, PreparedMutation,
+from .command_types import (CancelEvidence, PreparationResult, PreparedBatch, PreparedMutation,
                             ReductionEvidence)
 from .ledger import Fill, Ledger
 from .inbox import pending, stage
@@ -202,7 +202,11 @@ class LedgerWriter:
                                              continuity, fence, utc(now)))
 
     def entry_accounting_current(self, receipt):
-        if receipt.kind != 'create' or receipt.request.get('reduce_only') is True:
+        receipts = receipt.receipts if isinstance(receipt, PreparedBatch) else (receipt,)
+        if any(not isinstance(row, PreparedMutation) for row in receipts):
+            return False
+        if all(row.kind != 'create' or row.request.get('reduce_only') is True
+               for row in receipts):
             return True
         if not self._accounting_enabled:
             return True  # Isolated legacy fixtures; never a live path.
@@ -211,7 +215,8 @@ class LedgerWriter:
             and not self.failed and not self._closing
             and self.revision in (receipt.writer_revision, receipt.writer_revision+1)
             and self._accounting_prepared == receipt
-            and json.loads(receipt.proof_json).get('accounting_release') == lease.release_digest
+            and all(json.loads(row.proof_json).get('accounting_release') == lease.release_digest
+                    for row in receipts)
             and lease.fence.current())
 
     async def record_accounting_review(self, *, reference, checkpoint_digest, now):
@@ -231,6 +236,19 @@ class LedgerWriter:
             raise InvalidData("entry request exceeds byte budget")
         return await self._wait(self._submit("reserve_entry", identity(attempt_id), frozen, view, config, utc(now),
                                             free_cash, account_known, offline_fixture, fee_per_contract_bound))
+
+    async def reserve_entry_pair(self, requests, *, batch_id, view, config, now,
+                                 free_cash, account_known=False,
+                                 offline_fixture=False,
+                                 fee_per_contract_bound=None):
+        if type(requests) is not tuple:
+            raise InvalidData('immutable entry pair required')
+        frozen = json.dumps(requests, allow_nan=False, separators=(',', ':'))
+        if len(frozen.encode()) > 32768:
+            raise InvalidData('entry pair exceeds byte budget')
+        return await self._wait(self._submit('reserve_entry_pair', identity(batch_id),
+            frozen, view, config, utc(now), free_cash, account_known,
+            offline_fixture, fee_per_contract_bound))
 
     async def cancel_evidence(self, order_id):
         return await self._wait(self._submit('cancel_evidence', identity(order_id)))
@@ -314,10 +332,20 @@ class LedgerWriter:
             raise InvalidData('typed prepared mutation required')
         return await self._wait(self._submit('begin_send', receipt))
 
+    async def begin_batch_send(self, batch):
+        if not isinstance(batch, PreparedBatch):
+            raise InvalidData('typed prepared batch required')
+        return await self._wait(self._submit('begin_batch_send', batch))
+
     async def abort_prepared(self, receipt):
         if not isinstance(receipt, PreparedMutation):
             raise InvalidData('typed prepared mutation required')
         return await self._wait(self._submit('abort_prepared', receipt))
+
+    async def abort_batch(self, batch):
+        if not isinstance(batch, PreparedBatch):
+            raise InvalidData('typed prepared batch required')
+        return await self._wait(self._submit('abort_batch', batch))
 
     async def record_outcome(self, operation, receipt, document, now):
         if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
@@ -325,6 +353,13 @@ class LedgerWriter:
         frozen = json.loads(json.dumps(document, allow_nan=False))
         return await self._wait(self._submit('mutation_outcome', operation, receipt,
                                              frozen, utc(now)))
+
+    async def record_batch_outcome(self, batch, document, now):
+        if not isinstance(batch, PreparedBatch) or document is not None and not isinstance(document, dict):
+            raise InvalidData('invalid typed batch outcome')
+        frozen = (None if document is None else
+                  json.loads(json.dumps(document, allow_nan=False)))
+        return await self._wait(self._submit('batch_outcome', batch, frozen, utc(now)))
 
     async def command_capacity(self):
         return await self._wait(self._submit('command_capacity'))
@@ -554,6 +589,20 @@ class LedgerWriter:
             if result.receipt is not None and self._accounting_enabled:
                 self._accounting_prepared = result.receipt
             return result
+        if command == 'reserve_entry_pair':
+            from .portfolio import reserve_entry_pair
+            batch_id, encoded, view, config, now, cash, known, fixture, fee_bound = args
+            result = reserve_entry_pair(ledger, requests=tuple(json.loads(encoded)),
+                batch_id=batch_id, view=view, epoch=self.epoch,
+                revision=self._revision, post_revision=self._revision+1,
+                config=config, now=now, free_cash=cash, account_known=known,
+                offline_fixture=fixture, capacity=self.market_capacity,
+                command_policy=self.command_policy,
+                accounting_lease=self._accounting_lease,
+                fee_per_contract_bound=fee_bound)
+            if result.batch is not None and self._accounting_enabled:
+                self._accounting_prepared = result.batch
+            return result
         if command == 'cancel_evidence':
             order_id = args[0]
             row = ledger.connection.execute('SELECT payload FROM order_evidence WHERE order_id=?',
@@ -645,15 +694,30 @@ class LedgerWriter:
                 return begin_send(ledger, args[0], writer_epoch=self.epoch,
                     writer_revision=self._revision, post_revision=self._revision+1,
                     accounting_current=self.entry_accounting_current(args[0]))
+        if command == 'begin_batch_send':
+            from .execution import begin_batch_send
+            with ledger.transaction():
+                return begin_batch_send(ledger, args[0], writer_epoch=self.epoch,
+                    writer_revision=self._revision, post_revision=self._revision+1,
+                    accounting_current=self.entry_accounting_current(args[0]))
         if command == 'abort_prepared':
             from .execution import abort_prepared
             with ledger.transaction():
                 return abort_prepared(ledger, args[0], writer_epoch=self.epoch,
                     writer_revision=self._revision, post_revision=self._revision+1)
+        if command == 'abort_batch':
+            from .execution import abort_batch
+            with ledger.transaction():
+                return abort_batch(ledger, args[0], writer_epoch=self.epoch,
+                    writer_revision=self._revision, post_revision=self._revision+1)
         if command == 'mutation_outcome':
             from .execution import record_outcome
             with ledger.transaction():
                 return record_outcome(ledger, *args, writer_epoch=self.epoch)
+        if command == 'batch_outcome':
+            from .execution import record_batch_outcome
+            with ledger.transaction():
+                return record_batch_outcome(ledger, *args, writer_epoch=self.epoch)
         if command == 'command_capacity':
             return status(ledger)
         if command == "stage_fill":
@@ -837,21 +901,28 @@ class LedgerWriter:
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'reduction_evidence', 'command_capacity', 'accounting_status'}
-                    post_revision = {'reserve_entry', 'prepare_cancel', 'prepare_reduction',
-                                     'begin_send', 'abort_prepared', 'capture_accounting', 'release_accounting'}
+                    post_revision = {'reserve_entry', 'reserve_entry_pair',
+                                     'prepare_cancel', 'prepare_reduction',
+                                     'begin_send', 'begin_batch_send',
+                                     'abort_prepared', 'abort_batch',
+                                     'capture_accounting', 'release_accounting'}
                     # External evidence writes revoke authority even when a
                     # caller bypasses coordinator ingress. Local reservation /
                     # send steps retain the lease but recompute obligations.
-                    if command not in read_only | {'reserve_entry', 'prepare_cancel',
-                            'prepare_reduction', 'begin_send', 'abort_prepared'}:
+                    if command not in read_only | {'reserve_entry', 'reserve_entry_pair',
+                            'prepare_cancel', 'prepare_reduction', 'begin_send',
+                            'begin_batch_send', 'abort_prepared', 'abort_batch'}:
                         self._accounting_lease = None
                         self._accounting_prepared = None
                     if command not in read_only and command not in post_revision:
                         self._revision += 1
                     result = self._execute(ledger, command, args)
-                    if command in {'reserve_entry', 'prepare_cancel', 'prepare_reduction', 'capture_accounting', 'release_accounting'}:
+                    if command in {'reserve_entry', 'reserve_entry_pair', 'prepare_cancel',
+                                   'prepare_reduction', 'capture_accounting',
+                                   'release_accounting'}:
                         self._revision += 1
-                    elif command in {'begin_send', 'abort_prepared'} and result.writer_revision == self._revision+1:
+                    elif command in {'begin_send', 'begin_batch_send',
+                                     'abort_prepared', 'abort_batch'} and result.writer_revision == self._revision+1:
                         self._revision += 1
                 except Exception as exc:
                     if command in {'fill', 'apply_pending', 'recover_fills', 'order',

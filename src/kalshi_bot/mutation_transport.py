@@ -1,0 +1,116 @@
+"""Bounded Kalshi V2 order transport, disabled without explicit activation.
+
+The runtime injects this object into the existing single mutation owner. It
+does not load credentials, retry writes, infer rejection from timeouts, or
+create live authority. Tests use an injected wire with ``offline_fixture=True``.
+"""
+import asyncio
+import json
+import time
+from urllib.error import HTTPError
+from urllib.parse import quote, urlencode
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+from .execution import validate_entry_pair, validate_request
+from .mutation_outcomes import MutationHTTPFailure
+from .rest import WireResponse, decode
+from .transport import MutationSigner, REST_BASE
+from .values import InvalidData, integer
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
+def mutation_wire(url, method, headers, body, max_bytes, timeout):
+    """Blocking bounded wire function; never retries or follows redirects."""
+    if method not in {'POST', 'DELETE'} or not isinstance(body, bytes):
+        raise InvalidData('invalid mutation wire request')
+    opener = build_opener(ProxyHandler({}), _NoRedirect())
+    request = Request(url, data=body or None, headers=headers, method=method)
+    deadline = time.monotonic()+timeout
+    try:
+        response = opener.open(request, timeout=min(5, timeout))
+    except HTTPError as exc:
+        status = exc.code
+        exc.close()
+        return WireResponse(status, b'')
+    with response:
+        payload = bytearray()
+        while True:
+            if time.monotonic() > deadline:
+                raise InvalidData('mutation response deadline exhausted')
+            part = response.read1(min(65536, max_bytes+1-len(payload)))
+            payload.extend(part)
+            if len(payload) > max_bytes:
+                raise InvalidData('mutation response byte limit exceeded')
+            if not part:
+                return WireResponse(response.status, bytes(payload))
+
+
+class MutationActivation:
+    """Reserved launch capability; this execution-disabled build issues none."""
+    def __init__(self):
+        raise InvalidData('mutation activation unavailable')
+
+
+class OrderMutationTransport:
+    def __init__(self, signer, *, wire=mutation_wire, activation=None,
+                 offline_fixture=False, max_bytes=1048576, timeout=10):
+        if not isinstance(signer, MutationSigner) or not callable(wire):
+            raise InvalidData('explicit mutation signer and wire required')
+        integer(max_bytes, 1024, 4194304)
+        if type(timeout) not in (int, float) or not 0 < timeout <= 30:
+            raise InvalidData('bounded mutation timeout required')
+        if offline_fixture is not True and not isinstance(activation, MutationActivation):
+            raise InvalidData('live mutation activation unavailable')
+        if offline_fixture is True and wire is mutation_wire:
+            raise InvalidData('offline fixture requires an injected non-network wire')
+        self.signer, self.wire = signer, wire
+        self.max_bytes, self.timeout = max_bytes, timeout
+        self.offline_fixture = offline_fixture
+
+    @staticmethod
+    def _body(request):
+        body = json.dumps(request, sort_keys=True, separators=(',', ':'),
+                          allow_nan=False).encode()
+        if len(body) > 32768:
+            raise InvalidData('mutation request byte limit exceeded')
+        return body
+
+    async def _send(self, method, path, body, success):
+        headers = {'Accept': 'application/json', 'Accept-Encoding': 'identity'}
+        if body:
+            headers['Content-Type'] = 'application/json'
+        headers.update(self.signer.headers(method, '/trade-api/v2'+path))
+        response = await asyncio.to_thread(self.wire, REST_BASE+path, method,
+            headers, body, self.max_bytes, self.timeout)
+        if not isinstance(response, WireResponse):
+            raise InvalidData('invalid mutation wire response')
+        if response.status != success:
+            raise MutationHTTPFailure(response.status)
+        if not response.body:
+            raise InvalidData('mutation success response missing')
+        return decode(response.body)
+
+    async def __call__(self, kind, request):
+        validate_request(kind, request)
+        if kind == 'create':
+            return await self._send('POST', '/portfolio/events/orders',
+                                    self._body(request), 201)
+        query = urlencode({'subaccount': request['subaccount'],
+            'exchange_index': request['exchange_index'],
+            'market_ticker': request['market_ticker']})
+        path = '/portfolio/events/orders/'+quote(request['order_id'], safe='')+'?'+query
+        return await self._send('DELETE', path, b'', 200)
+
+    async def batch(self, requests):
+        validate_entry_pair(requests)
+        # Batch writes are unscoped for quota accounting even though every leg
+        # retains an explicit exchange_index in its immutable request.
+        return await self._send('POST', '/portfolio/events/orders/batched',
+                                self._body({'orders': list(requests)}), 201)
+
+    def __repr__(self):
+        return 'OrderMutationTransport(<redacted>, live_ready=False)'

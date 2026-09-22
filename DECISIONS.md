@@ -1106,6 +1106,22 @@ and explicitly withdraws the proposed fixed 60-market pool.
   new category filter, repricing policy, live order transport or bot operation.
 - **Implementation contract:** [Admission and rotation](docs/BUILD_MARKET_ADMISSION.md).
 
+### D-072 — Connect selected entry pairs to guarded order transport
+
+- **Status:** ACCEPTED offline implementation, 2026-09-21.
+- **Decision owner:** Operator: "Ok do 2", referring to the ordered work item
+  after automatic market admission.
+- **Scope:** Connect current ranked additions to the existing writer risk gates,
+  quota owner and dispatcher. Use one exact two-leg local reservation and one
+  documented Kalshi V2 batch create; retain single create/cancel transport for
+  inventory exits. Mixed, unidentified or uncertain venue outcomes fail closed,
+  request reconciliation and are never retried automatically.
+- **Boundary:** This approves construction and synthetic verification only.
+  Live activation remains unavailable; no credential/account request, order,
+  cancel, deployment, bot start or restart is authorized. The next independent
+  strategy/runtime work is production reward reflection/checkpoint lifecycle.
+- **Implementation contract:** [Entry dispatch and transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md).
+
 ### Earlier concentration question — superseded by D-070
 
 - **Status:** Historical discussion; D-070 above is the current build direction.

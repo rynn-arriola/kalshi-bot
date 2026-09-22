@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 106. A local atomic pair does not make the venue batch atomic — 2026-09-22
+
+VERIFIED DOCS/CODE: Kalshi V2 batch create returns per-order rows, permits a
+nullable client ID on an error row, charges create cost per order and bills the
+batch endpoint to the unscoped shard. D-072 therefore makes only local
+risk/intent preparation atomic. Response rows bind by client ID, never position;
+mixed outcomes latch recovery, while an unidentified error makes both legs
+UNKNOWN. No timeout/HTTP failure is rejection proof and no pair is retried.
+MEASURED: synthetic 30/120-pair prepare/abort gates pass with zero retained
+active entries or held capacity. [Sources, exact workload and limits](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md).
+Live activation and production reward reflection remain separate.
+
 ## 105. Market rotation must retain ownership through reader teardown — 2026-09-21
 
 VERIFIED CODE/OFFLINE: candidate ranking now reaches actual runtime subscription

@@ -62,6 +62,54 @@ class PreparedMutation:
 
 
 @dataclass(frozen=True)
+class PreparedBatch:
+    """One atomic local preparation for an exact two-sided entry pair."""
+    batch_id: str
+    receipts: tuple[PreparedMutation, PreparedMutation]
+
+    def __post_init__(self):
+        identity(self.batch_id)
+        if (type(self.receipts) is not tuple or len(self.receipts) != 2
+                or any(not isinstance(row, PreparedMutation) for row in self.receipts)):
+            raise InvalidData('entry batch requires two prepared mutations')
+        requests = tuple(row.request for row in self.receipts)
+        if (len({row.ledger_id for row in self.receipts}) != 1
+                or len({row.writer_epoch for row in self.receipts}) != 1
+                or len({row.writer_revision for row in self.receipts}) != 1
+                or len({row.episode_id for row in self.receipts}) != 1
+                or len({row.attempt_id for row in self.receipts}) != 2
+                or len({row.subject_id for row in self.receipts}) != 2
+                or any(row.kind != 'create' for row in self.receipts)
+                or len({r['ticker'] for r in requests}) != 1
+                or len({r['subaccount'] for r in requests}) != 1
+                or len({r['exchange_index'] for r in requests}) != 1
+                or {r['side'] for r in requests} != {'bid', 'ask'}
+                or any(r['reduce_only'] is not False for r in requests)):
+            raise InvalidData('prepared entry batch scope conflicts')
+
+    @property
+    def requests(self):
+        return tuple(row.request for row in self.receipts)
+
+    @property
+    def writer_revision(self):
+        return self.receipts[0].writer_revision
+
+
+@dataclass(frozen=True)
+class PairPreparationResult:
+    batch: PreparedBatch | None
+    blockers: tuple[str, ...]
+    capacity: CapacityStatus
+    batch_id: str
+    live_authorized: bool = False
+
+    @property
+    def reserved(self):
+        return self.batch is not None and not self.blockers
+
+
+@dataclass(frozen=True)
 class PreparationResult:
     receipt: PreparedMutation | None
     blockers: tuple[str, ...]

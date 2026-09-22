@@ -1,5 +1,21 @@
 # Current status
 
+## D-072 entry-pair dispatch and mutation transport — 2026-09-22
+
+[Implemented execution-disabled](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md): current
+ranked additions now become an exact two-leg writer reservation and one guarded
+V2 batch create. The same bounded adapter covers existing single reducer creates
+and cancels. Source/accounting/quota proof is rechecked at the send edge; batch
+cost is charged per leg to the unscoped bucket. Partial, unidentified and
+uncertain results persist conservatively, trigger recovery and never retry.
+
+Final full suite: 1,339 run, 1,338 passed, one expected Windows privilege skip.
+11 entry/transport checks, 65 dispatcher checks, 35 write-budget checks and
+30/120-pair resource gates pass. Disabled preflight remains `live_ready=false`.
+No credentials, venue/account request, bot operation or live mutation occurred.
+Next: production reward reflection/checkpoint lifecycle (#3), then remaining
+real-input, native-supervisor and readiness/launch gates.
+
 ## D-071 automatic market admission/rotation — 2026-09-21
 
 [Implemented offline](docs/BUILD_MARKET_ADMISSION.md): one supervised admission

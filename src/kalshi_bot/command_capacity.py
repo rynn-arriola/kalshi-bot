@@ -82,7 +82,7 @@ def validate_capacity(ledger, policy=DEFAULT_POLICY, *, full=True):
         malformed_auth = ledger.connection.execute(
             "SELECT 1 FROM command_authorizations a LEFT JOIN mutation_attempts m "
             "ON m.id=a.mutation_id WHERE m.id IS NULL OR a.kind NOT IN ('create','cancel') "
-            "OR a.state NOT IN ('PREPARED','SENDING','ACK','UNKNOWN','ABORTED') LIMIT 1").fetchone()
+            "OR a.state NOT IN ('PREPARED','SENDING','ACK','UNKNOWN','ABORTED','REJECTED') LIMIT 1").fetchone()
         missing_active_auth = ledger.connection.execute(
             "SELECT 1 FROM mutation_attempts m LEFT JOIN command_authorizations a "
             "ON a.mutation_id=m.id AND a.state=m.phase "

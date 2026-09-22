@@ -17,6 +17,7 @@ from .values import InvalidData, integer
 
 
 ORDERS = '/portfolio/events/orders'
+BATCH_ORDERS = ORDERS + '/batched'
 CANCEL = ORDERS + '/{order_id}'
 _METHODS = frozenset(('GET', 'POST', 'DELETE', 'PUT', 'PATCH', 'HEAD', 'OPTIONS'))
 _SEGMENT = re.compile(r'(?:[A-Za-z0-9_.-]+|\{[A-Za-z_][A-Za-z0-9_]*\})')
@@ -50,8 +51,8 @@ def _route(method, path):
 @lru_cache(maxsize=512)
 def _operation_cached(method, route):
     route = _route(method, route)
-    if method == 'POST' and route == ORDERS:
-        return route, ORDERS
+    if method == 'POST' and route in {ORDERS, BATCH_ORDERS}:
+        return route, route
     if method == 'DELETE' and route.startswith(ORDERS + '/'):
         order_id = route[len(ORDERS) + 1:]
         if (order_id != 'batched' and
@@ -238,16 +239,17 @@ class WriteBudget:
         bucket.updated = self._last[0]
         return bucket
 
-    def _terms(self, method, route, shard):
+    def _terms(self, method, route, shard, units=1):
         integer(shard, 0, 2**31 - 1)
+        integer(units, 1, 30)
         if shard not in self._buckets:
             raise InvalidData('shard is not configured')
         route, cost_route = _operation(method, route)
-        cost = self._costs.get((method, cost_route), self._snapshot.default_cost)
+        cost = self._costs.get((method, cost_route), self._snapshot.default_cost)*units
         return route, cost
 
-    def _readiness(self, method, route, shard, now):
-        route, cost = self._terms(method, route, shard)
+    def _readiness(self, method, route, shard, now, units=1):
+        route, cost = self._terms(method, route, shard, units)
         if self._poll(now) is not None or len(self._permits) >= self._max_permits:
             return route, cost, None
         bucket = self._refill(shard)
@@ -262,12 +264,12 @@ class WriteBudget:
             return route, cost, None
         return route, cost, float(delay)
 
-    def ready_delay(self, method, route, *, shard, now):
+    def ready_delay(self, method, route, *, shard, now, units=1):
         """Inspect readiness; no token debit. Caller rechecks after any wait."""
-        return self._readiness(method, route, shard, now)[2]
+        return self._readiness(method, route, shard, now, units)[2]
 
-    def try_reserve(self, method, route, *, shard, now):
-        route, cost, delay = self._readiness(method, route, shard, now)
+    def try_reserve(self, method, route, *, shard, now, units=1):
+        route, cost, delay = self._readiness(method, route, shard, now, units)
         if delay != 0:
             return None
         bucket = self._buckets[shard]
@@ -296,11 +298,11 @@ class WriteBudget:
             raise InvalidData('altered write permit')
         return expected
 
-    def consume(self, permit, method, route, *, shard, now):
+    def consume(self, permit, method, route, *, shard, now, units=1):
         reason = self._poll(now)
         if reason is not None:
             raise QuotaUnavailable(reason)
-        route, cost = self._terms(method, route, shard)
+        route, cost = self._terms(method, route, shard, units)
         self._refill(shard)
         expected = self._take(permit)
         if expected != (method, route, shard, self._revision, cost):
@@ -309,7 +311,7 @@ class WriteBudget:
             raise QuotaUnavailable('write_429_pause')
         return permit
 
-    def check_permit(self, permit, method, route, *, shard, now):
+    def check_permit(self, permit, method, route, *, shard, now, units=1):
         """Check an outstanding permit before SENDING without consuming it.
 
         The executor must still call consume synchronously at the send edge:
@@ -318,7 +320,7 @@ class WriteBudget:
         reason = self._poll(now)
         if reason is not None:
             raise QuotaUnavailable(reason)
-        route, cost = self._terms(method, route, shard)
+        route, cost = self._terms(method, route, shard, units)
         self._refill(shard)
         stored = self._permits.get(id(permit))
         if (type(permit) is not WritePermit or stored is None

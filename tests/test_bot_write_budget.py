@@ -8,7 +8,7 @@ import unittest
 from kalshi_bot.quota import QuotaScope, QuotaUnavailable
 from kalshi_bot.values import InvalidData
 from kalshi_bot.write_budget import (
-    CANCEL, ORDERS, WriteBudget, WritePermit, WriteQuotaSnapshot,
+    BATCH_ORDERS, CANCEL, ORDERS, WriteBudget, WritePermit, WriteQuotaSnapshot,
 )
 
 
@@ -73,6 +73,18 @@ class WriteBudgetTests(unittest.TestCase):
         self.assertEqual(core.status(now=now(1)).buckets[0][1:3], (0, 10))
         other = budget(snapshot(default=6, rows=[]))
         self.assertEqual(self.reserve(other, method='DELETE', route=ORDER).cost, 6)
+
+    def test_batch_create_cost_is_per_item_and_unscoped_by_caller(self):
+        rows = [dict(method='POST', path=BATCH_ORDERS, cost=10)]
+        core = budget(snapshot(rate=100, capacity=100, rows=rows))
+        permit = core.try_reserve('POST', BATCH_ORDERS, shard=0,
+                                  units=2, now=now(1))
+        self.assertIsNotNone(permit)
+        self.assertEqual(permit.cost, 20)
+        self.assertIs(core.check_permit(permit, 'POST', BATCH_ORDERS,
+            shard=0, units=2, now=now(1)), permit)
+        self.assertIs(core.consume(permit, 'POST', BATCH_ORDERS,
+            shard=0, units=2, now=now(1)), permit)
 
     def test_prefix_normalization_and_exact_cancel_order_binding(self):
         core = budget()
@@ -411,7 +423,7 @@ class WriteBudgetTests(unittest.TestCase):
             WriteBudget(snapshot(), shards=(0,), now=now())
         core = budget()
         for method, route in (('GET', ORDERS), ('DELETE', ORDERS),
-                              ('POST', ORDERS + '/batched'), ('DELETE', ORDERS + '/batched'),
+                              ('DELETE', ORDERS + '/batched'),
                               ('POST', ORDER + '/amend'), ('DELETE', CANCEL),
                               ('POST', '/portfolio/orders'), ('POST', '/portfolio/perps/orders'),
                               ('DELETE', ORDER + '?exchange_index=1'),

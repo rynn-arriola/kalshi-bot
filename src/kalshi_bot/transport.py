@@ -1,4 +1,4 @@
-"""Read-only WebSocket transport. No REST mutations or automatic live runner."""
+"""WebSocket transport and path-scoped signers; no automatic live runner."""
 import asyncio
 import base64
 from dataclasses import dataclass
@@ -24,9 +24,7 @@ class Signer:
         if not isinstance(self._key, rsa.RSAPrivateKey) or self._key.key_size < 2048:
             raise InvalidData("RSA key of at least 2048 bits required")
 
-    def headers(self, method: str, path: str, timestamp_ms: int | None = None) -> dict:
-        if method != "GET" or not path.startswith("/trade-api/") or "://" in path:
-            raise InvalidData("this foundation signer is read-only and path-scoped")
+    def _headers(self, method: str, path: str, timestamp_ms: int | None = None) -> dict:
         stamp = integer(timestamp_ms if timestamp_ms is not None else time.time_ns()//1000000,
                         1, 2**63-1)
         message = f"{stamp}{method}{path.split('?')[0]}".encode()
@@ -35,8 +33,28 @@ class Signer:
         return {"KALSHI-ACCESS-KEY": self._key_id, "KALSHI-ACCESS-TIMESTAMP": str(stamp),
                 "KALSHI-ACCESS-SIGNATURE": base64.b64encode(signature).decode()}
 
+    def headers(self, method: str, path: str, timestamp_ms: int | None = None) -> dict:
+        if method != "GET" or not path.startswith("/trade-api/") or "://" in path:
+            raise InvalidData("this foundation signer is read-only and path-scoped")
+        return self._headers(method, path, timestamp_ms)
+
     def __repr__(self):
         return "Signer(<redacted>)"
+
+
+class MutationSigner(Signer):
+    """Explicit order-path signer; construction still performs no I/O."""
+    def headers(self, method: str, path: str, timestamp_ms: int | None = None) -> dict:
+        clean = path.split('?', 1)[0]
+        prefix = '/trade-api/v2/portfolio/events/orders'
+        suffix = clean[len(prefix):] if clean.startswith(prefix) else None
+        allowed = ((method == 'POST' and suffix in {'', '/batched'})
+                   or (method == 'DELETE' and suffix is not None
+                       and suffix.startswith('/') and suffix != '/batched'
+                       and '/' not in suffix[1:] and len(suffix) > 1))
+        if not allowed or '://' in path:
+            raise InvalidData('mutation signer is restricted to event-order paths')
+        return self._headers(method, path, timestamp_ms)
 
 
 @dataclass(frozen=True)

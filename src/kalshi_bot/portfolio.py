@@ -6,7 +6,8 @@ import json
 
 from .command_capacity import (DEFAULT_POLICY, reserve_entry_capacity, status,
                                validate_capacity)
-from .command_types import PreparationResult
+from .command_types import (PairPreparationResult, PreparationResult,
+                            PreparedBatch)
 from .execution import (check_new_attempt, encoded_request, insert_prepared,
                         validate_request)
 from .orders import OrderReceipt, OrderUpdate
@@ -270,3 +271,54 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
                     'accounting_release': accounting_lease.release_digest if accounting_lease else None}))
             validate_capacity(ledger, command_policy, full=False)
     return PreparationResult(receipt, tuple(dict.fromkeys(blockers)), status(ledger), client)
+
+
+class _PairBlocked(Exception):
+    def __init__(self, blockers):
+        self.blockers = tuple(blockers)
+
+
+def reserve_entry_pair(ledger, *, requests, batch_id, view, epoch, revision,
+                       post_revision, config, now, free_cash, account_known,
+                       offline_fixture, capacity, command_policy=DEFAULT_POLICY,
+                       accounting_lease=None, fee_per_contract_bound=None):
+    """Reserve both entry legs or neither in one writer transaction.
+
+    Venue batch creation is not atomic. This contract is deliberately narrower:
+    local risk, command capacity, intents and durable authorizations are atomic.
+    """
+    identity(batch_id)
+    if type(requests) is not tuple or len(requests) != 2:
+        raise InvalidData('entry pair requires exactly two requests')
+    frozen = tuple(json.loads(encoded_request(row)) for row in requests)
+    for request in frozen:
+        validate_request('create', request)
+    if (len({row['ticker'] for row in frozen}) != 1
+            or len({row['subaccount'] for row in frozen}) != 1
+            or len({row['exchange_index'] for row in frozen}) != 1
+            or len({row['client_order_id'] for row in frozen}) != 2
+            or {row['side'] for row in frozen} != {'bid', 'ask'}
+            or any(row['reduce_only'] is not False for row in frozen)):
+        raise InvalidData('entry pair scope conflicts')
+    ordered = tuple(sorted(frozen, key=lambda row: row['side']))
+    try:
+        with ledger.transaction():
+            receipts = []
+            for request in ordered:
+                result = reserve_entry(ledger, request=request,
+                    attempt_id=batch_id+'/'+request['side'], view=view,
+                    epoch=epoch, revision=revision, post_revision=post_revision,
+                    config=config, now=now, free_cash=free_cash,
+                    account_known=account_known, offline_fixture=offline_fixture,
+                    capacity=capacity, command_policy=command_policy,
+                    accounting_lease=accounting_lease,
+                    fee_per_contract_bound=fee_per_contract_bound)
+                if not result.reserved:
+                    raise _PairBlocked(result.blockers)
+                receipts.append(result.receipt)
+            batch = PreparedBatch(batch_id, tuple(receipts))
+            validate_capacity(ledger, command_policy, full=False)
+    except _PairBlocked as exc:
+        return PairPreparationResult(None, tuple(dict.fromkeys(exc.blockers)),
+                                     status(ledger), batch_id)
+    return PairPreparationResult(batch, (), status(ledger), batch_id)

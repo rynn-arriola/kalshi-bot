@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import inspect
 import math
 
-from .execution import acknowledgement, validate_request
+from .execution import (acknowledgement, batch_acknowledgement,
+                        validate_entry_pair, validate_request)
 from .values import InvalidData, integer
 from .write_budget import WriteBudget
 
@@ -98,5 +99,42 @@ class MutationOutcomeOwner:
                 raise
             self._notify(MutationNotice(*scope, 'ack'))
             return ack
+        finally:
+            self.busy = False
+
+    async def batch(self, requests):
+        if self.busy:
+            raise InvalidData('mutation outcome owner busy')
+        validate_entry_pair(requests)
+        invoke = getattr(self.invoke, 'batch', None)
+        if not callable(invoke):
+            raise InvalidData('batch mutation transport unavailable')
+        scopes = tuple(('create', row['ticker'], row['client_order_id'],
+                        row['subaccount'], row['exchange_index']) for row in requests)
+        durable = tuple(dict(row) for row in requests)
+        self.busy = True
+        try:
+            try:
+                reply = await invoke(requests)
+                outcomes = batch_acknowledgement(durable, reply)
+            except BaseException as exc:
+                status = exc.status if type(exc) is MutationHTTPFailure else None
+                outcome = ('rate_limited' if status == 429 else
+                           'http_failure' if status is not None else
+                           'interrupted' if isinstance(exc, asyncio.CancelledError)
+                           else 'uncertain')
+                try:
+                    if status == 429:
+                        # Official batch writes are billed to the unscoped
+                        # bucket regardless of each order's exchange_index.
+                        self.budget.pause_429(shard=0, seconds=self.pause_seconds,
+                                              now=self.clock_pair())
+                finally:
+                    for scope in scopes:
+                        self._notify(MutationNotice(*scope, outcome, status))
+                raise
+            for scope, row in zip(scopes, outcomes):
+                self._notify(MutationNotice(*scope, row['state']))
+            return reply
         finally:
             self.busy = False

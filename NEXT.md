@@ -1,13 +1,24 @@
 # Active work queue
 
+D-072 completes #2's execution-disabled [entry-pair dispatch and mutation
+transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md). Do not rebuild it or infer
+live authority from the presence of a network adapter. Mixed/unknown batch
+outcomes remain held for reconciliation, and live activation is unavailable.
+
+Next in priority order is #3: connect production own-order/public-book reward
+reflection to the existing tracker and give checkpoint load/flush one explicit
+runtime lifecycle owner. Preserve UNKNOWN when stream/book/order identity cannot
+be joined. After #3: verify real fee/timing/account/quota inputs, finish native
+supervisor S2B/readiness acceptance, then request a separate launch decision.
+
 Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md),
 shared [incentive discovery](docs/BUILD_INCENTIVE_DISCOVERY.md), and D-071's
 [automatic market admission/rotation](docs/BUILD_MARKET_ADMISSION.md). The latter
 owns one-reader-at-a-time joined replacement, exact removal proofs, fresh
 snapshots and bounded metadata/cache handoff. Do not rebuild these components
-or repeat the accepted Poly/hourly-efficiency policy decision. Next: #2,
-source-bound entry-pair dispatch and production order transport, still disabled
-until separate readiness/launch clearance. Do not add a second REST budget.
+or repeat the accepted Poly/hourly-efficiency policy decision. D-072 now supplies
+source-bound entry-pair dispatch and production order transport behind an
+unavailable live-activation boundary. Do not add a second REST budget.
 Working-order score monitoring still needs reflection evidence, not guessed
 private/public synchronization. Automatic repricing thresholds and live launch
 remain separate decisions. Preserve all inventory/unknown owners during rotation.
@@ -16,14 +27,14 @@ D-070 accepts Poly-style discovery/selection and per-program estimated tracking,
 explicitly removing the proposed fixed 60-market pool. The
 [offline discovery/tracker component](docs/BUILD_REWARD_TRACKER.md) now exists;
 do not rebuild it or treat time-to-$1 estimates as paid cash or exit authority.
-Its candidates now reach D-071 subscription admission; source-bound entry
-dispatch remains next. Production reflection proof and explicit
+Its candidates now reach D-071 subscription admission and D-072 entry dispatch.
+Production reflection proof and explicit
 checkpoint load/flush ownership still need integration; unknown remains unknown.
 New category filters, payout gates and numerical rotation thresholds require
 their own decision, not an automatic copy of Poly configuration.
 
-Next work: priority 5 reward ranking/admission integration, followed by priority
-6 runtime/readiness acceptance. Priority 4's
+Next work: priority 5 production reward reflection/checkpoint integration,
+followed by priority 6 runtime/readiness acceptance. Priority 4's
 [supervised injected lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) now covers stop,
 outcome drain, failure propagation and no-replay ledger reopen. This does not
 clear production transport, real input or native S2B review/resource gates.
@@ -46,7 +57,7 @@ their own reconciliation; ordinary review/empty history never clears them.
 Only new schema-5 synthetic ledgers were exercised; no migration or account
 request is authorized by this build.
 
-Updated 2026-09-21. Follow accepted decisions through D-071 and `AI_OPERATOR.md`.
+Updated 2026-09-22. Follow accepted decisions through D-072 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical
@@ -83,12 +94,10 @@ guarded document refresh to that budget. The
 [outcome owner](docs/BUILD_MUTATION_OUTCOMES.md) preserves UNKNOWN holds and
 signals recovery after persistence. The
 [runtime lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) joins dispatch outcomes
-before reader teardown and preserves restart holds. The injected path now
-rechecks its write permit at the synchronous send edge; this is not production
-transport clearance.
-No venue transport or live
-authority has been connected. Item 5 ranking/admission and item 6 supervised
-runtime remain queued; prior reviews and resource gates still apply.
+before reader teardown and preserves restart holds. D-072 adds the bounded
+production transport adapter but not a constructible live activation.
+No live authority has been connected. Item 5's production reflection and item 6
+supervised runtime remain queued; prior reviews and resource gates still apply.
 
 D-063: continue directly in this session; no delegated agents or model-switch
 steps unless the operator explicitly requests them again.

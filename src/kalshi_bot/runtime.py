@@ -190,6 +190,10 @@ class RecoveryRuntime:
         await self.management.refresh(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
+            if (self.dispatch_supervisor is not None
+                    and self.selection.current(ticker)):
+                from .dispatch import ENTRY_PAIR
+                self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
         await self._evaluate_callback(ticker, book, generation)

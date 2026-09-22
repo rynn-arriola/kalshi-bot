@@ -1,4 +1,4 @@
-"""Current inventory decisions -> injected dispatcher; no venue transport.
+"""Current inventory decisions -> injected activation-gated dispatcher.
 
 One pinned proof, not a queue of authorizations. The dispatcher refreshes it
 before and after quota reservation; durable receipts remain the writer's job.
@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from .adapters import create_payload
-from .dispatch import DispatchCandidate, MutationDispatcher, SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
+from .dispatch import (DispatchCandidate, EntryPairCandidate, MutationDispatcher,
+                       SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER, ENTRY_PAIR)
 from .execution import InjectedExecutor, encoded_request
 from .exits import ioc_payload
 from .management import ManagedPlan
@@ -22,14 +23,14 @@ class _Proof:
     plan: ManagedPlan
     report_observed_at: datetime
     kind: str
-    request_json: str
+    request_json: object
 
 
 class InventoryDispatchSource:
     """Offline composition seam for the existing, sole management owner.
 
     Caller submits market keys and awaits dispatcher.run_one(). No polling,
-    REST, entries, live mode, recursive worker or independent risk owner.
+    independent risk owner, live mode or recursive worker.
     """
     def __init__(self, runtime, *, offline_fixture=False):
         if offline_fixture is not True or not isinstance(runtime, RecoveryRuntime):
@@ -109,7 +110,8 @@ class InventoryDispatchSource:
         self._proof = None
         if (self._refreshing or not self._available()
                 or ticker not in self.runtime.engine.market_shard
-                or priority not in {SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER}):
+                or priority not in {SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER,
+                                    ENTRY_PAIR}):
             return None
         self._refreshing = True
         try:
@@ -118,10 +120,66 @@ class InventoryDispatchSource:
             if report is None:
                 return None
             plan = await runtime.management.refresh(ticker)
+            if priority == ENTRY_PAIR and runtime.selection is not None:
+                runtime.selection.refresh(ticker)
             if (plan is None or plan.exit is None or plan.inventory.blockers
                     or not self._plan_current(plan, report.observed_at)
                     or runtime.account.current_report(runtime.now()) is not report):
                 return None
+            if priority == ENTRY_PAIR:
+                release = runtime.accounting_result
+                inputs = runtime.market_inputs
+                selection = runtime.selection
+                source = (inputs.values.get(('market', ticker))
+                          if inputs is not None else None)
+                result = inputs.results.get(ticker) if inputs is not None else None
+                if (release is None or not release.released or release.window is None
+                        or selection is None or not selection.current(ticker)
+                        or inputs is None or result is None or result.terms is not plan.terms
+                        or source is None or not inputs._fresh(source)
+                        or plan.terms.taker_fee_per_contract_bound is None):
+                    return None
+                proposal = await selection.propose(
+                    window=release.window,
+                    free_cash=report.snapshot.available_balance)
+                rows = tuple(row for row in proposal.additions if row.ticker == ticker)
+                if (proposal.blockers or len(rows) != 1
+                        or runtime.account.current_report(runtime.now()) is not report
+                        or not selection.current(ticker)
+                        or inputs.values.get(('market', ticker)) is not source
+                        or inputs.results.get(ticker) is not result
+                        or not inputs._fresh(source)):
+                    return None
+                row = rows[0]
+                requests = []
+                for quote in sorted(row.quotes, key=lambda value: value.side):
+                    request = create_payload(ticker=ticker,
+                        client_id=str(uuid4()),
+                        outcome='yes' if quote.side == 'bid' else 'no',
+                        outcome_price=(quote.yes_price if quote.side == 'bid'
+                                       else 1-quote.yes_price),
+                        quantity=quote.quantity, bands=plan.terms.bands)
+                    request.update(subaccount=runtime.account.subaccount,
+                                   exchange_index=source.value.exchange)
+                    requests.append(request)
+                view = await runtime.risk_view()
+                if (generation != self._generation
+                        or not self._plan_current(plan, report.observed_at)
+                        or runtime.account.current_report(runtime.now()) is not report
+                        or not selection.current(ticker)
+                        or inputs.values.get(('market', ticker)) is not source
+                        or inputs.results.get(ticker) is not result
+                        or not inputs._fresh(source)
+                        or (view.epoch, view.revision) !=
+                           (runtime.writer.epoch, runtime.writer.revision)):
+                    return None
+                candidate = EntryPairCandidate(ticker, priority, str(uuid4()),
+                    tuple(requests), view, report.snapshot.available_balance,
+                    plan.terms.taker_fee_per_contract_bound,
+                    source.value.exchange)
+                self._proof = _Proof(plan, report.observed_at, 'batch_create',
+                    tuple(encoded_request(request) for request in requests))
+                return candidate
             exit_plan, passive = plan.exit, plan.passive
             journal = plan.inventory.exit_journal
             if journal is None or journal.unresolved_ioc or journal.cancel_ids:
@@ -181,6 +239,10 @@ class InventoryDispatchSource:
     def validate_proof(self, kind, request):
         """Synchronous pre/post-SENDING fence; no reads, awaits or network."""
         proof = self._proof
+        encoded = (tuple(encoded_request(row) for row in request)
+                   if kind == 'batch_create' and type(request) is tuple
+                   else encoded_request(request) if isinstance(request, dict)
+                   else None)
         return (proof is not None and kind == proof.kind
-                and encoded_request(request) == proof.request_json
+                and encoded == proof.request_json
                 and self._plan_current(proof.plan, proof.report_observed_at, sending=True))

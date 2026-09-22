@@ -10,16 +10,19 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from .command_types import (CancelEvidence, CommandDenied, ReductionEvidence)
-from .execution import InjectedExecutor, encoded_request, validate_request
-from .values import InvalidData, identity, integer
-from .write_budget import ORDERS, WriteBudget
+from .execution import (InjectedExecutor, encoded_request, validate_entry_pair,
+                        validate_request)
+from .portfolio import PortfolioView
+from .values import InvalidData, decimal, identity, integer
+from .write_budget import BATCH_ORDERS, ORDERS, WriteBudget
 from .writer import LedgerWriter
 
 
 SAFETY_CANCEL = 'safety_cancel'
 DUE_IOC = 'due_ioc'
 PASSIVE_REDUCER = 'passive_reducer'
-_PRIORITY = {SAFETY_CANCEL: 0, DUE_IOC: 1, PASSIVE_REDUCER: 2}
+ENTRY_PAIR = 'entry_pair'
+_PRIORITY = {SAFETY_CANCEL: 0, DUE_IOC: 1, PASSIVE_REDUCER: 2, ENTRY_PAIR: 3}
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,58 @@ class DispatchCandidate:
             return 'DELETE', ORDERS+'/'+self.request['order_id']
         return 'POST', ORDERS
 
+    @property
+    def units(self):
+        return 1
+
+    @property
+    def budget_shard(self):
+        return self.shard
+
+
+@dataclass(frozen=True)
+class EntryPairCandidate:
+    ticker: str
+    priority: str
+    batch_id: str
+    requests: tuple[dict, dict]
+    view: PortfolioView
+    free_cash: object
+    fee_per_contract_bound: object
+    shard: int
+
+    def __post_init__(self):
+        identity(self.ticker); identity(self.batch_id)
+        if self.priority != ENTRY_PAIR or not isinstance(self.view, PortfolioView):
+            raise InvalidData('invalid entry pair candidate')
+        validate_entry_pair(self.requests)
+        integer(self.shard, 0, 2**31-1)
+        cash, fee = decimal(self.free_cash), decimal(self.fee_per_contract_bound)
+        if cash < 0 or not 0 <= fee <= 1:
+            raise InvalidData('invalid entry pair cash or fee bound')
+        if (self.ticker != self.requests[0]['ticker']
+                or any(row['ticker'] != self.ticker
+                       or row['exchange_index'] != self.shard for row in self.requests)):
+            raise InvalidData('entry pair route changed')
+        object.__setattr__(self, 'free_cash', cash)
+        object.__setattr__(self, 'fee_per_contract_bound', fee)
+
+    @property
+    def attempt_id(self):
+        return self.batch_id
+
+    @property
+    def operation(self):
+        return 'POST', BATCH_ORDERS
+
+    @property
+    def units(self):
+        return 2
+
+    @property
+    def budget_shard(self):
+        return 0
+
 
 @dataclass(frozen=True)
 class DispatchResult:
@@ -81,6 +136,7 @@ class DispatchResult:
     blockers: tuple[str, ...] = ()
     retry_after: float | None = None
     order_id: str | None = None
+    order_ids: tuple[str, ...] = ()
     live_ready: bool = field(default=False, init=False)
 
 
@@ -160,7 +216,8 @@ class MutationDispatcher:
     def _validate_candidate(self, value, ticker, priority):
         if value is None:
             return None
-        if not isinstance(value, DispatchCandidate):
+        expected = EntryPairCandidate if priority == ENTRY_PAIR else DispatchCandidate
+        if not isinstance(value, expected):
             raise InvalidData('refresh must return a typed dispatch candidate')
         if (value.ticker, value.priority) != (ticker, priority):
             raise InvalidData('refresh returned another dispatch key')
@@ -180,10 +237,12 @@ class MutationDispatcher:
                                   blockers=('current_candidate_missing',))
         method, route = first.operation
         permit = self.budget.try_reserve(
-            method, route, shard=first.shard, now=self.clock_pair())
+            method, route, shard=first.budget_shard, units=first.units,
+            now=self.clock_pair())
         if permit is None:
             delay = self.budget.ready_delay(
-                method, route, shard=first.shard, now=self.clock_pair())
+                method, route, shard=first.budget_shard, units=first.units,
+                now=self.clock_pair())
             self.submit(ticker, priority)
             return DispatchResult('WAITING', ticker, priority,
                 first.attempt_id, ('write_budget_unavailable',), delay)
@@ -200,39 +259,60 @@ class MutationDispatcher:
                 await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
                     first.attempt_id, ('current_candidate_missing',))
-            if current.operation != first.operation or current.shard != first.shard:
+            if (current.operation != first.operation or current.shard != first.shard
+                    or current.units != first.units):
                 await self._discard(permit)
                 self.submit(ticker, priority)
                 return DispatchResult('WAITING', ticker, priority,
                     current.attempt_id, ('candidate_route_changed',), 0.0)
-            if priority == SAFETY_CANCEL:
+            if priority == ENTRY_PAIR:
+                from .config import BotConfig
+                prepared = await self.writer.reserve_entry_pair(
+                    current.requests, batch_id=current.batch_id,
+                    view=current.view, config=BotConfig(), now=self.now(),
+                    free_cash=current.free_cash, account_known=True,
+                    offline_fixture=True,
+                    fee_per_contract_bound=current.fee_per_contract_bound)
+                receipt = prepared.batch
+            elif priority == SAFETY_CANCEL:
                 prepared = await self.writer.prepare_cancel(
                     current.attempt_id, current.request,
                     evidence=current.evidence, now=self.now())
+                receipt = prepared.receipt
             else:
                 prepared = await self.writer.prepare_reduction(
                     current.attempt_id, current.request,
                     evidence=current.evidence, now=self.now())
-            receipt = prepared.receipt
+                receipt = prepared.receipt
             if self._stopping:
                 if receipt is not None:
-                    await self.writer.abort_prepared(receipt)
+                    if priority == ENTRY_PAIR:
+                        await self.writer.abort_batch(receipt)
+                    else:
+                        await self.writer.abort_prepared(receipt)
                     receipt = None
                 await self._discard(permit)
                 return DispatchResult('INTERRUPTED', ticker, priority,
                                       blockers=('dispatcher_stopping',))
             if not prepared.reserved:
                 if receipt is not None:
-                    await self.writer.abort_prepared(receipt)
+                    if priority == ENTRY_PAIR:
+                        await self.writer.abort_batch(receipt)
+                    else:
+                        await self.writer.abort_prepared(receipt)
                     receipt = None
                 await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
                     current.attempt_id, prepared.blockers)
             try:
                 self.budget.check_permit(permit, method, route,
-                                         shard=current.shard, now=self.clock_pair())
+                    shard=current.budget_shard, units=current.units,
+                    now=self.clock_pair())
             except Exception:
-                await self.writer.abort_prepared(receipt)
+                if priority == ENTRY_PAIR:
+                    await self.writer.abort_batch(receipt)
+                else:
+                    await self.writer.abort_prepared(receipt)
                 receipt = None
                 raise
             def consume_at_send_edge():
@@ -240,29 +320,49 @@ class MutationDispatcher:
                 if self._stopping:
                     raise CommandDenied(('dispatcher_stopping',))
                 self.budget.consume(permit, method, route,
-                                    shard=current.shard, now=self.clock_pair())
+                    shard=current.budget_shard, units=current.units,
+                    now=self.clock_pair())
                 consumed = True
                 if self._stopping:
                     raise CommandDenied(('dispatcher_stopping',))
             try:
-                result = await self.executor.execute_prepared(
-                    receipt, before_invoke=consume_at_send_edge)
+                if priority == ENTRY_PAIR:
+                    result = await self.executor.execute_prepared_batch(
+                        receipt, before_invoke=consume_at_send_edge)
+                else:
+                    result = await self.executor.execute_prepared(
+                        receipt, before_invoke=consume_at_send_edge)
             except CommandDenied as exc:
                 # If the executor rejected before SENDING, this proves the
                 # prepared command was not submitted. If it already advanced,
                 # abort_prepared safely returns already-used without mutation.
-                await self.writer.abort_prepared(receipt)
+                if priority == ENTRY_PAIR:
+                    await self.writer.abort_batch(receipt)
+                else:
+                    await self.writer.abort_prepared(receipt)
                 receipt = None
                 if self.executor.failed:
                     raise
                 await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
                     current.attempt_id, exc.blockers)
+            if priority == ENTRY_PAIR:
+                if result.phase != 'ACK':
+                    self._failed = True
+                    return DispatchResult('FAILED', ticker, priority,
+                        current.attempt_id,
+                        ('entry_pair_partial_reconciliation_required',),
+                        order_ids=result.order_ids)
+                return DispatchResult('ACK', ticker, priority, current.attempt_id,
+                                      order_ids=result.order_ids)
             return DispatchResult('ACK', ticker, priority, current.attempt_id,
                                   order_id=result.order_id)
         except BaseException:
             if receipt is not None and not consumed:
-                await self.writer.abort_prepared(receipt)
+                if priority == ENTRY_PAIR:
+                    await self.writer.abort_batch(receipt)
+                else:
+                    await self.writer.abort_prepared(receipt)
             await self._discard(permit)
             raise
 

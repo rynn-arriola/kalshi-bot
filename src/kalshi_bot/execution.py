@@ -1,4 +1,4 @@
-"""Durable fixture command handoff. No authenticated write transport."""
+"""Durable injected command handoff; live activation remains unavailable."""
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -10,7 +10,7 @@ from .command_capacity import (DEFAULT_POLICY, active_episode_evidence,
     episode_for_client, maybe_retire_episode, release_client_credits, status,
     validate_capacity)
 from .command_types import (CancelEvidence, CommandDenied, PreparationResult,
-    PreparedMutation, ReductionEvidence, SendResult)
+    PreparedBatch, PreparedMutation, ReductionEvidence, SendResult)
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 from .observability import NO_LOG
 
@@ -72,6 +72,58 @@ def acknowledgement(kind, request, response):
         return result
     except (KeyError, TypeError) as exc:
         raise InvalidData('incomplete V2 acknowledgement') from exc
+
+
+def validate_entry_pair(requests):
+    if type(requests) is not tuple or len(requests) != 2:
+        raise InvalidData('entry pair requires exactly two requests')
+    for request in requests:
+        validate_request('create', request)
+    if (len({row['ticker'] for row in requests}) != 1
+            or len({row['subaccount'] for row in requests}) != 1
+            or len({row['exchange_index'] for row in requests}) != 1
+            or len({row['client_order_id'] for row in requests}) != 2
+            or {row['side'] for row in requests} != {'bid', 'ask'}
+            or any(row['reduce_only'] is not False for row in requests)):
+        raise InvalidData('entry pair scope conflicts')
+    return requests
+
+
+def batch_acknowledgement(requests, response):
+    """Validate a two-row V2 batch response without assuming row ordering."""
+    validate_entry_pair(requests)
+    if not isinstance(response, dict) or type(response.get('orders')) is not list:
+        raise InvalidData('invalid batch mutation response')
+    rows = response['orders']
+    if len(rows) != 2 or any(not isinstance(row, dict) for row in rows):
+        raise InvalidData('incomplete batch mutation response')
+    expected = {row['client_order_id']: row for row in requests}
+    indexed = {}
+    for row in rows:
+        client = row.get('client_order_id')
+        if client is None:
+            # The schema permits a missing client id on errors. Position is not
+            # documented as an identity contract, so the whole outcome is unknown.
+            raise InvalidData('batch row lacks client identity')
+        client = identity(client)
+        if client not in expected or client in indexed:
+            raise InvalidData('batch client identity conflicts')
+        error = row.get('error')
+        if error is not None:
+            if not isinstance(error, dict) or not isinstance(error.get('code'), str):
+                raise InvalidData('invalid batch rejection evidence')
+            if any(row.get(field) is not None for field in (
+                    'order_id', 'fill_count', 'remaining_count', 'ts_ms')):
+                raise InvalidData('batch row mixes order and rejection evidence')
+            code = identity(error['code'])
+            # Persist only the bounded code; human text/details can contain
+            # arbitrary venue data and are not needed for exact no-order proof.
+            indexed[client] = {'state': 'rejected', 'client_order_id': client,
+                               'error_code': code}
+        else:
+            indexed[client] = {'state': 'ack', **acknowledgement(
+                'create', expected[client], row)}
+    return tuple(indexed[row['client_order_id']] for row in requests)
 
 
 def encoded_request(request):
@@ -453,6 +505,36 @@ def abort_prepared(ledger, receipt, *, writer_epoch, writer_revision, post_revis
     return SendResult(False, ('prepared_aborted',), post_revision)
 
 
+def begin_batch_send(ledger, batch, *, writer_epoch, writer_revision,
+                     post_revision, accounting_current=False):
+    if not isinstance(batch, PreparedBatch):
+        raise InvalidData('typed prepared batch required')
+    if batch.writer_revision != writer_revision:
+        return SendResult(False, ('stale_writer_evidence',), writer_revision)
+    try:
+        with ledger.transaction():
+            for receipt in batch.receipts:
+                result = begin_send(ledger, receipt, writer_epoch=writer_epoch,
+                    writer_revision=writer_revision, post_revision=post_revision,
+                    accounting_current=accounting_current)
+                if not result.dispatch_allowed:
+                    raise CommandDenied(result.blockers)
+    except CommandDenied as exc:
+        return SendResult(False, exc.blockers, writer_revision)
+    return SendResult(True, (), post_revision)
+
+
+def abort_batch(ledger, batch, *, writer_epoch, writer_revision, post_revision):
+    if not isinstance(batch, PreparedBatch):
+        raise InvalidData('typed prepared batch required')
+    with ledger.transaction():
+        results = tuple(abort_prepared(ledger, receipt,
+            writer_epoch=writer_epoch, writer_revision=writer_revision,
+            post_revision=post_revision) for receipt in batch.receipts)
+    blockers = tuple(dict.fromkeys(code for row in results for code in row.blockers))
+    return SendResult(False, blockers or ('prepared_aborted',), post_revision)
+
+
 def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
     if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
         raise InvalidData('invalid mutation outcome')
@@ -484,11 +566,60 @@ def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
             ledger.transition_intent(receipt.subject_id, 'UNKNOWN')
 
 
+def record_batch_outcome(ledger, batch, document, now, *, writer_epoch):
+    if not isinstance(batch, PreparedBatch):
+        raise InvalidData('typed prepared batch required')
+    if document is None:
+        rows = tuple({'state': 'unknown'} for _ in batch.receipts)
+    else:
+        rows = batch_acknowledgement(batch.requests, document)
+    with ledger.transaction():
+        for receipt, outcome in zip(batch.receipts, rows):
+            if outcome['state'] == 'ack':
+                record_outcome(ledger, 'ack', receipt, outcome, now,
+                               writer_epoch=writer_epoch)
+            elif outcome['state'] == 'unknown':
+                record_outcome(ledger, 'unknown', receipt, {}, now,
+                               writer_epoch=writer_epoch)
+            elif outcome['state'] == 'rejected':
+                row = ledger.connection.execute(
+                    'SELECT * FROM mutation_attempts WHERE id=?',
+                    (receipt.attempt_id,)).fetchone()
+                if row is None:
+                    raise InvalidData('batch rejection mutation missing')
+                authorization = validate_prepared_identity(ledger, receipt, row)
+                if row['phase'] != 'SENDING' or authorization['state'] != 'SENDING':
+                    raise InvalidData('batch rejection lacks sending evidence')
+                response = json.dumps(outcome, sort_keys=True, separators=(',', ':'))
+                ledger.connection.execute(
+                    "UPDATE mutation_attempts SET phase='REJECTED',response=? WHERE id=?",
+                    (response, receipt.attempt_id))
+                ledger.connection.execute(
+                    "UPDATE command_authorizations SET state='REJECTED' WHERE id=?",
+                    (receipt.authorization_id,))
+                ledger.transition_intent(receipt.subject_id, 'REJECTED')
+                release_client_credits(ledger, receipt.subject_id)
+            else:
+                raise InvalidData('unsupported batch outcome')
+        for episode in {row.episode_id for row in batch.receipts}:
+            maybe_retire_episode(ledger, episode)
+    return rows
+
+
 @dataclass(frozen=True)
 class AttemptResult:
     attempt_id: str
     phase: str
     order_id: str | None
+    reconciliation_required: bool = True
+
+
+@dataclass(frozen=True)
+class BatchAttemptResult:
+    batch_id: str
+    phase: str
+    order_ids: tuple[str, ...]
+    rejected_clients: tuple[str, ...]
     reconciliation_required: bool = True
 
 
@@ -646,3 +777,115 @@ class InjectedExecutor:
                 raise
             self.failed = False
             return AttemptResult(receipt.authorization_id, 'ACK', ack['order_id'])
+
+    async def execute_prepared_batch(self, batch, *, before_invoke=None):
+        completed = False
+        try:
+            result = await self._execute_prepared_batch(
+                batch, before_invoke=before_invoke)
+            completed = True
+            return result
+        finally:
+            if self.after_outcome is not None and (completed or self.failed or self.writer.failed):
+                notification = self.after_outcome()
+                if inspect.isawaitable(notification):
+                    if inspect.iscoroutine(notification):
+                        notification.close()
+                    self.failed = True
+                    raise InvalidData('outcome notification must not await')
+
+    async def _execute_prepared_batch(self, batch, *, before_invoke=None):
+        self.diagnostics.ensure_healthy()
+        if before_invoke is not None and (not callable(before_invoke)
+                                         or inspect.iscoroutinefunction(before_invoke)):
+            raise InvalidData('synchronous send-edge check required')
+        if not isinstance(batch, PreparedBatch):
+            raise InvalidData('typed prepared batch required')
+        requests = batch.requests
+        validate_entry_pair(requests)
+        invoke_batch = getattr(self.invoke, 'batch', None)
+        if not callable(invoke_batch):
+            raise CommandDenied(('batch_transport_unavailable',))
+        if self.lock.locked() or self.failed:
+            raise CommandDenied(('mutation_owner_busy_or_recovery_required',))
+        async with self.lock:
+            if self.validate_proof('batch_create', requests) is not True:
+                raise CommandDenied(('risk_account_book_proof_stale',))
+            send, cancelled = await self._retain(self.writer.begin_batch_send(batch))
+            if cancelled:
+                if send.dispatch_allowed:
+                    self.failed = True
+                    await self._retain(self.writer.record_batch_outcome(batch, None, self.now()))
+                raise asyncio.CancelledError
+            if not send.dispatch_allowed:
+                raise CommandDenied(send.blockers)
+            self.failed = True
+            finalized = False
+            try:
+                self.diagnostics.emit('mutation_sending', operation=batch.batch_id)
+                self.diagnostics.ensure_healthy()
+                if (self.writer.revision != send.writer_revision
+                        or not self.writer.entry_accounting_current(batch)
+                        or self.validate_proof('batch_create', requests) is not True):
+                    await self._retain(self.writer.record_batch_outcome(batch, None, self.now()))
+                    finalized = True
+                    raise CommandDenied(('proof_changed_before_submission',))
+                if tuple(encoded_request(row) for row in requests) != tuple(
+                        receipt.request_json for receipt in batch.receipts):
+                    raise InvalidData('batch dispatch terms differ from durable authorization')
+                if before_invoke is not None:
+                    edge_result = before_invoke()
+                    if inspect.isawaitable(edge_result):
+                        if inspect.iscoroutine(edge_result):
+                            edge_result.close()
+                        raise InvalidData('send-edge check must not await')
+                if (not self.writer.entry_accounting_current(batch)
+                        or self.writer.revision != send.writer_revision
+                        or self.validate_proof('batch_create', requests) is not True):
+                    raise CommandDenied(('proof_changed_before_submission',))
+                async with asyncio.timeout(self.timeout):
+                    reply = await invoke_batch(requests)
+                outcomes = batch_acknowledgement(requests, reply)
+            except BaseException as exc:
+                if not finalized:
+                    try:
+                        await self._retain(
+                            self.writer.record_batch_outcome(batch, None, self.now()))
+                        finalized = True
+                    except BaseException as persistence_error:
+                        raise persistence_error from exc
+                try:
+                    self.diagnostics.emit('mutation_unknown', error=exc,
+                                          operation=batch.batch_id)
+                except BaseException:
+                    pass
+                raise
+            try:
+                persisted, cancelled = await self._retain(
+                    self.writer.record_batch_outcome(batch, reply, self.now()))
+                finalized = True
+                rejected = tuple(row['client_order_id'] for row in persisted
+                                 if row['state'] == 'rejected')
+                order_ids = tuple(row['order_id'] for row in persisted
+                                  if row['state'] == 'ack')
+                self.diagnostics.emit('mutation_ack', operation=batch.batch_id,
+                    order_count=len(order_ids), rejected_count=len(rejected))
+                self.diagnostics.ensure_healthy()
+                if cancelled:
+                    raise asyncio.CancelledError
+            except BaseException as exc:
+                if not finalized:
+                    try:
+                        await self._retain(
+                            self.writer.record_batch_outcome(batch, None, self.now()))
+                    except BaseException:
+                        pass
+                try:
+                    self.diagnostics.emit('mutation_unknown', error=exc,
+                                          operation=batch.batch_id)
+                except BaseException:
+                    pass
+                raise
+            phase = 'PARTIAL' if rejected else 'ACK'
+            self.failed = bool(rejected)
+            return BatchAttemptResult(batch.batch_id, phase, order_ids, rejected)

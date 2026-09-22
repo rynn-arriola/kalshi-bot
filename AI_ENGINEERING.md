@@ -69,6 +69,12 @@ verification, safety and authority boundaries from `AI_OPERATOR.md`.
   source is adequate, block new risk; never fabricate state.
 - Data delivery and order commands are separate. Use documented mutation
   endpoints when authorized; do not invent WebSocket order commands.
+- D-072 entry quoting is one source-bound two-leg unit: reserve both legs in one
+  writer transaction, then submit one V2 batch create. Batch transport is not
+  assumed atomic. Identify every row by client order ID; any mixed, missing or
+  uncertain outcome requires reconciliation and no automatic retry. Charge the
+  documented per-order batch cost to the unscoped write bucket. Existing
+  single-create reducers and single-order cancels keep safety priority.
 - One account-state coordinator owns reconciled state; one mutation authority
   owns orders. Source generations, scope and timestamps prevent older REST
   responses overwriting newer stream evidence. Missing data means unknown.
@@ -96,6 +102,10 @@ verification, safety and authority boundaries from `AI_OPERATOR.md`.
   8,192 total mutation bounds and the 4,096 intent/order bounds; funded safety
   commands convert held capacity atomically. Never bypass credits, silently
   reclaim history, reuse a stale/old-epoch receipt or auto-migrate an old ledger.
+- Pair preparation may compose those D-060 reservations only when rollback is
+  all-or-none. The exact immutable pair must survive preparation, quota permit,
+  SENDING transition and transport. One writing worker per ledger remains the
+  scalability boundary; do not parallelize writes across the same account.
 - Preserve exact money/quantities with explicit fixed-point scales or Decimal.
   CPU optimizations cannot change monetary results.
 - Start with the simplest bounded concurrent design. Add workers/processes or

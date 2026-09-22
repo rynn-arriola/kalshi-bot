@@ -63,12 +63,12 @@ class BotConfig:
         return cls(**raw)
 
     def live_blockers(self) -> list[str]:
-        blockers = ["live activation is not authorized; live execution is not implemented"]
+        blockers = ["live activation is not authorized or available in this build"]
         if self.managed_market_slots is None:
             blockers.append("limits-driven capacity/exposure mapping is not implemented")
         blockers.extend([
             "account eligibility, stream entitlement and complete reconciliation unverified",
-            "market selection, event deadlines, exits and restart policy need final approval",
+            "production reward reflection, launch boundaries and restart acceptance remain unfinished",
             "complete history/stream proof, corrections and recovery integration remain unfinished",
         ])
         return blockers

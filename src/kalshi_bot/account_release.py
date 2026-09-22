@@ -52,6 +52,7 @@ class ReleaseResult:
     released: bool
     blockers: tuple[str, ...]
     release_digest: str | None = None
+    window: object = None  # writer-owned WindowState captured with the lease
     venue_handoff_proven: bool = False
     live_ready: bool = False
 
@@ -278,8 +279,10 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
         if not inserted:
             return ReleaseResult(False, ('accounting_journal_full',)), None
         conn.executemany('DELETE FROM accounting_holds WHERE code=?', ((code,) for code in holds))
+        from .risk import WindowRisk
+        window = WindowRisk(ledger).observe(now)
         lease = AccountingLease(uuid4().hex, epoch, opening['digest'], fingerprint, fence, evidence.cash)
-    return ReleaseResult(True, (), fingerprint), lease
+    return ReleaseResult(True, (), fingerprint, window), lease
 
 
 def validate_cash(ledger):

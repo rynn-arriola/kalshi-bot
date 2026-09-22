@@ -1,5 +1,15 @@
 # What exists
 
+## Source-bound entry pairs and bounded mutation transport — 2026-09-22
+
+[Build record](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md): selected additions now
+pass through atomic local bid/ask reservation, the existing quota dispatcher and
+one injected V2 batch call. Per-row ACK/rejection and whole-call uncertainty are
+durable and fail closed; mixed results require reconciliation. Single creates
+and cancels cover existing inventory-exit commands. Exact signable paths,
+bounded I/O and synthetic restart/resource checks are included. The production
+wire cannot be activated in this build; no live runner or authority exists.
+
 ## Automatic market admission/rotation — 2026-09-21
 
 [Build record](docs/BUILD_MARKET_ADMISSION.md): `admission.py` connects discovery

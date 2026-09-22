@@ -1,5 +1,15 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-072's [entry-pair dispatch and mutation transport](BUILD_ENTRY_DISPATCH_TRANSPORT.md)
+connects a current D-069 selection to one atomic local two-leg reservation and
+one Kalshi V2 batch request. The writer remains the sole risk/durability owner;
+the dispatcher reserves the documented per-order write cost from the unscoped
+batch bucket and rechecks source, accounting and quota evidence at the send
+edge. Per-row venue outcomes are not treated as atomic: mixed or unidentified
+results latch recovery and are never retried. The same bounded adapter exposes
+single create and cancel operations for existing inventory exits. Live
+activation remains unavailable and no runtime launcher constructs this adapter.
+
 D-071's [automatic admission owner](BUILD_MARKET_ADMISSION.md) now connects those
 candidate plans to joined book-reader replacement. One shard changes at a time;
 account/lifecycle connections remain independent. Exact flat/clear proof is
@@ -20,8 +30,8 @@ runtime/management observations, coalesced evaluations and risk primitives.
 Selection never becomes a second mutation owner. [Bounded incentive discovery](BUILD_INCENTIVE_DISCOVERY.md)
 now supplies immutable, expiring catalog observations through the shared REST
 budget. D-071 supplies subscription rotation above; verified resting-order
-reflection and entry-pair dispatch remain explicit work, not authority conferred
-by ranking or benchmarks.
+reflection remains explicit work; D-072 supplies entry-pair dispatch but no
+authority is conferred by ranking or benchmarks.
 
 Priority-3 [opening-account accounting design](DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
 now has [D-068 operational release](BUILD_ACCOUNT_RECONCILIATION.md) on top of
@@ -44,8 +54,9 @@ durable recording; uncertainty never releases authority or creates a retry loop.
 The [injected lifecycle service](BUILD_DISPATCH_LIFECYCLE.md) attaches to runtime
 task supervision, drains accepted outcomes before reader teardown and preserves
 UNKNOWN on fixture restart. It does not change the inert native S2A/S2B boundary.
-Verified production inputs, transport and supervised runtime integration
-remain unfinished. D-063 restores development in the primary session without
+Production mutation transport now exists behind D-072's unconstructible live
+activation boundary. Verified production inputs and native supervised runtime
+integration remain unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.
 
 D-059 [command capacity/handoff design](DESIGN_COMMAND_CAPACITY_HANDOFF.md),

@@ -103,8 +103,8 @@ or Polymarket modification occurred. Official docs were read through web researc
 
 ## Remaining outside #1
 
-Source-bound entry-pair dispatch and production mutation transport (#2), real
-reward reflection/checkpoint lifecycle (#3), real fees/timing/account inputs,
+#2 is implemented under [D-072](BUILD_ENTRY_DISPATCH_TRANSPORT.md). Real reward
+reflection/checkpoint lifecycle (#3), real fees/timing/account inputs,
 native supervisor and final readiness/launch remain. Incremental subscription
 updates are a future optimization, not a hidden prerequisite for the implemented
 joined replacement path. The existing one/two book-shard topology is retained;
