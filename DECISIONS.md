@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-083 — Gate new entries by value retention and projected reward
+
+- **Status:** ACCEPTED implementation, 2026-09-22.
+- **Decision owner:** Operator: “Ok lets add those filters,” after reviewing the
+  current public rewarded-market measurement.
+- **Scope:** A new size-10 two-sided entry must quote both current reference
+  prices at full reward weight, retain at least 70% of each side's entry value
+  under a full visible-depth immediate exit including the current fee bound, and
+  project at least $1 gross reward through the earlier program/entry deadline.
+  Candidates projecting at least $2 receive slots before the $1–<$2 fallback;
+  the existing ranking remains stable within each tier.
+- **Boundary:** These are initial-entry gates, not payout or profit guarantees.
+  Existing orders and inventory remain governed by their current management and
+  exit rules; this does not add hot repricing, reward-chasing cancellation, a
+  fixed market pool, live authority or a bot start.
+- **Contract:** [Entry-quality gates](docs/BUILD_ENTRY_QUALITY_GATES.md).
+
 ### D-082 — Admit the reviewed scheduled-release timing family
 
 - **Status:** ACCEPTED implementation, 2026-09-22.

@@ -16,6 +16,11 @@ resting order that no longer scores can still fill; it remains owned until
 terminal/fill reconciliation. Never replace it just because a new hypothetical
 quote would score. No estimated net P&L or invented fill probabilities.
 
+D-083 subsequently promotes that sub-$1 projection to a hard gate for **new**
+entries and adds a $2-first/$1-fallback tier plus per-side retained-value and
+exact-reference checks. Ranking diagnostics remain non-authorizing; incumbent
+management is unchanged. See [the current entry contract](BUILD_ENTRY_QUALITY_GATES.md).
+
 The runtime attachment is explicit/offline and uses the existing event engine's
 coalesced evaluations and invalidation. Program definitions are supplied with
 bounded observation/expiry evidence; no extra REST poller or WebSocket. Working

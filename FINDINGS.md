@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 120. Current scope supports a $2 priority tier with a $1 fallback — 2026-09-22
+
+MEASURED PUBLIC SNAPSHOT / VERIFIED CODE: a sequential credential-free snapshot
+of the 1,024 reviewed candidates joined 4,919 active incentive rows and found
+992 valid two-sided scoring pairs. At size 10 on both reference-price sides, 596
+passed a 70% per-side retained-value test, 218 also projected at least $1 through
+the bounded earning horizon, and 50 projected at least $2. All 50 $2 candidates
+also passed the retained-value gate. This supports a priority/fallback selector
+for the current maximum 15 two-order markets without removing the $1 fallback.
+
+D-083 implements that policy in the actual selection path. Remaining reward is
+recomputed as time decays; source revisions are still checked before dispatch.
+The counts are a non-simultaneous snapshot and do not guarantee later
+eligibility, $1 payment, fills or profitability. [Contract and boundaries](docs/BUILD_ENTRY_QUALITY_GATES.md).
+
 ## 119. Scheduled-release candidates unblock preparation; sports remain unknown — 2026-09-22
 
 VERIFIED CODE/PUBLIC DATA: the pre-fix public candidate loop accepted zero

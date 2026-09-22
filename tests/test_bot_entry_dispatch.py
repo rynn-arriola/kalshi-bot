@@ -277,7 +277,7 @@ class EntrySourceTests(unittest.IsolatedAsyncioTestCase):
             close_at=NOW+timedelta(hours=4),
             event_risk_at=NOW+timedelta(hours=2))
         self.runtime.management.set_terms(current_terms)
-        current_program = replace(program(), start=NOW-timedelta(hours=1),
+        current_program = replace(program(pool_centicents=5000000), start=NOW-timedelta(hours=1),
             end=NOW+timedelta(hours=1))
         self.selection.set_programs('A', (current_program,), observed_at=NOW,
             valid_until=NOW+timedelta(minutes=5))

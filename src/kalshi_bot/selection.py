@@ -26,11 +26,13 @@ class MarketSelector:
         self.board = RankingBoard(capacity)
         self._fees = {}
         self.exit_stress = {}  # Diagnostic loss on current visible depth, not expected loss.
+        self.entry_retained_value = {}  # Per-side current-depth value ratio after fee bound.
 
     def invalidate(self, ticker):
         for row in self.board.markets.get(ticker, ()):
             self._fees.pop((ticker, row.program_id), None)
             self.exit_stress.pop((ticker, row.program_id), None)
+            self.entry_retained_value.pop((ticker, row.program_id), None)
         self.board.invalidate(ticker)
 
     def update(self, book, programs, *, terms, now, valid_until, position=Decimal(0),
@@ -63,12 +65,12 @@ class MarketSelector:
             position=position, blockers=reasons, proposed=proposed, reflected=reflected,
             entry_until=terms.deadline)
         # Check every program's actual quote set, not just the current best row.
-        rows = []
+        rows, config = [], BotConfig()
         for row in self.board.markets[book.ticker]:
             if row.blockers:
                 rows.append(row)
                 continue
-            losses, complete = [], True
+            losses, retained_values, complete = [], [], True
             with localcontext() as ctx:
                 ctx.prec = 40
                 for q in row.quotes:
@@ -76,13 +78,22 @@ class MarketSelector:
                                        q.yes_price, terms.bands, fee, Decimal(1))
                     complete &= ok
                     losses.append(max(Decimal(0), -pnl))
+                    stake = q.quantity*(q.yes_price if q.side == 'bid' else 1-q.yes_price)
+                    retained_values.append((stake+pnl)/stake)
                 reserve = sum((q.quantity for q in row.quotes), Decimal(0))*fee
             if not complete:
                 row = replace(row, quotes=(), gross_hourly_usd=None, gross_remaining_usd=None,
-                              gross_hourly_per_capital=None, blockers=('exit_depth_missing',))
+                              gross_hourly_per_capital=None,
+                              blockers=row.blockers+('exit_depth_missing',))
             else:
-                self._fees[(row.ticker, row.program_id)] = reserve
                 self.exit_stress[(row.ticker, row.program_id)] = tuple(losses)
+                self.entry_retained_value[(row.ticker, row.program_id)] = tuple(retained_values)
+                if any(value < config.minimum_entry_retained_value for value in retained_values):
+                    row = replace(row, quotes=(), gross_hourly_usd=None,
+                                  gross_remaining_usd=None, gross_hourly_per_capital=None,
+                                  blockers=row.blockers+('entry_retained_value_below_minimum',))
+                else:
+                    self._fees[(row.ticker, row.program_id)] = reserve
             rows.append(row)
         self.board.markets[book.ticker] = tuple(rows)
 
@@ -130,9 +141,17 @@ class MarketSelector:
         additions, exclusions = [], []
         entries, spent = view.entry_count, Decimal(0)
         config = BotConfig()
+        ranked = self.board.ranked(now=now, by='selection')
+        # Stable tiers preserve the existing reward-rate/capital ordering within
+        # each tier while reserving available slots for projected $2+ programs.
+        ranked = tuple(sorted(ranked, key=lambda row: (
+            bool(row.blockers),
+            row.gross_remaining_usd is None
+            or row.gross_remaining_usd < config.priority_projected_reward_usd,
+        )))
         with localcontext() as ctx:
             ctx.prec = 40
-            for row in self.board.ranked(now=now, by='selection'):
+            for row in ranked:
                 blocked = row.blockers
                 if row.ticker in retained:
                     blocked += ('existing_owner_retained',)
@@ -144,8 +163,16 @@ class MarketSelector:
                             or any(q.quantity != config.entry_contracts for q in row.quotes)
                             or row.quote_basis != 'hypothetical_reference'):
                         blocked += ('unsupported_entry_pair',)
-                    elif row.gross_hourly_usd <= 0:
+                    elif (row.quote_statuses != ('full_price_weight', 'full_price_weight')
+                          or any(q.yes_price != (row.bid_reference if q.side == 'bid'
+                                                else row.ask_reference)
+                                 for q in row.quotes)):
+                        blocked += ('initial_quote_not_at_full_weight_reference',)
+                    elif row.gross_hourly_usd is None or row.gross_hourly_usd <= 0:
                         blocked += ('no_projected_reward',)
+                    elif (row.gross_remaining_usd is None
+                          or row.gross_remaining_usd < config.minimum_projected_reward_usd):
+                        blocked += ('projected_reward_below_minimum',)
                 if not blocked:
                     cost = row.capital_usd + self._fees[(row.ticker, row.program_id)]
                     blocked = admit_entry(config, window=window, ticker=row.ticker,

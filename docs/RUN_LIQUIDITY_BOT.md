@@ -86,8 +86,10 @@ Under D-079 the timing rows define the reviewed candidate universe (at most 1,02
 not a desired market count. The actual launcher attaches automatic admission:
 active reward discovery filters this universe, replaces only flat/clear book
 scope, resolves metadata on the existing shared reads and ranks fresh books.
-No sports-only filter, fixed 60-market pool or reward-chasing cancellation is
-introduced. Reviews survive subscription retirement; explicitly revoked reviews
+New entries must satisfy D-083's exact full-weight reference pair, 70% per-side
+retained-value and $1 projected-remaining-reward gates. $2+ candidates are
+offered slots before the $1–<$2 fallback. No sports-only filter, fixed 60-market
+pool or reward-chasing cancellation is introduced. Reviews survive subscription retirement; explicitly revoked reviews
 are not restored. On restart, durable exposure owners are added to the seed set; unresolved
 ownership retains the full reviewed universe for recovery, not entry permission.
 

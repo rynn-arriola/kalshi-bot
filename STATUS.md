@@ -1,5 +1,22 @@
 # Current status
 
+## Entry-quality filters implemented; live start still separate — 2026-09-22
+
+D-083 adds the accepted new-entry policy to the existing WebSocket selector.
+Both size-10 sides must be at their exact current reference prices with full
+reward weight, each must retain at least 70% of entry value under the current
+full-depth/fee exit stress, and the pair must project at least $1 through its
+bounded earning horizon. $2+ candidates take slots before $1–<$2 fallback
+candidates; the normal rate/efficiency ranking remains inside each tier.
+
+Focused selection, discovery, admission, dispatch and complete synthetic live
+composition tests pass. The full offline suite ran 1,434 tests in 215.907
+seconds with 1,433 passed and one expected Windows privilege skip. The 30/120
+market selection and admission resource gates pass. Existing orders and
+inventory are not canceled or repriced by this filter. No production process,
+credential, ledger, order or live launch was used.
+[Implementation contract](docs/BUILD_ENTRY_QUALITY_GATES.md).
+
 ## Candidate timing blocker fixed; live acceptance remains — 2026-09-22
 
 D-082 implements the bounded scheduled-release family from the

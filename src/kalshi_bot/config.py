@@ -14,6 +14,9 @@ class BotConfig:
     entry_contracts: Decimal = Decimal("10")
     max_resting_entries: int = 30
     window_stop_usd: Decimal = Decimal("25")
+    minimum_entry_retained_value: Decimal = Decimal("0.70")
+    minimum_projected_reward_usd: Decimal = Decimal("1")
+    priority_projected_reward_usd: Decimal = Decimal("2")
     # D-031: Poly's verified local default calibrates exposure, not occupancy.
     # D-023 keeps actual entry breadth limits-driven. None still fails closed
     # for explicitly unresolved configurations; never infer it from live counts.
@@ -25,13 +28,19 @@ class BotConfig:
     max_managed_markets: int = 128
 
     def __post_init__(self):
-        for name in ("capital_usd", "entry_contracts", "window_stop_usd"):
+        for name in ("capital_usd", "entry_contracts", "window_stop_usd",
+                     "minimum_entry_retained_value", "minimum_projected_reward_usd",
+                     "priority_projected_reward_usd"):
             object.__setattr__(self, name, decimal(getattr(self, name)))
         integer(self.schema_version, 1, 1)
         if (self.capital_usd, self.entry_contracts, self.window_stop_usd) != (
             Decimal("500"), Decimal("10"), Decimal("25")
         ):
             raise InvalidData("unapproved money/size setting")
+        if (self.minimum_entry_retained_value != Decimal("0.70")
+                or self.minimum_projected_reward_usd != Decimal("1")
+                or self.priority_projected_reward_usd != Decimal("2")):
+            raise InvalidData("unapproved entry-quality setting")
         integer(self.max_resting_entries, 30, 30)
         if self.live_enabled is not False:
             raise InvalidData("live execution is unavailable in this build")

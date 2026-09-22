@@ -41,7 +41,7 @@ class SelectionTests(unittest.TestCase):
 
     def add(self, ticker='A', **kwargs):
         b = kwargs.pop('book', replace(book(), ticker=ticker))
-        ps = kwargs.pop('programs', (program(ticker=ticker),))
+        ps = kwargs.pop('programs', (program(ticker=ticker, pool_centicents=5000000),))
         t = kwargs.pop('terms', terms(ticker))
         self.s.update(b, ps, terms=t, now=NOW, valid_until=NOW+timedelta(seconds=10), **kwargs)
 
@@ -52,16 +52,16 @@ class SelectionTests(unittest.TestCase):
         return self.s.propose(**args)
 
     def test_smaller_pool_beats_crowded_large_pool(self):
-        self.add('A', programs=(program(pool_centicents=1000000),))
+        self.add('A', programs=(program(pool_centicents=5000000),))
         crowded = replace(book(bids=(('.5', '10000'),), asks=(('.6', '10000'),)), ticker='B')
-        self.add('B', book=crowded, programs=(program(ticker='B', pool_centicents=2000000),))
+        self.add('B', book=crowded, programs=(program(ticker='B', pool_centicents=21000000),))
         result = self.choose()
         self.assertEqual([r.ticker for r in result.additions], ['A', 'B'])
         self.assertFalse(result.authorized)
         self.assertIsNone(result.additions[0].net_profit_usd)
 
     def test_duration_not_headline_pool(self):
-        self.add('A', programs=(program(end=NOW+timedelta(hours=9), pool_centicents=2000000),))
+        self.add('A', programs=(program(end=NOW+timedelta(hours=9), pool_centicents=18000000),))
         self.add('B')
         self.assertEqual(self.choose().additions[0].ticker, 'B')
 
@@ -79,13 +79,52 @@ class SelectionTests(unittest.TestCase):
 
     def test_deadline_caps_remaining_and_expires_without_tick(self):
         self.add(terms=terms(flatten_at=NOW+timedelta(seconds=5)))
-        row = self.choose().additions[0]
+        row = self.s.board.ranked(now=NOW, by='selection')[0]
         self.assertEqual(row.earning_until, NOW+timedelta(seconds=5))
         with localcontext() as ctx:
             ctx.prec = 40
             self.assertEqual(row.gross_remaining_usd, row.gross_hourly_usd*D(5)/3600)
         self.assertIn('remaining_projection_below_program_minimum_accrual_unknown', row.warnings)
+        report = self.choose()
+        self.assertFalse(report.additions)
+        self.assertIn('projected_reward_below_minimum', report.exclusions[0][1])
         self.assertFalse(self.choose(now=NOW+timedelta(seconds=5)).additions)
+
+    def test_entry_requires_seventy_percent_retained_value_on_each_side(self):
+        extreme = book(bids=(('.01', '1000'),), asks=(('.50', '1000'),))
+        self.add(book=extreme)
+        row = self.s.board.ranked(now=NOW, by='selection')[0]
+        self.assertIn('entry_retained_value_below_minimum', row.blockers)
+        ratios = self.s.entry_retained_value[('A', 'P')]
+        self.assertLess(ratios[0], D('.70'))
+        self.assertGreaterEqual(ratios[1], D('.70'))
+        self.assertFalse(self.choose().additions)
+
+    def test_two_dollar_priority_precedes_higher_rate_one_dollar_fallback(self):
+        self.add('A', programs=(program(pool_centicents=5000000),))
+        self.add('B', programs=(program(ticker='B', pool_centicents=8000000),),
+                 terms=terms('B', flatten_at=NOW+timedelta(minutes=20)))
+        rows = self.choose().additions
+        self.assertGreaterEqual(rows[0].gross_remaining_usd, D(2))
+        self.assertEqual(rows[0].ticker, 'A')
+        self.assertEqual(rows[1].ticker, 'B')
+        self.assertGreater(rows[1].gross_hourly_usd, rows[0].gross_hourly_usd)
+        self.assertGreaterEqual(rows[1].gross_remaining_usd, D(1))
+        self.assertLess(rows[1].gross_remaining_usd, D(2))
+
+    def test_below_one_dollar_is_excluded_and_full_reference_is_required(self):
+        self.add(programs=(program(pool_centicents=1000000),))
+        result = self.choose()
+        self.assertFalse(result.additions)
+        self.assertIn('projected_reward_below_minimum', result.exclusions[0][1])
+
+        self.add()
+        row = self.s.board.markets['A'][0]
+        self.s.board.markets['A'] = (replace(
+            row, quote_statuses=('discounted', 'full_price_weight')),)
+        result = self.choose()
+        self.assertFalse(result.additions)
+        self.assertIn('initial_quote_not_at_full_weight_reference', result.exclusions[0][1])
 
     def test_resting_quote_discounted_then_excluded_not_replaced_with_reference(self):
         proposed = (Quote('bid', D('.48'), D(10)), Quote('ask', D('.62'), D(10)))
@@ -137,7 +176,7 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(self.choose(view=view(entry_count=29)).additions)
 
     def test_capital_skips_unaffordable_and_tries_next_candidate(self):
-        self.add('A', programs=(program(pool_centicents=2000000),))
+        self.add('A', programs=(program(pool_centicents=10000000),))
         self.add('B', book=replace(book(bids=(('.1','1000'),), asks=(('.9','1000'),)), ticker='B'))
         result = self.choose(free_cash=D(3))
         self.assertEqual([r.ticker for r in result.additions], ['B'])
@@ -185,7 +224,8 @@ class SelectionTests(unittest.TestCase):
             self.assertFalse(self.choose().additions)
 
     def test_overlapping_programs_not_summed(self):
-        self.add(programs=(program(),program(program_id='P2',pool_centicents=2000000)))
+        self.add(programs=(program(pool_centicents=5000000),
+                           program(program_id='P2',pool_centicents=10000000)))
         row = self.choose().additions[0]
         self.assertEqual(row.program_id, 'P2')
         self.assertEqual(len(self.choose().additions), 1)
@@ -195,8 +235,9 @@ class SelectionTests(unittest.TestCase):
             self.add(programs=(program(program_id=str(i)),))
             self.assertEqual(len(self.s._fees), 1)
             self.assertEqual(len(self.s.exit_stress), 1)
+            self.assertEqual(len(self.s.entry_retained_value), 1)
         self.s.invalidate('A')
-        self.assertFalse(self.s._fees or self.s.exit_stress)
+        self.assertFalse(self.s._fees or self.s.exit_stress or self.s.entry_retained_value)
 
     def test_failed_update_revokes_prior_optimistic_row(self):
         self.add()
@@ -236,7 +277,8 @@ class SelectionTests(unittest.TestCase):
         self.add()
         with patch('kalshi_bot.selection.cross',side_effect=InvalidData('fixture')):
             with self.assertRaises(InvalidData): self.add()
-        self.assertFalse(self.s._fees or self.s.exit_stress or self.s.board.markets)
+        self.assertFalse(self.s._fees or self.s.exit_stress or self.s.entry_retained_value
+                         or self.s.board.markets)
 
     def test_unknown_and_negative_capital_inputs_never_get_rounded(self):
         self.add()
@@ -277,7 +319,7 @@ class RuntimeSelectionTests(unittest.IsolatedAsyncioTestCase):
     def publish(self, **kwargs):
         data=dict(observed_at=self.now,valid_until=self.now+timedelta(minutes=5))
         data.update(kwargs)
-        self.s.set_programs('A',(program(),),**data)
+        self.s.set_programs('A',(program(pool_centicents=5000000),),**data)
 
     async def book_event(self):
         name, shard = next(iter(self.r.engine.shards.items()))

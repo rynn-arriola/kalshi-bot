@@ -45,6 +45,9 @@ class ValueConfigTests(unittest.TestCase):
     def test_policy_defaults_follow_verified_poly_exposure_reference(self):
         config = BotConfig.load(ROOT / "config/bot.json")
         self.assertEqual(config.managed_market_slots, 20)
+        self.assertEqual(config.minimum_entry_retained_value, D('.70'))
+        self.assertEqual(config.minimum_projected_reward_usd, D(1))
+        self.assertEqual(config.priority_projected_reward_usd, D(2))
         self.assertEqual(config.portfolio_exposure_usd, 300)
         self.assertEqual(config, BotConfig())
         self.assertEqual(config.market_exposure_usd, 90)
@@ -57,6 +60,9 @@ class ValueConfigTests(unittest.TestCase):
     def test_drift_and_bool_settings_rejected(self):
         for kwargs in ({"entry_contracts": "9"}, {"capital_usd":"501"},
                        {"window_stop_usd":"10"}, {"live_enabled":True},
+                       {"minimum_entry_retained_value":".69"},
+                       {"minimum_projected_reward_usd":".99"},
+                       {"priority_projected_reward_usd":"1.99"},
                        {"live_enabled":0}, {"managed_market_slots":True},
                        {"managed_market_slots":41}, {"book_connections":1}):
             with self.subTest(kwargs=kwargs), self.assertRaises(InvalidData): BotConfig(**kwargs)

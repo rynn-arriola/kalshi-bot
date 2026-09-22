@@ -62,7 +62,7 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
             valid_until=f.now+timedelta(minutes=30), close_at=f.now+timedelta(hours=4),
             event_risk_at=f.now+timedelta(hours=2))
         self.runtime.management.set_terms(current_terms)
-        self.selection.set_programs('A', (replace(program(),
+        self.selection.set_programs('A', (replace(program(pool_centicents=5000000),
             start=f.now-timedelta(hours=1), end=f.now+timedelta(hours=1)),),
             observed_at=f.now, valid_until=f.now+timedelta(minutes=5))
         name = next(iter(self.runtime.engine.shards))

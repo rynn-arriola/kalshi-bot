@@ -2,7 +2,8 @@
 
 Ranks gross *unchanged-book* arithmetic. Each program keeps its own reference
 quotes and dates; incompatible overlapping programs are never added together.
-No loss estimate, fee assumption, payout entitlement or $1 eligibility is invented.
+This ranking layer does not itself invent loss, fee, payout or entry authority;
+the accepted $1 new-entry projection gate is applied by ``MarketSelector``.
 """
 from dataclasses import dataclass, replace
 from datetime import datetime

@@ -99,6 +99,11 @@ catalog rows as eligible, or refresh candidate authority over a non-flat or
 uncertain existing ledger. The next work is supervised live acceptance item 7;
 first live initialization remains a separately authorized operation.
 
+D-083's [entry-quality gates](docs/BUILD_ENTRY_QUALITY_GATES.md) now require
+exact full-weight reference quotes, 70% retained value per side and a $1
+remaining-reward floor, with $2+ candidates ahead of the $1–<$2 fallback. Do not
+turn these projections into payout/profit claims or add reward-chasing cancels.
+
 The [D-078 automatic reviewed-market selection](docs/BUILD_LIVE_SELECTION.md)
 integration is verified. D-079 now prepares those exact current rules/milestone
 bindings automatically. Do not replace missing timing with expiry or describe
@@ -156,8 +161,9 @@ do not rebuild it or treat time-to-$1 estimates as paid cash or exit authority.
 Its candidates now reach D-071 subscription admission and D-072 entry dispatch.
 Production reflection proof and explicit checkpoint ownership are integrated by
 D-073; unknown remains unknown whenever its short-lived join is absent.
-New category filters, payout gates and numerical rotation thresholds require
-their own decision, not an automatic copy of Poly configuration.
+D-083 supplies the accepted initial-entry payout/value gates. New category
+filters, rotation thresholds or incumbent repricing still require their own
+decision, not an automatic copy of Poly configuration.
 
 Priority 5 production reward reflection/checkpoint integration is complete.
 Next work is priority 6 runtime/readiness acceptance. Priority 4's

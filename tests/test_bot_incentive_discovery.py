@@ -17,7 +17,7 @@ def row(ticker='A', pid='p', **changes):
     result = dict(id=pid, market_ticker=ticker, incentive_type='liquidity',
         start_date=(fixtures.NOW-timedelta(hours=1)).isoformat(),
         end_date=(fixtures.NOW+timedelta(hours=1)).isoformat(),
-        target_size_fp='1000', discount_factor_bps=5000, period_reward=1000000, paid_out=False)
+        target_size_fp='1000', discount_factor_bps=5000, period_reward=5000000, paid_out=False)
     result.update(changes)
     return result
 

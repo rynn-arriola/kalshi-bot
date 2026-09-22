@@ -1,5 +1,14 @@
 # What exists
 
+## Entry-quality and reward-tier selection — 2026-09-22
+
+[D-083](docs/BUILD_ENTRY_QUALITY_GATES.md) requires exact full-weight reference
+quotes, at least 70% retained entry value per side and at least $1 projected
+remaining gross reward for every new pair. $2+ rows receive priority slots;
+$1–<$2 rows remain fallback. The gates reuse current WebSocket ranking and exact
+exit-fee/depth arithmetic and do not alter incumbent management or authorize a
+live start.
+
 ## Production supervisor integration — repaired and verified, 2026-09-22
 
 D-081 wiring and all seven [end-to-end review](docs/REVIEW_D081_END_TO_END.md)
