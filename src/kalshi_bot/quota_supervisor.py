@@ -20,7 +20,7 @@ class RolloverBoundary:
 
 
 class QuotaSupervisor:
-    def __init__(self, reads, *, jitter=random.random):
+    def __init__(self, reads, *, jitter=random.random, restriction_sink=None):
         if reads.quota is None or reads.quota_supervisor is not None or reads.used:
             raise InvalidData('supervisor requires unused guarded reads')
         self.reads, self.guard, self.jitter = reads, reads.quota, jitter
@@ -36,6 +36,9 @@ class QuotaSupervisor:
         self.rollover = None
         self.rollover_after = 0.
         self.rollover_used = False
+        if restriction_sink is not None and not callable(restriction_sink):
+            raise InvalidData('restriction sink must be callable')
+        self.restriction_sink = restriction_sink
         self.guard.listen(self._changed)
         reads.quota_supervisor = self
 
@@ -139,6 +142,11 @@ class QuotaSupervisor:
         delay = self.guard.policy.cooldown if self.exhausted else (5 if self.failures == 1 else 15)*(1+.2*jitter)
         self.not_before = self.guard.clock()+delay
         self.requested = not self.exhausted
+        if self.restriction_sink is not None:
+            if self.exhausted:
+                self.restriction_sink('quota_refresh_exhausted', delay, True)
+            else:
+                self.restriction_sink('quota_refresh', delay, False)
         self.diagnostics.emit('quota_exhausted' if self.exhausted else 'quota_retry',
                               attempt=self.failures, error=exc)
 

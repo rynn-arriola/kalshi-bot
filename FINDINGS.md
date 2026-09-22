@@ -1,5 +1,21 @@
 # Findings — kalshi-bot
 
+## 118. D-081 lifecycle blockers are repaired offline — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: all seven findings in the
+[end-to-end review](docs/REVIEW_D081_END_TO_END.md) now have production-path
+repairs and regressions. Restriction transitions persist atomically before their
+component continues and are transferred through authenticated fences; inherited
+cooldowns wait under parent heartbeat/stop supervision. A new explicit arm may
+retry exhausted quota but must obtain fresh quota proof before runtime. Temporary
+risk/accounting health remains diagnostic rather than a durable retry hold.
+
+The final complete suite ran 1,428 tests: 1,427 passed and one expected Windows
+privilege test skipped. Supervisor idle/resource, offline S2B, selection and
+admission gates pass. No production data, credential, venue request, bot process
+or live order was used. This closes software review findings, not live acceptance
+or profitability evidence.
+
 ## 117. Production wiring passed tests but missed lifecycle guarantees — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: [D-081 end-to-end review](docs/REVIEW_D081_END_TO_END.md)

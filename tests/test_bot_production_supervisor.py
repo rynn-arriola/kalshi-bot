@@ -8,6 +8,7 @@ from unittest.mock import patch
 from kalshi_bot import live
 from kalshi_bot.live_session import LiveSession
 from kalshi_bot.process_supervisor import SupervisorHost
+from kalshi_bot.recovery_fence import RecoveryFence
 from kalshi_bot.supervisor_control import ScopeSpec
 from kalshi_bot.supervisor_launch import (PRODUCTION_MODE,
     ProductionLaunchProfile, production_build_fingerprint,
@@ -25,11 +26,16 @@ class ProductionSupervisorTests(unittest.TestCase):
         self.assertEqual(normal.build_fingerprint, production_build_fingerprint())
         self.assertNotEqual(normal.config_fingerprint, opening.config_fingerprint)
         command = opening.command(Path("C:/Python/python.exe"), ["--scope-id", "x"],
-                                  recovery_only=True)
+                                  recovery_only=True, explicit_retry=True)
         self.assertEqual(command[:4], ["C:\\Python\\python.exe", "-B", "-m",
                                       "kalshi_bot.supervised_live_child"])
         self.assertIn("--initialize-approved", command)
         self.assertIn("--recovery-only", command)
+        self.assertIn("--explicit-retry", command)
+        self.assertTrue(opening.supports_fence)
+        self.assertEqual(opening.classify_exit(27), 'unexpected_death')
+        self.assertEqual(opening.classify_exit(-1), 'unexpected_death')
+        self.assertEqual(opening.classify_exit(20), 'startup_refused')
 
     def test_production_scope_is_exact(self):
         with TemporaryDirectory() as folder:
@@ -77,6 +83,11 @@ class ProductionSupervisorTests(unittest.TestCase):
             SimpleNamespace(recovery_reasons=())))
         self.assertTrue(profile.recovery_only(
             SimpleNamespace(recovery_reasons=("unexpected_death",))))
+        prior = RecoveryFence('parent', 'child', 1, 1)
+        self.assertFalse(profile.explicit_retry(
+            SimpleNamespace(generation=1), prior))
+        self.assertTrue(profile.explicit_retry(
+            SimpleNamespace(generation=2), prior))
 
     def test_recovery_only_never_combines_with_initialize(self):
         args = SimpleNamespace(initialize=True)

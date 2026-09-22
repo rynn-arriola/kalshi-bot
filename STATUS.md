@@ -1,14 +1,19 @@
 # Current status
 
-## Live start blocked: end-to-end supervisor review — 2026-09-22
+## End-to-end supervisor repairs verified offline — 2026-09-22
 
-The [D-081 review](docs/REVIEW_D081_END_TO_END.md) found seven unresolved defects
-in production ownership, preparation, recovery restrictions and terminal status.
-The previous software-ready statement below is withdrawn. Existing focused
-tests pass (7 production + 26 runtime), but six additional offline probes
-reproduce missing lifecycle coverage; one further omission is source-traced.
-Checklist items 2–6 are reopened. No code fix or live operation occurred;
-repair these integration defects before the first supervised live acceptance.
+All seven findings from the [D-081 review](docs/REVIEW_D081_END_TO_END.md) are
+implemented and covered by production-path regressions. Account ownership now
+survives exception drain; preparation/cooldown waits remain supervised; actual
+quota restrictions survive process loss; temporary health blockers do not become
+retry holds; recovery filters unrelated expired candidates; post-admission exits
+retain recovery semantics; and terminal flat status is saved only after cleanup.
+
+Final offline suite: **1,428 run, 1,427 passed, one expected Windows privilege
+skip**. Native 60-second supervision and 30/120-market runtime, selection and
+admission gates pass. No live process, credentials, venue request, production
+ledger or order was used. Software checklist items 2–6 are complete again;
+first supervised live acceptance remains separate item 7 and is not yet verified.
 
 ## D-081 production supervisor connected and verified offline — 2026-09-22
 

@@ -62,7 +62,18 @@ class ProductionLaunchProfile:
 
     @property
     def supports_fence(self):
-        return False
+        return True
+
+    @staticmethod
+    def classify_exit(returncode):
+        """Classify a production exit when its authenticated RESULT was lost."""
+        if type(returncode) is not int:
+            raise InvalidData("production child return code required")
+        # 27 is deliberately reserved for failure after IPC admission, where
+        # runtime/account ownership may have started. Other local validation and
+        # pre-admission codes cannot imply venue ownership.
+        return ("startup_refused" if 20 <= returncode <= 26 or returncode == 28
+                else "unexpected_death")
 
     @property
     def build_fingerprint(self):
@@ -81,18 +92,29 @@ class ProductionLaunchProfile:
         digest.update(config.read_bytes())
         return digest.hexdigest()
 
-    def command(self, executable, common, *, recovery_only):
+    def command(self, executable, common, *, recovery_only, explicit_retry=False):
+        if type(explicit_retry) is not bool:
+            raise InvalidData("production explicit retry flag must be boolean")
         command = [str(executable), "-B", "-m", "kalshi_bot.supervised_live_child",
                    *common, "--profile", self.mode]
         if self.initialize_approved:
             command.append("--initialize-approved")
         if recovery_only:
             command.append("--recovery-only")
+        if explicit_retry:
+            command.append("--explicit-retry")
         return command
 
     @staticmethod
     def recovery_only(state):
         return bool(state.recovery_reasons)
+
+    @staticmethod
+    def explicit_retry(state, prior_fence):
+        """A new generation is operator-armed; replacements retain generation."""
+        if not hasattr(state, 'generation'):
+            raise InvalidData('production supervisor state required')
+        return prior_fence is None or state.generation > prior_fence.child_generation
 
     @property
     def source_path(self):

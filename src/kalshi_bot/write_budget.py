@@ -173,7 +173,7 @@ class WriteBudget:
     """
 
     def __init__(self, snapshot, *, shards, now, offline_fixture=False,
-                 max_permits=128, live_session=None):
+                 max_permits=128, live_session=None, restriction_sink=None):
         from .live_session import permits
         if offline_fixture is not True and not permits(live_session):
             raise InvalidData('offline_fixture must be literally True')
@@ -194,6 +194,9 @@ class WriteBudget:
         self._buckets = {shard: _Bucket(self._last[0]) for shard in checked}
         self._validate_fresh(snapshot, self._last)
         self._costs = dict(snapshot.costs)
+        if restriction_sink is not None and not callable(restriction_sink):
+            raise InvalidData('restriction sink must be callable')
+        self.restriction_sink = restriction_sink
 
     @staticmethod
     def _validate_fresh(snapshot, now):
@@ -398,6 +401,8 @@ class WriteBudget:
         bucket.tokens, bucket.held, bucket.updated = Fraction(0), 0, current[0]
         self._permits = {key: item for key, item in self._permits.items()
                          if item[1][2] != shard}
+        if self.restriction_sink is not None:
+            self.restriction_sink('write_shared_429', float(duration))
 
     def status(self, *, now):
         reason = self._poll(now)

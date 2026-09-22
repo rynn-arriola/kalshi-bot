@@ -1,10 +1,30 @@
 # D-081 end-to-end review — 2026-09-22
 
 Reviewed code: `9a476a70fcfddb20d1bf16dd7abcd0b809b3019a`.
-**Live start is blocked by the findings below.** This supersedes the prior
-software-readiness statement; it does not change the accepted recovery policy.
-No implementation repair, live run, credential access, venue request, production
-ledger access or order operation was performed in this review.
+**RESOLVED OFFLINE:** all seven findings below are repaired and covered by
+regressions. This does not change the accepted recovery policy or prove live
+acceptance.
+The original review performed no implementation or live operation. The later
+resolution changed code and tests only; it did not access credentials, a venue,
+the production ledger or orders.
+
+## Resolution evidence — 2026-09-22
+
+- R1: the account lease encloses exception cleanup and retained task join.
+- R2: production enables authenticated recovery fences; exceptional quota state
+  is also atomically journaled at read/write/exhaustion transitions, restored
+  before activity, and cooldown waits retain parent supervision.
+- R3–R6: health/retry state is separated, preparation is supervised, recovery
+  scope is owner-aware, and production exit classification is profile-specific.
+- R7: terminal STOPPED_FLAT is saved only after all runtime resources join.
+- Direct repair regressions: **9 passed**. Existing production tests: **7 passed**;
+  live-runtime tests: **26 passed**; native supervisor tests: **12 passed**.
+- Final suite: **1,428 run, 1,427 passed, one expected privilege skip** in
+  216.181 seconds. Native 60-second parent and 30/120-market S2B, selection and
+  admission gates pass.
+
+No production account path was created and no external I/O occurred. Item 7,
+the first supervised live acceptance, remains unverified.
 
 ## Findings, in repair priority order
 

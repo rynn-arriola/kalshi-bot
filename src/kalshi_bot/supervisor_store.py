@@ -386,8 +386,14 @@ class SupervisorStore:
             prior = self.read_recovery_fence()
             if prior is not None and fence.fence_revision <= prior.fence_revision:
                 raise InvalidData("recovery-fence revision did not advance")
-            holds = tuple(dict.fromkeys(
-                (() if prior is None else prior.component_holds)+fence.component_holds))
+            same_incident = (prior is not None
+                and prior.child_generation == fence.child_generation)
+            # A later explicit ARM creates a new generation and is the explicit
+            # retry boundary for component exhaustion. Automatic replacements
+            # retain the generation and can never shorten those holds.
+            inherited_holds = (() if prior is None or not same_incident
+                               else prior.component_holds)
+            holds = tuple(dict.fromkeys(inherited_holds+fence.component_holds))
             deadlines = {}
             for item in (() if prior is None else prior.cooldowns)+fence.cooldowns:
                 deadlines[item.name] = max(deadlines.get(item.name, 0), item.deadline_utc)

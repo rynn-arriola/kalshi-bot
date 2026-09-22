@@ -7,10 +7,10 @@ task, startup entry, model switch or worker is installed.
 
 ## Current state
 
-**Do not launch yet:** the [end-to-end supervisor review](REVIEW_D081_END_TO_END.md)
-found seven unresolved integration defects. The commands below remain an
-operation reference, not current readiness evidence. Repair and re-review precede
-first supervised live acceptance; prior software-ready claims are withdrawn.
+The seven [end-to-end supervisor findings](REVIEW_D081_END_TO_END.md) are repaired
+and verified offline. The commands below remain an operation reference, not live
+acceptance evidence or independent authority to trade. First supervised live
+acceptance is still unverified and requires explicit operator launch authority.
 
 Software integration exists; **no supervised live trading launch is verified**. A complete
 synthetic graph starts quota, readers, recovery, opening accounting, metadata,

@@ -8,6 +8,26 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — production supervisor end-to-end lifecycle repairs
+
+- Account ownership previously ended before exception-path runtime drain. The
+  lease now remains held until the retained runtime task and resources join.
+- Production omitted durable quota state. Read/write cooldowns and exhaustion
+  now persist atomically at the component transition, cross authenticated
+  recovery fences, and are restored before any recovery activity.
+- Temporary risk/accounting blockers were promoted to permanent retry holds.
+  Health phase and durable process restrictions are now separate.
+- Candidate preparation and inherited cooldown waits now service heartbeat,
+  status and stop; pre-runtime stop cannot claim an existing account is flat.
+- Recovery now removes expired unrelated candidates but refuses a missing or
+  expired durable-owner review. Exit 27 and unknown production exits preserve
+  possible ownership. Verified-flat status is persisted only after cleanup.
+
+Verification: nine direct repair regressions, 1,428-test full suite (1,427 pass,
+one expected skip), native 60-second supervisor and 30/120-market resource gates.
+No live runtime or external service was used. Full mechanisms and evidence:
+[D-081 review](docs/REVIEW_D081_END_TO_END.md).
+
 ## 2026-09-22 — automatic candidate launch blockers and timing authority
 
 - First initialization emitted an unregistered diagnostic event, poisoning the

@@ -8,6 +8,7 @@ import asyncio
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -24,9 +25,12 @@ from .mutation_transport import OrderMutationTransport
 from .observability import Diagnostics, NO_LOG, safe_error
 from .quota import ProbeConfig, QuotaGuard, QuotaPolicy
 from .quota_supervisor import QuotaSupervisor
+from .recovery_fence import FenceCooldown, RecoveryFence
 from .rest import RestReads, TokenBudget
+from .restriction_journal import RestrictionJournal
 from .runtime import RecoveryRuntime, readonly_reader_factory
 from .startup import load_signer, save_result, _noop
+from .supervised_runtime import RuntimeRestrictions
 from .transport import MutationSigner
 from .values import InvalidData, integer
 from .windows import WindowsLease, WindowsStopEvent
@@ -83,6 +87,51 @@ class LaunchInputs:
                 or not set(seeds) <= {row.ticker for row in reviews}):
             raise InvalidData('initial subscriptions must be a nonempty reviewed subset')
         return cls(reviews, profile, tuple(integer(v, 0, 2**31-1) for v in shards), tuple(seeds))
+
+    @classmethod
+    def load_recovery(cls, path, now, owner_tickers):
+        """Load only current reviewed owners; unrelated expiry cannot block drain."""
+        if type(owner_tickers) not in (tuple, set, frozenset):
+            raise InvalidData('typed recovery owner scope required')
+        owners = frozenset(owner_tickers)
+        if any(type(ticker) is not str for ticker in owners):
+            raise InvalidData('invalid recovery owner ticker')
+        if path.stat().st_size > 1048576:
+            raise InvalidData('launch inputs exceed size limit')
+        raw = json.loads(path.read_text(encoding='utf-8-sig'))
+        required = {'timing_reviews', 'fee_profile', 'exchange_indices'}
+        if type(raw) is not dict or not required <= set(raw) or set(raw)-required-{'initial_tickers'}:
+            raise InvalidData('exact launch input fields required')
+        rows = raw['timing_reviews']
+        if type(rows) is not list or not 1 <= len(rows) <= 1024:
+            raise InvalidData('one to 1024 reviewed markets required')
+        reviews = tuple(TimingReview(**(row | {'valid_until': timestamp(row['valid_until'])}))
+                        for row in rows)
+        if len({row.ticker for row in reviews}) != len(reviews):
+            raise InvalidData('duplicate, expired or incomplete launch scope')
+        by_ticker = {row.ticker: row for row in reviews}
+        if (not owners <= set(by_ticker)
+                or any(by_ticker[ticker].valid_until <= now for ticker in owners)):
+            raise InvalidData('recovery owner review is missing or expired')
+        current = tuple(row for row in reviews if row.valid_until > now)
+        if not current:
+            raise InvalidData('recovery has no current reviewed scope')
+        if any(row.review_reference == 'automatic-primary-milestone-v1'
+               and row.early_close_reviewed for row in current):
+            raise InvalidData('duplicate, expired or incomplete launch scope')
+        profile = FeeProfile(**(raw['fee_profile'] | {
+            'valid_until': timestamp(raw['fee_profile']['valid_until'])}))
+        shards = raw['exchange_indices']
+        if (profile.valid_until <= now or type(shards) is not list
+                or not 1 <= len(shards) <= 128 or len(set(shards)) != len(shards)
+                or 0 not in shards):
+            raise InvalidData('duplicate, expired or incomplete launch scope')
+        # Recovery subscribes only durable owners. If the account is already
+        # locally empty, retain one current reviewed member for bounded account
+        # reconciliation; entries are paused before composition.
+        seeds = tuple(sorted(owners)) or (current[0].ticker,)
+        return cls(current, profile,
+                   tuple(integer(v, 0, 2**31-1) for v in shards), seeds)
 
 
 def _input_document(inputs):
@@ -145,6 +194,20 @@ async def refresh_candidate_inputs(path, now, diagnostics):
         trading_started=False)
 
 
+async def recovery_launch_inputs(path, ledger_path, now, diagnostics):
+    """Read durable local owners without credentials or venue access."""
+    writer = LedgerWriter(ledger_path, market_capacity=1024, diagnostics=diagnostics)
+    try:
+        await writer.start()
+        view = await writer.portfolio(subaccount=0, now=now)
+        owners = {ticker for ticker, quantity in view.positions if quantity}
+        owners.update(ticker for ticker, _ in view.exposure)
+        owners.update(row.fill.ticker for row in await writer.pending_fills(0))
+    finally:
+        await writer.close()
+    return LaunchInputs.load_recovery(path, now, owners)
+
+
 async def initial_scope(writer, inputs, now):
     """Seed subscriptions plus durable owners; does not approve their account state."""
     session = writer.live_session
@@ -198,6 +261,24 @@ async def local_status(runtime):
     report = runtime.account.current_report(runtime.now())
     release = runtime.accounting_result
     window = release.window if release is not None else None
+    quota = runtime.quota_supervisor
+    monotonic_now = runtime.clock()
+    cooldowns = []
+    read_delay = max(0., runtime.reads.budget.blocked_until-monotonic_now)
+    if read_delay:
+        cooldowns.append(dict(name='read_shared_429', remaining_seconds=read_delay))
+    if quota is not None:
+        quota_delay = max(0., quota.not_before-monotonic_now)
+        if quota_delay:
+            cooldowns.append(dict(name='quota_refresh', remaining_seconds=quota_delay))
+    if runtime.dispatch_supervisor is not None:
+        budget = runtime.dispatch_supervisor.dispatcher.budget
+        budget_status = budget.status(now=runtime.dispatch_supervisor.dispatcher.clock_pair())
+        write_delay = max((row[3] for row in budget_status.buckets), default=0.)
+        if write_delay:
+            cooldowns.append(dict(name='write_shared_429', remaining_seconds=write_delay))
+    restrictions = dict(component_holds=(['quota_refresh_exhausted']
+        if quota is not None and quota.exhausted else []), cooldowns=cooldowns)
     return dict(observed_at=runtime.now().isoformat(), pid=os.getpid(),
         entries_paused=runtime.live_session.entries_paused,
         entry_allowed=runtime.entry_allowed, resting_entries=view.entry_count,
@@ -205,7 +286,8 @@ async def local_status(runtime):
         exposure_usd=str(view.total), risk_blockers=list(view.blockers),
         account_current=report is not None,
         accounting_blockers=list(release.blockers) if release is not None else ['accounting_not_released'],
-        loss_window=asdict(window) if window is not None else None, runtime=runtime.status())
+        loss_window=asdict(window) if window is not None else None,
+        recovery_restrictions=restrictions, runtime=runtime.status())
 
 
 async def verified_flat(runtime):
@@ -268,7 +350,8 @@ async def supervise(runtime, *, stop, publish, interval=1):
 
 
 async def run(args, inputs, session, diagnostics, stop, *, publish_override=None,
-              recovery_only=False):
+              recovery_only=False, recovery_restrictions=None,
+              restriction_journal=None, explicit_retry=False):
     now, clock = lambda: datetime.now(timezone.utc), time.monotonic
     path = DATA/'account.db'
     if args.initialize and path.exists():
@@ -279,17 +362,62 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
         if args.initialize:
             raise InvalidData('recovery-only cannot initialize an account ledger')
         session.entries_paused = True
+    journal = (RestrictionJournal(DATA/'recovery-restrictions.json')
+               if restriction_journal is None else restriction_journal)
+    if not isinstance(journal, RestrictionJournal):
+        raise InvalidData('typed restriction journal required')
+    journal_holds, journal_cooldowns = journal.snapshot()
+    if type(explicit_retry) is not bool:
+        raise InvalidData('explicit retry flag must be boolean')
+    if explicit_retry:
+        journal_holds = ()
+    if recovery_restrictions is None:
+        recovery_restrictions = RuntimeRestrictions()
+        recovery_restrictions.apply(RecoveryFence('local-runtime', 'local-runtime',
+            0, 1, journal_holds, journal_cooldowns, False))
+    elif journal_holds or journal_cooldowns:
+        deadlines = {item.name:item.deadline_utc
+                     for item in recovery_restrictions.cooldowns}
+        for item in journal_cooldowns:
+            deadlines[item.name] = max(deadlines.get(item.name, 0), item.deadline_utc)
+        merged = RuntimeRestrictions()
+        merged.apply(RecoveryFence('local-runtime', 'local-runtime', 0, 1,
+            tuple(dict.fromkeys(recovery_restrictions.holds+journal_holds)),
+            tuple(FenceCooldown(name, deadline)
+                  for name,deadline in sorted(deadlines.items())), False))
+        recovery_restrictions = merged
+    if (not isinstance(recovery_restrictions, RuntimeRestrictions)
+            or not recovery_restrictions.applied):
+        raise InvalidData('applied recovery restrictions required')
+    if recovery_restrictions.holds:
+        raise InvalidData('unresolved recovery restriction hold')
     signer = load_signer(args.key_id_file, args.private_key_file)
     # Separate restricted signer, never a key in a status document or log.
     mutation_signer = MutationSigner(signer._key_id, args.private_key_file.read_bytes())
     writer = LedgerWriter(path, diagnostics=diagnostics, live_session=session)
     reads = RestReads(TokenBudget(rate=1, capacity=20, default_cost=10,
-        initial_tokens=20, clock=clock), signer, diagnostics=diagnostics)
+        initial_tokens=20, clock=clock, restriction_sink=journal.cooldown),
+        signer, diagnostics=diagnostics)
     reads.attach_quota(QuotaGuard(QuotaPolicy(ProbeConfig(1, 20, 10, 10)),
         clock=clock, now=now, diagnostics=diagnostics))
-    quota = QuotaSupervisor(reads)
+    def quota_restriction(name, seconds, hold):
+        if hold:
+            journal.hold(name, seconds)
+        else:
+            journal.cooldown(name, seconds)
+    quota = QuotaSupervisor(reads, restriction_sink=quota_restriction)
     runtime = None
+    result = None
     try:
+        wall_now = time.time()
+        for item in recovery_restrictions.cooldowns:
+            remaining = max(0., item.deadline_utc-wall_now)
+            if item.name == 'read_shared_429' and remaining:
+                reads.budget.throttle(remaining)
+            elif item.name == 'quota_refresh' and remaining:
+                quota.not_before = max(quota.not_before, clock()+remaining)
+            elif item.name != 'write_shared_429':
+                raise InvalidData('unknown recovery cooldown')
         await writer.start()
         status = await writer.accounting_status()
         if args.initialize:
@@ -303,13 +431,29 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
             OrderMutationTransport(mutation_signer, activation=session),
             inputs=inputs, boundary=boundary, now=now, clock=clock,
             diagnostics=diagnostics, quota=quota, initialize=args.initialize)
+        runtime.dispatch_supervisor.dispatcher.budget.restriction_sink = journal.cooldown
+        for item in recovery_restrictions.cooldowns:
+            remaining = max(0., item.deadline_utc-time.time())
+            if item.name == 'write_shared_429' and remaining:
+                budget = runtime.dispatch_supervisor.dispatcher.budget
+                for shard in inputs.exchange_indices:
+                    budget.pause_429(shard=shard, seconds=remaining,
+                                     now=runtime.dispatch_supervisor.dispatcher.clock_pair())
+        # A successful fresh quota bootstrap is the proof required to clear an
+        # explicitly retried exhaustion hold. Active inherited cooldowns remain.
+        journal.replace((), recovery_restrictions.cooldowns)
         def publish(value):
             document = value | {'run_id': session.run_id,
                                 'recovery_only': bool(recovery_only)}
+            evidence = document.get('recovery_restrictions', {})
+            journal.replace(tuple(evidence.get('component_holds', ())), tuple(
+                FenceCooldown(item['name'], math.ceil(
+                    time.time()+max(0., item['remaining_seconds'])))
+                for item in evidence.get('cooldowns', ())))
             save_result(DATA/'status.json', document)
             if publish_override is not None:
                 publish_override(document)
-        return await supervise(runtime, stop=lambda: stop.requested, publish=publish)
+        result = await supervise(runtime, stop=lambda: stop.requested, publish=publish)
     finally:
         session.close()
         try:
@@ -319,6 +463,16 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
                 await reads.close()
             finally:
                 await writer.close()
+    # Persist the terminal state only after every retained runtime resource has
+    # joined successfully. A cleanup error exits before this write.
+    if result is None or result.get('state') != 'STOPPED_FLAT':
+        raise InvalidData('live runtime ended without terminal flat result')
+    terminal = result | {'run_id': session.run_id,
+                         'recovery_only': bool(recovery_only)}
+    save_result(DATA/'status.json', terminal)
+    if publish_override is not None:
+        publish_override(terminal)
+    return terminal
 
 
 def main(argv=None):

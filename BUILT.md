@@ -1,12 +1,13 @@
 # What exists
 
-## Production supervisor integration — review blocked, 2026-09-22
+## Production supervisor integration — repaired and verified, 2026-09-22
 
-D-081 wiring exists, but is **not cleared for live start**. The
-[end-to-end review](docs/REVIEW_D081_END_TO_END.md) records seven unresolved
-integration defects, six reproduced offline. Focused tests pass (7 + 26), but
-do not establish the missing production-child lifecycle guarantees. Earlier
-offline suite results remain historical; repair and re-review are pending.
+D-081 wiring and all seven [end-to-end review](docs/REVIEW_D081_END_TO_END.md)
+repairs exist. The production child now uses authenticated recovery fences plus
+an atomic local restriction journal, retained ownership/cleanup, supervised
+preparation and cooldown waits, owner-specific recovery inputs and post-cleanup
+terminal status. Nine repair regressions and the 1,428-test suite pass; native
+and 30/120-market resource gates pass. Live acceptance remains unverified.
 
 ## Automatic rewarded-market preparation — 2026-09-22
 

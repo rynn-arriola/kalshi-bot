@@ -120,7 +120,7 @@ class TokenBudget:
     """Shared read-token bucket. Elapsed time is scheduling, never money math."""
     def __init__(self, *, rate: int, capacity: int, default_cost: int, costs=None,
                  clock=time.monotonic, sleep=asyncio.sleep, initial_tokens=None,
-                 background_reserve=0, waiter_limit=128):
+                 background_reserve=0, waiter_limit=128, restriction_sink=None):
         self.rate = integer(rate, 1, 1000000)
         self.capacity = integer(capacity, 1, 1000000)
         self.default_cost = integer(default_cost, 1, self.capacity)
@@ -143,6 +143,9 @@ class TokenBudget:
         self.serial = self.throttles = self.configuration_revision = 0
         self.configured_at = None
         self._quota_owner = None
+        if restriction_sink is not None and not callable(restriction_sink):
+            raise InvalidData('restriction sink must be callable')
+        self.restriction_sink = restriction_sink
 
     def _wake_waiters(self):
         previous = self.changed
@@ -254,6 +257,8 @@ class TokenBudget:
         self.updated = self.clock()
         self.blocked_until = max(self.blocked_until, self.updated+delay)
         self.throttles += 1
+        if self.restriction_sink is not None and delay:
+            self.restriction_sink('read_shared_429', delay)
         self._wake_waiters()
 
 

@@ -19,6 +19,7 @@ from .supervisor_fixture import (build_fingerprint, config_fingerprint,
 from .supervisor_launch import ProductionLaunchProfile
 from .supervisor_protocol import (CHILD_KINDS, Envelope, MessageKind,
                                   SequenceTracker, validate_peer)
+from .supervisor_store import SupervisorStore
 from .recovery_fence import FenceCooldown, RecoveryFence
 from .values import InvalidData, identity
 from .windows import (WindowsPowerMonitor, WindowsRoleLease, WindowsStopLatch,
@@ -30,7 +31,7 @@ class OwnedChild:
     """Spawn preparation retained by the host even after uncertain failures."""
     def __init__(self, scope, stop_latch, *, parent_session, child_id,
                  child_generation, mode, launch_guard=None, profile=None,
-                 recovery_only=False):
+                 recovery_only=False, explicit_retry=False):
         self.scope, self.stop_latch = scope, stop_latch
         self.parent_session = identity(parent_session)
         self.child_id = identity(child_id)
@@ -40,6 +41,7 @@ class OwnedChild:
             raise InvalidData("fixed production launch profile required")
         self.profile = profile
         self.recovery_only = bool(recovery_only)
+        self.explicit_retry = bool(explicit_retry)
         self.launch_guard = launch_guard
         self.lease = WindowsRoleLease(scope.scope_id, "child",
                                       user_sid=scope.approved_user_sid)
@@ -51,6 +53,8 @@ class OwnedChild:
         self.result = None
         self.fence_revision = 0
         self.terminal_fence_revision = 0
+        self.component_holds = ()
+        self.cooldowns = ()
         self.stop_hint_sent = False
         self._bind_task = None
         self._close_task = None
@@ -141,7 +145,8 @@ class OwnedChild:
                        *common, "--mode", self.mode]
         else:
             command = self.profile.command(base_executable, common,
-                                           recovery_only=self.recovery_only)
+                recovery_only=self.recovery_only,
+                explicit_retry=self.explicit_retry)
         if self.launch_guard is not None:
             self.launch_guard()
         if self.stop_latch.requested:
@@ -323,13 +328,20 @@ class SupervisorHost:
                 time.time(), attention_reason=AttentionReason.IPC_FAILURE))
             return
         child_id = uuid4().hex
+        explicit_retry = False
+        if self.launch_profile is not None:
+            prior_fence = SupervisorStore.read_only_recovery_fence(
+                self.scope.store_path, scope_id=self.scope.scope_id,
+                security_sid=self.scope.approved_user_sid)
+            explicit_retry = self.launch_profile.explicit_retry(state, prior_fence)
         factory = OwnedChild(self.scope, self._stop_latch,
             parent_session=self.parent_session, child_id=child_id,
             child_generation=state.generation, mode=self.fixture_mode,
             launch_guard=self._guard, profile=self.launch_profile,
             recovery_only=(bool(state.recovery_reasons)
                 if self.launch_profile is None
-                else self.launch_profile.recovery_only(state)))
+                else self.launch_profile.recovery_only(state)),
+            explicit_retry=explicit_retry)
         event = SupervisorEvent(EventKind.START_REQUESTED, time.time(),
             expected_generation=state.generation, child_id=child_id)
         self.child = factory
@@ -418,6 +430,8 @@ class SupervisorHost:
                 message.payload["terminal_checkpoint_complete"])
             receipt = await self.owner.submit("fence", fence)
             self.child.fence_revision = revision
+            self.child.component_holds = receipt.value.component_holds
+            self.child.cooldowns = receipt.value.cooldowns
             if fence.terminal_checkpoint_complete:
                 self.child.terminal_fence_revision = revision
             try:
@@ -452,8 +466,11 @@ class SupervisorHost:
         if payload is None:
             # The fixed fixture reserves 20..30 for local validation/safety
             # refusal. Inert crash mode uses 7; never retry known safety faults.
-            outcome = (ChildOutcome.STARTUP_REFUSED if 20 <= returncode <= 30
-                       else ChildOutcome.UNEXPECTED_DEATH)
+            if self.launch_profile is not None:
+                outcome = ChildOutcome(self.launch_profile.classify_exit(returncode))
+            else:
+                outcome = (ChildOutcome.STARTUP_REFUSED if 20 <= returncode <= 30
+                           else ChildOutcome.UNEXPECTED_DEATH)
             cleanup_complete = cleanup_failed = False
             unresolved_work = True
             holds = ()
@@ -468,10 +485,17 @@ class SupervisorHost:
                 outcome = ChildOutcome.INTEGRITY_FAILURE
                 cleanup_complete = False
                 unresolved_work = True
-        if self.launch_profile is None and self.fixture_mode.startswith("runtime_"):
+        fence_required = ((self.launch_profile is None
+                           and self.fixture_mode.startswith("runtime_"))
+                          or (self.launch_profile is not None
+                              and self.launch_profile.supports_fence))
+        if fence_required:
             terminal_known = child.terminal_fence_revision == child.fence_revision > 0
             if payload is None or outcome == ChildOutcome.UNEXPECTED_DEATH or not terminal_known:
-                holds = tuple(dict.fromkeys(holds+("recovery_fence_unknown",)))
+                unknown = (self.launch_profile is None
+                    or child.fence_revision == 0)
+                holds = tuple(dict.fromkeys(holds+child.component_holds
+                    + (("recovery_fence_unknown",) if unknown else ())))
                 cleanup_complete = False
                 unresolved_work = True
                 if payload is not None and outcome == ChildOutcome.CLEAN:
@@ -656,6 +680,24 @@ class SupervisorHost:
             if receipt.state.child_id is not None:
                 stop_owner.request_owned()
             elif self.arm_on_start:
+                if self.launch_profile is not None and receipt.state.retry_holds:
+                    fence = SupervisorStore.read_only_recovery_fence(
+                        self.scope.store_path, scope_id=self.scope.scope_id,
+                        security_sid=self.scope.approved_user_sid)
+                    resolvable = (() if fence is None else tuple(hold
+                        for hold in receipt.state.retry_holds
+                        if hold in fence.component_holds))
+                    if (resolvable
+                            and set(resolvable) == set(receipt.state.retry_holds)):
+                        cleared = await self.owner.submit("resolve_fence",
+                            SupervisorEvent(EventKind.HOLDS_RESOLVED, time.time(),
+                                expected_generation=receipt.state.generation,
+                                retry_holds=resolvable),
+                            dict(expected_fence_revision=fence.fence_revision,
+                                 component_holds=resolvable, cooldown_names=(),
+                                 parent_session=self.parent_session))
+                        receipt = cleared
+                        self.controller_state = receipt.state
                 build, config = self.fingerprints
                 armed = await self._apply(SupervisorEvent(EventKind.ARM,
                     time.time(), expected_generation=receipt.state.generation,
