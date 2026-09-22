@@ -103,6 +103,37 @@ def _append(ledger, kind, key, payload, at):
     return fingerprint, True
 
 
+def _cash_activity_rows(evidence):
+    """Yield the canonical journal identity for every retained cash event."""
+    for kind, rows in (('subaccount_transfer', evidence.subaccount_transfers),
+                       ('intra_exchange_transfer', evidence.intra_exchange_transfers),
+                       ('funding', evidence.funding)):
+        for row in rows:
+            key = ([row.kind, row.record_id] if kind == 'funding' else [row.transfer_id])
+            payload = encode(row)
+            event_key = encode(key)
+            yield kind, event_key, payload, digest(encode([kind, event_key, payload]))
+
+
+def cash_activity_matches_baseline(ledger, evidence):
+    """Prove current, retained and explicitly attributed cash events are exact."""
+    baseline = ledger.connection.execute(
+        'SELECT payload FROM accounting_baseline WHERE id=1').fetchone()
+    if baseline is None:
+        return False
+    approved = json.loads(baseline['payload']).get('attributed_cash_activity', ())
+    approved = tuple(sorted((row.get('kind'), row.get('digest')) for row in approved))
+    if not approved or any(kind not in {
+            'funding', 'intra_exchange_transfer'} for kind, _ in approved):
+        return False
+    current = tuple(sorted((kind, fingerprint)
+                           for kind, _, _, fingerprint in _cash_activity_rows(evidence)))
+    retained = tuple(sorted(tuple(row) for row in ledger.connection.execute(
+        "SELECT kind,digest FROM accounting_events WHERE kind IN "
+        "('funding','intra_exchange_transfer','subaccount_transfer')")))
+    return current == approved == retained
+
+
 def validate_accounting(ledger):
     """Cold startup audit only; entry checks never scan journal history."""
     conn = ledger.connection
@@ -241,14 +272,11 @@ def capture(ledger, evidence, report, *, writer_epoch, writer_revision,
         for row in evidence.settlements:
             # Composite identity is local; changed versions remain evidence.
             _append(ledger, 'settlement', encode([evidence.subaccount, *row.key]), encode(row), at)
-        for kind, rows in (('subaccount_transfer', evidence.subaccount_transfers),
-                           ('intra_exchange_transfer', evidence.intra_exchange_transfers),
-                           ('funding', evidence.funding)):
-            if rows:
-                _hold(ledger, 'cash_activity_unattributed', fingerprint, at)
-            for row in rows:
-                key = ([row.kind, row.record_id] if kind == 'funding' else [row.transfer_id])
-                _append(ledger, kind, encode(key), encode(row), at)
+        cash_activity = tuple(_cash_activity_rows(evidence))
+        for kind, key, row_payload, _ in cash_activity:
+            _append(ledger, kind, key, row_payload, at)
+        if cash_activity and not cash_activity_matches_baseline(ledger, evidence):
+            _hold(ledger, 'cash_activity_unattributed', fingerprint, at)
         if eligible_candidate and cash_kind == 'cash' and not conn.execute(
                 "SELECT 1 FROM accounting_holds WHERE code='accounting_journal_full'").fetchone():
             conn.execute('INSERT INTO opening_checkpoint VALUES (1,?,?,?,?,?)',

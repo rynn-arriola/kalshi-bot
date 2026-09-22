@@ -266,6 +266,18 @@ class OpeningAccountingAssessment:
             raise InvalidData('opening assessment cannot grant authority')
 
 
+def cash_snapshot_agrees(cash, snapshot):
+    """Compare economics across sequential balance reads.
+
+    Kalshi advances ``updated_ts`` on an otherwise unchanged balance response.
+    The opening inspection necessarily follows the account snapshot, so a
+    later timestamp is acceptable only when available cash is unchanged. A
+    regressed timestamp or changed amount remains a failed bracket.
+    """
+    return (cash.available == snapshot.available_balance
+            and cash.updated_ts >= snapshot.balance_updated_ts)
+
+
 def assess_opening_accounting(evidence: OpeningAccountEvidence, report):
     """Classify exact local flat/cash observations without promoting them.
 
@@ -291,9 +303,7 @@ def assess_opening_accounting(evidence: OpeningAccountEvidence, report):
             and audit.pending_fills == 0
             and not report.snapshot.orders
             and not any(row.quantity != 0 for row in report.snapshot.positions))
-    cash_agrees = ((evidence.cash.available, evidence.cash.updated_ts) ==
-                   (report.snapshot.available_balance,
-                    report.snapshot.balance_updated_ts))
+    cash_agrees = cash_snapshot_agrees(evidence.cash, report.snapshot)
     blockers = list(evidence.blockers)
     if not flat:
         blockers.append('local_flat_candidate_unproven')
@@ -477,8 +487,7 @@ def _prepare_opening_evidence(*, report, continuity, proposed_boundary, subaccou
         blockers.append('opening_resting_orders_present')
     if Decimal(cash.legacy_balance_cents)/100 != cash.available:
         blockers.append('legacy_balance_precision_unverified')
-    if ((cash.available, cash.updated_ts) !=
-            (report.snapshot.available_balance, report.snapshot.balance_updated_ts)):
+    if not cash_snapshot_agrees(cash, report.snapshot):
         blockers.append('cash_changed_since_account_snapshot')
     base = OpeningAccountEvidence(scope, boundary, observed, writer_epoch,
         writer_revision, cash, (), (), (), (), tuple(sources),

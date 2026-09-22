@@ -149,6 +149,18 @@ class OpeningEvidenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('observed_settlement_requires_reconciliation', result.blockers)
         self.assertFalse(result.ready_for_entry)
 
+    async def test_later_unchanged_balance_timestamp_keeps_cash_bracket(self):
+        evidence = self.build(cash_document=balance() | dict(updated_ts=2))
+        result = assess_opening_accounting(evidence, self.report)
+        self.assertTrue(result.cash_snapshot_agrees)
+        self.assertNotIn('cash_changed_since_account_snapshot', result.blockers)
+
+        regressed_report = replace(self.report, snapshot=replace(
+            self.report.snapshot, balance_updated_ts=3))
+        regressed = assess_opening_accounting(evidence, regressed_report)
+        self.assertFalse(regressed.cash_snapshot_agrees)
+        self.assertIn('cash_changed_since_account_snapshot', regressed.blockers)
+
     async def test_old_settlement_is_historical_not_new_settlement_pause(self):
         old = settlement(settled_time='2026-09-21T10:00:00Z')
         result = assess_opening_accounting(self.build(

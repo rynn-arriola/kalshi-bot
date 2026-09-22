@@ -64,6 +64,18 @@ The focused live/account/supervisor set passed 75 tests, and the complete suite
 then ran 1,446 tests in 219.163 seconds: 1,445 passed and one expected Windows
 privilege skip.
 
+Generation 4 exposed two follow-on mismatches in the operational release. The
+venue returned the same available cash on its sequential balance reads while
+advancing `updated_ts` by one second, and each complete cash-history scan again
+returned the two events already attributed by the opening baseline. Release now
+accepts a forward-only balance timestamp only when available cash is unchanged.
+It also treats prior cash activity as attributed only when the current API set,
+the retained journal set and the baseline's approved `(kind, digest)` set are
+all exact and non-empty. New, missing, changed, post-boundary or subaccount cash
+activity continues to install a durable hold. This exact match can clear the
+legacy stale hold only inside the ordinary operational-release transaction.
+Focused opening/accounting/release verification passes 81 tests.
+
 ## Verification
 
 Focused accounting/account-release/supervisor tests: 68 passed. The supported

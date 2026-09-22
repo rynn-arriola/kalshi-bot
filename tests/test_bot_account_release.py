@@ -33,16 +33,20 @@ BOUNDARY = NOW-timedelta(hours=1)
 
 
 class Reads:
-    def __init__(self, cash=None, settlements=()):
+    def __init__(self, cash=None, settlements=(), deposits=(), intra_transfers=()):
         self.cash = cash or balance()
         self.settlements = settlements
+        self.deposits = deposits
+        self.intra_transfers = intra_transfers
 
     async def read(self, name, **kwargs):
         assert name == 'balance'
         return ReadResult(self.cash, 1)
 
     async def collect(self, name, **kwargs):
-        return PageSet(self.settlements if name == 'settlements' else (), 1, 20, name,
+        rows = {'settlements': self.settlements, 'deposits': self.deposits,
+                'intra_exchange_transfers': self.intra_transfers}.get(name, ())
+        return PageSet(rows, 1, 20, name,
             (('subaccount', 0), ('min_ts', int(BOUNDARY.timestamp())-1))
             if name == 'settlements' else (), True)
 
@@ -59,7 +63,16 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.account.connect_generation()
         await self.open_epoch()
         await self.refresh()
-        captured = await self.account.reconcile_accounting(Reads(), proposed_boundary=BOUNDARY,
+        old = int((BOUNDARY-timedelta(days=1)).timestamp())
+        self.deposit = dict(id='personal-deposit', status='applied', type='ach',
+            amount_cents=50000, fee_cents=0, created_ts=old)
+        self.transfer = dict(transfer_id='completed-transfer', source='event_contract',
+            destination='event_contract', source_exchange_shard=0,
+            destination_exchange_shard=1, amount='.44', status='complete',
+            created_ts=old)
+        captured = await self.account.reconcile_accounting(
+            Reads(deposits=(self.deposit,), intra_transfers=(self.transfer,)),
+            proposed_boundary=BOUNDARY,
             continuity=self.continuity, now=lambda: self.now)
         self.checkpoint = captured.status.checkpoint_digest
         self.assertIsNotNone(self.checkpoint)
@@ -91,7 +104,8 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             self.epoch.epoch_id, 'open', True, False, ('venue_history_stream_handoff_unproven',))
 
     async def release(self, *, reads=None):
-        return await self.account.reconcile_accounting(reads or Reads(self.cash),
+        return await self.account.reconcile_accounting(reads or Reads(self.cash,
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)),
             proposed_boundary=BOUNDARY, continuity=self.continuity, now=lambda: self.now, release=True)
 
     async def ready(self):
@@ -119,6 +133,40 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             payload = json.loads(conn.execute('SELECT payload FROM accounting_events WHERE digest=?',
                                               (result.release_digest,)).fetchone()[0])
             self.assertIn('opening_proof_unresolved', [r[0] for r in payload['resolved']])
+
+    async def test_exact_approved_cash_activity_clears_legacy_stale_hold(self):
+        await self.writer.close()
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute("INSERT INTO accounting_holds VALUES "
+                         "('cash_activity_unattributed','legacy-stale-hold',?)",
+                         (self.now.isoformat(),))
+            conn.commit()
+        self.writer = await LedgerWriter(self.path).start()
+        self.account = AccountCoordinator(self.writer, subaccount=0, clock=lambda: self.tick)
+        self.account.connect_generation()
+        await self.open_epoch()
+        await self.refresh()
+        result = await self.release()
+        self.assertTrue(result.released, result.blockers)
+        self.assertNotIn('cash_activity_unattributed',
+                         (await self.writer.accounting_status()).holds)
+
+    async def test_new_cash_activity_after_baseline_remains_blocked(self):
+        await self.refresh()
+        later = self.deposit | dict(id='later-deposit', amount_cents=1,
+            created_ts=int((BOUNDARY+timedelta(seconds=1)).timestamp()))
+        result = await self.release(reads=Reads(self.cash,
+            deposits=(self.deposit, later), intra_transfers=(self.transfer,)))
+        self.assertFalse(result.released)
+        self.assertIn('cash_activity_unattributed', result.blockers)
+
+    async def test_later_unchanged_balance_timestamp_releases(self):
+        self.cash = self.cash | dict(updated_ts=2)
+        await self.refresh()
+        later = self.cash | dict(updated_ts=3)
+        result = await self.release(reads=Reads(later,
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertTrue(result.released, result.blockers)
 
     async def test_live_authorization_is_still_independent(self):
         await self.ready()

@@ -10,8 +10,10 @@ import json
 from threading import Event
 from uuid import uuid4
 
-from .accounting import encode, digest, _append, _hold, entry_blockers
+from .accounting import (encode, digest, _append, _hold, entry_blockers,
+                         cash_activity_matches_baseline)
 from .continuity import REQUIRED_PRIVATE_CHANNELS
+from .opening_account import cash_snapshot_agrees
 from .orders import OrderUpdate, timestamp_us
 from .values import InvalidData, decimal, identity, utc
 
@@ -311,13 +313,15 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
     if (evidence.subaccount != 0 or report.snapshot.subaccount != 0
             or (report.audit.writer_epoch, report.audit.writer_revision) != (epoch, revision)
             or not timedelta(0) <= utc(now)-report.observed_at <= timedelta(seconds=5)
-            or (evidence.cash.available, evidence.cash.updated_ts) !=
-               (report.snapshot.available_balance, report.snapshot.balance_updated_ts)):
+            or not cash_snapshot_agrees(evidence.cash, report.snapshot)):
         blockers.append('accounting_cash_bracket_changed')
     if opening and evidence.proposed_boundary.isoformat() != opening['boundary']:
         blockers.append('opening_boundary_changed')
     holds = set(entry_blockers(ledger))-{'accounting_lease_required'}
-    blockers.extend(holds-TRANSIENT)
+    attributed_cash_hold = ({'cash_activity_unattributed'}
+        if ('cash_activity_unattributed' in holds
+            and cash_activity_matches_baseline(ledger, evidence)) else set())
+    blockers.extend(holds-TRANSIENT-attributed_cash_hold)
     if baseline:
         local = {r[0]: decimal(Decimal(r[1])) for r in conn.execute('SELECT * FROM accounting_cash')}
         venue = {r.exchange_index: r.available for r in evidence.cash.exchange_balances}
