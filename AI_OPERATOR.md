@@ -8,8 +8,8 @@ not independent decision-making authority.
 
 ## Mission now
 
-D-077 is the current implementation priority: finish the original runtime's
-minimum working path and defer optional hardening. Use
+D-078 connects automatic reviewed-market selection to D-077's original runtime;
+defer optional hardening. Use
 `docs/RUN_LIQUIDITY_BOT.md` for current entry points; the separate REST canary is
 retired. The explicit live launcher is software for operator use, not permission
 for an assistant to execute trades. Default configuration remains nontrading.

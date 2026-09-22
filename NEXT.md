@@ -1,14 +1,16 @@
 # Active work queue
 
-Immediate priority under D-077: the reviewed one-market launch inputs are now
-installed locally and venue-validated. The remaining step is the operator's
-explicit first foreground start with `-Initialize`; that same run captures the
-fresh opening baseline before entries are eligible. The coding assistant does
-not execute that live command. After launch, inspect actual orders/fills/fees,
-shutdown behavior and estimated versus paid rewards. Do not equate source checks
-or synthetic ACKs with trading or profitability. Re-review the scope after its
-2026-09-23 expiry; do not reuse it for another market. Optional supervisor,
-broader admission and hardening work stays deferred.
+The [D-078 automatic reviewed-market selection](docs/BUILD_LIVE_SELECTION.md)
+integration is verified. Next: review additional current rules/milestone/shard
+inputs for multi-market operation;
+the ignored local input file still has one review. Do not replace missing timing
+with expiry or describe the whole reward catalog as tradable. Its existing
+review expires 2026-09-23 and cannot be reused for another market/date.
+
+A later explicit operator start captures/approves the fresh opening with
+`-Initialize`. The coding assistant does not invoke it. After launch, inspect
+real orders/fills/fees, shutdown and estimated versus paid rewards. Optional
+supervisor work and other hardening remain deferred.
 
 The older milestone notes below describe their original execution-disabled
 scope; D-077's [run guide](docs/RUN_LIQUIDITY_BOT.md) owns current launch wiring.

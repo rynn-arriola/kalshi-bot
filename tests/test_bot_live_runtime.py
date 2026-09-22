@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from kalshi_bot.config import BotConfig
 from kalshi_bot.dispatch import ENTRY_PAIR, PASSIVE_REDUCER, SAFETY_CANCEL, DUE_IOC
 from kalshi_bot.dispatch_sources import InventoryDispatchSource
-from kalshi_bot.live import LaunchInputs, compose, verified_flat
+from kalshi_bot.live import LaunchInputs, compose, initial_scope, verified_flat
 from kalshi_bot.live_session import LiveSession, permits
 from kalshi_bot.mutation_transport import OrderMutationTransport
 from kalshi_bot.observability import NO_LOG
@@ -116,6 +116,27 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.dispatcher.submit('A', ENTRY_PAIR)
         self.assertEqual((await self.dispatcher.run_one()).state, 'BLOCKED')
         self.assertFalse(self.calls)
+
+    async def test_explicit_metadata_blocker_cannot_be_dropped_by_dispatch(self):
+        self.runtime.market_inputs.results['A'].blockers = ('timing_review_conflict',)
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        self.assertEqual((await self.dispatcher.run_one()).state, 'BLOCKED')
+        self.assertFalse(self.calls)
+
+    async def test_startup_scope_keeps_later_admitted_durable_owner(self):
+        import test_bot_market_inputs as metadata
+        self.session.tickers = frozenset(('A','B','C'))
+        reviews = tuple(metadata.review(metadata.market(t)) for t in ('A','B','C'))
+        inputs = LaunchInputs(reviews, None, (0,1), ('A',))
+        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A',))
+        request = pair()[0] | {'ticker':'B'}
+        await self.f.writer.reserve_intent(request['client_order_id'], request, self.f.now)
+        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A','B'))
+        await self.f.writer.transition_intent(request['client_order_id'], 'SENDING')
+        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A','B','C'))
+        self.session.tickers = frozenset(('A',))
+        with self.assertRaises(InvalidData):
+            await initial_scope(self.f.writer, LaunchInputs(reviews[:1], None, (0,1)), self.f.now)
 
     async def test_release_keeps_original_account_age_and_rebases_only_own_audit(self):
         report = self.f.account.current_report(self.f.now)
@@ -244,6 +265,21 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
 
 
 class LaunchInputTests(unittest.TestCase):
+    def test_seed_scope_is_separate_from_reviewed_candidate_universe(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'inputs.json'
+            doc = self.document()
+            doc['timing_reviews'].append(doc['timing_reviews'][0] | {'ticker':'B'})
+            doc['initial_tickers'] = ['A']
+            save_result(path, doc)
+            inputs = LaunchInputs.load(path, datetime.now(timezone.utc))
+            self.assertEqual(inputs.tickers, ('A','B'))
+            self.assertEqual(inputs.seed_tickers, ('A',))
+            for seeds in ([], ['C'], ['A','A'], 'A', [123]):
+                save_result(path, doc | {'initial_tickers':seeds})
+                with self.assertRaises(InvalidData):
+                    LaunchInputs.load(path, datetime.now(timezone.utc))
+
     def test_failed_final_status_save_never_claims_no_trading_or_success(self):
         from kalshi_bot import live
         with TemporaryDirectory() as directory:
@@ -289,6 +325,15 @@ class LaunchInputTests(unittest.TestCase):
 
 class CompositionTests(unittest.IsolatedAsyncioTestCase):
     async def test_complete_original_graph_bootstraps_and_dispatches_without_fixture_switches(self):
+        await self.run_graph()
+
+    async def test_discovered_market_reaches_fresh_metadata_ranking_and_pair_ack(self):
+        await self.run_graph(discover=True)
+
+    async def test_discovered_unsupported_fee_model_never_dispatches(self):
+        await self.run_graph(discover=True, unsupported=True)
+
+    async def run_graph(self, *, discover=False, unsupported=False):
         import test_bot_market_inputs as metadata
         from test_bot_incentive_discovery import row as reward_row
         from test_bot_opening_account import balance
@@ -314,6 +359,12 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
             '/milestones/M': {'milestone':metadata.Reads().milestone},
             '/incentive_programs': {'incentive_programs':[reward_row()], 'next_cursor':''},
         }
+        if discover:
+            docs['/markets/B'] = {'market':metadata.market('B')}
+            docs['/incentive_programs']['incentive_programs'] = [
+                reward_row('B', 'reward-b'), reward_row('UNREVIEWED', 'reward-u')]
+        if unsupported:
+            docs['/series/S']['series']['fee_type'] = 'flat'
         def wire(url, *_):
             path = urlparse(url).path.removeprefix('/trade-api/v2')
             return WireResponse(200, json.dumps(docs[path], default=str).encode())
@@ -327,21 +378,23 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                     seq = 0
                     while True:
                         if self.spec.name.startswith('book-') and seq == 0:
-                            seq += 1
-                            await consume(self.spec.name, dict(type='orderbook_snapshot', sid=1,seq=seq,
-                                msg=dict(market_ticker='A',yes_dollars_fp=[['.5','1000']],
-                                         no_dollars_fp=[['.6','1000']])))
+                            for ticker in self.spec.tickers:
+                                seq += 1
+                                await consume(self.spec.name, dict(type='orderbook_snapshot', sid=1,seq=seq,
+                                    msg=dict(market_ticker=ticker,yes_dollars_fp=[['.5','1000']],
+                                             no_dollars_fp=[['.6','1000']])))
                         await asyncio.sleep(.1)
                 finally: closed.append(self.spec.name)
         class Wire:
             async def __call__(self, *_): raise AssertionError('unexpected single command')
             async def batch(self, requests):
+                session.check('batch_create', requests)
                 calls.append(requests)
                 return {'orders':[dict(order_id='mock-'+r['side'],
                     client_order_id=r['client_order_id'],fill_count='0',remaining_count='10',ts_ms=1)
                     for r in requests]}
         with TemporaryDirectory() as directory:
-            session = LiveSession(run_id='composed-synthetic', tickers=('A',))
+            session = LiveSession(run_id='composed-synthetic', tickers=('A','B') if discover else ('A',))
             writer = await LedgerWriter(Path(directory)/'account.db', live_session=session).start()
             reads = RestReads(TokenBudget(rate=10000,capacity=10000,default_cost=10,
                 clock=time.monotonic), Signer(), wire=wire)
@@ -351,20 +404,36 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
             quota = QuotaSupervisor(reads)
             runtime = task = None
             try:
-                inputs = LaunchInputs((metadata.review(market),),
-                    metadata.FeeProfile(D('.0001'),'synthetic',base+timedelta(hours=2)), (0,1))
+                reviews = ((metadata.review(market),metadata.review(metadata.market('B')))
+                           if discover else (metadata.review(market),))
+                inputs = LaunchInputs(reviews,
+                    metadata.FeeProfile(D('.0001'),'synthetic',base+timedelta(hours=2)), (0,1), ('A',))
                 runtime = await compose(writer, reads, Reader, Wire(), inputs=inputs,
                     boundary=base-timedelta(seconds=1), now=now, clock=time.monotonic,
                     diagnostics=NO_LOG, quota=quota, initialize=True)
                 self.assertEqual(len(guard.listeners), 5)
                 self.assertFalse(runtime.observation_only)
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
+                self.assertIsNotNone(runtime.admission)
+                self.assertEqual(set(runtime.engine.market_shard), {'A'})
                 task = asyncio.create_task(runtime.run())
                 async with asyncio.timeout(10):
-                    while not calls:
+                    while not calls and not (unsupported and 'B' in runtime.market_inputs.results):
                         if task.done(): task.result()
                         await asyncio.sleep(.01)
+                if discover:
+                    self.assertGreaterEqual(runtime.admission.completed, 1)
+                    self.assertNotIn('UNREVIEWED', runtime.engine.market_shard)
+                    self.assertEqual(runtime.selection.candidate_inputs.counts.get('timing_review_missing'), 1)
+                    self.assertIn('B', runtime.market_inputs.reviews)
+                if unsupported:
+                    await asyncio.sleep(.1)
+                    self.assertEqual(runtime.market_inputs.results['B'].blockers, ('fee_model_unsupported',))
+                    self.assertFalse(calls)
+                    self.assertFalse(await writer.mutations())
+                    return
                 self.assertEqual(len(calls), 1)
+                self.assertEqual({row['ticker'] for row in calls[0]}, {'B' if discover else 'A'})
                 self.assertTrue(all(D(row['count']) == 10 for row in calls[0]))
                 async with asyncio.timeout(2):
                     while sum(r['phase'] == 'ACK' for r in await writer.mutations()) != 2:

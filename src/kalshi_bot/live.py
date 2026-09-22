@@ -14,6 +14,7 @@ import time
 from uuid import uuid4
 
 from .config import BotConfig
+from .candidate_inputs import CandidateInputs
 from .dispatch_sources import InventoryDispatchSource
 from .live_session import LiveSession
 from .market_inputs import ExitInputService, FeeProfile, TimingReview, timestamp
@@ -41,17 +42,23 @@ class LaunchInputs:
     reviews: tuple
     fee_profile: FeeProfile
     exchange_indices: tuple
+    initial_tickers: tuple = ()
 
     @property
     def tickers(self):
         return tuple(review.ticker for review in self.reviews)
+
+    @property
+    def seed_tickers(self):
+        return self.initial_tickers or self.tickers
 
     @classmethod
     def load(cls, path, now):
         if path.stat().st_size > 131072:
             raise InvalidData('launch inputs exceed size limit')
         raw = json.loads(path.read_text(encoding='utf-8-sig'))
-        if type(raw) is not dict or set(raw) != {'timing_reviews', 'fee_profile', 'exchange_indices'}:
+        required = {'timing_reviews', 'fee_profile', 'exchange_indices'}
+        if type(raw) is not dict or not required <= set(raw) or set(raw)-required-{'initial_tickers'}:
             raise InvalidData('exact launch input fields required')
         if type(raw['timing_reviews']) is not list or not 1 <= len(raw['timing_reviews']) <= 128:
             raise InvalidData('one to 128 reviewed markets required')
@@ -66,20 +73,43 @@ class LaunchInputs:
                 or not 1 <= len(shards) <= 128 or len(set(shards)) != len(shards)
                 or 0 not in shards):
             raise InvalidData('duplicate, expired or incomplete launch scope')
-        return cls(reviews, profile, tuple(integer(v, 0, 2**31-1) for v in shards))
+        seeds = raw.get('initial_tickers', [row.ticker for row in reviews])
+        if (type(seeds) is not list or not seeds or len(seeds) > 128
+                or any(type(t) is not str for t in seeds) or len(set(seeds)) != len(seeds)
+                or not set(seeds) <= {row.ticker for row in reviews}):
+            raise InvalidData('initial subscriptions must be a nonempty reviewed subset')
+        return cls(reviews, profile, tuple(integer(v, 0, 2**31-1) for v in shards), tuple(seeds))
+
+
+async def initial_scope(writer, inputs, now):
+    """Seed subscriptions plus durable owners; does not approve their account state."""
+    session = writer.live_session
+    if session is None or session.tickers != frozenset(inputs.tickers):
+        raise InvalidData('launch/session market scope differs')
+    # Restart seeds must retain every durable exposure owner, even if it was
+    # admitted after the previous launch. Unknowns retain the entire reviewed
+    # universe for the existing recovery owner; they never approve new entries.
+    view = await writer.portfolio(subaccount=0, now=now)
+    protected = {t for t, v in view.positions if v} | {t for t, _ in view.exposure}
+    if view.blockers:
+        protected.update(inputs.tickers)
+    seeds = tuple(sorted(set(inputs.seed_tickers) | protected))
+    if not set(seeds) <= session.tickers or len(seeds) > writer.market_capacity:
+        raise InvalidData('startup owners exceed reviewed subscription scope')
+    return seeds
 
 
 async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
                   now, clock, diagnostics, quota, initialize=False):
     """Actual owners and non-fixture execution. Injectable wires allow safe tests."""
     session = writer.live_session
-    if session is None or session.tickers != frozenset(inputs.tickers):
-        raise InvalidData('launch/session market scope differs')
+    seeds = await initial_scope(writer, inputs, now())
     source = WriteQuotaSource(reads, shards=inputs.exchange_indices, live_session=session)
     await quota.bootstrap()
-    metadata = ExitInputService(reads, inputs.tickers, now=now, clock=clock, ttl=60,
-        diagnostics=diagnostics, timing_reviews=inputs.reviews, fee_profile=inputs.fee_profile)
-    runtime = RecoveryRuntime(writer, reads, reader_factory, tickers=inputs.tickers,
+    metadata = ExitInputService(reads, seeds, now=now, clock=clock, ttl=60,
+        diagnostics=diagnostics, timing_reviews=tuple(r for r in inputs.reviews if r.ticker in seeds),
+        fee_profile=inputs.fee_profile, candidate_reviews=inputs.reviews)
+    runtime = RecoveryRuntime(writer, reads, reader_factory, tickers=seeds,
         subaccount=0, history_start=boundary, accounting_boundary=boundary,
         opening_reference=('operator-launch-'+session.run_id) if initialize else None,
         now=now, clock=clock, evaluate=_noop, deadline_handler=_noop,
@@ -87,12 +117,14 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         quota_supervisor=quota)
     runtime.attach_selection()
     runtime.attach_incentives()
+    runtime.selection.candidate_inputs = CandidateInputs(runtime, inputs.exchange_indices)
+    runtime.attach_admission()
     runtime.attach_rewards(scope='primary-account', checkpoint_path=Path(writer.path).with_suffix('.rewards.json'))
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
-    # Rank within the explicitly reviewed scope. Unreviewed catalog additions
-    # cannot have an inferred event-risk deadline; no automatic scope widening.
+    # Discovery is automatic within the reviewed universe. Fresh metadata and
+    # snapshots still gate ranking; a catalog row never grants order authority.
     return runtime
 
 
@@ -242,6 +274,7 @@ def main(argv=None):
             inputs = LaunchInputs.load(args.inputs, datetime.now(timezone.utc))
             if args.command == 'check-inputs':
                 result = dict(state='INPUTS_PARSED', tickers=inputs.tickers,
+                              initial_tickers=inputs.seed_tickers, automatic_admission=True,
                               venue_inputs_verified=False, trading_started=False)
                 code = 0
             else:

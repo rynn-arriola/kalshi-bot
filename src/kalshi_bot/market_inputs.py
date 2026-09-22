@@ -222,7 +222,7 @@ class InputResult:
 
 class ExitInputService:
     def __init__(self, reads, tickers, *, now, ttl, clock=time.monotonic, diagnostics=NO_LOG,
-                 timing_reviews=(), fee_profile=None):
+                 timing_reviews=(), fee_profile=None, candidate_reviews=()):
         if type(ttl) not in (int,float) or not math.isfinite(ttl) or not 0<ttl<=60:
             raise InvalidData('explicit metadata freshness budget up to 60 seconds required')
         if not 1<=len(tickers)<=1024 or len(set(tickers))!=len(tickers):
@@ -230,10 +230,19 @@ class ExitInputService:
         self.tickers = frozenset(identity(t) for t in tickers)
         self.reads, self.now, self.clock, self.ttl, self.diagnostics = reads, now, clock, ttl, diagnostics
         self.reviews = {}
+        if type(candidate_reviews) is not tuple or len(candidate_reviews) > 128:
+            raise InvalidData('bounded candidate review registry required')
+        self.candidate_reviews = {}
+        for review in candidate_reviews:
+            if not isinstance(review, TimingReview) or review.ticker in self.candidate_reviews:
+                raise InvalidData('candidate review identity conflict')
+            self.candidate_reviews[review.ticker] = review
         for review in timing_reviews:
             if not isinstance(review,TimingReview) or review.ticker not in self.tickers or review.ticker in self.reviews:
                 raise InvalidData('timing review scope conflict')
             self.reviews[review.ticker] = review
+            if review.ticker in self.candidate_reviews and self.candidate_reviews[review.ticker] != review:
+                raise InvalidData('active/candidate review conflict')
         if fee_profile is not None and not isinstance(fee_profile,FeeProfile):
             raise InvalidData('explicit fee profile required')
         self.fee_profile = fee_profile
@@ -266,10 +275,16 @@ class ExitInputService:
         for ticker in removed:
             self._clear_terms(ticker)
             self.reviews.pop(ticker,None)
+        added = tickers-self.tickers
         self.tickers = tickers
         for event in tuple(self.event_markets):
             self.event_markets[event].difference_update(removed)
             if not self.event_markets[event]: self.event_markets.pop(event)
+        for ticker in added:
+            review = self.candidate_reviews.get(ticker)
+            if review is not None:
+                self.reviews[ticker] = review
+                self.event_markets.setdefault(review.event, set()).add(ticker)
         self._prune_dependencies()
 
     def _notify(self, kind, ticker=None):
@@ -282,8 +297,11 @@ class ExitInputService:
             raise InvalidData('review update outside managed scope')
         if review is None:
             self.reviews.pop(ticker, None)
+            self.candidate_reviews.pop(ticker, None)
         else:
             self.reviews[ticker] = review
+            if ticker in self.candidate_reviews:
+                self.candidate_reviews[ticker] = review
         for event in tuple(self.event_markets):
             self.event_markets[event].discard(ticker)
             if not self.event_markets[event]:

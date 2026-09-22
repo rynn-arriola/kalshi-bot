@@ -1,5 +1,15 @@
 # What exists
 
+## Live-launcher selection integration — 2026-09-22
+
+[D-078](docs/BUILD_LIVE_SELECTION.md) attaches existing discovery/admission,
+adds reviewed-candidate filtering and bounded skip diagnostics, retains exact
+reviews across subscription rotation and restores durable owners to startup
+seeds. Synthetic full-graph tests cover a newly subscribed market reaching pair
+ACK and an unsupported fee model remaining blocked. Final suite: 1,401 run,
+1,400 passed, one expected skip; focused and resource checks pass. No live run
+or private-input expansion is claimed.
+
 ## Original foreground runtime — 2026-09-22
 
 [Run guide](docs/RUN_LIQUIDITY_BOT.md): `live.py` composes the original owners

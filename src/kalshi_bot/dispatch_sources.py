@@ -141,6 +141,7 @@ class InventoryDispatchSource:
                 if (release is None or not release.released or release.window is None
                         or selection is None or not selection.current(ticker)
                         or inputs is None or result is None or result.terms is not plan.terms
+                        or getattr(result, 'blockers', ())
                         or source is None or not inputs._fresh(source)
                         or plan.terms.taker_fee_per_contract_bound is None):
                     return None

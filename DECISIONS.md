@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-078 — Connect automatic selection to the original launcher
+
+- **Status:** ACCEPTED implementation, 2026-09-22.
+- **Decision owner:** Operator: “Ok lets do it,” accepting discovery → market
+  checks → ranking → admission, with unsupported candidates skipped visibly.
+- **Scope:** Attach the existing admission owner to the actual composition;
+  separate the bounded reviewed candidate universe from active subscriptions,
+  preserve timing reviews across rotation, resolve fresh fees/rules through the
+  existing metadata service, and test the complete handoff with synthetic wires.
+- **Boundary:** No inferred event-risk clock, automatic approval of unknown
+  rules, sports-only filter, score-chasing cancellations or risk-limit changes.
+  Working orders, inventory and uncertain owners remain protected. No live
+  start, private-input change, order or deployment is authorized by this build.
+  Current local inputs contain one review; code integration alone cannot make
+  unreviewed markets eligible. Additional exact reviews remain operational inputs.
+
 ### D-077 — Finish the existing bot's minimum operating path
 
 - **Status:** ACCEPTED implementation, 2026-09-22.

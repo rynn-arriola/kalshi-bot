@@ -1,5 +1,21 @@
 # Findings — kalshi-bot
 
+## 112. Reviewed candidates and subscribed books are different scopes — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: D-071 admission was built but absent from D-077's
+composition. Merely attaching it would discover candidates without their timing
+reviews or matching live-session permission. D-078 carries an explicit reviewed
+registry, filters discovery, restores reviews on admission and requires fresh
+metadata/book evidence before dispatch. A fixture now takes B from an A-only
+seed through actual joined scope replacement, metadata, ranking and pair ACK.
+Unsupported fees and unreviewed candidates do not dispatch. Source review also
+found that entry dispatch did not explicitly test metadata result blockers;
+that check is now retained at the handoff.
+
+The unchanged local file has one reviewed market. This implementation is not
+automatic rule interpretation, a verified broad live universe or a profitability
+result. [Evidence and boundaries](docs/BUILD_LIVE_SELECTION.md).
+
 ## 111. Component tests did not establish an operable composition — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: full original-owner composition exposed three real gaps:

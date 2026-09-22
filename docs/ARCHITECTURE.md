@@ -2,8 +2,11 @@
 
 D-077's [foreground original-runtime composition](RUN_LIQUIDITY_BOT.md) now
 connects these owners through an explicit process-local live session, preserving
-accounting/source/quota authorization. Initial scope is supplied by reviewed
-launch inputs; it does not silently admit unreviewed markets. This is separate
+accounting/source/quota authorization. D-078 attaches the existing admission
+owner with a separate reviewed candidate registry and optional initial seed
+scope; [live selection](BUILD_LIVE_SELECTION.md) never approves unknown rules.
+It preserves owned markets, resolves fresh metadata and requires snapshots
+after joined reader replacement. This is separate
 from the fixed S2B supervisor fixture below. Live venue mutation/launch and
 automatic production restart remain unverified, not implied by component tests.
 

@@ -25,6 +25,15 @@ def catalog(count=50):
 class CandidateTests(unittest.TestCase):
     def setUp(self): self.d = CandidateDiscovery()
 
+    def test_eligibility_filters_candidates_and_incumbents_but_never_owners(self):
+        result = self.choose(eligible=frozenset(('M002','M003')),
+                             protected=('M000',), incumbents=('M001',))
+        self.assertEqual(result.tickers, ('M000','M002','M003'))
+        self.assertEqual(result.protected, ('M000',))
+        self.assertEqual(result.deferred, 0)
+        with self.assertRaises(InvalidData):
+            self.choose(eligible={'M000'})
+
     def choose(self, data=None, **kwargs):
         args = dict(now=NOW,budget=10)
         args.update(kwargs)

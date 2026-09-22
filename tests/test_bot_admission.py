@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -100,6 +101,38 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await self.cycle())
         self.assertEqual(set(self.r.engine.market_shard),{'A'})
         self.assertEqual(len(self.readers),1)
+
+    async def test_paused_live_entries_do_not_rotate_readers(self):
+        await self.prepare()
+        self.r.live_session = SimpleNamespace(entries_paused=True)
+        self.assertFalse(await self.cycle())
+        self.r.live_session = None
+        self.assertEqual(len(self.readers), 1)
+
+    async def test_active_dispatch_defers_rotation(self):
+        await self.prepare()
+        self.r.dispatch_supervisor = SimpleNamespace(dispatcher=SimpleNamespace(
+            status=lambda: SimpleNamespace(active=('A', 1))))
+        try:
+            self.assertFalse(await self.cycle())
+            self.assertEqual(len(self.readers), 1)
+        finally:
+            self.r.dispatch_supervisor = None
+
+    async def test_new_candidate_binding_revoked_during_join_retains_old_scope(self):
+        await self.prepare()
+        valid = True
+        self.r.selection.candidate_inputs = SimpleNamespace(
+            eligible=lambda catalog, now: frozenset(('B',)),
+            blockers=lambda ticker, now: () if valid else ('timing_review_missing',))
+        async def revoke():
+            nonlocal valid
+            valid = False
+        self.readers[0].on_close = revoke
+        self.assertFalse(await self.cycle())
+        self.assertEqual(set(self.r.engine.market_shard), {'A'})
+        await until(lambda:len(self.readers)==2)
+        self.r.selection.candidate_inputs = None
 
     async def test_account_change_during_reader_join_restores_old_scope(self):
         await self.prepare()
@@ -332,6 +365,24 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         await task
         self.assertEqual(set(self.r.engine.market_shard),{'B'})
         self.assertFalse(self.a.running)
+
+    async def test_transient_removal_deferral_retries_without_catalog_refresh(self):
+        await self.prepare()
+        original = self.a.removable
+        checks = 0
+        async def busy_once(change):
+            nonlocal checks
+            checks += 1
+            return False if checks == 1 else await original(change)
+        with patch.object(self.a, 'removable', side_effect=busy_once):
+            self.assertFalse(await self.a.cycle())
+            self.assertEqual(self.a.state, 'deferred')
+            task = asyncio.create_task(self.a.run())
+            self.tasks.append(task)
+            await until(lambda:self.a.completed==1)
+            self.a.stop()
+            await task
+        self.assertEqual(set(self.r.engine.market_shard), {'B'})
 
     async def test_runtime_owns_admission_and_book_tasks_until_stop(self):
         self.f.pages[0]['incentive_programs'] = [fixtures.row('B','b')]

@@ -20,7 +20,7 @@ class CandidateDiscovery:
     def __init__(self):
         self.cursor = 0
 
-    def choose(self, catalog, *, now, budget, protected=(), incumbents=()):
+    def choose(self, catalog, *, now, budget, protected=(), incumbents=(), eligible=None):
         """Budget is engineering capacity, NOT desired market/order occupancy.
 
         Pool/time/target is only a cheap exploration hint. Actual selection still
@@ -41,10 +41,14 @@ class CandidateDiscovery:
             return DiscoveryCandidates(retained,retained,0,None)
         if len(catalog.observations) > 10000:
             raise InvalidData('bounded incentive catalog required')
+        if eligible is not None and (type(eligible) is not frozenset or len(eligible) > 10000):
+            raise InvalidData('bounded eligible candidate set required')
         ranked = []
         with localcontext() as ctx:
             ctx.prec = 40
             for ticker, observation in catalog.observations.items():
+                if eligible is not None and ticker not in eligible:
+                    continue
                 scores = [Decimal(p.pool_centicents)/seconds(p.end-p.start)/p.target
                     for p in observation.programs if not p.paid_out and p.start <= now < p.end
                     and p.max_reward_centicents is None and p.pool_centicents > 0]

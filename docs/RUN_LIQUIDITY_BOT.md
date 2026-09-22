@@ -48,8 +48,10 @@ These are snapshot estimates, not guaranteed rewards or profitability evidence.
 
 ## Prepare the reviewed scope
 
-The ignored input file contains exactly `timing_reviews`, `fee_profile` and
-`exchange_indices`. Each timing row uses the existing `TimingReview` fields:
+The ignored input file requires `timing_reviews`, `fee_profile` and
+`exchange_indices`; optional `initial_tickers` selects a nonempty reviewed
+subscription seed subset. Omit it to seed every supplied review, as before.
+Each timing row uses the existing `TimingReview` fields:
 `ticker`, `event`, `milestone_id`, `milestone_type`, `rules_hash`,
 `review_reference`, `valid_until`, `early_close_reviewed`. The fee profile uses
 `balance_quantum`, `review_reference`, `valid_until`. Exchange indices include
@@ -59,9 +61,26 @@ The rules digest is computed by `market_inputs.rules_digest` from the complete
 current market document. Verify the event's primary milestone, rules, early-close
 behavior and member precision; never substitute expiry for event-risk time or
 silently default FCM membership. REST revalidates all those bindings at runtime.
-Rank only within this reviewed initial scope; no sports-only filter or fixed
-60-market universe is introduced. Broader automatic admission is deferred, not
-silently allowed to subscribe unreviewed markets.
+Under D-078 the timing rows define the reviewed candidate universe (at most 128),
+not a desired market count. The actual launcher attaches automatic admission:
+active reward discovery filters this universe, replaces only flat/clear book
+scope, resolves metadata on the existing shared reads and ranks fresh books.
+No sports-only filter, fixed 60-market pool or reward-chasing cancellation is
+introduced. Reviews survive subscription retirement; explicitly revoked reviews
+are not restored. On restart, durable exposure owners are added to the seed set; unresolved
+ownership retains the full reviewed universe for recovery, not entry permission.
+
+**The existing local input file still has only one review.** This change does
+not manufacture reviews, edit that file or enable unrestricted venue-wide
+trading. Additional market-specific rules/milestone bindings and actual exchange
+shards must be reviewed before a broader operator launch. Expiry alone is not a
+safe event-start clock. There is no hot reload or automatic renewal of reviews.
+See [integration and verification](BUILD_LIVE_SELECTION.md).
+
+Saved runtime status includes `admission` and
+`selection.candidate_inputs`: timestamped skip counts and at most 32 ticker/reason
+samples (missing/expired timing, fees, unsupported shard, deadline or exhausted
+metadata). These are last-pass diagnostics, not fresh eligibility or payout proof.
 
 `python -B -m kalshi_bot.live check-inputs` validates the file locally; it does
 not verify venue data or authorize orders. No new numeric profitability cutoff

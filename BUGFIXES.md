@@ -8,6 +8,27 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — live selector composition
+
+- The launcher did not attach the existing admission owner. It now connects
+  reviewed reward candidates to joined scope replacement and fresh selection.
+- Metadata retirement discarded timing reviews needed on re-admission. A
+  bounded candidate registry retains exact bindings separately from live caches;
+  explicit revocation removes the binding, not just the active copy.
+- Entry dispatch now checks explicit metadata-result blockers. Candidate
+  checks also reject unsupported configured exchange scope, expired timing/fees
+  and exhausted metadata retries. Admission rechecks bindings after reader join
+  and waits while dispatch is active or entries are paused.
+- Optional narrow startup seeds now include durable exposure owners. Existing
+  recovery retains unresolved owners rather than losing them during discovery.
+- A transient removal/metadata deferral was overwritten as `stable`, delaying
+  retry until the five-minute catalog refresh. It now remains `deferred` and
+  uses the existing one-second backoff. An in-memory reversal fails the new
+  regression; ten repeated full-graph discovery cases pass with the fix.
+
+Verification: synthetic full-graph and source/race regressions, with final results
+in [D-078](docs/BUILD_LIVE_SELECTION.md). No live process or orders changed.
+
 ## 2026-09-22 — original runtime composition
 
 - Accounting release invalidated its own dispatch snapshot by advancing the

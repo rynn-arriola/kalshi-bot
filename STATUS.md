@@ -1,5 +1,23 @@
 # Current status
 
+## D-078 automatic selection integrated and verified — 2026-09-22
+
+The actual launcher now attaches the existing admission owner. Reviewed
+candidates can enter subscriptions beyond an optional initial seed set; exact
+timing reviews survive rotation and the existing metadata service checks current
+rules, fees and deadlines before ranking/dispatch. Skip diagnostics are bounded
+and explicit. Unknown timing is never inferred from expiry. Working orders,
+inventory, pending activity and all trading limits remain protected.
+
+The current ignored inputs still contain **one reviewed market**; neither that
+file nor any running process has been changed. Broad multi-market operation
+still needs additional reviewed inputs and separate operator launch. Component
+wiring is not venue-wide market approval or live profitability evidence.
+[Build and verification record](docs/BUILD_LIVE_SELECTION.md).
+Final full suite: 1,401 run / 1,400 passed / one expected Windows privilege skip
+in 216.316s. Ten repeated composed discovery cases and 30/120-market resource
+gates pass. Review, documentation links and private-file checks pass.
+
 ## D-077 original runtime connected; not yet live — 2026-09-22
 
 The original runtime now has an explicit non-fixture execution composition,
@@ -24,8 +42,8 @@ the conservative direct-member profile produced a $0.0276 per-contract taker-fee
 bound. No production account ledger has been created and no live order was
 submitted. First launch still requires the operator's explicit `-Initialize`
 command, which captures and approves the fresh opening before any entry can pass.
-Automatic supervisor restart, broader admission and paid-reward reconciliation
-are not claimed by this unit.
+Automatic supervisor restart and paid-reward reconciliation are not claimed by
+this unit. Its admission omission is corrected by D-078 above.
 Verification: full suite 1,384 run / 1,383 passed / one expected skip; final
 launcher regressions 18/18; ten repeated synthetic compositions passed.
 Read-only startup evidence and limits are recorded in the run guide. The selected

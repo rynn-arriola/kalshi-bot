@@ -63,6 +63,9 @@ class MarketAdmission:
         r = self.runtime
         due = r.engine.deadlines.next_deadline()
         return (not self.stopping and not r.stop_requested.is_set()
+                and (r.live_session is None or not r.live_session.entries_paused)
+                and (r.dispatch_supervisor is None
+                     or r.dispatch_supervisor.dispatcher.status().active is None)
                 and r.selection._available() and not r.engine.running_step
                 and r.recovery_state != 'recovering'
                 and (due is None or due > r.clock()+1))
@@ -99,6 +102,11 @@ class MarketAdmission:
                     or (journal is not None and (journal.unresolved_ioc or journal.cancel_ids))):
                 return False
         scope = (set(r.engine.market_shard)-change.before) | set(change.after)
+        candidate_inputs = r.selection.candidate_inputs
+        if candidate_inputs is not None and any(
+                candidate_inputs.blockers(ticker, r.now())
+                for ticker in set(change.after)-change.before):
+            return False
         return (len(scope) <= r.writer.market_capacity
                 and (r.metadata_scheduler is None or r.metadata_scheduler.can_rebind(scope))
                 and self._current(change,report,view.revision,ingress))
@@ -177,9 +185,11 @@ class MarketAdmission:
         existing = set(r.engine.market_shard)
         desired = set(candidates.tickers)
         names = tuple(sorted(r.engine.shards))
+        deferred = False
         for offset in range(len(names)):
             name = names[(self.cursor+offset) % len(names)]
             if r.reader_states[name] != 'subscribed' or r.reader_failures[name] >= r.attempt_limit:
+                deferred |= r.reader_states[name] != 'subscribed' and existing != desired
                 continue
             before = r.engine.shards[name].tickers
             remove = sorted(before-desired-set(candidates.protected))[:16]
@@ -195,6 +205,7 @@ class MarketAdmission:
             change = ScopeChange(name,before,tuple(sorted(after)),candidates.source,future)
             if not await self.removable(change):
                 self.deferred += 1
+                deferred = True
                 continue
             self.pending = change
             self.state = 'rotating'
@@ -210,7 +221,9 @@ class MarketAdmission:
                 # Cancellation is not permission for an unobserved late commit.
                 if not future.done(): future.set_result(False)
                 if self.pending is change: self.pending = None
-        self.state = 'stable'
+        # An idle-metadata/source race is not a stable slate. Retry through the
+        # existing one-second backoff instead of sleeping a full catalog period.
+        self.state = 'deferred' if deferred else 'stable'
         return False
 
     def stop(self):

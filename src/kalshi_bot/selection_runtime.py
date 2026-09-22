@@ -29,6 +29,7 @@ class RuntimeSelection:
         self._rejected = {}  # One static code per subscribed ticker, not raw errors.
         self._discovery = None
         self._last_additions = ()
+        self.candidate_inputs = None  # Explicit live composition only.
 
     def invalidate(self, ticker):
         self.selector.invalidate(ticker)
@@ -97,8 +98,11 @@ class RuntimeSelection:
                          (p.inventory.exit_journal.unresolved_ioc or p.inventory.exit_journal.cancel_ids)))
         incumbents = tuple(t for t in self._last_additions if self.current(t))
         if self._discovery is None: self._discovery = CandidateDiscovery()
+        eligible = (self.candidate_inputs.eligible(catalog, r.now())
+                    if self.candidate_inputs is not None and catalog is not None else None)
         return self._discovery.choose(catalog,now=r.now(),budget=r.writer.market_capacity,
-                                      protected=tuple(sorted(owned)),incumbents=incumbents)
+                                      protected=tuple(sorted(owned)),incumbents=incumbents,
+                                      eligible=eligible)
 
     def _available(self):
         r = self.runtime
@@ -115,7 +119,8 @@ class RuntimeSelection:
             return False
         plan, observation, report = proof
         now = utc(self.runtime.now())
-        return (observation is self._observation(ticker)
+        return ((self.candidate_inputs is None or not self.candidate_inputs.blockers(ticker, now))
+                and observation is self._observation(ticker)
                 and observation.observed_at <= now < observation.valid_until
                 and self.runtime.account.current_report(now) is report
                 and self.runtime.management.current(ticker) is plan)
@@ -138,6 +143,8 @@ class RuntimeSelection:
         if book is None:
             return
         blockers = plan.inventory.blockers + report.audit.blockers
+        if self.candidate_inputs is not None:
+            blockers += self.candidate_inputs.blockers(ticker, now)
         # Any owned order remains protected. A private receipt is NOT proof of
         # public-book reflection; do not manufacture a current reward share.
         if plan.inventory.orders:
@@ -201,4 +208,6 @@ class RuntimeSelection:
                     cached_markets=len(self.selector.board.markets),
                     current_markets=sum(self.current(t) for t in tuple(self._proofs)),
                     rejected_markets=len(self._rejected),
-                    venue_requests=0, automatic_repricing=False)
+                    venue_requests=0, automatic_repricing=False,
+                    candidate_inputs=(self.candidate_inputs.status()
+                                      if self.candidate_inputs is not None else None))
