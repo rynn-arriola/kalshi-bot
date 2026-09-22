@@ -1,5 +1,17 @@
 # What exists
 
+## Poly-style discovery and reward tracker — 2026-09-21
+
+[Build record](docs/BUILD_REWARD_TRACKER.md): `discovery_candidates.py` provides
+bounded protected-owner/head/tail plans without changing subscriptions.
+`reward_tracker.py` owns exact per-program sampled estimates and unknown gaps;
+`reward_runtime.py` observes actual orders through explicit offline attachment.
+`reward_checkpoint.py` offers bounded asynchronous atomic save/load, joined across
+cancellation and refusing stale evidence overwrites. No financial-ledger mutation
+or automatic persistence scheduler. Tests exercise source races, restart gaps,
+capacity and shared-book validation; synthetic resource gates pass. Production
+reflection, subscription handoff and live runtime remain separate work.
+
 ## Bounded incentive discovery/refresh — 2026-09-21
 
 [Build record](docs/BUILD_INCENTIVE_DISCOVERY.md): `incentive_discovery.py`

@@ -25,6 +25,8 @@ class RuntimeSelection:
         self._last_observed = {}  # Retain high-water marks after invalid publication.
         self._proofs = {}
         self._rejected = {}  # One static code per subscribed ticker, not raw errors.
+        self._discovery = None
+        self._last_additions = ()
 
     def invalidate(self, ticker):
         self.selector.invalidate(ticker)
@@ -42,6 +44,8 @@ class RuntimeSelection:
             raise InvalidData('programs outside subscribed scope')
         self.programs.pop(ticker, None)
         self.invalidate(ticker)
+        if self.runtime.rewards is not None:
+            self.runtime.rewards.invalidate(ticker)
         observed, until, now = utc(observed_at), utc(valid_until), utc(self.runtime.now())
         if (type(programs) is not tuple or len(programs) > 16
                 or any(not isinstance(p, Program) or p.ticker != ticker for p in programs)
@@ -62,6 +66,37 @@ class RuntimeSelection:
             return self.programs.get(ticker)
         catalog = service.current()
         return catalog.observations.get(ticker) if catalog is not None else None
+
+    async def discovery_candidates(self):
+        """Read-only refill/discovery plan, preserving all known/uncertain owners.
+
+        This does not reconfigure sockets. A future subscription owner must
+        revalidate the returned source and drain any removed flat/clear scope.
+        """
+        from .discovery_candidates import CandidateDiscovery, DiscoveryCandidates
+        r = self.runtime
+        service = r.incentives
+        catalog = service.current() if service is not None else None
+        report = r.account.current_report(r.now())
+        view = await r.risk_view()
+        if (not self._available() or view.blockers or report is None
+                or not report.positions_match or report.audit.blockers
+                or r.account.current_report(r.now()) is not report
+                or (view.epoch,view.revision) != (r.writer.epoch,r.writer.revision)
+                or (service is not None and catalog is not service.current())):
+            # Missing ownership evidence means every subscribed market stays.
+            keep = tuple(sorted(r.engine.market_shard))
+            return DiscoveryCandidates(keep,keep,0,None)
+        owned = {t for t,v in view.positions if v} | {t for t,v in view.exposure if v}
+        # A market's management plan may reveal holds beyond aggregate dollars.
+        owned.update(t for t,p in r.management._plans.items() if p.inventory.orders
+                     or p.inventory.blockers or p.inventory.position
+                     or (p.inventory.exit_journal is not None and
+                         (p.inventory.exit_journal.unresolved_ioc or p.inventory.exit_journal.cancel_ids)))
+        incumbents = tuple(t for t in self._last_additions if self.current(t))
+        if self._discovery is None: self._discovery = CandidateDiscovery()
+        return self._discovery.choose(catalog,now=r.now(),budget=r.writer.market_capacity,
+                                      protected=tuple(sorted(owned)),incumbents=incumbents)
 
     def _available(self):
         r = self.runtime
@@ -151,6 +186,7 @@ class RuntimeSelection:
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}
         missing = tuple((t, self._rejected.get(t, ('selection_evidence_unavailable',)))
                         for t in sorted(r.engine.market_shard) if t not in accounted)
+        self._last_additions = tuple(row.ticker for row in result.additions)
         return replace(result, exclusions=result.exclusions+missing)
 
     def status(self):

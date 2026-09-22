@@ -7,6 +7,8 @@ them accepted without an explicit operator instruction.
 
 D-069 accepts the reference audit's selection direction for offline construction.
 It does not authorize live selection, price chasing, new risk limits or trading.
+D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
+and explicitly withdraws the proposed fixed 60-market pool.
 
 ## Accepted decisions
 
@@ -1075,9 +1077,27 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 - **Build contract:** [Selection integration](docs/BUILD_MARKET_SELECTION.md)
   records bounded advisory integration, tests and remaining activation gates.
 
-### Pending refinement — payout-aware concentration versus moneyline-only
+### D-070 — Poly-style selection and per-program reward tracking, no fixed 60
 
-- **Status:** Requested direction needs scope clarification, 2026-09-21.
+- **Status:** ACCEPTED offline build, 2026-09-21.
+- **Decision owner:** Operator: "follow something like polymarket but optimize
+  it to kalshis advantage and add that tracker", then "Forget about the 60
+  markets" and "Just do it like poly".
+- **Decision:** Drop the proposed fixed 60-market pool. Adapt bounded discovery,
+  fresh book-based selection, stable incumbents and flat/clear refill from
+  Polymarket's executable code. Add per-program estimated accrual, qualification
+  time, unknown gaps and estimated time to the $1 minimum. Preserve Kalshi's
+  target/reference rules, actual period duration and separate payout evidence.
+- **Boundary:** No automatic import of Poly sports filters, numerical risk,
+  fill-loss priors or six-hour reward duration. Size 10, max 30 resting entries,
+  existing capital/exposure/exit rules and live-disable remain. No new numerical
+  payout buffer, score-displacement threshold or reward-chasing cancellation is
+  approved. Track estimates as advisory, never paid cash or entry authority.
+- **Implementation:** [Tracker and discovery adaptation](docs/BUILD_REWARD_TRACKER.md).
+
+### Earlier concentration question — superseded by D-070
+
+- **Status:** Historical discussion; D-070 above is the current build direction.
 - **Operator concern:** Rotation may spread earnings below the $1 payout
   minimum; concentrate on the strongest opportunities, referencing Poly's
   moneyline approach. Clarify strict sports moneyline-only versus best eligible

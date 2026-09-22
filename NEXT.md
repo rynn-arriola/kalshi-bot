@@ -10,9 +10,15 @@ Working-order score monitoring still needs reflection evidence, not guessed
 private/public synchronization. Automatic repricing thresholds and live launch
 remain separate decisions. Preserve all inventory/unknown owners during rotation.
 
-Operator has raised payout-aware concentration and possibly sports moneyline-only.
-Resolve the scope in `DECISIONS.md` before changing category filters, payout
-admission thresholds or dwell/rotation policy; the existing D-069 policy remains.
+D-070 accepts Poly-style discovery/selection and per-program estimated tracking,
+explicitly removing the proposed fixed 60-market pool. The
+[offline discovery/tracker component](docs/BUILD_REWARD_TRACKER.md) now exists;
+do not rebuild it or treat time-to-$1 estimates as paid cash or exit authority.
+Connect its advisory candidates to inventory-safe subscription admission and
+source-bound entry dispatch next. Production reflection proof and explicit
+checkpoint load/flush ownership still need integration; unknown remains unknown.
+New category filters, payout gates and numerical rotation thresholds require
+their own decision, not an automatic copy of Poly configuration.
 
 Next work: priority 5 reward ranking/admission integration, followed by priority
 6 runtime/readiness acceptance. Priority 4's
@@ -38,7 +44,7 @@ their own reconciliation; ordinary review/empty history never clears them.
 Only new schema-5 synthetic ledgers were exercised; no migration or account
 request is authorized by this build.
 
-Updated 2026-09-21. Follow accepted decisions through D-069 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-070 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical

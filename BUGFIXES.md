@@ -10,6 +10,22 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Reward estimates: source gaps, persistence races and telemetry isolation
+
+**Review findings in the new component.** Equal-valued replacement observations
+could bridge a revoked interval; a checkpoint reload could overwrite observations
+received during disk I/O, and older saves could erase newer evidence. Telemetry
+exhaustion must not stop inventory management. Revalidating a large shared book
+for every overlapping program also repeats unnecessary work.
+**Fix.** Bind source identity, clear samples on invalidation, fence loads by
+revision, serialize native file ownership and refuse decreasing evidence. Retain
+I/O ownership across cancellation. Surface rejected telemetry as a sticky fault
+with unknown rates while management continues. Validate shared books once and
+score each program independently.
+**Verification.** Focused regressions cover each boundary, including an in-memory
+reversal that detects false accrual across a catalog refresh. No live defect or
+income claim. See [build record](docs/BUILD_REWARD_TRACKER.md).
+
 ### Incentive refresh: retained wire age and late-publication fences
 
 **Review finding in the new offline component.** A shared request retained

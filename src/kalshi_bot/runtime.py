@@ -101,6 +101,7 @@ class RecoveryRuntime:
         self.dispatch_supervisor = None  # Explicit offline attachment only.
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
+        self.rewards = None  # Actual-order telemetry only; never financial authority.
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -137,6 +138,8 @@ class RecoveryRuntime:
         self.management.invalidate(ticker)
         if self.selection is not None:
             self.selection.invalidate(ticker)
+        if self.rewards is not None:
+            self.rewards.invalidate(ticker)
         self.invalidate(ticker)
 
     def attach_selection(self, *, offline_fixture=False):
@@ -166,6 +169,11 @@ class RecoveryRuntime:
         service._changed()
         return service
 
+    def attach_rewards(self, *, scope, offline_fixture=False):
+        from .reward_runtime import RuntimeRewards
+        self.rewards = RuntimeRewards(self,scope=scope,offline_fixture=offline_fixture)
+        return self.rewards
+
     def request_dispatch(self, ticker, priority):
         if self.dispatch_supervisor is None:
             raise InvalidData('offline dispatch not attached')
@@ -175,12 +183,16 @@ class RecoveryRuntime:
         await self.management.refresh(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
+        if self.rewards is not None:
+            self.rewards.refresh(ticker)
         await self._evaluate_callback(ticker, book, generation)
 
     async def _deadline(self, ticker):
         await self.management.refresh(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
+        if self.rewards is not None:
+            self.rewards.refresh(ticker)
         await self._deadline_callback(ticker)
 
     async def risk_view(self):
@@ -897,6 +909,7 @@ class RecoveryRuntime:
             dispatch=self.dispatch_supervisor.status() if self.dispatch_supervisor is not None else None,
             selection=self.selection.status() if self.selection is not None else None,
             incentives=self.incentives.status() if self.incentives is not None else None,
+            rewards=self.rewards.status() if self.rewards is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):

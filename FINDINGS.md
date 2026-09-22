@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 104. Qualifying time is not a guaranteed dollar — 2026-09-21
+
+VERIFIED CODE/OFFLINE: Poly uses bounded detailed discovery, refreshed cached
+replacement candidates and flat/clear ownership before release; its projection
+is not proof of personal accrued rewards. D-070 adopts these mechanics without
+a fixed market pool. Kalshi estimates now use actual quotes, separate program
+identities and sampled intervals; stale/unknown/restart intervals add no assumed
+income. Neither elapsed time nor crossing an estimated $1 proves a payout.
+UNKNOWN: no production own-order/public-book reflection producer is verified.
+Positive integration tests use explicit fixtures, not inferred venue evidence.
+MEASURED: shared validation handles 16 overlapping programs/4,096 levels per side
+in 42.427 ms in the named synthetic boundary case; representative 30/120-market
+gates pass. [Source links, tests and remaining wiring](docs/BUILD_REWARD_TRACKER.md).
+
 ## 103. A complete incentive catalog is not market admission — 2026-09-21
 
 VERIFIED CODE/OFFLINE: complete active-liquidity cursor enumeration now feeds

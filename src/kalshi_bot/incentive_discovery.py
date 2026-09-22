@@ -71,6 +71,8 @@ class IncentiveDiscovery:
         r = self.runtime
         for ticker in r.engine.market_shard:
             r.selection.invalidate(ticker)
+            if r.rewards is not None:
+                r.rewards.invalidate(ticker)
             if not r.engine.stopped:
                 r.engine.dirty.mark(ticker)
         r.engine.wake.set()

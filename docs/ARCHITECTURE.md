@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-070 adds [Poly-style candidate discovery and reward telemetry](BUILD_REWARD_TRACKER.md):
+protected owners plus bounded ranked-head/rotating-tail exploration, no fixed
+market pool. Per-program sampled estimates reuse existing actual-order sources;
+unknown reflection stays unknown. Explicit asynchronous checkpoints are separate
+from financial accounting. Neither discovery plans nor estimated payout progress
+change subscriptions, risk, exits or mutation authority.
+
 D-069's [advisory selection component](BUILD_MARKET_SELECTION.md) reuses existing
 runtime/management observations, coalesced evaluations and risk primitives.
 Selection never becomes a second mutation owner. [Bounded incentive discovery](BUILD_INCENTIVE_DISCOVERY.md)

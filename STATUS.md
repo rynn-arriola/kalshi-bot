@@ -1,5 +1,25 @@
 # Current status
 
+## D-070 Poly-style discovery and per-program estimates — 2026-09-21
+
+[Implemented offline](docs/BUILD_REWARD_TRACKER.md): bounded ranked-head/rotating-tail
+candidate planning, protected owners and stable fresh incumbents, with no fixed
+60-market pool. Existing 10-contract/30-resting-entry and financial limits remain.
+The actual-order tracker separates program IDs, estimated accrual, qualifying
+time, unknown gaps and estimated time to $1. Explicit atomic checkpoints preserve
+totals, not live source proof; runtime dirty-market observations reuse existing
+inputs and shared validation. Telemetry exhaustion reports a fault without
+interrupting inventory management. Final full suite: 1,296 run, 1,295 passed,
+one expected Windows privilege skip. Focused/resource, diff and documentation
+checks pass; disabled preflight remains `live_ready=false`.
+
+This completes the offline component, not automatic live rotation or verified
+earnings. Production own-order/public-book reflection remains unproved; owned
+orders therefore report UNKNOWN outside explicit fixtures. Next: inventory-safe
+subscription admission, entry-pair dispatch and explicit checkpoint lifecycle
+wiring in the future supervised runtime. No account calls or live operations.
+Verification scope and remaining integration are recorded in the build document.
+
 ## Priority 5 incentive discovery/refresh — 2026-09-21
 
 [Bounded catalog integration](docs/BUILD_INCENTIVE_DISCOVERY.md) connects one
