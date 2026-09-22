@@ -97,8 +97,9 @@ def _validate_payload(kind, payload):
         identity(payload["build_fingerprint"])
         identity(payload["config_fingerprint"])
         if payload["fixture_mode"] not in {"normal", "crash_after_admit",
-                                           "hang_after_admit", "exit_after_status"}:
-            raise InvalidData("invalid inert fixture mode")
+                "hang_after_admit", "exit_after_status", "runtime_normal",
+                "runtime_exhausted", "runtime_crash_before_fence_ack"}:
+            raise InvalidData("invalid supervisor fixture mode")
     elif kind == MessageKind.STATUS:
         _exact(payload, ("phase", "progress_sequence", "work_remaining_ms", "blockers"))
         if payload["phase"] not in {"starting", "recovering", "healthy", "degraded"}:
@@ -128,14 +129,39 @@ def _validate_payload(kind, payload):
             raise InvalidData("invalid child result holds")
         for hold in payload["retry_holds"]:
             identity(hold)
-    elif kind in {MessageKind.ADMIT, MessageKind.PULSE, MessageKind.FENCE_ACK}:
+    elif kind in {MessageKind.ADMIT, MessageKind.PULSE}:
         _exact(payload, ("control_revision",))
         integer(payload["control_revision"], 0, 2**63-1)
+    elif kind == MessageKind.FENCE_ACK:
+        _exact(payload, ("control_revision", "fence_revision"))
+        integer(payload["control_revision"], 0, 2**63-1)
+        integer(payload["fence_revision"], 1, 2**63-1)
     elif kind == MessageKind.STOP_HINT:
         _exact(payload, ("reason",))
         identity(payload["reason"])
     elif kind == MessageKind.FENCE:
-        raise InvalidData("S2B fence protocol is not implemented")
+        _exact(payload, ("fence_revision", "component_holds", "cooldowns",
+                         "terminal_checkpoint_complete"))
+        integer(payload["fence_revision"], 1, 2**63-1)
+        holds = payload["component_holds"]
+        if not isinstance(holds, (list, tuple)) or len(holds) > 32:
+            raise InvalidData("invalid recovery-fence holds")
+        for hold in holds:
+            identity(hold)
+        if len(set(holds)) != len(holds):
+            raise InvalidData("duplicate recovery-fence hold")
+        cooldowns = payload["cooldowns"]
+        if (not isinstance(cooldowns, (list, tuple)) or len(cooldowns) > 8):
+            raise InvalidData("invalid recovery-fence cooldowns")
+        names = []
+        for cooldown in cooldowns:
+            _exact(cooldown, ("name", "remaining_ms"))
+            names.append(identity(cooldown["name"]))
+            integer(cooldown["remaining_ms"], 1, 86400000)
+        if len(set(names)) != len(names):
+            raise InvalidData("duplicate recovery-fence cooldown")
+        if type(payload["terminal_checkpoint_complete"]) is not bool:
+            raise InvalidData("invalid terminal checkpoint flag")
     else:
         raise InvalidData("unsupported supervisor message")
     _depth(payload)
@@ -266,30 +292,41 @@ def validate_peer(envelope, *, scope_digest, parent_session, child_id,
 
 
 class ParentProtocol:
-    """S2A child-side phase gate; S2B controls confer no authority."""
+    """Child-side phase gate; S2B acknowledgements confer no authority."""
     def __init__(self, scope_digest, parent_session, child_id, child_generation):
         self.identity = dict(scope_digest=scope_digest, parent_session=parent_session,
                              child_id=child_id, child_generation=child_generation)
         self.tracker = SequenceTracker()
         self.admitted = self.stopped = False
         self.revision = -1
+        self.fence_revision = 0
 
     def accept(self, message, *, now_ns, current_revision=None):
         validate_peer(message, **self.identity, allowed={MessageKind.ADMIT,
-            MessageKind.PULSE, MessageKind.STOP_HINT}, tracker=self.tracker, now_ns=now_ns)
-        if self.stopped:
+            MessageKind.PULSE, MessageKind.STOP_HINT, MessageKind.FENCE_ACK},
+            tracker=self.tracker, now_ns=now_ns)
+        if self.stopped and message.kind != MessageKind.FENCE_ACK:
             raise InvalidData("supervisor control after stop")
         if message.kind == MessageKind.STOP_HINT:
             self.stopped = True
         else:
             revision = message.payload["control_revision"]
-            if (current_revision is None or revision > current_revision
-                    or revision < self.revision):
+            if current_revision is None or revision > current_revision:
                 raise InvalidData("supervisor control revision differs")
+            if message.kind == MessageKind.PULSE and revision < self.revision:
+                return False  # A coalesced pre-fence pulse grants no freshness.
+            if revision < self.revision:
+                raise InvalidData("supervisor control revision regressed")
             if message.kind == MessageKind.ADMIT:
                 if self.admitted or revision != current_revision:
                     raise InvalidData("duplicate or revoked supervisor admission")
                 self.admitted = True
             elif not self.admitted:
-                raise InvalidData("supervisor pulse before admission")
+                raise InvalidData("supervisor control before admission")
+            elif message.kind == MessageKind.FENCE_ACK:
+                fence_revision = message.payload["fence_revision"]
+                if fence_revision <= self.fence_revision:
+                    raise InvalidData("stale recovery-fence acknowledgement")
+                self.fence_revision = fence_revision
             self.revision = revision
+        return True

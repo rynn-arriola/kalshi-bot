@@ -8,6 +8,23 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — S2B restriction-transfer ordering
+
+### Stop and coalesced-pulse races could interrupt terminal fence transfer
+
+**Review findings in the new offline component.** A durable stop can queue
+STOP_HINT before the terminal FENCE_ACK, and a coalesced pulse created before a
+fence commit can arrive after the newer ACK. Treating every post-stop control as
+invalid prevented clean retained shutdown; treating the old pulse as a control-
+revision regression created a false IPC fault. Blocking on an IPC completion
+future inside the child event loop also violated the nonblocking ownership
+contract. **Fix.** Permit only FENCE_ACK after STOP_HINT, ignore an older
+coalesced pulse without refreshing heartbeat, preserve exact retained-control
+ordering and await IPC completions asynchronously. **Verification.** Native
+clean-stop, crash-before-ACK and exhaustion/cooldown tests pass; targeted
+protocol regressions cover the stale pulse and phase gates. The complete suite
+passes. No live process or venue operation was involved.
+
 ## 2026-09-22 — native supervisor resource acceptance
 
 ### Current endpoint-cost template syntax rejected the complete quota pair

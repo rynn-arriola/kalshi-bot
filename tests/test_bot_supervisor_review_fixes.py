@@ -27,6 +27,8 @@ from kalshi_bot.windows_ipc import PipeServer, connect_pipe, supervisor_pipe_nam
 def message(kind=MessageKind.ADMIT, seq=1, revision=3):
     return Envelope("a"*64, "session", "child", 2, kind, seq, time.monotonic_ns(),
                     dict(reason="stop") if kind == MessageKind.STOP_HINT else
+                    dict(control_revision=revision, fence_revision=1)
+                    if kind == MessageKind.FENCE_ACK else
                     dict(control_revision=revision))
 
 
@@ -50,12 +52,24 @@ class ProtocolAndJournalTests(unittest.TestCase):
         for candidate in (message(MessageKind.PULSE), message(MessageKind.FENCE_ACK)):
             with self.assertRaises(InvalidData):
                 self.protocol().accept(candidate, now_ns=time.monotonic_ns(), current_revision=3)
-        for candidate in (message(seq=2), message(MessageKind.PULSE, revision=2),
-                          message(MessageKind.PULSE, revision=5)):
+        for candidate in (message(seq=2), message(MessageKind.PULSE, revision=5)):
             protocol = self.protocol()
             protocol.accept(message(), now_ns=time.monotonic_ns(), current_revision=3)
             with self.assertRaises(InvalidData):
                 protocol.accept(candidate, now_ns=time.monotonic_ns(), current_revision=4)
+        protocol = self.protocol()
+        protocol.accept(message(), now_ns=time.monotonic_ns(), current_revision=3)
+        self.assertFalse(protocol.accept(message(MessageKind.PULSE, revision=2),
+            now_ns=time.monotonic_ns(), current_revision=4))
+
+    def test_coalesced_pulse_older_than_fence_ack_is_ignored(self):
+        protocol = self.protocol()
+        protocol.accept(message(), now_ns=time.monotonic_ns(), current_revision=3)
+        protocol.accept(message(MessageKind.FENCE_ACK, seq=2, revision=4),
+                        now_ns=time.monotonic_ns(), current_revision=4)
+        self.assertFalse(protocol.accept(message(MessageKind.PULSE, seq=1, revision=3),
+            now_ns=time.monotonic_ns(), current_revision=4))
+        self.assertEqual(protocol.revision, 4)
 
     def test_parent_sessions_are_bounded_at_every_commit(self):
         with SupervisorStore(":memory:", scope_id="test-journal", event_limit=16) as store:

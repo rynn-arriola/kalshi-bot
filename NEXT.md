@@ -6,12 +6,15 @@ treat a queue row as atomic cross-source proof, restore live samples from disk o
 count estimates as paid rewards.
 
 D-074 clears the S2A CPU/ownership resource gate and records a fresh validated
-[read-only quota pair](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md). Do not
-hardcode the observed limits or infer a direct-member fee profile. Next priority:
-implement/review S2B runtime ownership and restriction transfer from the approved
-design, then establish the member fee profile and decide the current per-order
-fee-bound correction, prepare market-specific timing reviews and capture
-launch-boundary account evidence. A live start remains a separate operator decision.
+[read-only quota pair](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md). D-075
+implements the separately assigned [offline S2B runtime and transactional
+restriction transfer](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md). Do not add a dynamic
+runtime factory, restore tokens/source proof, infer clean exit from RESULT, or
+turn this fixture path into a production launcher. Next priority: establish the
+member direct/non-direct fee profile and present the current per-order fee-bound
+correction for explicit decision; then prepare selected-market timing reviews,
+capture launch-boundary account evidence and complete integrated readiness review.
+A live start remains a separate operator decision.
 
 D-072 completes #2's execution-disabled [entry-pair dispatch and mutation
 transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md). Do not rebuild it or infer
@@ -123,8 +126,9 @@ complete; no Sol fix phase is needed for either review.
 D-057 [implements the S2A corrections](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
 from the [D-056 review](docs/REVIEW_D056_ASTRA.md). D-074 subsequently attributes
 and fixes the idle CPU cost without weakening file security; the full native
-resource fixture passes. S2B remains unimplemented and separately reviewed; no
-service/task, bot start or live authority follows from S2A clearance.
+resource fixture passes. D-075 now supplies the fixed offline S2B runtime and
+recovery fence. Production construction, real-input readiness and live operation
+remain unavailable; no service/task or bot start follows from this clearance.
 
 D-061 supersedes D-049's mandatory recommendations and manual model switches.
 Continue authorized work with the active model while preserving review,

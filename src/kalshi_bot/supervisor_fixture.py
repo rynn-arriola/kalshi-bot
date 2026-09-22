@@ -1,4 +1,4 @@
-"""Pinned identities for the fixed, inert S2A subprocess fixture."""
+"""Pinned identities for fixed S2A and offline S2B subprocess fixtures."""
 import hashlib
 from pathlib import Path
 
@@ -6,7 +6,8 @@ from .values import InvalidData
 
 
 FIXTURE_MODES = frozenset(("normal", "crash_after_admit", "hang_after_admit",
-                           "exit_after_status"))
+                           "exit_after_status", "runtime_normal",
+                           "runtime_exhausted", "runtime_crash_before_fence_ack"))
 
 
 def repository_root():
@@ -33,6 +34,8 @@ def build_fingerprint():
     paths = (fixture_path(), package/"__init__.py", package/"supervision.py",
              package/"supervisor_store.py", package/"supervisor_control.py",
              package/"supervisor_protocol.py", package/"supervisor_fixture.py",
+             package/"recovery_fence.py", package/"supervised_runtime.py",
+             package/"runtime.py",
              package/"windows.py", package/"windows_ipc.py",
              package/"process_supervisor.py", package/"observability.py")
     for path in tuple(item.resolve() for item in paths):
@@ -45,5 +48,6 @@ def build_fingerprint():
 
 def config_fingerprint(mode):
     if mode not in FIXTURE_MODES:
-        raise InvalidData("invalid inert fixture mode")
-    return hashlib.sha256(("s2a-inert:"+mode).encode()).hexdigest()
+        raise InvalidData("invalid supervisor fixture mode")
+    profile = "s2b-offline:" if mode.startswith("runtime_") else "s2a-inert:"
+    return hashlib.sha256((profile+mode).encode()).hexdigest()

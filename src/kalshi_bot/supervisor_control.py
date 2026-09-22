@@ -204,6 +204,16 @@ class ControlOwner:
         if operation == "stage":
             native = store.update_native_stage(**args[0])
             return ControlReceipt(store.revision(), state=store.read(), native=native)
+        if operation == "fence":
+            fence = store.commit_recovery_fence(args[0])
+            return ControlReceipt(store.revision(), state=store.read(),
+                                  native=store.read_native(), value=fence)
+        if operation == "resolve_fence":
+            event, values = args
+            decision, fence = store.resolve_recovery_fence(event,
+                policy=self.policy, **values)
+            return ControlReceipt(store.revision(), decision, decision.state,
+                                  store.read_native(), value=fence)
         if operation == "spawn":
             event, session, factory = args
             factory.acquire_presence()
@@ -331,3 +341,17 @@ class SupervisorController:
         if error is not None:
             raise InvalidData("durable supervisor disarm unconfirmed") from error
         return receipt, signaled
+
+    async def resolve_recovery_fence(self, *, expected_generation,
+            expected_fence_revision, retry_holds, component_holds=(),
+            cooldown_names=(), parent_session, observed_utc=None):
+        """Fixture-only explicit restriction removal; never arms the scope."""
+        event = SupervisorEvent(EventKind.HOLDS_RESOLVED,
+            time.time() if observed_utc is None else observed_utc,
+            expected_generation=expected_generation,
+            retry_holds=tuple(retry_holds))
+        values = dict(expected_fence_revision=expected_fence_revision,
+            component_holds=tuple(component_holds),
+            cooldown_names=tuple(cooldown_names),
+            parent_session=parent_session)
+        return await self.owner.submit("resolve_fence", event, values)

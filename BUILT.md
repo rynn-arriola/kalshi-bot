@@ -1,5 +1,16 @@
 # What exists
 
+## Offline native S2B runtime/recovery fence — 2026-09-22
+
+[Build record](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md): one fixed credential-free
+child owns an injected disposable `RecoveryRuntime`, local ledger and fake
+readers. A bounded schema-5 supervisor fence transfers component exhaustion,
+cooldowns and terminal-checkpoint completeness before ACK/restart decisions.
+Unknown death and untrusted cross-session time remain durable holds; explicit
+resolution is scoped and current-revision checked. Native crash/clean-stop tests,
+runtime drain regressions and 30/120-market resource gates pass. This is not a
+production launcher or live authority.
+
 ## Native S2A resource clearance and fresh quota evidence — 2026-09-22
 
 [Build record](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md): SQLite sidecars
@@ -7,8 +18,8 @@ are pinned against replacement and revalidated by retained handle; materially
 idle timer ticks avoid redundant FULL journal writes without suppressing clock,
 deadline, action or state transitions. The 60-second/100-cycle native fixture now
 passes all declared S2A resource targets. Bounded read-only account limits/cost
-verification also validates current quota values and document syntax. S2B,
-fee-profile proof, market-specific
+verification also validates current quota values and document syntax. D-075 now
+adds the fixed offline S2B runtime/restriction phase. Fee-profile proof, market-specific
 timing reviews and launch-boundary account evidence remain unbuilt/unverified.
 
 ## Production reward reflection/checkpoint lifecycle — 2026-09-22

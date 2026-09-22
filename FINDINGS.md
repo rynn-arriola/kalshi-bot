@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 109. Runtime restart may transfer restrictions, never authority — 2026-09-22
+
+VERIFIED CODE/OFFLINE: the fixed native S2B child applies a validated bounded
+recovery fence before creating its disposable ledger or issuing any fake read.
+The parent ACKs only after committing increasing component holds, non-shortening
+cooldowns and terminal-checkpoint state for the exact child/session/generation.
+Unexpected death or missing terminal state installs `recovery_fence_unknown`;
+a new parent session retains cooldown uncertainty as a hold. Tokens, quota
+grants, snapshots, leases and source freshness always restart empty. Explicit
+resolution is childless and current-revision scoped; heartbeat/ARM cannot clear
+it. MEASURED: native clean/crash/exhaustion cases, 170 focused/regression tests,
+the 1,362-test complete suite and 30/120-market resource fixtures pass. This is
+supervision evidence, not account recovery or live authority. [Exact evidence](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md).
+
 ## 108. S2A idle cost was redundant security traversal plus no-op durability — 2026-09-22
 
 VERIFIED CODE/MEASURED: reopening and retraversing protected SQLite sidecars on

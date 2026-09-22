@@ -1,10 +1,12 @@
 # D-055 — S2 native Windows lifecycle design
 
-September 21, 2026. **Design only; implementation awaits operator approval.**
+September 21, 2026 design; S2A and the fixed offline S2B phase are now
+implemented through [D-075](BUILD_WINDOWS_SUPERVISOR_S2B.md). Production runtime
+construction and live operation remain outside this design's authority.
 Extends [D-050](DESIGN_WINDOWS_SUPERVISOR.md), not a second recovery policy.
 [S1](REVIEW_D054_ASTRA.md) and [D-048](REVIEW_D048_ASTRA.md) reviews are clear.
 The proposed first Sol assignment is **S2A only**, followed by Astra review;
-S2B needs a separate assignment. No production launcher, credentials, venue
+S2B was completed as a separate assignment. No production launcher, credentials, venue
 connections, orders, services/tasks, laptop restart or live auto-resume.
 
 ## 1. Source findings and boundary

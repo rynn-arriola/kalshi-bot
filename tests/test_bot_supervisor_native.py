@@ -1,4 +1,4 @@
-"""Native Windows S2A process/IPC acceptance with inert subprocesses only."""
+"""Native Windows S2A/S2B acceptance with fixed offline subprocesses only."""
 import asyncio
 import ctypes
 from ctypes import wintypes
@@ -18,6 +18,7 @@ from kalshi_bot.supervision import SupervisorPolicy, SupervisorState
 from kalshi_bot.supervisor_control import (ControlOwner, ScopeSpec,
                                            SupervisorController)
 from kalshi_bot.supervisor_protocol import Envelope, MessageKind
+from kalshi_bot.supervisor_store import SupervisorStore
 from kalshi_bot.values import InvalidData
 from kalshi_bot.windows import (WindowsControlMutex, WindowsRoleLease,
                                 WindowsStopLatch, current_user_sid,
@@ -170,6 +171,65 @@ class NativeHostTests(unittest.IsolatedAsyncioTestCase):
         with WindowsRoleLease(self.scope.scope_id, "child",
                               user_sid=self.scope.approved_user_sid):
             pass
+
+    async def test_offline_runtime_transfers_terminal_fence_before_clean_exit(self):
+        host, task = await self.launch("runtime_normal")
+        _, controller = await self.controller()
+        await self.arm(controller, host)
+        try:
+            await self.eventually(lambda: host.controller_state is not None
+                and host.controller_state.state in {
+                    SupervisorState.HEALTHY, SupervisorState.RECOVERING})
+        except TimeoutError:
+            logs = {str(path.relative_to(self.scope.control_root)): path.read_text(
+                encoding="utf-8", errors="replace") for path in
+                self.scope.control_root.rglob("*.jsonl")}
+            self.fail(f"runtime fixture did not become healthy: "
+                      f"state={host.controller_state!r} error={host.last_error!r} "
+                      f"logs={logs!r}")
+        await controller.stop()
+        try:
+            await asyncio.wait_for(task, 15)
+        except InvalidData:
+            logs = {str(path.relative_to(self.scope.control_root)): path.read_text(
+                encoding="utf-8", errors="replace") for path in
+                self.scope.control_root.rglob("*.jsonl")}
+            self.fail(f"runtime fixture stop fault: error={host.last_error!r} logs={logs!r}")
+        final = await controller.inspect()
+        fence = SupervisorStore.read_only_recovery_fence(self.scope.store_path,
+            scope_id=self.scope.scope_id, security_sid=self.scope.approved_user_sid)
+        self.assertEqual(final.state.state, SupervisorState.DISARMED)
+        self.assertTrue(fence.terminal_checkpoint_complete)
+        self.assertGreaterEqual(fence.fence_revision, 2)
+        self.assertEqual(host.validated_results, 1)
+
+    async def test_offline_runtime_crash_before_ack_installs_unknown_fence_hold(self):
+        host, task = await self.launch("runtime_crash_before_fence_ack")
+        _, controller = await self.controller()
+        await self.arm(controller, host)
+        await self.eventually(lambda: host.controller_state is not None
+            and host.controller_state.state == SupervisorState.ATTENTION_REQUIRED,
+            timeout=15)
+        state = (await controller.inspect()).state
+        self.assertIn("recovery_fence_unknown", state.retry_holds)
+        self.assertEqual(state.incident_attempts, 1)
+        await host.request_shutdown()
+        await asyncio.wait_for(task, 10)
+
+    async def test_offline_runtime_retains_exhaustion_and_shared_cooldown(self):
+        host, task = await self.launch("runtime_exhausted")
+        _, controller = await self.controller()
+        await self.arm(controller, host)
+        await self.eventually(lambda: host.controller_state is not None
+            and "fixture_write_quota_exhausted" in
+                host.controller_state.retry_holds, timeout=15)
+        await controller.stop()
+        await asyncio.wait_for(task, 15)
+        fence = SupervisorStore.read_only_recovery_fence(self.scope.store_path,
+            scope_id=self.scope.scope_id, security_sid=self.scope.approved_user_sid)
+        self.assertIn("fixture_write_quota_exhausted", fence.component_holds)
+        self.assertIn("fixture_write_429", tuple(item.name for item in fence.cooldowns))
+        self.assertTrue(fence.terminal_checkpoint_complete)
 
     async def test_duplicate_parent_is_rejected(self):
         host, task = await self.launch()

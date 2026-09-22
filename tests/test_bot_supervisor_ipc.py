@@ -77,10 +77,16 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(InvalidData):
             coalesced.accept(status(9))
 
-    def test_s2b_fence_is_deliberately_unimplemented(self):
-        with self.assertRaisesRegex(InvalidData, "S2B"):
+    def test_s2b_fence_is_strict_and_bounded(self):
+        value = Envelope(DIGEST, "session-a", "child-a", 1, MessageKind.FENCE,
+            1, 1, dict(fence_revision=1, component_holds=["quota_exhausted"],
+            cooldowns=[dict(name="shared_429", remaining_ms=1000)],
+            terminal_checkpoint_complete=False))
+        self.assertEqual(value.payload["fence_revision"], 1)
+        with self.assertRaises(InvalidData):
             Envelope(DIGEST, "session-a", "child-a", 1, MessageKind.FENCE,
-                     1, 1, {})
+                1, 1, dict(fence_revision=1, component_holds=["same", "same"],
+                cooldowns=[], terminal_checkpoint_complete=False))
 
 
 class PolicyAndStoreTests(unittest.TestCase):

@@ -1,4 +1,5 @@
-"""Fixed inert S2A child. It has no credential, network, account or order code."""
+"""Fixed S2 child: inert S2A or credential-free offline-runtime S2B."""
+import asyncio
 import argparse
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ from kalshi_bot.supervisor_protocol import (Envelope, MessageKind, PARENT_KINDS,
                                             ParentProtocol)
 from kalshi_bot.observability import Diagnostics
 from kalshi_bot.supervisor_store import SupervisorStore
+from kalshi_bot.supervised_runtime import (FenceCooldown, RecoveryFence,
+    RuntimeContext, RuntimeRestrictions, create_offline_runtime_adapter)
 from kalshi_bot.values import InvalidData
 from kalshi_bot.windows import (WindowsControlMutex, current_user_sid,
                                 WindowsPowerMonitor, process_id_from_handle, wait_handle)
@@ -91,9 +94,9 @@ def run_child(args, scope, endpoint, power, diagnostics):
                 args.store_path, scope_id=scope.scope_id,
                 security_sid=scope.approved_user_sid)
             guard()
-            protocol.accept(message, now_ns=time.monotonic_ns(),
-                            current_revision=revision)
-            if message.kind != MessageKind.STOP_HINT and (
+            accepted = protocol.accept(message, now_ns=time.monotonic_ns(),
+                                       current_revision=revision)
+            if message.kind not in {MessageKind.STOP_HINT, MessageKind.FENCE_ACK} and (
                     state.stop_latched or not state.desired_armed
                     or state.generation != args.child_generation
                     or state.child_id != args.child_id
@@ -105,6 +108,7 @@ def run_child(args, scope, endpoint, power, diagnostics):
                     or wait_handle(args.stop_handle)
                     or wait_handle(args.parent_handle)):
                 raise InvalidData("child admission revoked")
+            return accepted
 
     def result(outcome):
         # Cleanup evidence is published only after the bounded diagnostic owner joins.
@@ -142,7 +146,7 @@ def run_child(args, scope, endpoint, power, diagnostics):
                 if time.monotonic() >= deadline:
                     return 25
                 continue
-            control(message)
+            accepted = control(message)
             if message.kind == MessageKind.STOP_HINT:
                 return 24
             if message.kind != MessageKind.ADMIT:
@@ -152,6 +156,9 @@ def run_child(args, scope, endpoint, power, diagnostics):
 
         if args.mode == "crash_after_admit":
             os._exit(7)
+        if args.mode.startswith("runtime_"):
+            return asyncio.run(run_runtime_child(args, scope, endpoint, protocol,
+                                                 control, guard, diagnostics))
         if args.mode == "hang_after_admit":
             guard()
             status_sequence += 1
@@ -195,6 +202,151 @@ def run_child(args, scope, endpoint, power, diagnostics):
                     return 5
     finally:
         pass  # main retains transport, diagnostics, power and inherited lifetime.
+
+
+async def run_runtime_child(args, scope, endpoint, protocol, control, guard, diagnostics):
+    """Run the one fixed S2B graph; all I/O remains disposable and local."""
+    with WindowsControlMutex(scope.scope_id,
+            user_sid=scope.approved_user_sid) as mutex:
+        if mutex.abandoned:
+            raise InvalidData("child control mutex abandoned")
+        prior = SupervisorStore.read_only_recovery_fence(args.store_path,
+            scope_id=scope.scope_id, security_sid=scope.approved_user_sid)
+    restrictions = RuntimeRestrictions()
+    restrictions.apply(prior, current_parent_session=args.parent_session)
+    holds = list(restrictions.holds)
+    cooldowns = list(restrictions.cooldowns)
+    if args.mode == "runtime_exhausted":
+        if "fixture_write_quota_exhausted" not in holds:
+            holds.append("fixture_write_quota_exhausted")
+        cooldowns = [item for item in cooldowns if item.name != "fixture_write_429"]
+        cooldowns.append(FenceCooldown("fixture_write_429", time.time()+30))
+    restored = RecoveryFence(args.parent_session, args.child_id,
+        args.child_generation, (0 if prior is None else prior.fence_revision)+1,
+        tuple(holds), tuple(cooldowns), False)
+    restrictions.apply(restored, current_parent_session=args.parent_session)
+    control_sequence = 2  # HELLO is retained child-control sequence 1.
+    status_sequence = 0
+
+    def fence_payload(fence):
+        now = time.time()
+        return dict(fence_revision=fence.fence_revision,
+            component_holds=list(fence.component_holds),
+            cooldowns=[dict(name=item.name,
+                remaining_ms=max(1, min(86400000,
+                    int((item.deadline_utc-now)*1000))))
+                for item in fence.cooldowns if item.deadline_utc > now],
+            terminal_checkpoint_complete=fence.terminal_checkpoint_complete)
+
+    async def receive(timeout):
+        return await asyncio.to_thread(endpoint.receive, timeout)
+
+    async def send_control(message):
+        receipt = asyncio.wrap_future(endpoint.send_control(message))
+        await asyncio.wait_for(receipt, 4)
+
+    async def publish_fence(fence, *, stopping=False):
+        nonlocal control_sequence
+        await send_control(envelope(args, MessageKind.FENCE,
+            control_sequence, fence_payload(fence)))
+        if args.mode == "runtime_crash_before_fence_ack":
+            os._exit(8)
+        deadline = time.monotonic()+10
+        while True:
+            guard()
+            if wait_handle(args.parent_handle) or (
+                    wait_handle(args.stop_handle) and not stopping):
+                raise InvalidData("runtime fence acknowledgement interrupted")
+            message = await receive(.1)
+            if message is None:
+                if time.monotonic() >= deadline:
+                    raise InvalidData("runtime fence acknowledgement timed out")
+                continue
+            accepted = control(message)
+            if message.kind == MessageKind.STOP_HINT:
+                if stopping:
+                    continue
+                raise InvalidData("runtime stopped before fence acknowledgement")
+            if message.kind == MessageKind.PULSE:
+                if not accepted:
+                    continue
+                continue
+            if (message.kind != MessageKind.FENCE_ACK or
+                    message.payload["fence_revision"] != fence.fence_revision):
+                raise InvalidData("runtime expected matching fence acknowledgement")
+            return
+
+    await publish_fence(restored)
+    adapter = await create_offline_runtime_adapter(
+        scope.control_root/("runtime-"+args.child_id+".db"), restrictions)
+    await adapter.start(RuntimeContext(scope.scope_id, args.child_id,
+                                       args.child_generation))
+    last_pulse = time.monotonic()
+    next_status = 0.0
+    requested_stop = False
+    try:
+        while not requested_stop:
+            guard()
+            now = time.monotonic()
+            if wait_handle(args.parent_handle):
+                adapter.request_stop("parent_exit")
+                requested_stop = True
+                break
+            if wait_handle(args.stop_handle):
+                adapter.request_stop("durable_stop")
+                requested_stop = True
+                break
+            message = await receive(.05)
+            guard()
+            if message is not None:
+                accepted = control(message)
+                if message.kind == MessageKind.PULSE and accepted:
+                    last_pulse = now
+                elif message.kind == MessageKind.STOP_HINT:
+                    adapter.request_stop("stop_hint")
+                    requested_stop = True
+                    break
+                elif message.kind == MessageKind.FENCE_ACK:
+                    raise InvalidData("unexpected duplicate fence acknowledgement")
+            if now-last_pulse > 6:
+                adapter.request_stop("parent_heartbeat_lost")
+                requested_stop = True
+                break
+            if adapter.task.done():
+                requested_stop = True
+                break
+            if now >= next_status:
+                snapshot = adapter.health_snapshot()
+                status_sequence += 1
+                endpoint.publish_latest(envelope(args, MessageKind.STATUS,
+                    status_sequence, dict(phase=snapshot.phase,
+                    progress_sequence=snapshot.progress_sequence,
+                    work_remaining_ms=snapshot.work_remaining_ms,
+                    blockers=list(snapshot.blockers))))
+                next_status = now+2
+    finally:
+        if not adapter.runtime.stop_requested.is_set():
+            adapter.request_stop("runtime_finalizer")
+    evidence = await adapter.join()
+    terminal = RecoveryFence(args.parent_session, args.child_id,
+        args.child_generation, restored.fence_revision+1,
+        restrictions.holds, restrictions.cooldowns, evidence.cleanup_complete)
+    control_sequence += 1
+    await publish_fence(terminal, stopping=True)
+    diagnostics.emit("supervisor_child_stopped", operation=args.child_id)
+    diagnostics.close()
+    while diagnostics.status()["worker_alive"]:
+        diagnostics.close()
+    if diagnostics.status()["failure"] is not None:
+        raise InvalidData("child diagnostic cleanup failed")
+    control_sequence += 1
+    await send_control(envelope(args, MessageKind.RESULT, control_sequence,
+        dict(outcome="clean" if evidence.cleanup_complete else "unknown_failure",
+             cleanup_complete=evidence.cleanup_complete,
+             cleanup_failed=evidence.cleanup_failed,
+             unresolved_work=evidence.unresolved_work,
+             retry_holds=list(evidence.retry_holds))))
+    return 0 if evidence.cleanup_complete else 31
 
 
 if __name__ == "__main__":

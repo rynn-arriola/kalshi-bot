@@ -1,4 +1,4 @@
-"""Native Windows S2A supervisor for one fixed inert child only."""
+"""Native Windows supervisor for fixed inert and offline-runtime fixtures."""
 import asyncio
 from collections import deque
 import os
@@ -18,6 +18,7 @@ from .supervisor_fixture import (build_fingerprint, config_fingerprint,
                                  fixture_path, repository_root, source_path)
 from .supervisor_protocol import (CHILD_KINDS, Envelope, MessageKind,
                                   SequenceTracker, validate_peer)
+from .recovery_fence import FenceCooldown, RecoveryFence
 from .values import InvalidData, identity
 from .windows import (WindowsPowerMonitor, WindowsRoleLease, WindowsStopLatch,
                       _close_handle, inheritable_parent_handle)
@@ -42,6 +43,8 @@ class OwnedChild:
         self.created = False
         self.creation_attempted = False
         self.result = None
+        self.fence_revision = 0
+        self.terminal_fence_revision = 0
         self.stop_hint_sent = False
         self._bind_task = None
         self._close_task = None
@@ -191,7 +194,7 @@ class OwnedChild:
 
 
 class SupervisorHost:
-    """One native parent loop. It can launch only the fixed inert S2A fixture."""
+    """One native parent loop; S2B remains a fixed credential-free fixture."""
     def __init__(self, scope: ScopeSpec, *, fixture_mode="normal",
                  policy=SupervisorPolicy()):
         if not isinstance(scope, ScopeSpec):
@@ -363,6 +366,34 @@ class SupervisorHost:
             if self.child.result is not None:
                 raise InvalidData("duplicate native child result")
             self.child.result = message.payload
+        elif message.kind == MessageKind.FENCE:
+            if not self.fixture_mode.startswith("runtime_"):
+                raise InvalidData("inert child cannot publish a recovery fence")
+            revision = message.payload["fence_revision"]
+            if revision <= self.child.fence_revision:
+                raise InvalidData("recovery-fence revision did not advance")
+            cooldowns = tuple(FenceCooldown(item["name"], time.time()+max(0,
+                item["remaining_ms"]/1000-age)) for item in message.payload["cooldowns"])
+            fence = RecoveryFence(self.parent_session, self.child.child_id,
+                self.child.child_generation, revision,
+                tuple(message.payload["component_holds"]), cooldowns,
+                message.payload["terminal_checkpoint_complete"])
+            receipt = await self.owner.submit("fence", fence)
+            self.child.fence_revision = revision
+            if fence.terminal_checkpoint_complete:
+                self.child.terminal_fence_revision = revision
+            try:
+                acknowledgement = self.child.endpoint.send_control(self._outbound(
+                    MessageKind.FENCE_ACK, dict(control_revision=receipt.revision,
+                    fence_revision=revision)))
+                acknowledgement.add_done_callback(
+                    lambda value: None if value.cancelled() else value.exception())
+            except InvalidData:
+                # A peer may die after the fence commit but before its ACK.  The
+                # process handle and terminal-checkpoint rule classify that exit;
+                # only a still-running peer turns this into a parent IPC fault.
+                if self.child.poll_exit() is None:
+                    raise
         else:
             raise InvalidData("unexpected native child message")
 
@@ -399,6 +430,14 @@ class SupervisorHost:
                 outcome = ChildOutcome.INTEGRITY_FAILURE
                 cleanup_complete = False
                 unresolved_work = True
+        if self.fixture_mode.startswith("runtime_"):
+            terminal_known = child.terminal_fence_revision == child.fence_revision > 0
+            if payload is None or outcome == ChildOutcome.UNEXPECTED_DEATH or not terminal_known:
+                holds = tuple(dict.fromkeys(holds+("recovery_fence_unknown",)))
+                cleanup_complete = False
+                unresolved_work = True
+                if payload is not None and outcome == ChildOutcome.CLEAN:
+                    outcome = ChildOutcome.INTEGRITY_FAILURE
         await child.close_after_exit()
         if child.cleanup_error:
             self._record_fault(InvalidData("native child cleanup encountered a fault"))

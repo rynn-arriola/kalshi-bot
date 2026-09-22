@@ -1,5 +1,24 @@
 # Current status
 
+## D-075 offline supervised runtime/recovery fence — 2026-09-22
+
+[Implemented and verified](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md): the fixed
+native child can now own a disposable injected `RecoveryRuntime`, apply persisted
+restrictions before any fake read, drain readers/writer on stop and transfer a
+bounded transactional terminal fence. Unknown death, missing terminal checkpoint,
+exhaustion/cooldown and cross-session clock uncertainty remain durable holds;
+tokens/source proof never restore. Explicit resolution is current-revision,
+childless and scoped.
+
+58 focused supervisor tests pass with one expected privilege skip; 112 runtime/
+continuity/dispatch/quota regressions pass. The 30/120-market S2B resource fixture
+passes its loop/memory/owner/drain targets. Final suite: 1,362 run in 199.588
+seconds, 1,361 passed and one expected skip. No credentials, network, bot start,
+order, configuration or deployment occurred. Remaining: member fee-profile
+evidence and the fee-bound decision, selected-market timing reviews, launch-
+boundary account proof, integrated readiness review and separate live-start
+authority.
+
 ## D-074 supervisor resource clearance and quota evidence — 2026-09-22
 
 [Implemented and verified](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md):

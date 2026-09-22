@@ -10,9 +10,10 @@ import time
 from .supervision import (AttentionReason, ControlState, EventKind, SupervisorEvent,
                           SupervisorPolicy, decide, initial_state)
 from .values import InvalidData, identity, integer
+from .recovery_fence import FenceCooldown, RecoveryFence
 
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 MAX_EVENTS = 256
 CLOCK_SKEW_SECONDS = 2.0
 DEFAULT_BOOT_PREFIX = "estimated-"
@@ -39,6 +40,10 @@ CREATE TABLE native_state (
   diagnostic_pid INTEGER,
   build_fingerprint TEXT NOT NULL,
   config_fingerprint TEXT NOT NULL
+);
+CREATE TABLE recovery_fence (
+  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+  payload TEXT NOT NULL
 );
 CREATE TABLE events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,7 +162,8 @@ class SupervisorStore:
     def _open(self):
         tables = {row[0] for row in self.connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        expected = {"meta", "control", "clock_state", "native_state", "events"}
+        expected = {"meta", "control", "clock_state", "native_state",
+                    "recovery_fence", "events"}
         if tables and tables != expected:
             raise InvalidData("incompatible supervisor control schema")
         if self.mode == "create_only" and tables:
@@ -181,6 +187,8 @@ class SupervisorStore:
                     (boot_id, wall_utc, monotonic, wall_utc))
                 self.connection.execute(
                     "INSERT INTO native_state VALUES (1,NULL,NULL,NULL,'idle',NULL,'','')")
+                self.connection.execute(
+                    "INSERT INTO recovery_fence VALUES (1,'null')")
         meta = dict(self.connection.execute("SELECT key,value FROM meta"))
         if meta != {"schema": SCHEMA_VERSION, "scope": self.scope_id}:
             raise InvalidData("supervisor schema or scope mismatch")
@@ -325,6 +333,145 @@ class SupervisorStore:
         if row is None:
             raise InvalidData("missing supervisor native state")
         return NativeState(**dict(row))
+
+    def read_recovery_fence(self):
+        row = self.connection.execute(
+            "SELECT payload FROM recovery_fence WHERE singleton=1").fetchone()
+        if row is None:
+            raise InvalidData("missing supervisor recovery fence")
+        value = _load(row["payload"], "recovery fence")
+        return None if value is None else RecoveryFence.from_dict(value)
+
+    @staticmethod
+    def read_only_recovery_fence(path, *, scope_id, security_sid=None):
+        """Read a validated fence without creating or changing the control store."""
+        path = Path(path)
+        guard = connection = None
+        try:
+            if security_sid is not None:
+                from .windows import ProtectedControlFiles
+                guard = ProtectedControlFiles(path, security_sid, readonly=True)
+            connection = sqlite3.connect(path.resolve().as_uri()+"?mode=ro", uri=True,
+                                         timeout=5)
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN")
+            meta = dict(connection.execute("SELECT key,value FROM meta"))
+            if meta != {"schema": SCHEMA_VERSION, "scope": identity(scope_id)}:
+                raise InvalidData("supervisor schema or scope mismatch")
+            row = connection.execute(
+                "SELECT payload FROM recovery_fence WHERE singleton=1").fetchone()
+            if row is None:
+                raise InvalidData("missing supervisor recovery fence")
+            value = _load(row["payload"], "recovery fence")
+            return None if value is None else RecoveryFence.from_dict(value)
+        finally:
+            if connection is not None:
+                connection.close()
+            if guard is not None:
+                guard.close()
+
+    def commit_recovery_fence(self, fence):
+        """Merge a current child's restrictions and commit before acknowledgement."""
+        if not isinstance(fence, RecoveryFence):
+            raise InvalidData("typed recovery fence required")
+        with self.transaction():
+            revision, state = self._read_row()
+            native = self.read_native()
+            if ((native.parent_session, native.child_id, native.child_generation,
+                    native.stage) != (fence.parent_session, fence.child_id,
+                                      fence.child_generation, "bound")
+                    or (state.child_id, state.child_generation) !=
+                       (fence.child_id, fence.child_generation)):
+                raise InvalidData("stale recovery-fence child identity")
+            prior = self.read_recovery_fence()
+            if prior is not None and fence.fence_revision <= prior.fence_revision:
+                raise InvalidData("recovery-fence revision did not advance")
+            holds = tuple(dict.fromkeys(
+                (() if prior is None else prior.component_holds)+fence.component_holds))
+            deadlines = {}
+            for item in (() if prior is None else prior.cooldowns)+fence.cooldowns:
+                deadlines[item.name] = max(deadlines.get(item.name, 0), item.deadline_utc)
+            merged = RecoveryFence(fence.parent_session, fence.child_id,
+                fence.child_generation, fence.fence_revision, holds,
+                tuple(FenceCooldown(name, deadline) for name, deadline in sorted(deadlines.items())),
+                fence.terminal_checkpoint_complete)
+            cursor = self.connection.execute(
+                "UPDATE recovery_fence SET payload=? WHERE singleton=1",
+                (_dump(merged.to_dict()),))
+            if cursor.rowcount != 1:
+                raise InvalidData("missing supervisor recovery fence")
+            cursor = self.connection.execute(
+                "UPDATE control SET revision=? WHERE singleton=1 AND revision=?",
+                (revision+1, revision))
+            if cursor.rowcount != 1:
+                raise InvalidData("supervisor revision changed concurrently")
+            self.connection.execute(
+                "INSERT INTO events(revision,generation,kind,observed_utc,control_utc,"
+                "clock_trusted,stale,before_state,after_state,payload) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (revision+1, state.generation, "recovery_fence", state.updated_utc,
+                 state.updated_utc, 1, 0, state.state.value, state.state.value,
+                 _dump(merged.to_dict())))
+            self._prune_events()
+            return merged
+
+    def resolve_recovery_fence(self, event, *, expected_fence_revision,
+                               component_holds=(), cooldown_names=(),
+                               parent_session, policy=SupervisorPolicy()):
+        """Atomically resolve named restrictions and their S1 retry holds."""
+        if (not isinstance(event, SupervisorEvent)
+                or event.kind != EventKind.HOLDS_RESOLVED):
+            raise InvalidData("holds-resolved event required")
+        integer(expected_fence_revision, 1, 2**63-1)
+        if (not isinstance(component_holds, tuple)
+                or not isinstance(cooldown_names, tuple)
+                or not component_holds+cooldown_names):
+            raise InvalidData("nonempty typed fence resolution required")
+        for value in component_holds+cooldown_names:
+            identity(value)
+        if (len(set(component_holds)) != len(component_holds)
+                or len(set(cooldown_names)) != len(cooldown_names)):
+            raise InvalidData("duplicate fence resolution")
+        parent_session = identity(parent_session)
+        with self.transaction():
+            native = self.read_native()
+            prior = self.read_recovery_fence()
+            if (native.parent_session != parent_session or native.child_id is not None
+                    or prior is None or prior.fence_revision != expected_fence_revision):
+                raise InvalidData("stale recovery-fence resolution")
+            if (not set(component_holds).issubset(prior.component_holds)
+                    or not set(cooldown_names).issubset(
+                        item.name for item in prior.cooldowns)):
+                raise InvalidData("recovery-fence resolution differs")
+            decision = self._apply_locked(event, policy)
+            if decision.stale:
+                raise InvalidData("stale retry-hold resolution")
+            retained_holds = tuple(item for item in prior.component_holds
+                                   if item not in component_holds)
+            retained_cooldowns = tuple(item for item in prior.cooldowns
+                                       if item.name not in cooldown_names)
+            updated = RecoveryFence(prior.parent_session, prior.child_id,
+                prior.child_generation, prior.fence_revision+1, retained_holds,
+                retained_cooldowns, prior.terminal_checkpoint_complete)
+            cursor = self.connection.execute(
+                "UPDATE recovery_fence SET payload=? WHERE singleton=1",
+                (_dump(updated.to_dict()),))
+            if cursor.rowcount != 1:
+                raise InvalidData("missing supervisor recovery fence")
+            revision = self.revision()
+            self.connection.execute(
+                "INSERT INTO events(revision,generation,kind,observed_utc,control_utc,"
+                "clock_trusted,stale,before_state,after_state,payload) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (revision, decision.state.generation, "recovery_fence_resolved",
+                 event.observed_utc, decision.state.updated_utc, 1, 0,
+                 decision.state.state.value, decision.state.state.value,
+                 _dump({"expected_fence_revision": expected_fence_revision,
+                        "component_holds": component_holds,
+                        "cooldown_names": cooldown_names,
+                        "new_fence_revision": updated.fence_revision})))
+            self._prune_events()
+            return decision, updated
 
     def _write_native(self, value):
         if not isinstance(value, NativeState):

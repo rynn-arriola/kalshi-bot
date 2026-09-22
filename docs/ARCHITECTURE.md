@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-075 [implements the fixed offline S2B runtime and recovery fence](BUILD_WINDOWS_SUPERVISOR_S2B.md).
+The native child owns one injected `RecoveryRuntime`, disposable ledger and fake
+readers; no signer/network/mutation client can be supplied. Restrictions load
+before fake requests, terminal cleanup joins runtime/readers/writer, and the
+parent durably commits bounded holds/cooldowns before ACK. Missing terminal
+evidence blocks relaunch. This closes the designed offline S2B phase, not
+production runtime construction, real-input readiness or live launch authority.
+
 D-072's [entry-pair dispatch and mutation transport](BUILD_ENTRY_DISPATCH_TRANSPORT.md)
 connects a current D-069 selection to one atomic local two-leg reservation and
 one Kalshi V2 batch request. The writer remains the sole risk/durability owner;
@@ -53,7 +61,8 @@ request shard and signals existing recovery at observation and after retained
 durable recording; uncertainty never releases authority or creates a retry loop.
 The [injected lifecycle service](BUILD_DISPATCH_LIFECYCLE.md) attaches to runtime
 task supervision, drains accepted outcomes before reader teardown and preserves
-UNKNOWN on fixture restart. It does not change the inert native S2A/S2B boundary.
+UNKNOWN on fixture restart. D-075 now tests this ownership inside the fixed
+offline S2B child; it does not create live mutation authority.
 Production mutation transport now exists behind D-072's unconstructible live
 activation boundary. Verified production inputs and native supervised runtime
 integration remain unfinished. D-063 restores development in the primary session without
@@ -80,14 +89,16 @@ IPC, validation, power, security, diagnostics and journal defects. D-057
 [implements corrections](BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md). D-074's
 [resource follow-up](BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md) preserves the
 security/clock contracts and clears every declared 60-second/100-cycle S2A
-resource target. S2B remains unimplemented and separately assigned.
+resource target. D-075 implements the separately assigned fixed offline S2B
+runtime/restriction phase with native crash/cleanup and 30/120-market evidence.
 
 D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
 one process supervisor and one runtime child, durable operator control and bounded
 automatic recovery. D-051 [S1 implementation](BUILD_WINDOWS_SUPERVISOR_S1.md)
 adds the immutable execution-disabled transition policy and separate transactional
-control journal. D-056 adds only S2A native process handles and inert IPC; runtime
-integration still requires separately assigned S2B after the reviews below.
+control journal. D-056 adds S2A native process handles and inert IPC; D-075 now
+adds only the fixed offline S2B runtime/restriction integration. Production
+runtime wiring still requires real-input readiness and separate launch authority.
 This does not establish account proof or authorize live operation.
 The [D-051 review](REVIEW_D051_ASTRA.md) required policy/contract and resource-
 verification fixes. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
@@ -98,8 +109,9 @@ offline. [D-053 Astra review](REVIEW_D053_ASTRA.md) clears four D-052 findings
 but requires two clock-continuity corrections.
 D-054 [implements those corrections](BUILD_WINDOWS_SUPERVISOR_CLOCK_FIXES.md)
 offline. [D-054 Astra review](REVIEW_D054_ASTRA.md) clears both clock findings
-and completes S1 review. D-048 is also cleared below. D-056 now supplies S2A
-native fixture evidence, not S2B runtime/reboot behavior or live operation.
+and completes S1 review. D-048 is also cleared below. D-056 supplies S2A native
+fixture evidence; D-075 adds offline S2B runtime behavior. Real suspend/reboot
+and live operation remain unverified/unavailable.
 
 D-044 [starting-account/private-stream continuity design](DESIGN_ACCOUNT_CONTINUITY.md)
 has an evidence-only D-045 [Phase 1 implementation](BUILD_ACCOUNT_CONTINUITY_PHASE1.md)
