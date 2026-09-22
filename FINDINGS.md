@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 101. Reuse selection mechanics, not Poly economics — 2026-09-21
+
+VERIFIED CODE/OFFLINE: Poly's detailed ordering uses projected own reward within
+viability/phase groups, with bounded scans and cached-candidate revalidation.
+Its positive economic floor and eligible-but-not-necessarily-viable side sum
+must not become Kalshi's net-profit or admissible-quote score. Kalshi already
+has venue-specific reference/share arithmetic and separate ranking views.
+The [audit](docs/POLYMARKET_RANKING_AUDIT.md) records source revision, current
+official reward constraints, 124 passing focused tests and proposed adaptation.
+Selection policy and integration remain pending; no profitability was measured.
+
 ## 100. Dispatch lifetime must outlast accepted outcomes — 2026-09-21
 
 VERIFIED CODE/OFFLINE: source revocation alone is not a completed shutdown.

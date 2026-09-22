@@ -1,5 +1,15 @@
 # Current status
 
+## Priority 5 ranking reference audit — 2026-09-21
+
+[Polymarket code audit and Kalshi adaptation](docs/POLYMARKET_RANKING_AUDIT.md)
+is complete: 56 Poly selection and 68 Kalshi engine tests pass offline. Reuse
+bounded discovery, fresh shortlist checks and inventory-safe ownership; retain
+Kalshi's own scoring. Proposed hourly-reward-first admission, capital-efficiency
+tie-break and stable incumbents await the operator's policy decision. No ranking
+integration, bot/configuration change or live action occurred. Priority 5 and
+the previously recorded runtime/readiness gates remain unfinished.
+
 ## Priority 4 supervised injected dispatch lifecycle — 2026-09-21
 
 [Lifecycle integration](docs/BUILD_DISPATCH_LIFECYCLE.md) connects the injected

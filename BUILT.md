@@ -1,5 +1,12 @@
 # What exists
 
+## Polymarket ranking reference audit — 2026-09-21
+
+[Audit/adaptation proposal](docs/POLYMARKET_RANKING_AUDIT.md) traces actual Poly
+selection/stream/ownership code against Kalshi's existing ranking primitives.
+56 Poly and 68 Kalshi focused offline tests pass. Documentation only: proposed
+admission policy, resource gates and runtime integration are not implemented.
+
 ## Supervised injected dispatch lifecycle — 2026-09-21
 
 [Build/verification](docs/BUILD_DISPATCH_LIFECYCLE.md): `dispatch_supervisor.py`

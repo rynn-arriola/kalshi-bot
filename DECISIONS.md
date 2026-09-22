@@ -3,6 +3,17 @@
 This is the authority record. AI agents may recommend decisions but may not mark
 them accepted without an explicit operator instruction.
 
+## Pending ranking/admission policy
+
+Pending selection choice (not an accepted decision): the
+[2026-09-21 ranking audit](docs/POLYMARKET_RANKING_AUDIT.md) recommends estimated
+gross hourly reward first, capital-efficiency tie-break, and stable incumbent
+markets, using only feasible size-10 reference quotes. Alternatives and payout
+uncertainty are in that canonical proposal. D-022 has not yet selected an
+automatic allocation policy. Existing capital/risk limits remain unchanged;
+no code/activation impact until approval. Stale/unknown proof blocks new entries
+and retains inventory owners. The operator may reject or revise the proposal.
+
 ## Accepted decisions
 
 ### D-001 — Measure before building

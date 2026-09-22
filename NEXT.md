@@ -1,5 +1,11 @@
 # Active work queue
 
+Priority 5 reference research is complete: see the
+[code audit and proposed admission policy](docs/POLYMARKET_RANKING_AUDIT.md).
+Next obtain the operator's ranking-policy decision, specify bounded integration
+acceptance budgets, then implement using the existing board/writer/dispatch
+owners. Do not repeat Poly discovery or treat the proposal as activated strategy.
+
 Next work: priority 5 reward ranking/admission integration, followed by priority
 6 runtime/readiness acceptance. Priority 4's
 [supervised injected lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) now covers stop,
