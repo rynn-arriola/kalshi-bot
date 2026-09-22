@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 123. First live opening retained exact personal cash but could not attribute it — 2026-09-22
+
+VERIFIED LIVE ACCOUNT / ZERO MUTATIONS: the first explicitly authorized
+supervised initialization observed a flat primary account with zero orders,
+positions and exposure. Its immutable opening evidence retained an applied $500
+personal deposit and a completed $0.4417 intra-exchange transfer, both created
+before the boundary but lacking venue completion timestamps. The generic D-068
+policy therefore retained `cash_activity_unattributed`; opening approval failed
+before dispatch and bounded supervisor recovery ended in `attention_required`.
+No order endpoint was invoked. D-084 records the operator attribution and the
+narrow recovery correction; this is startup evidence, not profitability or
+payout evidence. [Build and runtime record](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
+
 ## 122. Current-path findings are repaired without weakening create proof — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: R1–R4 from finding 121 are connected to their actual

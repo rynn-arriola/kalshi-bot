@@ -4,6 +4,7 @@ from contextlib import closing
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal as D
+import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
@@ -39,14 +40,17 @@ class DurableAccountingTests(unittest.IsolatedAsyncioTestCase):
         await self.writer.close()
         self.temp.cleanup()
 
-    async def refresh(self, now=NOW):
+    async def refresh(self, now=NOW, cash=None):
         self.now = now
         token = self.account.begin_reconciliation(now)
-        snapshot = normalize_snapshot([], [], dict(balance_dollars='500', updated_ts=1), subaccount=0)
+        snapshot = normalize_snapshot([], [], cash or dict(
+            balance_dollars='500', updated_ts=1), subaccount=0)
         self.report = await self.account.finish_reconciliation(token, snapshot, now)
         self.continuity = continuity(self.writer, self.writer.revision)
 
-    def evidence(self, settlements=(), *, boundary=None, cash=None, **changes):
+    def evidence(self, settlements=(), *, boundary=None, cash=None,
+                 subaccount_transfers=(), intra_exchange_transfers=(),
+                 deposits=(), withdrawals=(), **changes):
         def pages(name, rows=()):
             return PageSet(tuple(rows), 1, 20, name,
                            (('subaccount', 0),) if name == 'settlements' else (), True)
@@ -54,9 +58,10 @@ class DurableAccountingTests(unittest.IsolatedAsyncioTestCase):
             proposed_boundary=boundary or NOW-timedelta(hours=1), subaccount=0,
             writer_epoch=self.writer.epoch, writer_revision=self.writer.revision,
             cash_document=cash or balance(), settlements=pages('settlements', settlements),
-            subaccount_transfers=pages('subaccount_transfers'),
-            intra_exchange_transfers=pages('intra_exchange_transfers'),
-            deposits=pages('deposits'), withdrawals=pages('withdrawals')) | changes))
+            subaccount_transfers=pages('subaccount_transfers', subaccount_transfers),
+            intra_exchange_transfers=pages('intra_exchange_transfers', intra_exchange_transfers),
+            deposits=pages('deposits', deposits),
+            withdrawals=pages('withdrawals', withdrawals)) | changes))
 
     async def capture(self, **kwargs):
         return await self.writer.capture_accounting(self.evidence(**kwargs), self.report)
@@ -79,6 +84,68 @@ class DurableAccountingTests(unittest.IsolatedAsyncioTestCase):
         changed = await self.capture(boundary=NOW-timedelta(hours=2))
         self.assertEqual(changed.status.checkpoint_digest, first.status.checkpoint_digest)
         self.assertIn('opening_boundary_changed', changed.status.holds)
+
+    async def test_completed_preboundary_personal_cash_activity_is_explicitly_attributed(self):
+        boundary = NOW-timedelta(hours=1)
+        old = int((boundary-timedelta(days=1)).timestamp())
+        deposit = dict(id='personal-deposit', status='applied', type='ach',
+            amount_cents=50000, fee_cents=0, created_ts=old)
+        transfer = dict(transfer_id='completed-transfer', source='event_contract',
+            destination='event_contract', source_exchange_shard=0,
+            destination_exchange_shard=1, amount='.44', status='complete',
+            created_ts=old)
+        captured = await self.capture(boundary=boundary, deposits=(deposit,),
+            intra_exchange_transfers=(transfer,))
+        self.assertIn('cash_activity_unattributed', captured.status.holds)
+        self.assertTrue(await self.writer.approve_opening(
+            checkpoint_digest=captured.status.checkpoint_digest,
+            captured_digest=captured.captured_digest,
+            reference='synthetic-personal-funding-approval', now=NOW))
+        status = await self.writer.accounting_status()
+        self.assertNotIn('cash_activity_unattributed', status.holds)
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            baseline = json.loads(ledger.connection.execute(
+                'SELECT payload FROM accounting_baseline WHERE id=1').fetchone()[0])
+            self.assertEqual(len(baseline['attributed_cash_activity']), 2)
+        self.writer = await LedgerWriter(self.path).start()
+
+    async def test_personal_cash_attribution_never_accepts_pending_or_later_activity(self):
+        boundary = NOW-timedelta(hours=1)
+        for name, row in (
+            ('pending', dict(id='pending', status='pending', type='ach', amount_cents=1,
+                fee_cents=0, created_ts=int((boundary-timedelta(days=1)).timestamp()))),
+            ('later', dict(id='later', status='applied', type='ach', amount_cents=1,
+                fee_cents=0, created_ts=int((boundary+timedelta(seconds=1)).timestamp()))),
+            ('withdrawal', dict(id='withdrawal', status='applied', type='ach', amount_cents=1,
+                fee_cents=0, created_ts=int((boundary-timedelta(days=1)).timestamp())))):
+            with self.subTest(name=name):
+                await self.writer.close()
+                path = Path(self.temp.name)/(name+'.db')
+                self.writer = await LedgerWriter(path).start()
+                self.path = path
+                self.account = AccountCoordinator(self.writer, subaccount=0)
+                self.account.connect_generation()
+                await self.refresh()
+                values = {'withdrawals': (row,)} if name == 'withdrawal' else {'deposits': (row,)}
+                captured = await self.capture(boundary=boundary, **values)
+                with self.assertRaises(InvalidData):
+                    await self.writer.approve_opening(
+                        checkpoint_digest=captured.status.checkpoint_digest,
+                        captured_digest=captured.captured_digest,
+                        reference='synthetic-rejected-attribution', now=NOW)
+
+    async def test_interrupted_opening_uses_fresh_matching_inspection(self):
+        boundary = NOW-timedelta(hours=1)
+        first = await self.capture(boundary=boundary)
+        later = NOW+timedelta(minutes=1)
+        later_cash = balance() | dict(updated_ts=2)
+        await self.refresh(later, later_cash)
+        current = await self.capture(boundary=boundary, cash=later_cash)
+        self.assertTrue(await self.writer.approve_opening(
+            checkpoint_digest=first.status.checkpoint_digest,
+            captured_digest=current.captured_digest,
+            reference='resumed-opening', now=later))
 
     async def test_settlement_preserves_inventory_pnl_and_survives_restart_empty_history(self):
         await self.capture()

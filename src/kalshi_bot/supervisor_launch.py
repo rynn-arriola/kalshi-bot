@@ -13,6 +13,7 @@ PRODUCTION_MODE = "production_live"
 @dataclass(frozen=True)
 class ProductionChildMode:
     initialize: bool
+    resume_opening: bool
     recovery_only: bool
 
 
@@ -27,6 +28,7 @@ def production_child_mode(*, initialize_approved, ledger_exists, recovery_only):
         raise InvalidData("first run requires explicit initialize approval")
     return ProductionChildMode(
         initialize=initialize_approved and not ledger_exists,
+        resume_opening=initialize_approved and ledger_exists,
         recovery_only=recovery_only)
 
 

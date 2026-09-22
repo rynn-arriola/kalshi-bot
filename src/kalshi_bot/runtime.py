@@ -762,6 +762,7 @@ class RecoveryRuntime:
                         continuity=self._refresh_continuity(operational=True), now=self.now)
                     await self.writer.approve_opening(
                         checkpoint_digest=captured.status.checkpoint_digest,
+                        captured_digest=captured.captured_digest,
                         reference=self.opening_reference, now=self.now())
                     # Approval advances the writer revision. Obtain a new
                     # source-fenced report before granting a dispatch lease.

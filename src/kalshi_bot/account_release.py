@@ -58,11 +58,71 @@ class ReleaseResult:
     audit: object = None  # Writer-issued post-release audit, never a caller rebase.
 
 
-def approve_opening(ledger, checkpoint_digest, reference, now):
+def _approval_source(conn, opening, captured_digest):
+    """Return the fresh inspection approved for an immutable checkpoint."""
+    captured_digest = identity(captured_digest)
+    row = conn.execute("SELECT payload FROM accounting_events WHERE kind='inspection' "
+                       "AND event_key=? ORDER BY rowid DESC LIMIT 1",
+                       (captured_digest,)).fetchone()
+    if row is None or digest(row['payload']) != captured_digest:
+        raise InvalidData('exact current opening inspection required')
+    source = json.loads(row['payload'])
+    checkpoint = json.loads(opening['payload'])
+    # An interrupted initialization may refresh clocks, never its boundary,
+    # source cardinality/account scope, or economic opening cash. Kalshi's
+    # balance updated_ts advances on otherwise unchanged balance observations.
+    current_cash, checkpoint_cash = source['cash'], checkpoint['cash']
+    current_economics = {key:value for key,value in current_cash.items()
+                         if key != 'updated_ts'}
+    checkpoint_economics = {key:value for key,value in checkpoint_cash.items()
+                            if key != 'updated_ts'}
+    source_scope = [(item['name'], item['pages'], item['rows'], item['query'])
+                    for item in source['sources']]
+    checkpoint_scope = [(item['name'], item['pages'], item['rows'], item['query'])
+                        for item in checkpoint['sources']]
+    if (source['boundary'] != opening['boundary']
+            or source['subaccount'] != opening['subaccount']
+            or source_scope != checkpoint_scope
+            or current_economics != checkpoint_economics
+            or current_cash['updated_ts'] < checkpoint_cash['updated_ts']):
+        raise InvalidData('opening inspection changed immutable candidate')
+    return source
+
+
+def _approved_personal_cash_activity(conn, boundary):
+    """Bind the narrow D-084 personal-account attribution to retained rows."""
+    rows = conn.execute("SELECT digest,kind,payload FROM accounting_events WHERE kind IN "
+                        "('funding','intra_exchange_transfer','subaccount_transfer') "
+                        "ORDER BY digest").fetchall()
+    if not rows:
+        raise InvalidData('cash activity attribution evidence missing')
+    cutoff = int(utc(datetime.fromisoformat(boundary)).timestamp())
+    approved = []
+    for row in rows:
+        item = json.loads(row['payload'])
+        created = item.get('created_ts')
+        if type(created) is not int or created >= cutoff:
+            raise InvalidData('cash activity is not pre-boundary')
+        if row['kind'] == 'funding':
+            # The operator identified the account's original personal funding.
+            # Do not generalize that approval to withdrawals, pending/returned
+            # records, or later deposits.
+            if item.get('kind') != 'deposit' or item.get('status') != 'applied':
+                raise InvalidData('cash activity is not approved personal funding')
+        elif row['kind'] == 'intra_exchange_transfer':
+            if item.get('status') != 'complete':
+                raise InvalidData('cash activity transfer is not complete')
+        else:
+            raise InvalidData('subaccount cash activity is not attributable')
+        approved.append(dict(digest=row['digest'], kind=row['kind']))
+    return tuple(approved)
+
+
+def approve_opening(ledger, checkpoint_digest, reference, now, captured_digest=None):
     """Explicit operator boundary approval, distinct from a review acknowledgement.
 
-    Only exercised with synthetic approvals during this build. Never changes an
-    existing baseline, imports history, resets P&L or clears an economic hold.
+    Never changes an existing baseline, imports trading history, resets P&L or
+    clears an economic hold outside D-084's exact opening-cash attribution.
     """
     identity(reference)
     conn = ledger.connection
@@ -78,9 +138,10 @@ def approve_opening(ledger, checkpoint_digest, reference, now):
         if any(conn.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone()
                for table in ('fills', 'lots', 'intents', 'pending_fills', 'mutation_attempts')):
             raise InvalidData('opening approval requires unused flat ledger')
-        if set(entry_blockers(ledger))-TRANSIENT:
+        restrictions = set(entry_blockers(ledger))-TRANSIENT
+        if restrictions-{'cash_activity_unattributed'}:
             raise InvalidData('opening candidate has unresolved economic restrictions')
-        source = json.loads(row['payload'])
+        source = _approval_source(conn, row, captured_digest or checkpoint_digest)
         if (source['subaccount'] != 0 or source['snapshot']['orders']
                 or any(decimal(p['quantity']) for p in source['snapshot']['positions'])
                 or not timedelta(0) <= utc(now)-utc(datetime.fromisoformat(
@@ -89,11 +150,16 @@ def approve_opening(ledger, checkpoint_digest, reference, now):
         cash = source['cash']
         if not cash['exchange_balances']:
             raise InvalidData('opening requires exchange-specific cash')
+        attributed = (_approved_personal_cash_activity(conn, row['boundary'])
+                      if restrictions else ())
         payload = encode(dict(checkpoint=checkpoint_digest, reference=reference,
-                              cash=cash, approved_at=utc(now)))
+                              cash=cash, approved_at=utc(now),
+                              attributed_cash_activity=attributed))
         fingerprint, inserted = _append(ledger, 'opening_approval', checkpoint_digest, payload, now)
         if not inserted:
             return False  # Commit saturation hold; install no baseline.
+        if attributed:
+            conn.execute("DELETE FROM accounting_holds WHERE code='cash_activity_unattributed'")
         conn.execute('INSERT INTO accounting_baseline VALUES (1,?,?)', (fingerprint, payload))
         for shard in cash['exchange_balances']:
             conn.execute('INSERT INTO accounting_cash VALUES (?,?)',

@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-084 — Attribute exact personal opening cash and resume initialization
+
+- **Status:** ACCEPTED live-opening correction, 2026-09-22.
+- **Decision owner:** Operator previously identified the account as personal,
+  said its $500 bank/card funding may be used, explicitly authorized the live
+  run, and then instructed “Lets fix it” after the retained funding blocker was
+  shown.
+- **Scope:** The explicit opening approval may attribute retained, completed,
+  pre-boundary personal deposits and completed pre-boundary intra-exchange
+  transfers to the exact current flat cash baseline. An interrupted first
+  initialization must resume the same immutable checkpoint after a fresh
+  matching inspection; it must not delete the ledger, choose a new boundary or
+  replay initialization.
+- **Boundary:** Pending/returned/failed funding, withdrawals, subaccount
+  transfers, post-boundary activity, settlements, changed cash, positions,
+  orders and every other economic hold remain blocking. Attribution records
+  exact retained event digests and grants no independent order authority.
+- **Contract:** [First-live opening recovery](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
+
 ### D-083 — Gate new entries by value retention and projected reward
 
 - **Status:** ACCEPTED implementation, 2026-09-22.

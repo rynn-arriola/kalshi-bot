@@ -63,12 +63,15 @@ class ProductionSupervisorTests(unittest.TestCase):
         opening = production_child_mode(initialize_approved=True,
             ledger_exists=False, recovery_only=False)
         self.assertTrue(opening.initialize)
+        self.assertFalse(opening.resume_opening)
         restart = production_child_mode(initialize_approved=True,
             ledger_exists=True, recovery_only=False)
         self.assertFalse(restart.initialize)
+        self.assertTrue(restart.resume_opening)
         recovery = production_child_mode(initialize_approved=True,
             ledger_exists=True, recovery_only=True)
         self.assertFalse(recovery.initialize)
+        self.assertTrue(recovery.resume_opening)
         self.assertTrue(recovery.recovery_only)
         with self.assertRaisesRegex(InvalidData, "recovery ledger"):
             production_child_mode(initialize_approved=True,

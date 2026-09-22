@@ -1,12 +1,33 @@
 # Bugfixes — kalshi-bot
 
-Bugs that reached a running instrument. Symptom, mechanism, fix — written when
-fixed, not at the end of a session. Companion to `FINDINGS.md`.
-
-Nothing here has touched money: these are measurement bugs, and a measurement
-bug that goes unrecorded becomes a "fact" in FINDINGS.
+Bugs that reached an instrument or runtime. Symptom, mechanism, fix — written
+when fixed, not at the end of a session. Companion to `FINDINGS.md`. Each live
+entry states whether orders, positions or exposure were observed.
 
 ---
+
+## 2026-09-22 — first live opening attribution and interrupted resume
+
+- **Symptom:** The first supervised live initialization captured a flat account
+  but failed opening approval, then bounded recovery children refused the
+  partial ledger. No order was placed and exposure stayed zero.
+- **Mechanism:** Kalshi retained an applied personal deposit and completed
+  intra-exchange transfer without completion timestamps. Durable accounting
+  correctly raised `cash_activity_unattributed`, but had no explicit
+  personal-opening attribution operation. After the first writer failed, later
+  children saw an immutable checkpoint without a baseline and had no mode to
+  refresh and approve that same checkpoint.
+- **Fix:** D-084 makes opening approval bind exact retained event digests only
+  when every cash row is a completed pre-boundary personal deposit or completed
+  pre-boundary intra-exchange transfer. It rejects pending/withdrawal/
+  subaccount/later activity and every other economic hold. The supervised
+  initialize profile can refresh and resume an existing unapproved checkpoint;
+  it never recreates the ledger or boundary.
+- **Verification:** Focused durable-accounting, account-release and production-
+  supervisor tests pass, as do the broader recovery and complete live-runtime
+  suites. The full suite ran 1,444 tests in 220.622 seconds: 1,443 passed and
+  one expected Windows privilege skip. Live-relaunch evidence is recorded in
+  the linked [implementation report](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
 
 ## 2026-09-22 — final current production-path integration repairs
 

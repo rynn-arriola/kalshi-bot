@@ -1,5 +1,16 @@
 # Active work queue
 
+## First supervised opening recovery
+
+The first authorized launch failed closed before any order because the retained
+personal deposit/internal-transfer evidence was not attributable and a partial
+opening checkpoint could not resume. D-084 implements exact completed
+pre-boundary attribution plus same-checkpoint resume. No process is currently
+trading. The 1,444-test offline suite passes with one expected Windows privilege
+skip. Review/publish the correction, then re-arm supervised initialization
+against the same ledger and continue checklist item 7. Never delete or replace
+`data/trader/account.db`.
+
 ## Current-path review findings repaired
 
 [Current review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md), priority order:

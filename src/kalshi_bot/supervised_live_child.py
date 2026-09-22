@@ -381,6 +381,7 @@ async def _run_live(args, scope, endpoint, protocol, control, power, diagnostics
     initialize = mode.initialize
 
     run_args = SimpleNamespace(initialize=initialize,
+        resume_opening=mode.resume_opening,
         inputs=ROOT / "config" / "live-inputs.local.json",
         key_id_file=ROOT / "kalshi-bot.txt",
         private_key_file=ROOT / "Kalshi-Bot2.txt")

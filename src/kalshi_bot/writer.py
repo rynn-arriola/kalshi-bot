@@ -196,9 +196,12 @@ class LedgerWriter:
             raise InvalidData('one accounting owner per writer lifetime')
         self._accounting_owner = owner
 
-    async def approve_opening(self, *, checkpoint_digest, reference, now):
+    async def approve_opening(self, *, checkpoint_digest, reference, now,
+                              captured_digest=None):
         return await self._wait(self._submit('approve_opening', checkpoint_digest,
-                                             identity(reference), utc(now)))
+                                             identity(reference), utc(now),
+                                             checkpoint_digest if captured_digest is None
+                                             else identity(captured_digest)))
 
     async def release_accounting(self, owner, evidence, report, continuity, fence, *, now):
         if (owner is not self._accounting_owner or fence is not owner._accounting_fence

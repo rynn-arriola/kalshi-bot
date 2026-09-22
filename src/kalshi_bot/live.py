@@ -354,13 +354,18 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
               restriction_journal=None, explicit_retry=False):
     now, clock = lambda: datetime.now(timezone.utc), time.monotonic
     path = DATA/'account.db'
+    resume_opening = getattr(args, 'resume_opening', False)
+    if type(resume_opening) is not bool or (args.initialize and resume_opening):
+        raise InvalidData('invalid opening initialization mode')
+    if recovery_only and args.initialize:
+        raise InvalidData('recovery-only cannot initialize an account ledger')
     if args.initialize and path.exists():
         raise InvalidData('initialize refuses an existing account ledger')
+    if resume_opening and not path.exists():
+        raise InvalidData('opening resume requires existing account ledger')
     if not args.initialize and not path.exists():
         raise InvalidData('first run requires explicit --initialize opening approval')
     if recovery_only:
-        if args.initialize:
-            raise InvalidData('recovery-only cannot initialize an account ledger')
         session.entries_paused = True
     journal = (RestrictionJournal(DATA/'recovery-restrictions.json')
                if restriction_journal is None else restriction_journal)
@@ -424,13 +429,15 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
             boundary = now()
         else:
             if (status.proposed_boundary is None
-                    or 'operator_boundary_not_approved' in status.blockers):
+                    or ('operator_boundary_not_approved' in status.blockers
+                        and not resume_opening)):
                 raise InvalidData('existing ledger lacks approved opening; no automatic reset')
             boundary = status.proposed_boundary
         runtime = await compose(writer, reads, readonly_reader_factory(signer),
             OrderMutationTransport(mutation_signer, activation=session),
             inputs=inputs, boundary=boundary, now=now, clock=clock,
-            diagnostics=diagnostics, quota=quota, initialize=args.initialize)
+            diagnostics=diagnostics, quota=quota,
+            initialize=args.initialize or resume_opening)
         runtime.dispatch_supervisor.dispatcher.budget.restriction_sink = journal.cooldown
         for item in recovery_restrictions.cooldowns:
             remaining = max(0., item.deadline_utc-time.time())

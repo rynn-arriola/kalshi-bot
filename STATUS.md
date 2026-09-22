@@ -1,5 +1,28 @@
 # Current status
 
+## First live opening failed closed; exact recovery correction verified — 2026-09-22
+
+The explicitly authorized supervised `-Live -Initialize` launch created the
+single production ledger and contacted the account, but placed no orders and
+held zero exposure. Fresh evidence showed no positions or resting orders. The
+opening checkpoint retained one earlier applied $500 personal deposit and one
+completed pre-boundary $0.4417 intra-exchange transfer; because their APIs omit
+completion timestamps, the prior generic policy left
+`cash_activity_unattributed` and the writer failed closed. The supervisor made
+only its bounded recovery attempts, then latched `attention_required` with no
+live child.
+
+D-084 now allows the explicit opening approval to bind only completed,
+pre-boundary personal cash rows by exact event digest. Pending, withdrawal,
+subaccount, post-boundary, changed-cash and settlement cases still fail closed.
+The same unit repairs interrupted initialization: a fresh matching inspection
+may approve the existing immutable checkpoint without deleting the ledger or
+choosing a new boundary. Focused accounting, recovery, live-runtime and
+production-supervisor suites pass. The full offline suite ran 1,444 tests in
+220.622 seconds: 1,443 passed and one expected Windows privilege skip. The
+corrected supervised relaunch is the remaining acceptance step.
+[Implementation](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
+
 ## Final current-path findings repaired; final acceptance remains — 2026-09-22
 
 The four findings in the

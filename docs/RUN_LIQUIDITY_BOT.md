@@ -133,8 +133,11 @@ the trading or order-canceling commands.
 ```
 
 One account-scoped Windows lease prevents competing copies of this launcher.
-`-Initialize` refuses an existing ledger. A failed initial approval cannot be
-worked around by deleting that ledger; inspect the failure before recovery.
+`-Initialize` creates a ledger only when none exists. Under D-084, its explicit
+supervised profile may resume an existing unapproved checkpoint only after a
+fresh matching inspection; it never recreates the ledger or opening boundary.
+A failed initial approval cannot be worked around by deleting that ledger;
+inspect the failure before recovery.
 Never use a new data path to reset loss limits or ownership. Do not run the old
 canary, another bot or manual account trades concurrently.
 
