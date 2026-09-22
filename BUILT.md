@@ -1,5 +1,14 @@
 # What exists
 
+## Supervised injected dispatch lifecycle — 2026-09-21
+
+[Build/verification](docs/BUILD_DISPATCH_LIFECYCLE.md): `dispatch_supervisor.py`
+adds one event-driven, single-use runtime service around existing bounded
+dispatch. `runtime.py` owns attachment, requests, task failure and ordered
+shutdown. Synthetic ledger reopen preserves UNKNOWN without automatic replay.
+23 focused tests and 30/120-key scheduling fixtures cover the component.
+No native supervisor/trading child, venue transport or strategy change.
+
 ## Owned write outcomes — 2026-09-21
 
 [Build/verification](docs/BUILD_MUTATION_OUTCOMES.md): `mutation_outcomes.py`

@@ -47,10 +47,13 @@ current runtime/management evidence, block missing/stale proof, recheck sources
 at the final edge and fence dispatcher stop through preparation/submission.
 Denied handoffs release their unused quota permit. The
 [shared write-quota source](BUILD_WRITE_QUOTA_SOURCE.md) now feeds this injected
-path from the guarded reader's full observed pair. Remaining: verified production
+path from the guarded reader's full observed pair. The
+[injected lifecycle service](BUILD_DISPATCH_LIFECYCLE.md) now connects runtime task
+supervision and retained shutdown, without changing native S2B or live gates.
+Remaining: verified production
 inputs, retained quota/429 lifecycle across restart and supervised runtime
 composition/fault verification. These checks exist only on the injected path.
-Connect the real write transport and runtime/supervisor lifecycle
+Connect the real write transport and production/native-supervisor lifecycle
 only after account baseline and separate live-authorization gates. The fixture
 cannot be enabled by changing a flag; new reviewed production authority is
 required. No existing venue order has been modified.

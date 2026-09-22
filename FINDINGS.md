@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 100. Dispatch lifetime must outlast accepted outcomes — 2026-09-21
+
+VERIFIED CODE/OFFLINE: source revocation alone is not a completed shutdown.
+The runtime now fences dispatch synchronously and joins the accepted outcome
+before cancelling reader peers or returning to the writer owner. Cancelling
+the parent repeatedly does not detach that work. A fresh fixture writer/runtime
+with restored synthetic sources still cannot replay a durable UNKNOWN command.
+MEASURED: 30/120 keys with 10,000 duplicates coalesce within declared scheduling
+budgets and cause no idle service polling. [Evidence and exclusions](docs/BUILD_DISPATCH_LIFECYCLE.md).
+This is not proof of production process restart or real-account reconciliation.
+
 ## 99. Write outcomes must re-signal after durable recording — 2026-09-21
 
 VERIFIED CODE/OFFLINE: recovery can consume an early outcome notification while

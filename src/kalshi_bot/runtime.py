@@ -1,4 +1,4 @@
-"""Recovery-connected read-only engine. No live CLI, credentials or mutations.
+"""Recovery engine with opt-in injected dispatch; no live CLI or mutations.
 
 Construction opens nothing. A caller explicitly supplies already configured
 GET reads, single-use reader factories, UTC clock and history scope. The owner
@@ -98,6 +98,7 @@ class RecoveryRuntime:
         self.running = False
         self._run_cancelled = False
         self._shutdown_task = None
+        self.dispatch_supervisor = None  # Explicit offline attachment only.
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -121,6 +122,8 @@ class RecoveryRuntime:
                                self.recovery_state == 'recovering')) if market_inputs is not None else None)
 
     def _quota_transition(self):
+        if self.dispatch_supervisor is not None:
+            self.dispatch_supervisor.changed()
         available = self.quota.state == 'fresh'
         was_available, self._quota_available = self._quota_available, available
         if was_available and not available:
@@ -131,6 +134,21 @@ class RecoveryRuntime:
     def _invalidate_market(self, ticker):
         self.management.invalidate(ticker)
         self.invalidate(ticker)
+
+    def attach_dispatch(self, source, dispatcher, *, offline_fixture=False):
+        """Opt-in injected lifecycle, never native S2B or live activation."""
+        from .dispatch_supervisor import DispatchSupervisor
+        if (self.used or self.stop_requested.is_set() or self.dispatch_supervisor is not None
+                or getattr(source, 'runtime', None) is not self):
+            raise InvalidData('dispatch requires matching unused runtime')
+        service = DispatchSupervisor(source, dispatcher, offline_fixture=offline_fixture)
+        self.dispatch_supervisor = service
+        return service
+
+    def request_dispatch(self, ticker, priority):
+        if self.dispatch_supervisor is None:
+            raise InvalidData('offline dispatch not attached')
+        return self.dispatch_supervisor.request(ticker, priority)
 
     async def _evaluate(self, ticker, book, generation):
         await self.management.refresh(ticker)
@@ -702,6 +720,8 @@ class RecoveryRuntime:
                 attempt += 1
 
     def stop(self):
+        if self.dispatch_supervisor is not None:
+            self.dispatch_supervisor.stop()
         if self.quota_supervisor is not None:
             self.quota_supervisor.stop()
         self.stop_requested.set()
@@ -717,6 +737,11 @@ class RecoveryRuntime:
         failures = []
         try:
             self.stop()
+            if self.dispatch_supervisor is not None:
+                try:
+                    await self.dispatch_supervisor.close()
+                except BaseException as exc:
+                    failures.append(exc)
             for task in tasks:
                 task.cancel()
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -745,6 +770,7 @@ class RecoveryRuntime:
             raise InvalidData("runtime cannot be reused")
         self.used, self.running = True, True
         tasks = []
+        dispatch_task = None
         primary_error = None
         try:
             await self._load_continuity_history()
@@ -757,6 +783,9 @@ class RecoveryRuntime:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
             if self.quota_supervisor is not None:
                 tasks.append(asyncio.create_task(self.quota_supervisor.run(), name='kalshi-quota'))
+            if self.dispatch_supervisor is not None:
+                dispatch_task = asyncio.create_task(self.dispatch_supervisor.run(), name='kalshi-dispatch')
+                tasks.append(dispatch_task)
             tasks.extend(asyncio.create_task(self._connection(spec)) for spec in self.specs)
             stop = asyncio.create_task(self.stop_requested.wait())
             tasks.append(stop)
@@ -770,6 +799,8 @@ class RecoveryRuntime:
                         # path. Remove it before propagating so retained cleanup
                         # does not count and mask the same failure a second time.
                         task.result()
+                        if task is dispatch_task and not self.stop_requested.is_set():
+                            raise InvalidData('dispatch service ended without runtime stop')
                     if task is stop or self.engine.failed or self.writer.failed:
                         self.stop_requested.set()
                 if self.stop_requested.is_set():
@@ -783,13 +814,16 @@ class RecoveryRuntime:
             self.diagnostics.emit('runtime_failed', error=exc)
             raise
         finally:
+            # Fence submission before scheduling the asynchronous cleanup task.
+            if self.dispatch_supervisor is not None:
+                self.dispatch_supervisor.stop()
             if self._shutdown_task is None:
                 self._shutdown_task = asyncio.create_task(
                     self._shutdown(tuple(tasks)), name='kalshi-runtime-shutdown')
             cancelled_during_cleanup = False
             while not self._shutdown_task.done():
                 try:
-                    await asyncio.shield(self._shutdown_task)
+                    await asyncio.wait((self._shutdown_task,))
                 except asyncio.CancelledError:
                     # Caller cancellation must not abandon readers, durable fill
                     # retention or marker finalization. Publish cancellation only
@@ -822,6 +856,7 @@ class RecoveryRuntime:
             account_verification=self.verification_status(), logging=self.diagnostics.status(),
             read_budget=self.reads.budget.status() if hasattr(self.reads,'budget') else None,
             quota=self.quota_supervisor.status() if self.quota_supervisor is not None else dict(state='unmanaged'),
+            dispatch=self.dispatch_supervisor.status() if self.dispatch_supervisor is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):

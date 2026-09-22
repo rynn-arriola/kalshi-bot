@@ -18,6 +18,9 @@ read pair, preserving full method costs and read-owner validity through dispatch
 The [outcome owner](BUILD_MUTATION_OUTCOMES.md) binds 429 pauses to the original
 request shard and signals existing recovery at observation and after retained
 durable recording; uncertainty never releases authority or creates a retry loop.
+The [injected lifecycle service](BUILD_DISPATCH_LIFECYCLE.md) attaches to runtime
+task supervision, drains accepted outcomes before reader teardown and preserves
+UNKNOWN on fixture restart. It does not change the inert native S2A/S2B boundary.
 Verified production inputs, transport and supervised runtime integration
 remain unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.

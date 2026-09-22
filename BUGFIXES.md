@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Dispatch lifecycle: ownership, exit supervision and truthful activity
+
+**Integration gap.** Runtime shutdown did not own an injected dispatcher, so
+caller-managed command work had no joined place in runtime teardown.
+**Fix.** Attach one matching offline service; stop new work before asynchronous
+cleanup and join outcomes before cancelling peer readers. Treat an unexpected
+service exit as a runtime fault, not normal reader exhaustion. Show RUNNING
+while awaiting a new outcome instead of retaining the previous IDLE label.
+**Verification.** Stop at prepare/SENDING/invoke/commit, repeated cancellation,
+late 429, persistence failure and new-epoch UNKNOWN holds are covered. Replacing
+the join with an early return in memory fails the shutdown-order regression.
+No live defect claimed. See [build record](docs/BUILD_DISPATCH_LIFECYCLE.md).
+
 ### Write outcomes: recovery timing and retained cancellation errors
 
 **Integration gap.** Transport completion alone was not wired to owned recovery;

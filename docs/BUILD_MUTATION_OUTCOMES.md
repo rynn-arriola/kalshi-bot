@@ -81,6 +81,8 @@ this offline component. Eight changed Markdown files passed local-link checks
 (274 links); staged whitespace and secret-pattern checks passed. Publication
 follows D-065 after final checks.
 
-Supervised lifecycle, production transport,
-verified account quota/fee inputs and restart/resumption policy remain separate.
+Follow-up: [supervised injected lifecycle](BUILD_DISPATCH_LIFECYCLE.md) now owns
+runtime dispatch tasks, outcome draining and no-replay fixture restart checks.
+Production transport, verified account quota/fee inputs and live restart/resumption
+policy remain separate.
 Pauses/notices are process-local; durable UNKNOWN/authority holds survive restart.

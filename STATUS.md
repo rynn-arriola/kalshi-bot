@@ -1,5 +1,22 @@
 # Current status
 
+## Priority 4 supervised injected dispatch lifecycle — 2026-09-21
+
+[Lifecycle integration](docs/BUILD_DISPATCH_LIFECYCLE.md) connects the injected
+dispatcher to the existing runtime task supervisor. Event-driven, bounded keys;
+one writing operation; no idle polling or blind retries. Stop fences new work
+synchronously, drains accepted outcomes before reader teardown, and returns
+only after owned tasks finish. Fresh runtime/ledger reopen preserves UNKNOWN
+and held capacity without replay. No automatic restart/re-arm of failed owners.
+
+23 focused lifecycle tests and 30/120-market resource scopes pass; full suite
+1,179 run, 1,178 passed, one expected Windows privilege skip. Evidence is in the
+build record. This completes the assigned offline lifecycle
+piece, not a live trader or native S2B process integration. Next: priority 5
+reward ranking/admission; then priority 6 runtime/readiness acceptance. Real
+quota/fee inputs, process-supervisor gates and launch approval remain. No account
+calls, secrets, bot operation, deployment or live-order changes.
+
 ## Priority 4 owned write outcomes — 2026-09-21
 
 The [outcome/recovery handoff](docs/BUILD_MUTATION_OUTCOMES.md) now pauses the

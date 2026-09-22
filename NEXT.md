@@ -1,7 +1,11 @@
 # Active work queue
 
-Next implementation: priority 4's supervised dispatch lifecycle and end-to-end
-shutdown/recovery verification. [Owned write outcomes](docs/BUILD_MUTATION_OUTCOMES.md)
+Next work: priority 5 reward ranking/admission integration, followed by priority
+6 runtime/readiness acceptance. Priority 4's
+[supervised injected lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) now covers stop,
+outcome drain, failure propagation and no-replay ledger reopen. This does not
+clear production transport, real input or native S2B review/resource gates.
+[Owned write outcomes](docs/BUILD_MUTATION_OUTCOMES.md)
 now route 429 pauses and recovery notifications without automatic retries;
 do not rebuild them. [Shared write-quota ingestion](docs/BUILD_WRITE_QUOTA_SOURCE.md)
 is implemented offline using the existing read pair; do not create another
@@ -10,8 +14,7 @@ profile remain readiness inputs, not facts proved by fixtures. The
 [source-bound candidate integration](docs/BUILD_DISPATCH_SOURCES.md) now covers
 account/book/exit rechecks and stopping the injected dispatcher; do not rebuild it.
 Keep transport disabled until separately
-authorized readiness work and launch approval. Then priority 5 ranking/admission
-and priority 6 supervised runtime integration.
+authorized readiness work and launch approval.
 
 D-068 implements the [operational accounting release](docs/BUILD_ACCOUNT_RECONCILIATION.md)
 on top of D-067 restrictions. Do not rebuild it or re-open the accepted global-
@@ -56,8 +59,9 @@ writer receipts and the sole injected executor. The
 [write-quota source](docs/BUILD_WRITE_QUOTA_SOURCE.md) now joins the existing
 guarded document refresh to that budget. The
 [outcome owner](docs/BUILD_MUTATION_OUTCOMES.md) preserves UNKNOWN holds and
-signals recovery after persistence. Next: supervised runtime shutdown and
-end-to-end fail-closed verification. The injected path now
+signals recovery after persistence. The
+[runtime lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) joins dispatch outcomes
+before reader teardown and preserves restart holds. The injected path now
 rechecks its write permit at the synchronous send edge; this is not production
 transport clearance.
 No venue transport or live
