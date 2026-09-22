@@ -1,5 +1,22 @@
 # Current status
 
+## D-069 reward-aware selection component — 2026-09-21
+
+[Implementation and verification](docs/BUILD_MARKET_SELECTION.md) adds hourly
+reward/capital-efficiency selection, current-quote qualification diagnostics,
+entry-horizon projections, conservative whole-pair budgets and retained owners.
+An explicit offline runtime attachment reuses existing dirty-book and inventory
+observations; no extra per-tick portfolio reads or venue traffic. 42 focused
+tests and representative 30/120-market resource gates pass. Full suite: 1,221
+run, 1,220 passed, one expected Windows privilege skip; disabled preflight
+remains `live_ready=false`. Live execution remains disabled.
+
+Priority 5 is not fully connected: automatic incentive discovery/refresh,
+rotating subscription admission, verified resting-order reflection and entry
+dispatch handoff remain. No new policy approval is needed to repeat this
+accepted selection direction; new repricing thresholds/live activation are
+separate. Existing runtime/readiness blockers remain.
+
 ## Priority 5 ranking reference audit — 2026-09-21
 
 [Polymarket code audit and Kalshi adaptation](docs/POLYMARKET_RANKING_AUDIT.md)

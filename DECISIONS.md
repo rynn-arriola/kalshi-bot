@@ -3,16 +3,10 @@
 This is the authority record. AI agents may recommend decisions but may not mark
 them accepted without an explicit operator instruction.
 
-## Pending ranking/admission policy
+## Current ranking/admission decision
 
-Pending selection choice (not an accepted decision): the
-[2026-09-21 ranking audit](docs/POLYMARKET_RANKING_AUDIT.md) recommends estimated
-gross hourly reward first, capital-efficiency tie-break, and stable incumbent
-markets, using only feasible size-10 reference quotes. Alternatives and payout
-uncertainty are in that canonical proposal. D-022 has not yet selected an
-automatic allocation policy. Existing capital/risk limits remain unchanged;
-no code/activation impact until approval. Stale/unknown proof blocks new entries
-and retains inventory owners. The operator may reject or revise the proposal.
+D-069 accepts the reference audit's selection direction for offline construction.
+It does not authorize live selection, price chasing, new risk limits or trading.
 
 ## Accepted decisions
 
@@ -1061,6 +1055,25 @@ and retains inventory owners. The operator may reject or revise the proposal.
 - **Authority:** Offline implementation/tests only, not account requests, a real
   opening boundary, trading or deployment. Do not import Poly's venue fields,
   risk settings or operational permissions. D-066 economic holds remain.
+
+### D-069 — Optimize Kalshi selection using reward qualification and Poly lessons
+
+- **Status:** ACCEPTED offline implementation, 2026-09-21.
+- **Decision owner:** Operator: "Ok using all these info make sure we optimize
+  our market selection", following the reference-price, competition, loss of
+  scoring eligibility and safe quoting discussion.
+- **Decision:** Implement the [reference-audit direction](docs/POLYMARKET_RANKING_AUDIT.md):
+  eligible feasible size-10 quotes first, estimated gross hourly reward then
+  capital efficiency, current reward qualification separate from hypothetical
+  new quotes, fresh bounded selection and retained inventory/uncertain owners.
+  Do not copy Poly's sports filters, historical reward or fill-loss calibration.
+- **Boundary:** Keep D-021's reducer of resting-entry COUNT, not contract size,
+  and all existing cash/exposure/exit gates. Show payout uncertainty, not net
+  profit or assured payment. Losing scoring is not terminal order evidence.
+  No automatic score-chasing repricing, new profitability cutoff, live transport,
+  account request, deployment, bot operation or market-set approval.
+- **Build contract:** [Selection integration](docs/BUILD_MARKET_SELECTION.md)
+  records bounded advisory integration, tests and remaining activation gates.
 
 ### Earlier recovery-import question — superseded by D-025
 

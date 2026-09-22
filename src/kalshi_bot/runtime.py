@@ -99,6 +99,7 @@ class RecoveryRuntime:
         self._run_cancelled = False
         self._shutdown_task = None
         self.dispatch_supervisor = None  # Explicit offline attachment only.
+        self.selection = None  # Advisory only, attached before runtime start.
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -133,7 +134,16 @@ class RecoveryRuntime:
 
     def _invalidate_market(self, ticker):
         self.management.invalidate(ticker)
+        if self.selection is not None:
+            self.selection.invalidate(ticker)
         self.invalidate(ticker)
+
+    def attach_selection(self, *, offline_fixture=False):
+        from .selection_runtime import RuntimeSelection
+        if self.used or self.stop_requested.is_set() or self.selection is not None:
+            raise InvalidData('selection requires unused runtime')
+        self.selection = RuntimeSelection(self, offline_fixture=offline_fixture)
+        return self.selection
 
     def attach_dispatch(self, source, dispatcher, *, offline_fixture=False):
         """Opt-in injected lifecycle, never native S2B or live activation."""
@@ -152,10 +162,14 @@ class RecoveryRuntime:
 
     async def _evaluate(self, ticker, book, generation):
         await self.management.refresh(ticker)
+        if self.selection is not None:
+            self.selection.refresh(ticker)
         await self._evaluate_callback(ticker, book, generation)
 
     async def _deadline(self, ticker):
         await self.management.refresh(ticker)
+        if self.selection is not None:
+            self.selection.refresh(ticker)
         await self._deadline_callback(ticker)
 
     async def risk_view(self):
@@ -857,6 +871,7 @@ class RecoveryRuntime:
             read_budget=self.reads.budget.status() if hasattr(self.reads,'budget') else None,
             quota=self.quota_supervisor.status() if self.quota_supervisor is not None else dict(state='unmanaged'),
             dispatch=self.dispatch_supervisor.status() if self.dispatch_supervisor is not None else None,
+            selection=self.selection.status() if self.selection is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):

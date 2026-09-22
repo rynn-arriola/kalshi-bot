@@ -1,10 +1,12 @@
 # Active work queue
 
-Priority 5 reference research is complete: see the
-[code audit and proposed admission policy](docs/POLYMARKET_RANKING_AUDIT.md).
-Next obtain the operator's ranking-policy decision, specify bounded integration
-acceptance budgets, then implement using the existing board/writer/dispatch
-owners. Do not repeat Poly discovery or treat the proposal as activated strategy.
+Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md).
+Do not repeat the Poly audit or ask again for the accepted hourly/efficiency
+direction. Next connect bounded incentive discovery/refresh and candidate
+subscription management, then source-bound entry-pair admission/dispatch.
+Working-order score monitoring still needs reflection evidence, not guessed
+private/public synchronization. Automatic repricing thresholds and live launch
+remain separate decisions. Preserve all inventory/unknown owners during rotation.
 
 Next work: priority 5 reward ranking/admission integration, followed by priority
 6 runtime/readiness acceptance. Priority 4's
@@ -30,7 +32,7 @@ their own reconciliation; ordinary review/empty history never clears them.
 Only new schema-5 synthetic ledgers were exercised; no migration or account
 request is authorized by this build.
 
-Updated 2026-09-21. Follow accepted decisions through D-068 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-069 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical

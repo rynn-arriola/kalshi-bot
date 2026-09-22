@@ -1,5 +1,15 @@
 # What exists
 
+## Reward-aware selection component — 2026-09-21
+
+[Build record](docs/BUILD_MARKET_SELECTION.md): `selection.py` proposes whole
+entry pairs under existing limits; `selection_runtime.py` binds existing runtime
+observations without venue I/O. Ranking exposes actual quote-set qualification,
+bounded earning time and payout uncertainty. Shared book validation avoids
+repeating the same work for overlapping programs. 42 focused tests and 30/120
+representative resource gates pass. Advisory only; discovery/entry-dispatch and
+live integration are not completed by this component.
+
 ## Polymarket ranking reference audit — 2026-09-21
 
 [Audit/adaptation proposal](docs/POLYMARKET_RANKING_AUDIT.md) traces actual Poly

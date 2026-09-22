@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Selection: hypothetical quotes, invalidation and repeated book validation
+
+**Integration gaps.** Reference-quote rankings alone could not describe an
+existing order losing eligibility; repeating book validation per program cost
+465.737 ms in the named maximum-input fixture. New selector cache cleanup and
+expiry boundaries also needed explicit regression coverage.
+**Fix.** Separate explicit quote-set scoring, preserve protected owners, share
+validated book input with independent per-program copies, and revoke all related
+cache entries on failure. Exclude unsupported markets without stopping inventory
+management. No live defect or automatic cancellation claimed.
+**Verification.** 42 focused tests and representative resource checks pass;
+[build record](docs/BUILD_MARKET_SELECTION.md) records scope and remaining wiring.
+
 ### Dispatch lifecycle: ownership, exit supervision and truthful activity
 
 **Integration gap.** Runtime shutdown did not own an injected dispatcher, so

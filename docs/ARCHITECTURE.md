@@ -1,5 +1,11 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-069's [advisory selection component](BUILD_MARKET_SELECTION.md) reuses existing
+runtime/management observations, coalesced evaluations and risk primitives.
+Selection never becomes a second mutation owner. Program discovery, verified
+resting-order reflection and entry-pair dispatch integration remain explicit
+work, not authority conferred by a ranked row or a resource benchmark.
+
 Priority-3 [opening-account accounting design](DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
 now has [D-068 operational release](BUILD_ACCOUNT_RECONCILIATION.md) on top of
 [D-067 durable restrictions](BUILD_DURABLE_ACCOUNTING.md). Schema 5 adds explicit

@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 102. A good replacement quote does not prove a resting order earns — 2026-09-21
+
+VERIFIED CODE/OFFLINE: explicit quote sets can be discounted or pushed beyond
+the reward cutoff while newly calculated reference quotes still score. Keep
+these assessments separate; retain working/unknown owners and never infer that
+an unscored order cannot fill. Program start/end and the earlier entry/exit
+deadline are independent clocks; hourly rate uses the full program duration.
+MEASURED: shared book validation reduced the named 4,096-level/16-program
+fixture from 465.737 to 44.754 ms; not a production latency guarantee. See
+[tests, resource scope and limitations](docs/BUILD_MARKET_SELECTION.md).
+
 ## 101. Reuse selection mechanics, not Poly economics — 2026-09-21
 
 VERIFIED CODE/OFFLINE: Poly's detailed ordering uses projected own reward within

@@ -1,5 +1,10 @@
 # Market ranking: Polymarket lessons, Kalshi adaptation
 
+Follow-up: D-069 accepts this direction for offline construction. The
+[selection build](BUILD_MARKET_SELECTION.md) owns current implementation,
+verification and remaining integration. Proposal wording below is the original
+audit record, not a continuing request for the same policy approval.
+
 Date: 2026-09-21. VERIFIED CODE/OFFLINE unless explicitly marked proposed.
 This completes the requested reference audit, not ranking/admission integration.
 No strategy, configuration, runtime or live account was changed. Proposed

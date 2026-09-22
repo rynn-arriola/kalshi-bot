@@ -45,6 +45,7 @@ EVENTS = {
     'mutation_prepared': ('INFO', 'execution'), 'mutation_sending': ('INFO', 'execution'),
     'mutation_ack': ('INFO', 'execution'), 'mutation_unknown': ('ERROR', 'execution'),
     'mutation_failed': ('ERROR', 'execution'), 'inventory_plan_changed': ('INFO', 'inventory'),
+    'selection_inputs_rejected': ('WARNING', 'selection'),
     'cli_failed': ('ERROR', 'cli'), 'preflight_blocked': ('WARNING', 'cli'),
     'exit_inputs_published': ('INFO','metadata'), 'exit_inputs_failed': ('ERROR','metadata'),
     'history_enumerated': ('INFO', 'recovery'),

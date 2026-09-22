@@ -195,14 +195,38 @@ def _snapshot_from_base(levels, program, bands, proposed):
 
 def reference_plan(book: Book, program: Program, bands: tuple[PriceBand, ...], *,
                    now: datetime, market_open: bool, reflected: tuple[Quote, ...] = ()) -> QuotePlan:
-    if market_open is not True or program.paid_out or not program.start <= utc(now) < program.end:
-        return QuotePlan((), None, None, ZERO, ("market_or_program_inactive",))
-    base = _base(book, bands, reflected)
-    if book.ticker != program.ticker:
-        raise InvalidData("quote/program scope mismatch")
-    quotes = tuple(Quote(s, p, Decimal(10)) for s in ("bid", "ask")
-                   if (p := _reference(base[s], program.target, s)) is not None)
-    bid, ask, share = _snapshot_from_base(base, program, bands, quotes)
-    if len(quotes) != 2 or bid.cutoff is None or ask.cutoff is None:
-        return QuotePlan((), bid, ask, ZERO, ("insufficient_two_sided_depth",))
-    return QuotePlan(quotes, bid, ask, share, ())
+    return program_plans(book, (program,), bands, now=now, market_open=market_open,
+                         reflected=reflected)[0]
+
+
+def program_plans(book, programs, bands, *, now, market_open, reflected=(), proposed=None):
+    """Validate a shared book once for a bounded set of independent programs.
+
+    Each scoring pass gets its own ladder copy. Never accumulate hypothetical
+    orders across competing programs or change the caller's actual book.
+    """
+    now = utc(now)
+    if (type(programs) is not tuple or not 1 <= len(programs) <= 16
+            or any(not isinstance(p, Program) or p.ticker != book.ticker for p in programs)):
+        raise InvalidData('bounded matching programs required')
+    if proposed is not None and (type(proposed) is not tuple or not 1 <= len(proposed) <= 30
+                                or any(not isinstance(q, Quote) for q in proposed)):
+        raise InvalidData('bounded exact quotes required')
+    base, results = None, []
+    for program in programs:
+        if market_open is not True or program.paid_out or not program.start <= now < program.end:
+            results.append(QuotePlan((), None, None, ZERO, ('market_or_program_inactive',)))
+            continue
+        if base is None:
+            base = _base(book, bands, reflected)
+        levels = {s: dict(rows) for s, rows in base.items()}
+        quotes = (proposed if proposed is not None else
+                  tuple(Quote(s, p, Decimal(10)) for s in ('bid', 'ask')
+                        if (p := _reference(levels[s], program.target, s)) is not None))
+        bid, ask, share = _snapshot_from_base(levels, program, bands, quotes)
+        if bid.cutoff is None or ask.cutoff is None or (proposed is None and len(quotes) != 2):
+            results.append(QuotePlan(quotes if proposed is not None else (), bid, ask, ZERO,
+                                     ('insufficient_two_sided_depth',)))
+        else:
+            results.append(QuotePlan(quotes, bid, ask, share, ()))
+    return tuple(results)
