@@ -1,19 +1,34 @@
 # Active work queue
 
-## Candidate qualification resolved; next is supervised live acceptance
+## First: repair the final current-path review findings
+
+[Current review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md), priority order:
+
+1. R1: connect the durable loss hold to owned-entry cancellation/drain.
+2. R2: preserve incentive/selection authority through the final entry-send fence.
+3. R3: allow exact owned cancellations without requiring a recent book price.
+4. R4: qualify/tier overlapping programs before selecting one per market.
+
+Review scope only so far; fixes remain unimplemented. Add focused regressions,
+verify/review the repair diff, and publish before supervised live acceptance.
+These current-path defects precede item 7 below; no optional feature was added.
+
+## Candidate timing qualification resolved; live acceptance follows review fixes
 
 D-082 implements and verifies the first bounded timing family: exact scheduled
 economic-data releases with current occurrence and primary-milestone proof.
 The real public refresh now prepares 1,024 reviewed candidates and 128 initial
 books. Unknown early-close rules and sports remain blocked; provider freshness
 must be resolved before adding a sports family. Do not restore blanket approval.
-The next required item is supervisor checklist item 7 below.
+After the current review fixes, proceed to supervisor checklist item 7 below.
 
 ## Production supervisor connection — ordered checklist
 
 The [end-to-end review](docs/REVIEW_D081_END_TO_END.md) findings R1–R7 are
-repaired and verified offline. Items 2–6 are complete again. Item 7 remains the
+repaired and verified offline. Items 2–5 remain complete. Item 7 remains the
 first supervised live acceptance; software evidence is not live/account evidence.
+The later current-path review above reopens software review item 6 for its
+new findings; it does not undo the earlier seven D-081 repairs.
 
 D-080 requested this checklist first; D-081 implements the software connection.
 This is not permission to launch. Reuse the existing
@@ -66,7 +81,7 @@ provisional until item 1 resolves the production recovery boundary.
    parent idle CPU, loop latency and handle/task cleanup. Acceptance: focused
    regressions and relevant full suite pass; measured budgets are met. These are
    software fault tests, not a paper-profitability stage.
-6. [x] **Review and publish the software.** Review the actual production diff for
+6. [ ] **Review and publish the software.** Review the actual production diff for
    ownership races, recovery mistakes and accidental fixture bypasses; fix valid
    findings and rerun affected checks. Update the run guide, current status and
    verification records, commit/push, and verify repository parity. Acceptance:

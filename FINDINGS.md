@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 121. Final live-path review finds four missing integration cases — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC at `4818612`: a held loss window leaves flat-market entry
+orders resting; incentive revocation after reservation still reaches a fake
+production-mode batch transport; a six-second-old book blocks otherwise valid
+paused-entry cancellation; and a short overlapping program hides a $3.521
+remaining-reward alternative. These are current-path repair findings, not
+requests for optional hardening. The [canonical review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md)
+contains priority, source locations, reproductions and repair acceptance criteria.
+No live order, account request, production ledger or runtime mutation was used.
+
 ## 120. Current scope supports a $2 priority tier with a $1 fallback — 2026-09-22
 
 MEASURED PUBLIC SNAPSHOT / VERIFIED CODE: a sequential credential-free snapshot

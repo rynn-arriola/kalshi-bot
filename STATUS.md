@@ -1,5 +1,19 @@
 # Current status
 
+## Final current-path review: launch blocked by code findings — 2026-09-22
+
+The [review of current production code](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md)
+reproduces three P1 gaps: a loss hold does not cancel resting entries, incentive
+revocation can be missed at final entry send, and quiet books block graceful
+entry cancellation. One P2 ranking defect can hide a qualifying overlapping
+program. Fix and verify these before first live acceptance. This supersedes the
+prior informal ready-to-start assessment, not the historical component tests.
+No Kalshi production process was found; no launch or runtime mutation occurred.
+Review only: no bot logic or configuration was changed.
+Fresh full suite: 1,434 run in 217.273 seconds, 1,433 passed and one expected
+Windows privilege skip. Five synthetic probes independently reproduce the
+four findings; the passing existing suite does not invalidate those findings.
+
 ## Entry-quality filters implemented; live start still separate — 2026-09-22
 
 D-083 adds the accepted new-entry policy to the existing WebSocket selector.
