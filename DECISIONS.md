@@ -10,7 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
-### D-076 — Prioritize a minimal live profitability canary
+### D-077 — Finish the existing bot's minimum operating path
+
+- **Status:** ACCEPTED implementation, 2026-09-22.
+- **Decision owner:** Operator: use the bot already built, defer unnecessary
+  hardening, then “Ok finish whats necessary.”
+- **Scope:** Connect the original WebSocket/ranking/accounting/dispatch/inventory
+  owners to an explicit Windows foreground launch; retain the approved size,
+  capital, exposure, loss windows and exit policy. Keep basic logs and graceful
+  shutdown. No new paper-trading stage, replacement bot, model switch or worker.
+- **Supersedes:** D-076's separate REST canary and hold-to-settlement workflow.
+  Its run entry point is retired. Historical previews remain local evidence.
+- **Boundary:** Implementation and synthetic/read-only verification are not a
+  completed live launch. Reviewed current market/fee inputs and a fresh opening
+  baseline remain necessary. No automatic deployment/restart or risk expansion.
+  The coding assistant must not submit trades or invoke the trading launcher;
+  an operator-run live command is separate from software verification.
+- **Contract:** [Minimal original runtime](docs/RUN_LIQUIDITY_BOT.md).
+
+### D-076 — Prioritize a minimal live profitability canary — SUPERSEDED by D-077
 
 - **Status:** ACCEPTED build/prepare scope, 2026-09-22; submission pending.
 - **Decision owner:** Operator: focus on resting orders and gathering live data

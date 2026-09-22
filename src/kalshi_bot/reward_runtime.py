@@ -25,7 +25,9 @@ class RuntimeRewards:
     def __init__(self, runtime, *, scope, offline_fixture=False, checkpoint_path=None,
                  reflection_interval=4, checkpoint_interval=60):
         from .runtime import RecoveryRuntime
-        if (offline_fixture is not True or not isinstance(runtime, RecoveryRuntime)
+        if (not isinstance(runtime, RecoveryRuntime)
+                or not (offline_fixture is True or runtime.observation_only
+                        or runtime.live_components_enabled)
                 or runtime.used or runtime.selection is None or runtime.rewards is not None
                 or runtime.stop_requested.is_set()):
             raise InvalidData('unused matching offline reward runtime required')
@@ -151,14 +153,36 @@ class RuntimeRewards:
         expected = {o.order_id:o.ticker for o in report.snapshot.orders}
         if len(expected) != len(report.snapshot.orders) or len(expected) > 4096:
             raise InvalidData('invalid private resting-order scope')
-        result = await r.reads.read('queue_positions',reason='reflection',
-            coalesce_scope=('reward-reflection',r.account.subaccount,generation,revision),
-            subaccount=r.account.subaccount)
+        if not expected:
+            self._invalidate_all()
+            self.last_reflection_at = utc(r.now())
+            return 0
+        # Explicit complete market scope: the live endpoint can reject an
+        # unfiltered request. Chunk only to the existing query-byte bound.
+        groups, current_group = [], ''
+        for ticker in sorted(set(expected.values())):
+            if len(ticker) > 2048:
+                raise InvalidData('reward market query exceeds bound')
+            value = current_group+','+ticker if current_group else ticker
+            if len(value) > 2048:
+                groups.append(current_group)
+                current_group = ticker
+            else:
+                current_group = value
+        groups.append(current_group)
+        actual = {}
+        for group in groups:
+            result = await r.reads.read('queue_positions',reason='reflection',
+                coalesce_scope=('reward-reflection',r.account.subaccount,generation,revision),
+                subaccount=r.account.subaccount, market_tickers=group)
+            rows = self._queue_rows(result.payload)
+            if (set(actual) & set(rows) or any(t not in group.split(',') for t in rows.values())):
+                raise InvalidData('queue position chunk scope conflict')
+            actual.update(rows)
         current = r.account.current_report(r.now())
         if (self.stopping or current is not report or (generation,revision) !=
                 (r.account.generation,r.account.revision)):
             raise InvalidData('private account source changed during reflection')
-        actual = self._queue_rows(result.payload)
         if actual != expected:
             raise InvalidData('queue positions disagree with complete resting-order snapshot')
         now = utc(r.now())

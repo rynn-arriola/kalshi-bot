@@ -149,7 +149,9 @@ class InventoryManager:
             terms=terms, journal=inventory.exit_journal, now=now, complete_scope=complete)
         if terms is not None:
             passive = exit_plan.passive
-        blockers = list(inventory.blockers)+list(passive.blockers)+["live_authorization_missing"]
+        blockers = list(inventory.blockers)+list(passive.blockers)
+        if not runtime.live_components_enabled:
+            blockers.append('live_authorization_missing')
         blockers.extend(exit_plan.blockers)
         if exit_plan.next_at is not None and exit_plan.next_at > now:
             due = runtime.clock()+(exit_plan.next_at-now).total_seconds()

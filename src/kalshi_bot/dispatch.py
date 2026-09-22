@@ -160,8 +160,10 @@ class MutationDispatcher:
     """
     def __init__(self, writer, executor, budget, *, refresh, clock_pair, now,
                  capacity=128, offline_fixture=False):
-        if offline_fixture is not True:
+        from .live_session import permits
+        if offline_fixture is not True and not permits(writer.live_session, writer):
             raise InvalidData('offline_fixture must be literally True')
+        self.offline_fixture = offline_fixture is True
         if (not isinstance(writer, LedgerWriter)
                 or not isinstance(executor, InjectedExecutor)
                 or executor.writer is not writer
@@ -271,7 +273,7 @@ class MutationDispatcher:
                     current.requests, batch_id=current.batch_id,
                     view=current.view, config=BotConfig(), now=self.now(),
                     free_cash=current.free_cash, account_known=True,
-                    offline_fixture=True,
+                    offline_fixture=self.offline_fixture,
                     fee_per_contract_bound=current.fee_per_contract_bound)
                 receipt = prepared.batch
             elif priority == SAFETY_CANCEL:

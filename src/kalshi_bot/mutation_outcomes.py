@@ -44,8 +44,10 @@ class MutationOutcomeOwner:
     neither acknowledgement nor notification releases command authority.
     """
     def __init__(self, budget, *, invoke, clock_pair, notify,
-                 pause_seconds=1., offline_fixture=False):
-        if (offline_fixture is not True or not isinstance(budget, WriteBudget)
+                 pause_seconds=1., offline_fixture=False, live_session=None):
+        from .live_session import permits
+        if ((offline_fixture is not True and not permits(live_session))
+                or not isinstance(budget, WriteBudget)
                 or not callable(invoke) or not callable(clock_pair)
                 or not callable(notify) or inspect.iscoroutinefunction(notify)):
             raise InvalidData('offline single-budget and synchronous notification required')

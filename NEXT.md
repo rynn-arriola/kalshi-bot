@@ -1,11 +1,17 @@
 # Active work queue
 
-Immediate experiment priority under D-076: after explicit operator approval,
-prepare a fresh one-market plan and submit only that exact bounded live canary.
-Observe/cancel its two post-only size-10 orders, retain any fill through the
-short market's settlement, and reconcile actual fees, trading P&L and reward
-credit before deciding whether more production architecture is justified. Do
-not activate the autonomous multi-market runtime or expand risk from this test.
+Immediate priority under D-077: finish launch-input review for the original
+runtime, not the retired canary. Install only evidence-backed current timing
+reviews and member fee precision in ignored `config/live-inputs.local.json`;
+inspect the current quote opportunity and confirm the initial reviewed scope.
+The foreground launcher will require an explicit first-run opening approval and
+fresh flat-account evidence. The coding assistant does not execute that live
+command. After an operator launch, inspect actual orders/fills/fees and estimated
+versus paid rewards. Do not equate source checks or synthetic ACKs with trading
+or profitability. Optional supervisor/hardening work stays deferred.
+
+The older milestone notes below describe their original execution-disabled
+scope; D-077's [run guide](docs/RUN_LIQUIDITY_BOT.md) owns current launch wiring.
 
 D-073 completes #3's execution-disabled [reward reflection and checkpoint
 lifecycle](docs/BUILD_REWARD_REFLECTION.md). Do not add per-market book polling,

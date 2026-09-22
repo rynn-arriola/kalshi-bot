@@ -7,6 +7,7 @@ kalshi-bot.txt
 Kalshi-Bot2.txt
 credentials.py
 .env*
+config/*.local.json
 
 # Captured data. Raw books grow fast and are reproducible by re-running the
 # recorder; the analysis derived from them is what belongs in git.

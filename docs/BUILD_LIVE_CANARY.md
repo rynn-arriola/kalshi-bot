@@ -1,5 +1,10 @@
 # D-076 minimal live profitability canary
 
+**SUPERSEDED by D-077.** The separate `run_plan` entry point now rejects before
+I/O. Use the original runtime's [run guide](RUN_LIQUIDITY_BOT.md). Everything below
+is a historical build record, not a current launch recommendation or proof that
+this canary covered inventory exits, restart durability or full profitability.
+
 Implemented on native Windows in `C:/Users/rynna/Bots/kalshi`. This is a narrow
 experiment path, not activation of the autonomous multi-market runtime.
 

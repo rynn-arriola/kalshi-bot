@@ -55,6 +55,7 @@ class ReleaseResult:
     window: object = None  # writer-owned WindowState captured with the lease
     venue_handoff_proven: bool = False
     live_ready: bool = False
+    audit: object = None  # Writer-issued post-release audit, never a caller rebase.
 
 
 def approve_opening(ledger, checkpoint_digest, reference, now):

@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-077's [foreground original-runtime composition](RUN_LIQUIDITY_BOT.md) now
+connects these owners through an explicit process-local live session, preserving
+accounting/source/quota authorization. Initial scope is supplied by reviewed
+launch inputs; it does not silently admit unreviewed markets. This is separate
+from the fixed S2B supervisor fixture below. Live venue mutation/launch and
+automatic production restart remain unverified, not implied by component tests.
+
 D-075 [implements the fixed offline S2B runtime and recovery fence](BUILD_WINDOWS_SUPERVISOR_S2B.md).
 The native child owns one injected `RecoveryRuntime`, disposable ledger and fake
 readers; no signer/network/mutation client can be supplied. Restrictions load

@@ -77,6 +77,22 @@ class QuotaSupervisor:
         await asyncio.wait((task,))
         return task.result()
 
+    async def bootstrap(self):
+        """One owned pair before runtime construction needs the write bucket."""
+        if self.used or self.running or self.stopping or self.active is not None or self.started:
+            raise QuotaUnavailable('quota_bootstrap_unavailable')
+        self.step()
+        task = self.active
+        if task is None:
+            raise QuotaUnavailable('quota_bootstrap_unavailable')
+        try:
+            await asyncio.shield(task)
+        finally:
+            if task.done():
+                self._finished()
+        if not self.guard.poll():
+            raise QuotaUnavailable('quota_bootstrap_unavailable')
+
     def _finished(self):
         if self.active is None or not self.active.done():
             return

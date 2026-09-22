@@ -181,6 +181,7 @@ async def cancel_known(transport, plan, order_ids):
 
 
 async def run_plan(reads, mutation_signer, plan, path):
+    raise InvalidData('separate canary retired; use the original liquidity runtime')
     validate_plan(plan)
     await reads.refresh_budget()
     await revalidate(reads, plan)

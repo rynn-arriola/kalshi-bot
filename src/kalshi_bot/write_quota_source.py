@@ -8,7 +8,8 @@ from .write_budget import WriteBudget, WriteQuotaSnapshot
 class _ObservedWriteBudget(WriteBudget):
     def __init__(self, source, snapshot, now):
         self._source = source
-        super().__init__(snapshot, shards=source.shards, now=now, offline_fixture=True)
+        super().__init__(snapshot, shards=source.shards, now=now,
+            offline_fixture=source.offline_fixture, live_session=source.live_session)
 
     def _poll(self, now):
         reason = self._source.check()
@@ -38,8 +39,10 @@ class WriteQuotaSource:
     and source.clock_pair with the injected dispatcher. The existing quota
     supervisor owns refresh timing/retries/close; this class owns no worker.
     """
-    def __init__(self, reads, *, shards, offline_fixture=False):
-        if (offline_fixture is not True or not isinstance(reads, RestReads)
+    def __init__(self, reads, *, shards, offline_fixture=False, live_session=None):
+        from .live_session import permits
+        if ((offline_fixture is not True and not permits(live_session))
+                or not isinstance(reads, RestReads)
                 or reads.used or reads.closed or reads.quota is None
                 or reads.write_quota_source is not None):
             raise InvalidData('unused guarded reads and literal offline_fixture=True required')
@@ -49,6 +52,7 @@ class WriteQuotaSource:
         if len(set(checked)) != len(checked):
             raise InvalidData('duplicate exchange shard')
         self.reads, self.guard, self.shards = reads, reads.quota, checked
+        self.offline_fixture, self.live_session = offline_fixture is True, live_session
         self._scope, self._epoch = self.guard.scope, self.guard.epoch
         self._signer = reads.signer  # Identity only, never read or log credentials.
         self._budget = self._candidate = self._pending = None

@@ -31,7 +31,9 @@ async def join_cancelled(task):
 class MarketAdmission:
     def __init__(self, runtime, *, offline_fixture=False):
         from .runtime import RecoveryRuntime
-        if (offline_fixture is not True or not isinstance(runtime,RecoveryRuntime)
+        if (not isinstance(runtime,RecoveryRuntime)
+                or not (offline_fixture is True or runtime.observation_only
+                        or runtime.live_components_enabled)
                 or runtime.used or runtime.admission is not None or runtime.selection is None
                 or runtime.incentives is None or runtime.stop_requested.is_set()):
             raise InvalidData('unused offline runtime with selection and discovery required')

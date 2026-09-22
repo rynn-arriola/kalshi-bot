@@ -50,7 +50,13 @@ class RecoveredChunk:
 
 class LedgerWriter:
     def __init__(self, path: Path | str, *, capacity: int = 256, market_capacity: int = 128,
-                 diagnostics=NO_LOG, command_policy=DEFAULT_POLICY):
+                 diagnostics=NO_LOG, command_policy=DEFAULT_POLICY, live_session=None):
+        self.live_session = live_session
+        if live_session is not None:
+            from .live_session import LiveSession
+            if type(live_session) is not LiveSession:
+                raise InvalidData('typed live session required')
+            live_session.bind(self)
         self.diagnostics = diagnostics
         self.path = path
         self.epoch = uuid4().hex
@@ -72,7 +78,7 @@ class LedgerWriter:
         self._accounting_owner = None
         self._accounting_lease = None
         self._accounting_prepared = None
-        self._accounting_enabled = False
+        self._accounting_enabled = live_session is not None
         self._max_backlog_observed = 0
         self._thread = Thread(target=self._run, name="kalshi-ledger", daemon=False)
 
@@ -501,7 +507,7 @@ class LedgerWriter:
         if command == 'approve_opening':
             from .account_release import approve_opening
             result = approve_opening(ledger, *args)
-            self._accounting_enabled = bool(ledger.connection.execute(
+            self._accounting_enabled = self.live_session is not None or bool(ledger.connection.execute(
                 'SELECT 1 FROM accounting_baseline WHERE id=1').fetchone())
             self._accounting_lease = None
             return result
@@ -516,6 +522,11 @@ class LedgerWriter:
                     post_revision=self._revision+1, capacity=self.market_capacity)
                 result, lease = release(ledger, evidence, report, continuity, fence,
                     epoch=self.epoch, revision=self._revision, now=now, capacity=self.market_capacity)
+                if result.released:
+                    from .verification import audit_snapshot
+                    audit = audit_snapshot(ledger, report.snapshot, epoch=self.epoch,
+                        revision=self._revision+1, capacity=self.market_capacity)
+                    result = replace(result, audit=audit)
             self._accounting_lease = lease
             return result
         if command == 'capture_accounting':
@@ -579,18 +590,22 @@ class LedgerWriter:
                                   revision=self._revision, now=now, capacity=self.market_capacity)
         if command == "reserve_entry":
             from .portfolio import reserve_entry
+            from .live_session import permits
             attempt_id, encoded, view, config, now, cash, known, fixture, fee_bound = args
             result = reserve_entry(ledger, request=json.loads(encoded), attempt_id=attempt_id,
                 view=view, epoch=self.epoch, revision=self._revision,
                 post_revision=self._revision+1, config=config, now=now, free_cash=cash,
                 account_known=known, offline_fixture=fixture, capacity=self.market_capacity,
                 command_policy=self.command_policy, accounting_lease=self._accounting_lease,
-                fee_per_contract_bound=fee_bound)
+                fee_per_contract_bound=fee_bound,
+                live_authorized=permits(self.live_session, self)
+                    and not self.live_session.entries_paused)
             if result.receipt is not None and self._accounting_enabled:
                 self._accounting_prepared = result.receipt
             return result
         if command == 'reserve_entry_pair':
             from .portfolio import reserve_entry_pair
+            from .live_session import permits
             batch_id, encoded, view, config, now, cash, known, fixture, fee_bound = args
             result = reserve_entry_pair(ledger, requests=tuple(json.loads(encoded)),
                 batch_id=batch_id, view=view, epoch=self.epoch,
@@ -599,7 +614,9 @@ class LedgerWriter:
                 offline_fixture=fixture, capacity=self.market_capacity,
                 command_policy=self.command_policy,
                 accounting_lease=self._accounting_lease,
-                fee_per_contract_bound=fee_bound)
+                fee_per_contract_bound=fee_bound,
+                live_authorized=permits(self.live_session, self)
+                    and not self.live_session.entries_paused)
             if result.batch is not None and self._accounting_enabled:
                 self._accounting_prepared = result.batch
             return result

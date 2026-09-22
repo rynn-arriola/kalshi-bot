@@ -8,6 +8,37 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — original runtime composition
+
+- Accounting release invalidated its own dispatch snapshot by advancing the
+  writer revision. The same release transaction now issues a fresh local audit;
+  the account owner accepts it only with unchanged generation/revision, the
+  exact current writer revision and original source age. Unrelated writes and
+  disconnects still revoke proof.
+- Inventory callbacks refreshed advisory plans but never queued safety cancels,
+  passive reducers or timed IOC work. They now queue market keys for the existing
+  source to revalidate, outside its own refresh path to prevent a feedback loop.
+- Five real quota consumers exceeded a four-listener bound. The bound is now
+  exactly five; initial write-budget bootstrap remains owned by the same quota
+  supervisor. No independent rate budget was introduced.
+- Empty reward-order snapshots no longer issue unnecessary queue-position GETs.
+  Nonempty reflection is explicitly market-scoped in bounded query chunks.
+- Periodic account refresh mistook a command's own preparation revision for
+  stale external evidence, potentially revoking its send lease mid-dispatch.
+  Background refresh now waits for the active dispatch to finish; real private
+  ingress still revokes immediately and all outcomes request reconciliation.
+- The flat shutdown check called `writer.orders()`, which settles evidence and
+  changes the revision. It now uses the current complete order audit plus
+  read-only inventory/risk checks, rejecting any intervening write or stale report.
+- A final status-file failure after a launch attempt could report a successful
+  exit code or claim trading had never started. It now returns nonzero and
+  `NEEDS_ATTENTION`, with neither a no-trading nor a flat-account claim.
+- The retired canary's tests used a fixed plan date with the real wall clock.
+  An injected validation clock makes those fixtures deterministic.
+
+Verification: full-graph synthetic startup/ACK plus focused accounting, exits,
+reward and quota regressions; exact final counts in the [run guide](docs/RUN_LIQUIDITY_BOT.md).
+
 ## 2026-09-22 — terminal cash-history cursors
 
 ### Valid terminal cash pages were rejected as incomplete

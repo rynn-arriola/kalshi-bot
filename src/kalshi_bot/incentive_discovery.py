@@ -33,7 +33,9 @@ class IncentiveCatalog:
 class IncentiveDiscovery:
     def __init__(self, runtime, *, offline_fixture=False, interval=300, attempts=3):
         from .runtime import RecoveryRuntime
-        if (offline_fixture is not True or not isinstance(runtime, RecoveryRuntime)
+        if (not isinstance(runtime, RecoveryRuntime)
+                or not (offline_fixture is True or runtime.observation_only
+                        or runtime.live_components_enabled)
                 or runtime.used or runtime.stop_requested.is_set()
                 or runtime.selection is None or runtime.incentives is not None
                 or not isinstance(runtime.reads, RestReads) or runtime.reads.closed

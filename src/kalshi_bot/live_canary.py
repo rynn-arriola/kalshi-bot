@@ -148,8 +148,8 @@ def validate_plan(plan, *, now=None):
     return plan
 
 
-def order_requests(plan):
-    validate_plan(plan)
+def order_requests(plan, *, now=None):
+    validate_plan(plan, now=now)
     common = dict(ticker=plan["ticker"], count="10",
         time_in_force="good_till_canceled", self_trade_prevention_type="taker_at_cross",
         post_only=True, reduce_only=False, cancel_order_on_pause=True,

@@ -17,7 +17,9 @@ class ProgramObservation:
 class RuntimeSelection:
     def __init__(self, runtime, *, offline_fixture=False):
         from .runtime import RecoveryRuntime
-        if offline_fixture is not True or not isinstance(runtime, RecoveryRuntime):
+        if (not isinstance(runtime, RecoveryRuntime)
+                or not (offline_fixture is True or runtime.observation_only
+                        or runtime.live_components_enabled)):
             raise InvalidData('matching offline runtime required')
         self.runtime = runtime
         self.selector = MarketSelector(runtime.writer.market_capacity)

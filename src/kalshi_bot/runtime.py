@@ -54,7 +54,16 @@ class RecoveryRuntime:
                  invalidate=lambda ticker: None, clock=time.monotonic,
                  sleep=asyncio.sleep, jitter=lambda: random.uniform(.8, 1.2), attempts=3,
                  diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None,
-                 accounting_boundary=None):
+                 accounting_boundary=None, observation_only=False, opening_reference=None):
+        if type(observation_only) is not bool:
+            raise InvalidData('observation_only must be a boolean')
+        self.observation_only = observation_only
+        self.live_session = writer.live_session
+        if observation_only and self.live_session is not None:
+            raise InvalidData('observation runtime cannot own a live session')
+        if opening_reference is not None and self.live_session is None:
+            raise InvalidData('opening approval requires explicit live composition')
+        self.opening_reference = opening_reference
         self.diagnostics = diagnostics
         self.writer, self.reads, self.reader_factory = writer, reads, reader_factory
         self.now, self.clock, self.sleep, self.jitter = now, clock, sleep, jitter
@@ -152,9 +161,9 @@ class RecoveryRuntime:
         return self.selection
 
     def attach_dispatch(self, source, dispatcher, *, offline_fixture=False):
-        """Opt-in injected lifecycle, never native S2B or live activation."""
+        """Opt-in dispatch for fixtures or explicit sessions; never observation."""
         from .dispatch_supervisor import DispatchSupervisor
-        if (self.used or self.stop_requested.is_set() or self.dispatch_supervisor is not None
+        if (self.observation_only or self.used or self.stop_requested.is_set() or self.dispatch_supervisor is not None
                 or getattr(source, 'runtime', None) is not self):
             raise InvalidData('dispatch requires matching unused runtime')
         service = DispatchSupervisor(source, dispatcher, offline_fixture=offline_fixture)
@@ -191,6 +200,7 @@ class RecoveryRuntime:
 
     async def _evaluate(self, ticker, book, generation):
         await self.management.refresh(ticker)
+        self._request_inventory_dispatch(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
             if (self.dispatch_supervisor is not None
@@ -203,11 +213,36 @@ class RecoveryRuntime:
 
     async def _deadline(self, ticker):
         await self.management.refresh(ticker)
+        self._request_inventory_dispatch(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
         await self._deadline_callback(ticker)
+
+    def _request_inventory_dispatch(self, ticker):
+        """Queue a key, never a command; the source revalidates before dispatch.
+
+        Do not call from management.refresh itself: source.refresh also calls
+        that method and would continuously resubmit its own dispatch key.
+        """
+        if self.dispatch_supervisor is None or self.stop_requested.is_set():
+            return
+        from .dispatch import SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
+        plan = self.management.current(ticker)
+        if plan is None or plan.exit is None:
+            return
+        if (self.live_session is not None and self.live_session.entries_paused
+                and any(r.owned and not r.reducing and not r.order.terminal
+                        for r in plan.inventory.orders)):
+            self.request_dispatch(ticker, SAFETY_CANCEL)
+        elif (plan.exit.mode in {'flat', 'passive', 'cancel_before_ioc'}
+                and plan.passive.cancel_ids):
+            self.request_dispatch(ticker, SAFETY_CANCEL)
+        elif plan.exit.mode == 'ioc':
+            self.request_dispatch(ticker, DUE_IOC)
+        elif plan.exit.mode == 'passive':
+            self.request_dispatch(ticker, PASSIVE_REDUCER)
 
     async def risk_view(self):
         return await self.writer.portfolio(subaccount=self.account.subaccount, now=self.now())
@@ -277,8 +312,18 @@ class RecoveryRuntime:
 
     @property
     def entry_allowed(self):
-        # Offline reservations do not prove stream/history or live authority.
-        return False
+        from .live_session import permits
+        lease = self.writer._accounting_lease
+        return (permits(self.live_session, self.writer)
+                and not self.live_session.entries_paused
+                and self.accounting_result is not None and self.accounting_result.released
+                and lease is not None and lease.fence.current()
+                and not self.stop_requested.is_set())
+
+    @property
+    def live_components_enabled(self):
+        from .live_session import permits
+        return permits(self.live_session, self.writer)
 
     def request_recovery(self):
         self.last_reports = None
@@ -309,6 +354,7 @@ class RecoveryRuntime:
                     self.request_recovery()
                 else:
                     await self.management.refresh(event["msg"]["market_ticker"])
+                    self._request_inventory_dispatch(event["msg"]["market_ticker"])
                 return
             if generation != self.account.generation or not self.account.connected:
                 return  # Old order/position projection will be re-enumerated.
@@ -335,6 +381,7 @@ class RecoveryRuntime:
             ticker = event.get("msg", {}).get("ticker", event.get("msg", {}).get("market_ticker"))
             if ticker is not None:
                 await self.management.refresh(ticker)
+                self._request_inventory_dispatch(ticker)
 
     async def _consume(self, spec, event, generation, acknowledged, ready=None):
         kind = event.get("type")
@@ -686,6 +733,7 @@ class RecoveryRuntime:
         active.update(r.order.ticker for r in self.account.order_states.values() if not r.order.terminal)
         for ticker in sorted(active):
             await self.management.refresh(ticker)
+            self._request_inventory_dispatch(ticker)
         if self.account.report is not final or generation != self.account.generation:
             return False
         # Exact local agreement is necessary, never complete venue/history proof.
@@ -699,6 +747,19 @@ class RecoveryRuntime:
         self.recovery_passes += int(repaired)
         self._refresh_continuity()
         if repaired and self.accounting_boundary is not None:
+            if self.opening_reference is not None:
+                status = await self.writer.accounting_status()
+                if 'operator_boundary_not_approved' in status.blockers:
+                    captured = await self.account.reconcile_accounting(
+                        reads, proposed_boundary=self.accounting_boundary,
+                        continuity=self._refresh_continuity(operational=True), now=self.now)
+                    await self.writer.approve_opening(
+                        checkpoint_digest=captured.status.checkpoint_digest,
+                        reference=self.opening_reference, now=self.now())
+                    # Approval advances the writer revision. Obtain a new
+                    # source-fenced report before granting a dispatch lease.
+                    self.request_recovery()
+                    return False
             self.accounting_result = await self.account.reconcile_accounting(
                 reads, proposed_boundary=self.accounting_boundary,
                 continuity=self._refresh_continuity(operational=True), now=self.now, release=True)
@@ -750,6 +811,9 @@ class RecoveryRuntime:
                     return
                 if repaired and not self.recovery_requested.is_set():
                     self.recovery_state = "repaired_entries_blocked"
+                    for ticker in self.engine.market_shard:
+                        self.engine.dirty.mark(ticker)
+                    self.engine.wake.set()
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation)
                     break
                 if self._epoch_ambiguous:
@@ -772,6 +836,8 @@ class RecoveryRuntime:
                 attempt += 1
 
     def stop(self):
+        if self.live_session is not None:
+            self.live_session.close()
         if self.admission is not None:
             self.admission.stop()
         if self.incentives is not None:
@@ -789,6 +855,30 @@ class RecoveryRuntime:
         if self.market_inputs is not None:
             self.metadata_scheduler.stop()
         self._revoke()
+
+    async def _live_refresh(self):
+        """Cash/account completeness has no full WS snapshot: refresh centrally.
+
+        Reuse the single recovery worker/budget, only when the previous pass
+        finished and its short-lived report is expiring. Never reset exhaustion.
+        """
+        while not self.stop_requested.is_set():
+            if (self.account_subscribed and self.recovery_state == 'repaired_entries_blocked'
+                    and not self.recovery_requested.is_set()
+                    and (self.dispatch_supervisor is None
+                         or self.dispatch_supervisor.dispatcher.status().active is None)):
+                # Preparation itself advances the writer revision, temporarily
+                # hiding current_report while its dedicated send lease is valid.
+                # Do not mistake that for an expired source and revoke the
+                # in-flight command. Actual ingress still revokes immediately;
+                # every outcome already requests authoritative recovery.
+                report = self.account.current_report(self.now())
+                if report is None or (utc(self.now())-report.observed_at).total_seconds() >= 3:
+                    self.request_recovery()
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), .5)
+            except TimeoutError:
+                pass
 
     async def _shutdown(self, tasks):
         """One retained cleanup owner; child failures cannot disappear in gather."""
@@ -852,6 +942,8 @@ class RecoveryRuntime:
             tasks = [asyncio.create_task(self.engine.run(), name='kalshi-engine'),
                      asyncio.create_task(self._recover(), name='kalshi-recovery'),
                      asyncio.create_task(self._diagnostic_health(), name='kalshi-log-health')]
+            if self.live_session is not None or self.observation_only:
+                tasks.append(asyncio.create_task(self._live_refresh(), name='kalshi-account-refresh'))
             if self.metadata_scheduler is not None:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
             if self.incentives is not None:
@@ -939,7 +1031,7 @@ class RecoveryRuntime:
             await asyncio.sleep(.25)
 
     def status(self):
-        return dict(live_ready=False, entry_allowed=False, running=self.running,
+        return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
             completed_repair_passes=self.recovery_passes, readers=dict(self.reader_states),
             connection_attempts=dict(self.connection_attempts), engine=self.engine.status(),

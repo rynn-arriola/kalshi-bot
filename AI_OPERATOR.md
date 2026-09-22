@@ -8,6 +8,13 @@ not independent decision-making authority.
 
 ## Mission now
 
+D-077 is the current implementation priority: finish the original runtime's
+minimum working path and defer optional hardening. Use
+`docs/RUN_LIQUIDITY_BOT.md` for current entry points; the separate REST canary is
+retired. The explicit live launcher is software for operator use, not permission
+for an assistant to execute trades. Default configuration remains nontrading.
+Read-only startup checks are not paper trading or profitability evidence.
+
 D-019 selects native Windows on the laptop, not Ubuntu/WSL. Work in
 `C:/Users/rynna/Bots/kalshi` (D-029, outside OneDrive, beside Polymarket). Do not mirror future
 changes into WSL or use it as the active Kalshi runtime. Existing WSL files

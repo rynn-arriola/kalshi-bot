@@ -628,7 +628,8 @@ class InjectedExecutor:
                  now=lambda: datetime.now(timezone.utc), timeout=10, diagnostics=NO_LOG,
                  after_outcome=None):
         self.diagnostics = diagnostics
-        if offline_fixture is not True:
+        from .live_session import permits
+        if offline_fixture is not True and not permits(writer.live_session, writer):
             raise InvalidData('live order transport is unavailable')
         if not callable(invoke) or not callable(validate_proof) or not 0 < timeout <= 30:
             raise InvalidData('bounded injected mutation dependencies required')

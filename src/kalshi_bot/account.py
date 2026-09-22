@@ -4,7 +4,7 @@ REST enumeration plus local agreement cannot prove lossless private-stream
 continuity or complete fill history. Keep that distinction explicit in reports.
 """
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 import time
@@ -728,6 +728,18 @@ class AccountCoordinator:
                 receipt = await self.writer.release_accounting(self, evidence, report,
                     continuity, fence, now=utc(now()))
                 if not receipt.released:
+                    fence.revoked.set()
+                elif (self.report is report and generation == self.generation
+                        and revision == self.revision and fence.current()
+                        and receipt.audit is not None and receipt.audit.consistent
+                        and (receipt.audit.writer_epoch, receipt.audit.writer_revision) ==
+                            (self.writer.epoch, self.writer.revision)):
+                    # Release changes only the accounting/risk evidence, but it
+                    # advances the writer revision. Carry the audit computed in
+                    # that same transaction; never relabel an older audit after
+                    # an unrelated write or refresh the source's original age.
+                    self.report = replace(report, audit=receipt.audit)
+                else:
                     fence.revoked.set()
             else:
                 receipt = await self.writer.capture_accounting(evidence, report, source_current=source_current)

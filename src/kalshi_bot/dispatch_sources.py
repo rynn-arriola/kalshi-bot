@@ -27,31 +27,34 @@ class _Proof:
 
 
 class InventoryDispatchSource:
-    """Offline composition seam for the existing, sole management owner.
+    """Activation-gated composition for the existing, sole management owner.
 
     Caller submits market keys and awaits dispatcher.run_one(). No polling,
-    independent risk owner, live mode or recursive worker.
+    independent risk owner or recursive worker.
     """
     def __init__(self, runtime, *, offline_fixture=False):
-        if offline_fixture is not True or not isinstance(runtime, RecoveryRuntime):
+        if (not isinstance(runtime, RecoveryRuntime) or runtime.observation_only
+                or not (offline_fixture is True or runtime.live_components_enabled)):
             raise InvalidData('actual runtime and literal offline_fixture=True required')
         self.runtime = runtime
+        self.offline_fixture = offline_fixture is True
         self._proof = None
         self._refreshing = False
         self._generation = 0
         self._stopped = False
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
-        """Compose matching producer/executor callbacks; still injected only."""
+        """Compose matching producer/executor callbacks and an explicit transport."""
         outcomes = MutationOutcomeOwner(budget, invoke=invoke, clock_pair=clock_pair,
-            notify=self._mutation_observed, pause_seconds=pause_seconds, offline_fixture=True)
+            notify=self._mutation_observed, pause_seconds=pause_seconds,
+            offline_fixture=self.offline_fixture, live_session=self.runtime.live_session)
         executor = InjectedExecutor(self.runtime.writer, invoke=outcomes,
-            validate_proof=self.validate_proof, offline_fixture=True,
+            validate_proof=self.validate_proof, offline_fixture=self.offline_fixture,
             now=self.runtime.now, diagnostics=self.runtime.diagnostics,
             after_outcome=self._mutation_observed)
         return MutationDispatcher(self.runtime.writer, executor, budget,
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
-            offline_fixture=True)
+            offline_fixture=self.offline_fixture)
 
     def _mutation_observed(self, notice=None):
         self._proof = None
@@ -127,6 +130,8 @@ class InventoryDispatchSource:
                     or runtime.account.current_report(runtime.now()) is not report):
                 return None
             if priority == ENTRY_PAIR:
+                if not self.offline_fixture and not runtime.entry_allowed:
+                    return None
                 release = runtime.accounting_result
                 inputs = runtime.market_inputs
                 selection = runtime.selection
@@ -151,6 +156,14 @@ class InventoryDispatchSource:
                         or not inputs._fresh(source)):
                     return None
                 row = rows[0]
+                observation = selection._observation(ticker)
+                programs = () if observation is None else tuple(
+                    p for p in observation.programs if p.program_id == row.program_id)
+                if len(programs) != 1:
+                    return None
+                expires = int(min(plan.terms.deadline, programs[0].end).timestamp())
+                if expires <= utc(runtime.now()).timestamp():
+                    return None
                 requests = []
                 for quote in sorted(row.quotes, key=lambda value: value.side):
                     request = create_payload(ticker=ticker,
@@ -160,7 +173,8 @@ class InventoryDispatchSource:
                                        else 1-quote.yes_price),
                         quantity=quote.quantity, bands=plan.terms.bands)
                     request.update(subaccount=runtime.account.subaccount,
-                                   exchange_index=source.value.exchange)
+                                   exchange_index=source.value.exchange,
+                                   expiration_time=expires)
                     requests.append(request)
                 view = await runtime.risk_view()
                 if (generation != self._generation
@@ -188,11 +202,16 @@ class InventoryDispatchSource:
                 # Only the cancellation selected by the existing strategy.
                 # Never bypass a blocked/wait/attention exit via its subplan.
                 allowed = {'await_terminal_cancellation_and_fill_proof'}
-                if (exit_plan.mode not in {'flat', 'passive', 'cancel_before_ioc'}
+                paused = (runtime.live_session is not None
+                          and runtime.live_session.entries_paused)
+                entry_ids = tuple(sorted(r.order.order_id for r in plan.inventory.orders
+                    if r.owned and not r.reducing and not r.order.terminal)) if paused else ()
+                if not entry_ids and (exit_plan.mode not in {'flat', 'passive', 'cancel_before_ioc'}
                         or exit_plan.blockers or not passive.cancel_ids
                         or set(passive.blockers)-allowed):
                     return None
-                evidence = await runtime.writer.cancel_evidence(passive.cancel_ids[0])
+                evidence = await runtime.writer.cancel_evidence(
+                    entry_ids[0] if entry_ids else passive.cancel_ids[0])
                 if evidence is None:
                     return None
                 request = dict(order_id=evidence.order_id, market_ticker=ticker,
@@ -238,6 +257,12 @@ class InventoryDispatchSource:
 
     def validate_proof(self, kind, request):
         """Synchronous pre/post-SENDING fence; no reads, awaits or network."""
+        if not self.offline_fixture:
+            from .live_session import permits
+            if not permits(self.runtime.live_session, self.runtime.writer):
+                return False
+            if kind == 'batch_create' and self.runtime.live_session.entries_paused:
+                return False
         proof = self._proof
         encoded = (tuple(encoded_request(row) for row in request)
                    if kind == 'batch_create' and type(request) is tuple

@@ -1,4 +1,4 @@
-"""Single-writer exposure and OFFLINE reservation checks. No venue commands."""
+"""Single-writer exposure and activation-gated reservations. No venue commands."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
@@ -182,11 +182,11 @@ def portfolio_view(ledger, *, subaccount, epoch, revision, now, capacity):
 def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
                   post_revision, config, now, free_cash, account_known,
                   offline_fixture, capacity, command_policy=DEFAULT_POLICY,
-                  accounting_lease=None, fee_per_contract_bound=None):
+                  accounting_lease=None, fee_per_contract_bound=None, live_authorized=False):
     """Compare current ownership/risk and reserve in one owner transaction.
 
-    This API has no live-authorized branch. The positive path is explicitly an
-    offline fixture; a future production gate must prove account/book/cash scope.
+    The writer supplies explicit live-session authorization; non-fixture use
+    still requires the existing accounting checkpoint, cash lease and risk proof.
     """
     validate_request("create", request)
     identity(attempt_id)
@@ -202,7 +202,7 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
         raise InvalidData("writer-issued portfolio view required")
     blockers = []
     blockers.extend(check_new_attempt(ledger, attempt_id, 'create', encoded))
-    if not offline_fixture:
+    if not offline_fixture and live_authorized is not True:
         blockers.append("live_authorization_missing")
     if (view.epoch, view.revision, view.subaccount) != (epoch, revision, request["subaccount"]):
         blockers.append("stale_writer_evidence")
@@ -281,7 +281,7 @@ class _PairBlocked(Exception):
 def reserve_entry_pair(ledger, *, requests, batch_id, view, epoch, revision,
                        post_revision, config, now, free_cash, account_known,
                        offline_fixture, capacity, command_policy=DEFAULT_POLICY,
-                       accounting_lease=None, fee_per_contract_bound=None):
+                       accounting_lease=None, fee_per_contract_bound=None, live_authorized=False):
     """Reserve both entry legs or neither in one writer transaction.
 
     Venue batch creation is not atomic. This contract is deliberately narrower:
@@ -312,7 +312,8 @@ def reserve_entry_pair(ledger, *, requests, batch_id, view, epoch, revision,
                     account_known=account_known, offline_fixture=offline_fixture,
                     capacity=capacity, command_policy=command_policy,
                     accounting_lease=accounting_lease,
-                    fee_per_contract_bound=fee_per_contract_bound)
+                    fee_per_contract_bound=fee_per_contract_bound,
+                    live_authorized=live_authorized)
                 if not result.reserved:
                     raise _PairBlocked(result.blockers)
                 receipts.append(result.receipt)

@@ -1,6 +1,16 @@
 # What exists
 
-## Minimal live profitability canary — 2026-09-22
+## Original foreground runtime — 2026-09-22
+
+[Run guide](docs/RUN_LIQUIDITY_BOT.md): `live.py` composes the original owners
+without fixture switches; `LiveSession` separates explicit activation from the
+existing accounting/source/quota gates. Native scripts provide run, local status
+and graceful drain requests. `startup.py` checks the real GET/WS graph without
+a mutation signer or production ledger. Synthetic tests cover the complete
+startup-to-pair-ACK path and existing inventory exits. Current reviewed launch
+inputs and a real opening baseline remain required; no live launch is verified.
+
+## Retired minimal canary — historical, superseded by D-077
 
 [Build record](docs/BUILD_LIVE_CANARY.md): a separate native Windows command can
 prepare one fresh eligible market and, only with the matching run-ID confirmation,

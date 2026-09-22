@@ -173,8 +173,9 @@ class WriteBudget:
     """
 
     def __init__(self, snapshot, *, shards, now, offline_fixture=False,
-                 max_permits=128):
-        if offline_fixture is not True:
+                 max_permits=128, live_session=None):
+        from .live_session import permits
+        if offline_fixture is not True and not permits(live_session):
             raise InvalidData('offline_fixture must be literally True')
         if type(snapshot) is not WriteQuotaSnapshot:
             raise InvalidData('explicit write quota snapshot required')

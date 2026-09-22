@@ -1,4 +1,4 @@
-"""Event-driven lifetime owner for the injected dispatcher, not a live trader."""
+"""Event-driven lifetime owner for the explicitly configured dispatcher."""
 import asyncio
 import math
 
@@ -10,7 +10,8 @@ from .values import InvalidData
 
 class DispatchSupervisor:
     def __init__(self, source, dispatcher, *, offline_fixture=False):
-        if (offline_fixture is not True or not isinstance(source, InventoryDispatchSource)
+        if (not isinstance(source, InventoryDispatchSource)
+                or not (offline_fixture is True or source.runtime.live_components_enabled)
                 or not isinstance(dispatcher, MutationDispatcher)
                 or dispatcher.writer is not source.runtime.writer
                 or dispatcher.refresh != source.refresh

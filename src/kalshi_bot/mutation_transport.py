@@ -17,6 +17,7 @@ from .mutation_outcomes import MutationHTTPFailure
 from .rest import WireResponse, decode
 from .transport import MutationSigner, REST_BASE
 from .values import InvalidData, identity, integer
+from .live_session import LiveSession, permits
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -120,7 +121,8 @@ class OrderMutationTransport:
         integer(max_bytes, 1024, 4194304)
         if type(timeout) not in (int, float) or not 0 < timeout <= 30:
             raise InvalidData('bounded mutation timeout required')
-        if offline_fixture is not True and not isinstance(activation, MutationActivation):
+        if (offline_fixture is not True and not isinstance(activation, MutationActivation)
+                and not permits(activation)):
             raise InvalidData('live mutation activation unavailable')
         if offline_fixture is True and wire is mutation_wire:
             raise InvalidData('offline fixture requires an injected non-network wire')
@@ -155,9 +157,12 @@ class OrderMutationTransport:
     async def __call__(self, kind, request):
         validate_request(kind, request)
         if not self.offline_fixture:
-            if kind == 'create':
+            if type(self.activation) is LiveSession:
+                self.activation.check(kind, request)
+            elif kind == 'create':
                 raise InvalidData('live canary requires one exact batch create')
-            self.activation.authorize_cancel(request)
+            else:
+                self.activation.authorize_cancel(request)
         if kind == 'create':
             return await self._send('POST', '/portfolio/events/orders',
                                     self._body(request), 201)
@@ -170,12 +175,15 @@ class OrderMutationTransport:
     async def batch(self, requests):
         validate_entry_pair(requests)
         if not self.offline_fixture:
-            self.activation.authorize_batch(requests)
+            if type(self.activation) is LiveSession:
+                self.activation.check('batch_create', requests)
+            else:
+                self.activation.authorize_batch(requests)
         # Batch writes are unscoped for quota accounting even though every leg
         # retains an explicit exchange_index in its immutable request.
         response = await self._send('POST', '/portfolio/events/orders/batched',
                                     self._body({'orders': list(requests)}), 201)
-        if not self.offline_fixture:
+        if not self.offline_fixture and isinstance(self.activation, MutationActivation):
             self.activation.record_outcomes(batch_acknowledgement(requests, response))
         return response
 

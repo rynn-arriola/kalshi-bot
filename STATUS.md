@@ -1,6 +1,32 @@
 # Current status
 
-## D-076 minimal live profitability canary — 2026-09-22
+## D-077 original runtime connected; not yet live — 2026-09-22
+
+The original runtime now has an explicit non-fixture execution composition,
+foreground Windows launcher and drain request. Ranking, account release, write
+quota, durable pair dispatch and the V2 transport are connected. Fill/book/timer
+events queue the existing passive/IOC exits. No alternative canary is the launch
+path. See [operation and remaining inputs](docs/RUN_LIQUIDITY_BOT.md).
+
+Synthetic verification reaches a two-order ACK through the complete composed
+runtime, with real local accounting and fake wires only. Separate regressions
+cover partial-fill reducers, cancellation priority, IOC, paused entries and
+missing cash proof. Real GET/WebSocket startup checks connect books, private
+channels, lifecycle, metadata, catalog and quota; they do not place orders or
+approve a production opening baseline.
+
+**Not trading-ready yet:** `config/live-inputs.local.json` has not been installed
+with current reviewed market timing/early-close bindings and fee-member evidence.
+No production account ledger has been created and no live order was submitted.
+Startup checks write only new diagnostic ledgers. Automatic supervisor restart,
+broader admission and paid-reward reconciliation are not claimed by this unit.
+Verification: full suite 1,384 run / 1,383 passed / one expected skip; final
+launcher regressions 18/18; ten repeated synthetic compositions passed.
+Read-only startup evidence and limits are recorded in the run guide. The account
+direct-versus-broker distinction has been requested from the operator; it is not
+inferred from bank/card funding or returned balance formatting.
+
+## D-076 historical canary — superseded; not a launch path
 
 [Implemented and verified](docs/BUILD_LIVE_CANARY.md): a separate one-market
 canary can prepare one fresh, exact two-sided post-only size-10 quote and monitor
@@ -12,9 +38,9 @@ first fill or planned end triggers cancellation of acknowledged orders.
 Fresh read-only evidence found $500.4268 cash, zero positions/orders and one
 same-day candidate with $9.60 maximum combined cost, $7.10 maximum one-sided
 loss and $1.49 estimated reward. That preview expired; **no live order was
-submitted**. Final suite: 1,367 passed and one expected Windows privilege skip.
-Next: obtain explicit live-canary submission authority, generate a fresh plan,
-run it, then reconcile actual reward, fees, settlement and net P&L.
+submitted**. The earlier count should read 1,367 tests run, 1,366 passed and one
+skip. Its two wall-clock-dependent tests were subsequently fixed. D-077 retires
+submission via this separate path; the rest of this section is historical.
 
 ## D-075 offline supervised runtime/recovery fence — 2026-09-22
 

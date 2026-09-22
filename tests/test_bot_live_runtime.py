@@ -1,0 +1,392 @@
+"""Production execution mode, exclusively synthetic inputs/wires/credentials."""
+import asyncio
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal as D
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+import unittest
+from unittest.mock import AsyncMock, patch
+import time
+from urllib.parse import urlparse
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+from kalshi_bot.config import BotConfig
+from kalshi_bot.dispatch import ENTRY_PAIR, PASSIVE_REDUCER, SAFETY_CANCEL, DUE_IOC
+from kalshi_bot.dispatch_sources import InventoryDispatchSource
+from kalshi_bot.live import LaunchInputs, compose, verified_flat
+from kalshi_bot.live_session import LiveSession, permits
+from kalshi_bot.mutation_transport import OrderMutationTransport
+from kalshi_bot.observability import NO_LOG
+from kalshi_bot.rest import WireResponse
+from kalshi_bot.rest import RestReads, TokenBudget
+from kalshi_bot.quota import QuotaGuard, QuotaPolicy, ProbeConfig
+from kalshi_bot.quota_supervisor import QuotaSupervisor
+from kalshi_bot.runtime import RecoveryRuntime
+from kalshi_bot.startup import save_result
+from kalshi_bot.transport import MutationSigner
+from kalshi_bot.values import InvalidData
+from kalshi_bot.write_budget import WriteBudget
+from kalshi_bot.writer import LedgerWriter
+import test_bot_account_release as accounting_fixture
+import test_bot_dispatch_sources as exit_fixture
+from test_bot_entry_dispatch import pair
+from test_bot_selection import program, terms
+from test_bot_write_budget import snapshot as quota_snapshot, now as quota_now
+
+
+async def noop(*_):
+    pass
+
+
+class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.session = LiveSession(run_id='synthetic-live', tickers=('A',))
+        self.f = accounting_fixture.AccountReleaseTests()
+        with patch.object(accounting_fixture, 'LedgerWriter',
+                          lambda path: LedgerWriter(path, live_session=self.session)):
+            await self.f.asyncSetUp()
+        f = self.f
+        self.runtime = RecoveryRuntime(f.writer, None, None, tickers=('A',),
+            subaccount=0, history_start=accounting_fixture.BOUNDARY,
+            now=lambda: f.now, clock=lambda: f.tick,
+            evaluate=noop, deadline_handler=noop, lifecycle_handler=noop)
+        self.runtime.account = f.account
+        self.runtime.engine.begin_private_epoch()
+        self.selection = self.runtime.attach_selection()
+        current_terms = replace(terms(), observed_at=f.now,
+            valid_until=f.now+timedelta(minutes=30), close_at=f.now+timedelta(hours=4),
+            event_risk_at=f.now+timedelta(hours=2))
+        self.runtime.management.set_terms(current_terms)
+        self.selection.set_programs('A', (replace(program(),
+            start=f.now-timedelta(hours=1), end=f.now+timedelta(hours=1)),),
+            observed_at=f.now, valid_until=f.now+timedelta(minutes=5))
+        name = next(iter(self.runtime.engine.shards))
+        generation = self.runtime.engine.begin_book_epoch(name)
+        self.runtime.engine.submit_book(name, dict(type='orderbook_snapshot', sid=1, seq=1,
+            msg=dict(market_ticker='A', yes_dollars_fp=[['.5','1000']],
+                     no_dollars_fp=[['.6','1000']])), generation=generation)
+        await self.runtime.engine.step()
+        market = SimpleNamespace(value=SimpleNamespace(exchange=1))
+        self.runtime.market_inputs = SimpleNamespace(values={('market','A'):market},
+            results={'A':SimpleNamespace(terms=current_terms)}, _fresh=lambda row: row is market)
+        self.runtime.accounting_result = await f.ready()
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        signer = MutationSigner('synthetic', key.private_bytes(serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+        self.calls = []
+        def wire(url, method, headers, body, *_):
+            rows = json.loads(body)['orders']
+            self.calls.append((method, rows))
+            return WireResponse(201, json.dumps({'orders':[dict(order_id='order-'+r['side'],
+                client_order_id=r['client_order_id'], fill_count='0', remaining_count='10',
+                ts_ms=1) for r in rows]}).encode())
+        self.transport = OrderMutationTransport(signer, wire=wire, activation=self.session)
+        self.source = InventoryDispatchSource(self.runtime)
+        self.budget = WriteBudget(quota_snapshot(rate=100, capacity=100), shards=(0,1),
+            now=quota_now(), live_session=self.session)
+        self.dispatcher = self.source.dispatcher(self.budget, invoke=self.transport,
+                                                 clock_pair=lambda: quota_now(1))
+        self.service = self.runtime.attach_dispatch(self.source, self.dispatcher)
+
+    async def asyncTearDown(self):
+        await self.service.close()
+        self.session.close()
+        await self.f.asyncTearDown()
+
+    async def test_nonfixture_ranked_pair_uses_real_accounting_and_transport(self):
+        self.assertTrue(self.runtime.entry_allowed)
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual({r['side'] for r in self.calls[0][1]}, {'bid','ask'})
+        self.assertTrue(all(D(r['count'])==10 and r['post_only'] for r in self.calls[0][1]))
+        self.assertTrue(all(r['expiration_time'] == int(
+            (self.f.now+timedelta(hours=1)).timestamp()) for r in self.calls[0][1]))
+        self.assertEqual({r['phase'] for r in await self.f.writer.mutations()}, {'ACK'})
+        self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
+
+    async def test_session_does_not_replace_accounting_lease(self):
+        self.f.account.revoke_accounting()
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        self.assertEqual((await self.dispatcher.run_one()).state, 'BLOCKED')
+        self.assertFalse(self.calls)
+
+    async def test_release_keeps_original_account_age_and_rebases_only_own_audit(self):
+        report = self.f.account.current_report(self.f.now)
+        self.assertIsNotNone(report)
+        self.assertEqual(report.observed_at, self.f.report.observed_at)
+        self.assertEqual(report.audit.writer_revision, self.f.writer.revision)
+        self.assertIs(report.audit, self.runtime.accounting_result.audit)
+        self.f.tick += 6
+        self.f.now += timedelta(seconds=6)
+        self.assertIsNone(self.f.account.current_report(self.f.now))
+        self.assertFalse(self.runtime.entry_allowed)
+
+    async def test_flat_proof_rejects_writer_change_during_await(self):
+        self.runtime.last_reports = ('synthetic-complete-history',)
+        self.assertTrue(await verified_flat(self.runtime))
+        original = self.f.writer.inventory
+        async def changed():
+            value = await original()
+            await self.f.writer.observe(self.f.now)
+            return value
+        with patch.object(self.f.writer, 'inventory', changed):
+            self.assertFalse(await verified_flat(self.runtime))
+
+    async def test_flat_proof_rejects_stale_or_missing_account_evidence(self):
+        self.assertFalse(await verified_flat(self.runtime))
+        self.runtime.last_reports = ('synthetic-complete-history',)
+        self.f.tick += 6
+        self.f.now += timedelta(seconds=6)
+        self.assertFalse(await verified_flat(self.runtime))
+
+    async def test_periodic_refresh_does_not_revoke_an_active_dispatch(self):
+        runtime = self.runtime
+        runtime.account_subscribed = True
+        runtime.recovery_state = 'repaired_entries_blocked'
+        runtime.recovery_requested.clear()
+        self.f.account.report = None
+        task = None
+        try:
+            with patch.object(self.dispatcher, 'status',
+                              return_value=SimpleNamespace(active=('A', ENTRY_PAIR))):
+                task = asyncio.create_task(runtime._live_refresh())
+                await asyncio.sleep(.01)
+                self.assertFalse(runtime.recovery_requested.is_set())
+            async with asyncio.timeout(2):
+                await runtime.recovery_requested.wait()
+        finally:
+            runtime.stop_requested.set()
+            if task is not None: await task
+
+    async def test_pause_and_closed_session_cannot_submit(self):
+        self.session.entries_paused = True
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        self.assertEqual((await self.dispatcher.run_one()).state, 'BLOCKED')
+        self.session.close()
+        self.assertFalse(permits(self.session, self.f.writer))
+        with self.assertRaises(InvalidData):
+            await self.transport.batch(pair())
+        self.assertFalse(self.calls)
+
+    async def test_writer_requires_accounting_even_when_caller_claims_cash(self):
+        self.f.account.revoke_accounting()
+        value = await self.f.writer.reserve_entry_pair(pair(), batch_id='no-proof',
+            view=await self.f.writer.portfolio(subaccount=0, now=self.f.now),
+            config=BotConfig(), now=self.f.now, free_cash=D(100000), account_known=True,
+            offline_fixture=False, fee_per_contract_bound=D('.02'))
+        self.assertFalse(value.reserved)
+
+    async def test_live_transport_rejects_unscoped_single_entries(self):
+        with self.assertRaises(InvalidData):
+            await self.transport('create', pair()[0])
+        with self.assertRaises(InvalidData):
+            await self.transport.batch(tuple(row | {'ticker':'OTHER'} for row in pair()))
+        self.assertFalse(self.calls)
+
+
+class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.f = exit_fixture.DispatchSourceTests()
+        await self.f.asyncSetUp()
+        self.service = self.f.runtime.attach_dispatch(self.f.source, self.f.dispatcher,
+                                                      offline_fixture=True)
+
+    async def asyncTearDown(self):
+        await self.service.close()
+        await self.f.asyncTearDown()
+
+    async def test_book_evaluation_automatically_queues_exact_partial_fill_exit(self):
+        await self.f.ready(filled='4')
+        await self.f.runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((PASSIVE_REDUCER,'A'),))
+        result = await self.f.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK')
+        self.assertEqual(D(self.f.calls[0][1]['count']), 4)
+        self.assertTrue(self.f.calls[0][1]['reduce_only'])
+
+    async def test_due_timer_automatically_queues_ioc(self):
+        await self.f.ready()
+        await self.f.due()
+        await self.f.runtime._deadline('A')
+        self.assertEqual(self.f.dispatcher.status().queued, ((DUE_IOC,'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertNotIn('expiration_time', self.f.calls[0][1])
+
+    async def test_partial_fill_cancels_old_entry_before_reducer(self):
+        await self.f.ready(filled='4', remaining='6')
+        await self.f.runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL,'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(self.f.calls[0][0], 'cancel')
+
+    async def test_drain_queues_flat_entry_cancel_not_new_position(self):
+        await self.f.ready(filled='0', remaining='10')
+        session = LiveSession(run_id='drain', tickers=('A','B'))
+        session.bind(self.f.writer)
+        self.f.runtime.live_session = session
+        session.entries_paused = True
+        await self.f.runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL,'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(self.f.calls[0][0], 'cancel')
+
+    async def test_observation_runtime_cannot_attach_dispatch_even_as_fixture(self):
+        self.f.runtime.observation_only = True
+        with self.assertRaises(InvalidData):
+            InventoryDispatchSource(self.f.runtime, offline_fixture=True)
+
+
+class LaunchInputTests(unittest.TestCase):
+    def test_failed_final_status_save_never_claims_no_trading_or_success(self):
+        from kalshi_bot import live
+        with TemporaryDirectory() as directory:
+            with (patch.object(live, 'DATA', Path(directory)),
+                  patch.object(live, 'WindowsLease'), patch.object(live, 'WindowsStopEvent'),
+                  patch.object(live.LaunchInputs, 'load', return_value=SimpleNamespace(tickers=('A',))),
+                  patch.object(live, 'run', new=AsyncMock(return_value={'state':'STOPPED_FLAT'})),
+                  patch.object(live, 'save_result', side_effect=OSError('synthetic disk failure')),
+                  patch('builtins.print') as output):
+                self.assertEqual(live.main(['run','--live','--initialize']), 2)
+            result = json.loads(output.call_args.args[0])
+            self.assertEqual(result['state'], 'NEEDS_ATTENTION')
+            self.assertTrue(result['trading_may_have_started'])
+            self.assertFalse(result['flat_verified'])
+
+    def document(self):
+        return dict(exchange_indices=[0,1], fee_profile=dict(balance_quantum='.0001',
+            review_reference='synthetic-direct', valid_until='2099-01-01T00:00:00Z'),
+            timing_reviews=[dict(ticker='A',event='E',milestone_id='M',milestone_type='sports_game',
+                rules_hash='a'*64,review_reference='synthetic-rules',
+                valid_until='2099-01-01T00:00:00Z',early_close_reviewed=False)])
+
+    def test_inputs_are_explicit_and_cannot_auto_approve_expired_scope(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'inputs.json'
+            save_result(path, self.document())
+            value = LaunchInputs.load(path, datetime.now(timezone.utc))
+            self.assertEqual(value.tickers, ('A',))
+            document = self.document()
+            document['timing_reviews'][0]['valid_until'] = '2000-01-01T00:00:00Z'
+            save_result(path, document)
+            with self.assertRaises(InvalidData):
+                LaunchInputs.load(path, datetime.now(timezone.utc))
+
+    def test_atomic_status_contains_last_whole_result(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'status.json'
+            save_result(path, {'state':'RUNNING'})
+            save_result(path, {'state':'BLOCKED'})
+            self.assertEqual(json.loads(path.read_text())['state'], 'BLOCKED')
+            self.assertFalse(path.with_suffix('.json.tmp').exists())
+
+
+class CompositionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_complete_original_graph_bootstraps_and_dispatches_without_fixture_switches(self):
+        import test_bot_market_inputs as metadata
+        from test_bot_incentive_discovery import row as reward_row
+        from test_bot_opening_account import balance
+        from test_bot_quota import LIMITS, COSTS, Signer
+        base, start = metadata.NOW, time.monotonic()
+        now = lambda: base+timedelta(seconds=time.monotonic()-start)
+        closed, calls = [], []
+        market = metadata.market()
+        docs = {
+            '/account/limits': LIMITS, '/account/endpoint_costs': COSTS,
+            '/portfolio/balance': balance(), '/portfolio/orders': {'orders':[], 'cursor':''},
+            '/portfolio/positions': {'market_positions':[], 'cursor':''},
+            '/portfolio/fills': {'fills':[], 'cursor':''},
+            '/portfolio/settlements': {'settlements':[], 'cursor':''},
+            '/portfolio/subaccounts/transfers': {'transfers':[]},
+            '/portfolio/intra_exchange_instance_transfers': {'transfers':[]},
+            '/portfolio/deposits': {'deposits':[]}, '/portfolio/withdrawals': {'withdrawals':[]},
+            '/historical/cutoff': {'trades_created_ts':(base-timedelta(days=1)).isoformat()},
+            '/markets/A': {'market':market}, '/events/E': {'event':metadata.Reads().event},
+            '/series/S': {'series':metadata.Reads().series},
+            '/events/fee_changes': {'event_fee_changes':[], 'cursor':''},
+            '/series/fee_changes': {'series_fee_change_arr':[]},
+            '/milestones/M': {'milestone':metadata.Reads().milestone},
+            '/incentive_programs': {'incentive_programs':[reward_row()], 'next_cursor':''},
+        }
+        def wire(url, *_):
+            path = urlparse(url).path.removeprefix('/trade-api/v2')
+            return WireResponse(200, json.dumps(docs[path], default=str).encode())
+        class Reader:
+            def __init__(self, spec): self.spec = spec
+            async def run(self, consume):
+                try:
+                    for sid, channel in enumerate(self.spec.channels, 1):
+                        await consume(self.spec.name, dict(type='subscribed', id=1,
+                            msg=dict(channel=channel,sid=sid)))
+                    seq = 0
+                    while True:
+                        if self.spec.name.startswith('book-') and seq == 0:
+                            seq += 1
+                            await consume(self.spec.name, dict(type='orderbook_snapshot', sid=1,seq=seq,
+                                msg=dict(market_ticker='A',yes_dollars_fp=[['.5','1000']],
+                                         no_dollars_fp=[['.6','1000']])))
+                        await asyncio.sleep(.1)
+                finally: closed.append(self.spec.name)
+        class Wire:
+            async def __call__(self, *_): raise AssertionError('unexpected single command')
+            async def batch(self, requests):
+                calls.append(requests)
+                return {'orders':[dict(order_id='mock-'+r['side'],
+                    client_order_id=r['client_order_id'],fill_count='0',remaining_count='10',ts_ms=1)
+                    for r in requests]}
+        with TemporaryDirectory() as directory:
+            session = LiveSession(run_id='composed-synthetic', tickers=('A',))
+            writer = await LedgerWriter(Path(directory)/'account.db', live_session=session).start()
+            reads = RestReads(TokenBudget(rate=10000,capacity=10000,default_cost=10,
+                clock=time.monotonic), Signer(), wire=wire)
+            guard = QuotaGuard(QuotaPolicy(ProbeConfig(10000,10000,10,10)),
+                clock=time.monotonic, now=now)
+            reads.attach_quota(guard)
+            quota = QuotaSupervisor(reads)
+            runtime = task = None
+            try:
+                inputs = LaunchInputs((metadata.review(market),),
+                    metadata.FeeProfile(D('.0001'),'synthetic',base+timedelta(hours=2)), (0,1))
+                runtime = await compose(writer, reads, Reader, Wire(), inputs=inputs,
+                    boundary=base-timedelta(seconds=1), now=now, clock=time.monotonic,
+                    diagnostics=NO_LOG, quota=quota, initialize=True)
+                self.assertEqual(len(guard.listeners), 5)
+                self.assertFalse(runtime.observation_only)
+                self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
+                task = asyncio.create_task(runtime.run())
+                async with asyncio.timeout(10):
+                    while not calls:
+                        if task.done(): task.result()
+                        await asyncio.sleep(.01)
+                self.assertEqual(len(calls), 1)
+                self.assertTrue(all(D(row['count']) == 10 for row in calls[0]))
+                async with asyncio.timeout(2):
+                    while sum(r['phase'] == 'ACK' for r in await writer.mutations()) != 2:
+                        if task.done(): task.result()
+                        await asyncio.sleep(.01)
+                self.assertLessEqual({r['phase'] for r in await writer.mutations()}, {'ACK', 'NOT_SENT'})
+                self.assertFalse(await verified_flat(runtime))
+            finally:
+                if runtime is not None: runtime.stop()
+                try:
+                    if task is not None: await task
+                finally:
+                    try:
+                        await quota.close()
+                    finally:
+                        try:
+                            await reads.close()
+                        finally:
+                            await writer.close()
+            self.assertEqual(set(closed), {'book-0','account','lifecycle'})
+            self.assertTrue(session.closed)
+
+
+if __name__ == '__main__':
+    unittest.main()

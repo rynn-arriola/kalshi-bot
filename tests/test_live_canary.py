@@ -67,7 +67,7 @@ class CanaryTests(unittest.TestCase):
         row, _ = candidate(program(), market(), book(), NOW)
         plan = make_plan(row | {"title": "Synthetic"}, balance="500.4268", now=NOW)
         validate_plan(plan, now=NOW)
-        requests = order_requests(plan)
+        requests = order_requests(plan, now=NOW)
         self.assertEqual({r["side"] for r in requests}, {"bid", "ask"})
         self.assertTrue(all(r["count"] == "10" and r["post_only"] for r in requests))
         changed = dict(plan, bid_price="0.39")
@@ -79,7 +79,7 @@ class CanaryTests(unittest.TestCase):
     def test_activation_is_exact_single_use_and_cancel_scoped(self):
         row, _ = candidate(program(), market(), book(), NOW)
         plan = make_plan(row | {"title": "Synthetic"}, balance="500", now=NOW)
-        requests = order_requests(plan)
+        requests = order_requests(plan, now=NOW)
         activation = MutationActivation(plan["run_id"], plan["ticker"], 0, 0,
             frozenset(plan["client_order_ids"].values()), batch_scope(requests))
         activation.authorize_batch(requests)

@@ -192,7 +192,8 @@ class QuotaGuard:
         return mono, wall
 
     def listen(self, callback):
-        if len(self.listeners) >= 4 or callback in self.listeners:
+        # Shared reads, quota supervisor, runtime, metadata and incentives.
+        if len(self.listeners) >= 5 or callback in self.listeners:
             raise InvalidData('quota listener bound exceeded')
         self.listeners.append(callback)
 

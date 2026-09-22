@@ -1,5 +1,27 @@
 # Findings — kalshi-bot
 
+## 111. Component tests did not establish an operable composition — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: full original-owner composition exposed three real gaps:
+accounting release advanced the writer revision and made its own account report
+unusable; inventory book/deadline/fill callbacks did not request exit dispatch;
+the shared quota listener cap allowed four consumers while the full graph needs
+five. Corrections retain the original proofs and ownership. The complete graph
+now reaches a synthetic entry ACK without any `offline_fixture=True` switch.
+An explicit bootstrap supplies the shared write bucket before runtime start.
+
+Repeated composition checks also reproduced a periodic refresh racing the
+command's own writer revision. Refresh now waits for an active dispatch;
+private ingress and outcome reconciliation are unchanged. Ten consecutive
+synthetic startup-to-ACK runs passed after this fix. The flat shutdown check
+uses read-only evidence, not the revision-changing order-settlement method.
+
+VERIFIED READ-ONLY: real account/book/lifecycle subscriptions, reward catalog,
+metadata and current quotas are accessible. A fresh startup history scope must
+not adopt old manual trades into a new bot ledger. A past successful recovery
+label is not a current account snapshot; startup now checks both. No real order,
+baseline approval, net profit or reward payout was produced. [Evidence and limits](docs/RUN_LIQUIDITY_BOT.md).
+
 ## 110. A bounded same-day canary can clear the estimated $1 gate — 2026-09-22
 
 VERIFIED ACCOUNT READ: primary cash was $500.4268 with zero nonzero positions
