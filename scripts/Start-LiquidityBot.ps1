@@ -1,7 +1,7 @@
 param([switch]$Live, [switch]$Initialize)
 $ErrorActionPreference = 'Stop'
 $projectPath = Split-Path -Parent $PSScriptRoot
-$arguments = @('-B', '-m', 'kalshi_bot.live', 'run')
+$arguments = @('-B', '-m', 'kalshi_bot.supervised_live', 'start')
 if ($Live) { $arguments += '--live' }
 if ($Initialize) { $arguments += '--initialize' }
 Push-Location $projectPath

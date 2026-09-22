@@ -2,16 +2,16 @@
 
 ## Production supervisor connection — ordered checklist
 
-D-080 requests this checklist first. This is planned work, not a completed
-production integration or permission to launch. Reuse the existing
+D-080 requested this checklist first; D-081 implements the software connection.
+This is not permission to launch. Reuse the existing
 [native design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md) and
-[S2B implementation](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md). The current
-[foreground launcher](docs/RUN_LIQUIDITY_BOT.md) remains the implemented path.
+[S2B implementation](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md). The
+[supervised foreground launcher](docs/RUN_LIQUIDITY_BOT.md) is the implemented path.
 Items 1–6 form the software work; item 7 is live acceptance; item 8 is later host
 recovery. Track evidence here as each item finishes. Earlier hour estimates are
 provisional until item 1 resolves the production recovery boundary.
 
-1. [ ] **Define the production recovery contract.** Trace the actual Poly
+1. [x] **Define the production recovery contract.** Trace the actual Poly
    supervisor, host recovery and runner paths against Kalshi's owners. Record
    which faults retry in-process, permit a bounded child restart, allow only
    recovery, or require attention. S2B currently blocks automatic relaunch after
@@ -20,7 +20,7 @@ provisional until item 1 resolves the production recovery boundary.
    clearing that hold. Specify whether successful recovery resumes entries or
    stays paused. Acceptance: reviewed transition/failure table and module map;
    any changed restart policy is explicitly identified before implementation.
-2. [ ] **Connect a fixed production child to the existing host.** Reuse native
+2. [x] **Connect a fixed production child to the existing host.** Reuse native
    leases, IPC, control journal and bounded scheduling. Give only the child
    credential access, financial-ledger ownership and existing mutation authority.
    Preserve fixture restrictions through a separate explicit production path.
@@ -28,7 +28,7 @@ provisional until item 1 resolves the production recovery boundary.
    direct launcher and supervised child from running concurrently. Acceptance:
    one parent/child and one financial writer across launch paths, with injectable
    synthetic dependencies exercising the production composition.
-3. [ ] **Make initialization and recovery survive process failure.** Preserve the
+3. [x] **Make initialization and recovery survive process failure.** Preserve the
    same ledger, opening boundary, loss windows, inventory clocks and uncertain
    orders. Never replay `--initialize`, delete a partial ledger or create a new
    risk baseline on retry. Reconcile before enabling new entries; do not replay
@@ -38,14 +38,14 @@ provisional until item 1 resolves the production recovery boundary.
    uncertain ledger. Acceptance: crashes before/after opening approval and
    durable order send recover or produce a precise attention state without
    duplicate orders, lost owners or reset restrictions.
-4. [ ] **Connect health, stop and operator controls.** Route start/stop/status
+4. [x] **Connect health, stop and operator controls.** Route start/stop/status
    scripts through the production host. Report parent/child identity, useful
    runtime progress, stage, restart attempts and the exact blocker; distinguish
    saved snapshots from current liveness. Operator stop must persist through
    backoff and parent restart. Preserve graceful order/inventory drain and require
    actual child exit before replacement. Acceptance: stop wins during startup,
    retry and drain; stale status/IPC cannot re-arm or report a flat account.
-5. [ ] **Test failure recovery and resource limits.** Use disposable ledgers and
+5. [x] **Test failure recovery and resource limits.** Use disposable ledgers and
    fake venue wires for child/parent death, stalled progress, disconnects, 429
    cooldowns, partial fills, unknown sends, logging/disk/IPC failure and interrupted
    shutdown. Verify bounded retries, no competing child and retained safety
@@ -53,7 +53,7 @@ provisional until item 1 resolves the production recovery boundary.
    parent idle CPU, loop latency and handle/task cleanup. Acceptance: focused
    regressions and relevant full suite pass; measured budgets are met. These are
    software fault tests, not a paper-profitability stage.
-6. [ ] **Review and publish the software.** Review the actual production diff for
+6. [x] **Review and publish the software.** Review the actual production diff for
    ownership races, recovery mistakes and accidental fixture bypasses; fix valid
    findings and rerun affected checks. Update the run guide, current status and
    verification records, commit/push, and verify repository parity. Acceptance:

@@ -16,6 +16,7 @@ from .supervisor_control import retain
 from .observability import Diagnostics, safe_error
 from .supervisor_fixture import (build_fingerprint, config_fingerprint,
                                  fixture_path, repository_root, source_path)
+from .supervisor_launch import ProductionLaunchProfile
 from .supervisor_protocol import (CHILD_KINDS, Envelope, MessageKind,
                                   SequenceTracker, validate_peer)
 from .recovery_fence import FenceCooldown, RecoveryFence
@@ -28,12 +29,17 @@ from .windows_ipc import PipeServer, supervisor_pipe_name
 class OwnedChild:
     """Spawn preparation retained by the host even after uncertain failures."""
     def __init__(self, scope, stop_latch, *, parent_session, child_id,
-                 child_generation, mode, launch_guard=None):
+                 child_generation, mode, launch_guard=None, profile=None,
+                 recovery_only=False):
         self.scope, self.stop_latch = scope, stop_latch
         self.parent_session = identity(parent_session)
         self.child_id = identity(child_id)
         self.child_generation = child_generation
         self.mode = mode
+        if profile is not None and type(profile) is not ProductionLaunchProfile:
+            raise InvalidData("fixed production launch profile required")
+        self.profile = profile
+        self.recovery_only = bool(recovery_only)
         self.launch_guard = launch_guard
         self.lease = WindowsRoleLease(scope.scope_id, "child",
                                       user_sid=scope.approved_user_sid)
@@ -51,9 +57,13 @@ class OwnedChild:
         self.cleanup_error = None
 
     def validate_launch(self, state):
+        build = (build_fingerprint() if self.profile is None
+                 else self.profile.build_fingerprint)
+        config = (config_fingerprint(self.mode) if self.profile is None
+                  else self.profile.config_fingerprint)
         if (self.stop_latch.requested or not state.desired_armed or state.stop_latched
-                or state.build_fingerprint != build_fingerprint()
-                or state.config_fingerprint != config_fingerprint(self.mode)):
+                or state.build_fingerprint != build
+                or state.config_fingerprint != config):
             raise InvalidData("native launch authority revoked")
         if self.launch_guard is not None:
             self.launch_guard()
@@ -109,7 +119,7 @@ class OwnedChild:
         startup.lpAttributeList = {"handle_list": list(handles)}
         venv_launcher = Path(sys.executable).resolve(strict=True)
         base_executable = Path(sys._base_executable).resolve(strict=True)
-        command = [str(base_executable), "-B", str(fixture_path()),
+        common = [
             "--pipe-name", pipe,
             "--scope-digest", self.scope.digest,
             "--scope-id", self.scope.scope_id,
@@ -121,11 +131,17 @@ class OwnedChild:
             "--environment", self.scope.environment,
             "--account-scope", self.scope.account_scope,
             "--approved-user-sid", self.scope.approved_user_sid,
-            "--source-path", str(source_path()),
-            "--mode", self.mode,
+            "--source-path", str(source_path() if self.profile is None
+                                  else self.profile.source_path),
             "--lifetime-handle", str(lifetime),
             "--stop-handle", str(stop),
             "--parent-handle", str(parent)]
+        if self.profile is None:
+            command = [str(base_executable), "-B", str(fixture_path()),
+                       *common, "--mode", self.mode]
+        else:
+            command = self.profile.command(base_executable, common,
+                                           recovery_only=self.recovery_only)
         if self.launch_guard is not None:
             self.launch_guard()
         if self.stop_latch.requested:
@@ -196,11 +212,20 @@ class OwnedChild:
 class SupervisorHost:
     """One native parent loop; S2B remains a fixed credential-free fixture."""
     def __init__(self, scope: ScopeSpec, *, fixture_mode="normal",
-                 policy=SupervisorPolicy()):
+                 policy=SupervisorPolicy(), launch_profile=None,
+                 arm_on_start=False):
         if not isinstance(scope, ScopeSpec):
             raise InvalidData("typed supervisor scope required")
-        config_fingerprint(fixture_mode)
+        if launch_profile is None:
+            config_fingerprint(fixture_mode)
+        elif (scope.profile != "production"
+                or type(launch_profile) is not ProductionLaunchProfile):
+            raise InvalidData("production launch profile requires production scope")
         self.scope, self.fixture_mode, self.policy = scope, fixture_mode, policy
+        self.launch_profile = launch_profile
+        self.arm_on_start = bool(arm_on_start)
+        if self.arm_on_start and self.launch_profile is None:
+            raise InvalidData("automatic host arm requires a production profile")
         self.parent_session = uuid4().hex
         self.owner = None
         self.controller_state = None
@@ -240,7 +265,15 @@ class SupervisorHost:
 
     @property
     def fingerprints(self):
-        return build_fingerprint(), config_fingerprint(self.fixture_mode)
+        if self.launch_profile is None:
+            return build_fingerprint(), config_fingerprint(self.fixture_mode)
+        return (self.launch_profile.build_fingerprint,
+                self.launch_profile.config_fingerprint)
+
+    @property
+    def protocol_mode(self):
+        return (self.fixture_mode if self.launch_profile is None
+                else self.launch_profile.mode)
 
     async def _apply(self, event):
         began = time.perf_counter()
@@ -293,7 +326,10 @@ class SupervisorHost:
         factory = OwnedChild(self.scope, self._stop_latch,
             parent_session=self.parent_session, child_id=child_id,
             child_generation=state.generation, mode=self.fixture_mode,
-            launch_guard=self._guard)
+            launch_guard=self._guard, profile=self.launch_profile,
+            recovery_only=(bool(state.recovery_reasons)
+                if self.launch_profile is None
+                else self.launch_profile.recovery_only(state)))
         event = SupervisorEvent(EventKind.START_REQUESTED, time.time(),
             expected_generation=state.generation, child_id=child_id)
         self.child = factory
@@ -326,7 +362,7 @@ class SupervisorHost:
                 raise InvalidData("native child did not send HELLO first")
             build, config = self.fingerprints
             if hello.payload != dict(build_fingerprint=build,
-                    config_fingerprint=config, fixture_mode=self.fixture_mode):
+                    config_fingerprint=config, fixture_mode=self.protocol_mode):
                 raise InvalidData("native child fingerprint mismatch")
             bound = await self.owner.submit("stage", dict(
                 parent_session=self.parent_session, child_id=self.child.child_id,
@@ -367,7 +403,9 @@ class SupervisorHost:
                 raise InvalidData("duplicate native child result")
             self.child.result = message.payload
         elif message.kind == MessageKind.FENCE:
-            if not self.fixture_mode.startswith("runtime_"):
+            supports_fence = (self.fixture_mode.startswith("runtime_")
+                if self.launch_profile is None else self.launch_profile.supports_fence)
+            if not supports_fence:
                 raise InvalidData("inert child cannot publish a recovery fence")
             revision = message.payload["fence_revision"]
             if revision <= self.child.fence_revision:
@@ -430,7 +468,7 @@ class SupervisorHost:
                 outcome = ChildOutcome.INTEGRITY_FAILURE
                 cleanup_complete = False
                 unresolved_work = True
-        if self.fixture_mode.startswith("runtime_"):
+        if self.launch_profile is None and self.fixture_mode.startswith("runtime_"):
             terminal_known = child.terminal_fence_revision == child.fence_revision > 0
             if payload is None or outcome == ChildOutcome.UNEXPECTED_DEATH or not terminal_known:
                 holds = tuple(dict.fromkeys(holds+("recovery_fence_unknown",)))
@@ -550,6 +588,13 @@ class SupervisorHost:
                     and self.controller_state.child_id is None
                     and self.controller_state.stop_latched):
                 return
+            if (self.launch_profile is not None and self.child is None
+                    and self.controller_state is not None
+                    and self.controller_state.build_fingerprint
+                    and self.controller_state.state in {
+                        SupervisorState.DISARMED,
+                        SupervisorState.ATTENTION_REQUIRED}):
+                return
             delay = max(0.0, min(1.0, next_tick-time.monotonic()))
             if (self.child is not None and self.child.endpoint is not None
                     and self.child.endpoint.error is None):
@@ -610,6 +655,13 @@ class SupervisorHost:
             self.controller_state = receipt.state
             if receipt.state.child_id is not None:
                 stop_owner.request_owned()
+            elif self.arm_on_start:
+                build, config = self.fingerprints
+                armed = await self._apply(SupervisorEvent(EventKind.ARM,
+                    time.time(), expected_generation=receipt.state.generation,
+                    build_fingerprint=build, config_fingerprint=config))
+                if armed.decision.stale or not armed.state.desired_armed:
+                    raise InvalidData("production supervisor could not be armed")
             self.started.set()
             await self._loop(power)
         except BaseException as exc:

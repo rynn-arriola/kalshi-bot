@@ -1,12 +1,13 @@
-# Original liquidity runtime: minimal foreground operation
+# Supervised liquidity runtime: foreground operation
 
-D-077 uses the existing runtime, not the retired REST-only canary. Native Windows
-only, canonical checkout `C:/Users/rynna/Bots/kalshi`. No service, scheduled task,
-automatic restart, model switch or worker is installed.
+D-081 places the D-077 runtime behind the native Windows process supervisor.
+Native Windows only, canonical checkout `C:/Users/rynna/Bots/kalshi`. The
+supervisor and its exact child remain in the foreground; no service, scheduled
+task, startup entry, model switch or worker is installed.
 
 ## Current state
 
-Software integration exists; **no live trading launch is verified**. A complete
+Software integration exists; **no supervised live trading launch is verified**. A complete
 synthetic graph starts quota, readers, recovery, opening accounting, metadata,
 selection, rewards and dispatch and receives one two-order ACK over a fake wire.
 Partial fills and safety timers reach the existing exact reducers/IOC handlers.
@@ -126,14 +127,25 @@ worked around by deleting that ledger; inspect the failure before recovery.
 Never use a new data path to reset loss limits or ownership. Do not run the old
 canary, another bot or manual account trades concurrently.
 
-The stop request blocks new entries, cancels proven-owned entry orders through
+The stop request is now durable in the separate supervisor control journal. It
+blocks new entries, cancels proven-owned entry orders through
 the same writer/quota path, and continues the approved inventory exits until
 flat/terminal evidence is current. It may remain `DRAINING` when an exit cannot
 be made or proof is unavailable. It does not introduce unconditional liquidation.
 An exception, network ambiguity, Ctrl+C, sleep or process death may leave orders
 or inventory: `NEEDS_ATTENTION` is not canceled/flat. Do not force-close the window
 as the normal stop method. Keep the laptop awake and online; no power settings
-have been changed. Automatic supervisor recovery remains outside this release.
+have been changed.
+
+An unexpected child exit receives at most the supervisor's bounded retry budget.
+Every replacement child is recovery-only: entries are paused before composition,
+the same financial ledger is opened, and only reconciliation, owned-order
+cancellation and existing-inventory reduction are permitted. Verified flatness
+disarms the supervisor; a later explicit start is required to quote again.
+Startup refusal, unknown/integrity state, local-control failure or exhausted
+retry budget requires attention. Parent loss is not reboot recovery; the optional
+host watchdog remains uninstalled and separately authorized. See the
+[production recovery contract](DESIGN_PRODUCTION_SUPERVISOR.md).
 If source proof changes after durable SENDING, the existing conservative UNKNOWN
 hold remains; this release does not introduce an automatic retry of that command.
 
@@ -141,7 +153,8 @@ hold remains; this release does not introduce an automatic retry of that command
 
 Ignored local `data/trader/` holds `account.db` (single financial writer),
 `account.rewards.json` (estimated reward checkpoint), atomic `status.json` and
-rotating `logs/events.jsonl`. `RUNNING` means process activity, not that any
+rotating `logs/events.jsonl`. `data/trader/supervisor/` holds the separate
+protected control journal and bounded parent/child diagnostics. `RUNNING` means process activity, not that any
 order exists; inspect resting entries, positions, account/dispatch blockers and
 timestamps. Saved status is explicitly historical, not proof the PID is alive.
 Actual fills/fees and receipt-window risk remain in the ledger. Estimated rewards

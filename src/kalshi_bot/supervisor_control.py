@@ -23,12 +23,18 @@ class ScopeSpec:
     account_scope: str
     approved_user_sid: str
     control_root: Path
+    profile: str = "fixture"
 
     def __post_init__(self):
         identity(self.environment)
         identity(self.account_scope)
-        if not self.account_scope.startswith("test-"):
+        if self.profile not in {"fixture", "production"}:
+            raise InvalidData("invalid supervisor scope profile")
+        if (self.profile == "fixture" and not self.account_scope.startswith("test-")):
             raise InvalidData("S2A permits only test account scopes")
+        if (self.profile == "production" and (self.environment != "production"
+                or self.account_scope != "kalshi-primary-account")):
+            raise InvalidData("production supervisor scope is fixed")
         if not isinstance(self.approved_user_sid, str) or not self.approved_user_sid.startswith("S-"):
             raise InvalidData("approved Windows SID required")
         root = Path(self.control_root)
@@ -98,6 +104,19 @@ class ControlOwner:
             protect_fresh_control_root(scope.control_root, scope.approved_user_sid)
             with SupervisorStore.initialize_fixture(scope.store_path,
                     scope_id=scope.scope_id, security_sid=scope.approved_user_sid,
+                    **clock_values):
+                pass
+
+    @classmethod
+    def initialize_production(cls, scope, **clock_values):
+        if not isinstance(scope, ScopeSpec) or scope.profile != "production":
+            raise InvalidData("typed production supervisor scope required")
+        if any(scope.control_root.iterdir()):
+            raise InvalidData("production control root must be empty")
+        with WindowsControlMutex(scope.scope_id, user_sid=scope.approved_user_sid):
+            protect_fresh_control_root(scope.control_root, scope.approved_user_sid)
+            with SupervisorStore(scope.store_path, scope_id=scope.scope_id,
+                    mode="create_only", security_sid=scope.approved_user_sid,
                     **clock_values):
                 pass
 
@@ -310,7 +329,7 @@ async def retain(task):
 
 
 class SupervisorController:
-    """Fixture-only durable arm/stop/inspection; never spawns a process."""
+    """Durable arm/stop/inspection; never spawns a process itself."""
     def __init__(self, scope, owner):
         if not isinstance(scope, ScopeSpec) or not isinstance(owner, ControlOwner):
             raise InvalidData("typed supervisor controller dependencies required")

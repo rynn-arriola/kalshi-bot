@@ -1,8 +1,24 @@
 # Findings — kalshi-bot
 
+## 116. Production restarts must be recovery-only — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: the production host now launches only the fixed
+`supervised_live_child` profile. A normal child may use the existing entry gates;
+after an unexpected exit, persisted `recovery_reasons` force every bounded
+replacement into recovery-only mode. That mode pauses entries before runtime
+composition, reuses `data/trader/account.db`, and cannot replay initialization.
+A verified-flat result disarms instead of resuming entries. Parent credentials,
+arbitrary child commands and fixture-scope promotion remain unavailable.
+
+The start/stop/status scripts use the protected supervisor journal. Status labels
+its PID/runtime material as saved evidence rather than current liveness. The
+complete offline suite passes 1,419 tests with one expected privilege skip. No
+live process, venue call, ledger or order was created during verification.
+[Contract and failure boundary](docs/DESIGN_PRODUCTION_SUPERVISOR.md).
+
 ## 115. Supervisor connection requires a recovery-policy bridge — 2026-09-22
 
-VERIFIED CODE: `scripts/Start-LiquidityBot.ps1` invokes `kalshi_bot.live`
+PRE-D-081 VERIFIED CODE, now superseded: `scripts/Start-LiquidityBot.ps1` invoked `kalshi_bot.live`
 directly. `supervisor_control.ScopeSpec` only accepts test account scopes and
 `supervisor_fixture.fixture_path` points to a fixed test child. The S2B contract
 holds after an incomplete terminal fence rather than automatically relaunching.

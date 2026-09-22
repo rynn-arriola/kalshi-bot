@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-081 — Connect the production runtime to the native supervisor
+
+- **Status:** ACCEPTED implementation scope, 2026-09-22.
+- **Decision owner:** Operator: “Ok we need to work on all of this, lets start
+  the implementation,” after accepting the ordered supervisor checklist.
+- **Scope:** Connect one fixed production child to the existing foreground
+  Windows supervisor; route start/stop/status through it; preserve the existing
+  financial ledger and runtime gates; use bounded recovery-only child restarts.
+- **Recovery rule:** Unexpected child death can restart only with entries paused.
+  A recovery child reconciles/cancels/manages existing inventory to verified
+  flat, then the supervisor disarms. Resuming entries requires a later explicit
+  operator start. Startup/integrity/local-control failure and exhausted retries
+  require attention.
+- **Boundary:** This decision does not authorize the first live run, install a
+  host watchdog or scheduled task, alter power settings, reset a ledger, weaken
+  risk limits, or change trading strategy.
+- **Contract:** [Production supervisor recovery](docs/DESIGN_PRODUCTION_SUPERVISOR.md).
+
 ### D-080 — Prepare the production-supervisor work checklist
 
 - **Status:** ACCEPTED planning/documentation scope, 2026-09-22.

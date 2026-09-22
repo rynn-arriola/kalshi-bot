@@ -267,13 +267,18 @@ async def supervise(runtime, *, stop, publish, interval=1):
             raise asyncio.CancelledError
 
 
-async def run(args, inputs, session, diagnostics, stop):
+async def run(args, inputs, session, diagnostics, stop, *, publish_override=None,
+              recovery_only=False):
     now, clock = lambda: datetime.now(timezone.utc), time.monotonic
     path = DATA/'account.db'
     if args.initialize and path.exists():
         raise InvalidData('initialize refuses an existing account ledger')
     if not args.initialize and not path.exists():
         raise InvalidData('first run requires explicit --initialize opening approval')
+    if recovery_only:
+        if args.initialize:
+            raise InvalidData('recovery-only cannot initialize an account ledger')
+        session.entries_paused = True
     signer = load_signer(args.key_id_file, args.private_key_file)
     # Separate restricted signer, never a key in a status document or log.
     mutation_signer = MutationSigner(signer._key_id, args.private_key_file.read_bytes())
@@ -299,7 +304,11 @@ async def run(args, inputs, session, diagnostics, stop):
             inputs=inputs, boundary=boundary, now=now, clock=clock,
             diagnostics=diagnostics, quota=quota, initialize=args.initialize)
         def publish(value):
-            save_result(DATA/'status.json', value | {'run_id': session.run_id})
+            document = value | {'run_id': session.run_id,
+                                'recovery_only': bool(recovery_only)}
+            save_result(DATA/'status.json', document)
+            if publish_override is not None:
+                publish_override(document)
         return await supervise(runtime, stop=lambda: stop.requested, publish=publish)
     finally:
         session.close()

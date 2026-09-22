@@ -8,15 +8,15 @@ subscriptions. Fresh order books remain WebSocket-owned and the existing
 competition-aware selector remains final; no per-market REST book scanner is
 introduced. Candidate authority is not subscription or order authority.
 
-D-077's [foreground original-runtime composition](RUN_LIQUIDITY_BOT.md) now
-connects these owners through an explicit process-local live session, preserving
+D-081's [supervised foreground composition](RUN_LIQUIDITY_BOT.md) now launches
+D-077's runtime through one fixed native child and explicit process-local live session, preserving
 accounting/source/quota authorization. D-078 attaches the existing admission
 owner with a separate reviewed candidate registry and optional initial seed
 scope; [live selection](BUILD_LIVE_SELECTION.md) never approves unknown rules.
 It preserves owned markets, resolves fresh metadata and requires snapshots
-after joined reader replacement. This is separate
-from the fixed S2B supervisor fixture below. Live venue mutation/launch and
-automatic production restart remain unverified, not implied by component tests.
+after joined reader replacement. The fixed S2B fixture remains isolated below.
+Production wiring is implemented, but live venue launch and observed production
+recovery remain unverified and require separate operator authority.
 
 D-075 [implements the fixed offline S2B runtime and recovery fence](BUILD_WINDOWS_SUPERVISOR_S2B.md).
 The native child owns one injected `RecoveryRuntime`, disposable ledger and fake
@@ -33,8 +33,9 @@ the dispatcher reserves the documented per-order write cost from the unscoped
 batch bucket and rechecks source, accounting and quota evidence at the send
 edge. Per-row venue outcomes are not treated as atomic: mixed or unidentified
 results latch recovery and are never retried. The same bounded adapter exposes
-single create and cancel operations for existing inventory exits. Live
-activation remains unavailable and no runtime launcher constructs this adapter.
+single create and cancel operations for existing inventory exits. The D-081
+fixed production child constructs this adapter only after explicit `--live`
+launch authority; offline component tests confer no such authority.
 
 D-071's [automatic admission owner](BUILD_MARKET_ADMISSION.md) now connects those
 candidate plans to joined book-reader replacement. One shard changes at a time;
@@ -81,9 +82,9 @@ The [injected lifecycle service](BUILD_DISPATCH_LIFECYCLE.md) attaches to runtim
 task supervision, drains accepted outcomes before reader teardown and preserves
 UNKNOWN on fixture restart. D-075 now tests this ownership inside the fixed
 offline S2B child; it does not create live mutation authority.
-Production mutation transport now exists behind D-072's unconstructible live
-activation boundary. Verified production inputs and native supervised runtime
-integration remain unfinished. D-063 restores development in the primary session without
+Production mutation transport now exists behind D-072's explicit live-session
+boundary. D-081 supplies native supervised runtime integration; verified live
+acceptance remains unfinished. D-063 restores development in the primary session without
 delegated agents or model switches unless explicitly requested again.
 
 D-059 [command capacity/handoff design](DESIGN_COMMAND_CAPACITY_HANDOFF.md),
@@ -114,10 +115,10 @@ D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifi
 one process supervisor and one runtime child, durable operator control and bounded
 automatic recovery. D-051 [S1 implementation](BUILD_WINDOWS_SUPERVISOR_S1.md)
 adds the immutable execution-disabled transition policy and separate transactional
-control journal. D-056 adds S2A native process handles and inert IPC; D-075 now
-adds only the fixed offline S2B runtime/restriction integration. Production
-runtime wiring still requires real-input readiness and separate launch authority.
-This does not establish account proof or authorize live operation.
+control journal. D-056 adds S2A native process handles and inert IPC; D-075 adds
+the fixed offline S2B runtime/restriction integration. D-081 adds a separate,
+fixed production profile whose crash replacements are recovery-only. This does
+not establish current account proof or authorize live operation.
 The [D-051 review](REVIEW_D051_ASTRA.md) required policy/contract and resource-
 verification fixes. D-052 [implements those fixes](BUILD_WINDOWS_SUPERVISOR_REVIEW_FIXES.md)
 offline. The [D-052 re-review](REVIEW_D052_ASTRA.md) clears original hold/crash/

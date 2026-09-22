@@ -98,7 +98,8 @@ def _validate_payload(kind, payload):
         identity(payload["config_fingerprint"])
         if payload["fixture_mode"] not in {"normal", "crash_after_admit",
                 "hang_after_admit", "exit_after_status", "runtime_normal",
-                "runtime_exhausted", "runtime_crash_before_fence_ack"}:
+                "runtime_exhausted", "runtime_crash_before_fence_ack",
+                "production_live"}:
             raise InvalidData("invalid supervisor fixture mode")
     elif kind == MessageKind.STATUS:
         _exact(payload, ("phase", "progress_sequence", "work_remaining_ms", "blockers"))

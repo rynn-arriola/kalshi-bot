@@ -1,14 +1,36 @@
 # Current status
 
+## D-081 production supervisor connected and verified offline — 2026-09-22
+
+The foreground start/stop/status scripts now route through the native Windows
+supervisor and one fixed production child. The parent cannot read credentials;
+the child retains the existing account lease, financial ledger and live runtime.
+An unexpected child exit can only launch a bounded recovery-only child, which
+sets entries paused before composition and must reach verified flatness before
+the supervisor disarms. It never automatically resumes quoting.
+
+One-time initialization, fixed launch fingerprints, protected production control
+scope, saved-status labeling and recovery-mode regressions are implemented.
+The complete offline suite passes 1,419 tests with one expected Windows
+privilege skip. Final native 60-second/100-cycle targets and offline S2B,
+selection and admission 30/120-market gates pass. The production diff was
+reviewed and corrected before publication. No bot, credentials, Kalshi request, ledger or
+order was started by this work; first supervised live acceptance remains item 7.
+
+[Recovery contract](docs/DESIGN_PRODUCTION_SUPERVISOR.md) ·
+[Build and verification](docs/BUILD_PRODUCTION_SUPERVISOR.md) ·
+[Run guide](docs/RUN_LIQUIDITY_BOT.md) ·
+[Remaining checklist](NEXT.md#production-supervisor-connection--ordered-checklist)
+
 ## Production supervisor checklist prepared — 2026-09-22
 
 D-080 records the operator's request to begin with a
 [prioritized checklist](NEXT.md#production-supervisor-connection--ordered-checklist).
-The existing native supervisor and S2B fixture are built; the live launcher still
-runs directly and has no production process restart integration. S2B deliberately
+The existing native supervisor and S2B fixture were built; D-081 now connects a
+separate fixed production profile. S2B deliberately
 holds after a crash without a terminal fence, so item 1 must define the production
 recovery contract before connecting the child. Checklist creation is complete;
-implementation, supervised live acceptance and a later host watchdog remain open.
+software verification, supervised live acceptance and a later host watchdog remain open.
 This update changes documentation only. The prior 1,412-test result below remains
 the code evidence; no fresh runtime or account readiness is claimed.
 

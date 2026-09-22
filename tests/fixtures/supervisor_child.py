@@ -12,8 +12,6 @@ from kalshi_bot.supervisor_protocol import (Envelope, MessageKind, PARENT_KINDS,
                                             ParentProtocol)
 from kalshi_bot.observability import Diagnostics
 from kalshi_bot.supervisor_store import SupervisorStore
-from kalshi_bot.supervised_runtime import (FenceCooldown, RecoveryFence,
-    RuntimeContext, RuntimeRestrictions, create_offline_runtime_adapter)
 from kalshi_bot.values import InvalidData
 from kalshi_bot.windows import (WindowsControlMutex, current_user_sid,
                                 WindowsPowerMonitor, process_id_from_handle, wait_handle)
@@ -206,6 +204,10 @@ def run_child(args, scope, endpoint, power, diagnostics):
 
 async def run_runtime_child(args, scope, endpoint, protocol, control, guard, diagnostics):
     """Run the one fixed S2B graph; all I/O remains disposable and local."""
+    # Inert S2A children must not pay the memory/startup cost of the full
+    # offline runtime graph. Runtime modes import their fixed graph on demand.
+    from kalshi_bot.supervised_runtime import (FenceCooldown, RecoveryFence,
+        RuntimeContext, RuntimeRestrictions, create_offline_runtime_adapter)
     with WindowsControlMutex(scope.scope_id,
             user_sid=scope.approved_user_sid) as mutex:
         if mutex.abandoned:
