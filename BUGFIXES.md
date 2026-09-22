@@ -8,6 +8,23 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — zero-candidate timing filter
+
+- The safety correction that withdrew blanket early-close approval left the
+  current public catalog with zero automatically eligible markets.
+- D-082 admits only the exact scheduled-economic-data release family when the
+  occurrence timestamp and sole future primary milestone are present and safe.
+  The occurrence timestamp is rules-bound; current metadata rechecks the family
+  and rejects later/conflicting milestone clocks before entry.
+- Unknown early-close conditions, unsupported milestone types, missing clocks
+  and sports remain excluded with explicit reasons. Active reward-program
+  membership and fresh-book ranking remain separate runtime requirements.
+
+Verification: 8 candidate-preparation tests, 46 market-input tests and the full
+suite pass: 1,431 run, 1,430 passed and one expected Windows privilege skip. A fresh public
+refresh produced 1,024 validated candidates; a read-only startup verified the
+feed graph without creating a ledger or order.
+
 ## 2026-09-22 — production supervisor end-to-end lifecycle repairs
 
 - Account ownership previously ended before exception-path runtime drain. The
@@ -37,8 +54,10 @@ No live runtime or external service was used. Full mechanisms and evidence:
   owner made restart exceed capacity. Durable positions, order exposure and
   pending fills now take slots first; optional seeds fill only remaining room.
 - Automatic preparation marked every market's early-close rules reviewed even
-  though it only hashed their text. It now excludes early-closing markets, and
-  legacy automatic approval files fail closed until refreshed.
+  though it only hashed their text. The correction excluded early-closing
+  markets and made legacy blanket approvals fail closed. D-082 later adds one
+  exact, separately reviewed scheduled-release family; it does not restore the
+  blanket approval.
 - The T-5 filter ran before milestone uniqueness, allowing an imminent binding
   to disappear and a later binding to become the deadline. Uniqueness now runs
   first and a sole imminent binding receives its own exclusion.

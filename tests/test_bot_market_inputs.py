@@ -6,8 +6,10 @@ from datetime import timedelta
 from decimal import Decimal as D, ROUND_CEILING, ROUND_FLOOR
 import unittest
 
-from kalshi_bot.market_inputs import (ExitInputService, FeeProfile, TimingReview, parse_market,
-    parse_event, parse_series, rules_digest, taker_bound, tick_bands, timestamp, fee_changes)
+from kalshi_bot.market_inputs import (ExitInputService, FeeProfile,
+    SCHEDULED_RELEASE_CONDITION, SCHEDULED_RELEASE_REVIEW, TimingReview,
+    parse_market, parse_event, parse_series, rules_digest, taker_bound,
+    tick_bands, timestamp, fee_changes)
 from kalshi_bot.rest import PageSet, ReadResult, RestReads, TokenBudget, WireResponse, request_path
 from kalshi_bot.values import InvalidData
 from test_bot_engine import NOW
@@ -73,6 +75,7 @@ class ParsingTests(unittest.TestCase):
         doc = market(expected_expiration_time=NOW.isoformat(),occurrence_datetime=NOW.isoformat())
         parsed = parse_market({'market':doc},'A')
         self.assertFalse(hasattr(parsed,'event_risk_at'))
+        self.assertEqual(parsed.occurrence_at,NOW)
         self.assertEqual(parsed.closes,NOW+timedelta(hours=3))
 
     def test_naive_timestamps_and_float_fees_rejected(self):
@@ -101,6 +104,8 @@ class ParsingTests(unittest.TestCase):
         self.assertNotEqual(rules_digest(row),rules_digest({**row,'can_close_early':True}))
         self.assertNotEqual(rules_digest(row),rules_digest({**row,'rules_secondary':'changed'}))
         self.assertNotEqual(rules_digest(row),rules_digest({**row,'floor_strike':D('5.12')}))
+        self.assertNotEqual(rules_digest(row),rules_digest({**row,
+            'occurrence_datetime':NOW.isoformat()}))
         self.assertEqual(rules_digest(row),rules_digest({**row,'yes_bid_dollars':'.6'}))
 
     def test_fee_bound_covers_fragmented_fills_both_directions(self):
@@ -190,6 +195,21 @@ class InputTests(unittest.IsolatedAsyncioTestCase):
         row['can_close_early']=True
         self.service.reviews['A']=replace(review(row),early_close_reviewed=False)
         self.assertIn('timing_review_conflict',(await self.service.refresh('A')).blockers)
+
+    async def test_scheduled_release_rechecks_current_milestone_clock(self):
+        row=self.reads.markets['A']
+        row.update(can_close_early=True,
+            early_close_condition=SCHEDULED_RELEASE_CONDITION,
+            occurrence_datetime=(NOW+timedelta(hours=2)).isoformat())
+        self.reads.milestone['type']='company_report'
+        self.service.reviews['A']=TimingReview('A','E','M','company_report',
+            rules_digest(row),SCHEDULED_RELEASE_REVIEW,NOW+timedelta(hours=2),
+            early_close_reviewed=True)
+        self.assertEqual((await self.service.refresh('A')).blockers,())
+        self.reads.milestone['start_date']=(NOW+timedelta(hours=3)).isoformat()
+        self.service.values.pop(('milestone','M'))
+        self.assertIn('timing_review_conflict',
+            (await self.service.refresh('A')).blockers)
 
     async def test_related_only_milestone_is_not_a_primary_binding(self):
         self.reads.milestone['primary_event_tickers']=[]

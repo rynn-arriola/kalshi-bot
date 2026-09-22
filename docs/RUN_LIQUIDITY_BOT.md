@@ -38,20 +38,22 @@ and the reward catalog; then joined its readers. The catalog contained 4,717
 rows covering 4,711 current markets, not 4,711 launch-eligible selections.
 Its status and bounded logs remain ignored under `data/runtime-startup/`.
 
-The ignored launch-input file now contains the bounded D-079 public preparation:
-1,024 exact candidate bindings and 128 initial WebSocket markets. The remaining
-live step is the first real opening baseline, captured only by an explicit
-operator `-Initialize` start. No production `data/trader/account.db` has been
-initialized.
+The ignored launch-input file now contains the bounded D-082 public preparation:
+1,024 exact candidate bindings and 128 initial WebSocket markets. The refresh
+selected only current active reward programs and the reviewed scheduled-release
+timing family; 1,505 other early-close rules remain blocked. Runtime incentive
+refresh and fresh WebSocket-book ranking still determine which candidates are
+currently reward-eligible and worth admitting. The remaining live step is the
+first real opening baseline, captured only by an explicit operator `-Initialize`
+start. No production `data/trader/account.db` has been initialized.
 
-The initial scope is `KXAAAGASD-26SEP23-4.4750`. At 15:15:51 UTC on 2026-09-22,
-its book produced a $1.06 remaining-reward estimate and $9.60 combined quoted
-collateral estimate. Current rules settle from the Sep. 23 AAA US regular-gas
-average. Primary milestone `20336234-5f10-5d62-9847-85fb958c4182` begins at
-02:00 UTC and the market closes at 03:59 UTC. Runtime metadata validation returned
-no blockers and a conservative $0.0276 per-contract taker-fee bound. The timing
-review expires at 04:00 UTC; it cannot be reused for another market or date.
-These are snapshot estimates, not guaranteed rewards or profitability evidence.
+A 45-second read-only startup check used the first current seed,
+`KXDIESELD-26SEP23-T6.580`, and returned `startup_verified=true` with book,
+account and lifecycle readers joined plus a current reward catalog. It remained
+`trading_ready=false` because the diagnostic deliberately does not approve an
+opening baseline or load launch timing/fee inputs. It stopped cleanly and did
+not create a production ledger or order. This is connectivity evidence, not a
+reward or profitability estimate.
 
 ## Prepare the reviewed scope
 
@@ -90,8 +92,10 @@ are not restored. On restart, durable exposure owners are added to the seed set;
 ownership retains the full reviewed universe for recovery, not entry permission.
 
 Preparation requires exactly one future primary milestone and complete supported
-rules. Missing or ambiguous bindings are excluded; expiry never substitutes for
-event start. It retains a rewarded head plus stratified tail, while fresh
+rules. For automatic early-close review, only D-082's exact scheduled-release
+condition/types and a nonconflicting occurrence timestamp are supported. Missing
+or ambiguous bindings and all other early-close families are excluded; expiry
+never substitutes for event start. It retains a rewarded head plus stratified tail, while fresh
 WebSocket competition supplies final ranking. There is no hot reload during a
 run. See [preparation](BUILD_AUTOMATIC_CANDIDATES.md) and
 [integration](BUILD_LIVE_SELECTION.md).

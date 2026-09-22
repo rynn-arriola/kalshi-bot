@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-082 — Admit the reviewed scheduled-release timing family
+
+- **Status:** ACCEPTED implementation, 2026-09-22.
+- **Decision owner:** Operator: “Ok fix it,” after the executable Polymarket
+  comparison and current Kalshi public-data audit found zero eligible candidates.
+- **Scope:** Replace the blanket early-close exclusion only for Kalshi's exact
+  scheduled-economic-data release condition when the market has an occurrence
+  time and exactly one future primary milestone of a reviewed release type.
+  Bind the occurrence time into the rules digest and recheck the family and
+  timing relation at runtime.
+- **Boundary:** Unknown early-close rules, sports, related-only milestones and
+  missing/conflicting clocks remain blocked. Existing reward, ranking, capital,
+  order, position, loss, fee and launch gates remain unchanged. This decision
+  does not authorize a live start or order.
+- **Contract:** [Candidate timing adaptation](docs/REVIEW_CANDIDATE_TIMING_POLY.md).
+
 ### D-081 — Connect the production runtime to the native supervisor
 
 - **Status:** ACCEPTED implementation scope, 2026-09-22.

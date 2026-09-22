@@ -19,6 +19,13 @@ from .observability import NO_LOG
 from .values import InvalidData, decimal, identity, integer, utc
 
 
+SCHEDULED_RELEASE_CONDITION = (
+    'This market will close and expire early if the economic data is released.')
+SCHEDULED_RELEASE_TYPES = frozenset({
+    'company_report', 'one_off_milestone', 'truflation'})
+SCHEDULED_RELEASE_REVIEW = 'automatic-scheduled-release-v1'
+
+
 def timestamp(value):
     if type(value) is not str or len(value) > 64:
         raise InvalidData('metadata timestamp required')
@@ -46,7 +53,8 @@ def tick_bands(rows):
 
 def rules_digest(market):
     fields = ('ticker', 'event_ticker', 'market_type', 'rules_primary', 'rules_secondary',
-              'can_close_early', 'early_close_condition', 'strike_type', 'floor_strike',
+              'can_close_early', 'early_close_condition', 'occurrence_datetime',
+              'strike_type', 'floor_strike',
               'cap_strike', 'functional_strike', 'custom_strike', 'primary_participant_key')
     if any(type(market.get(k)) is not str for k in ('rules_primary', 'rules_secondary')):
         raise InvalidData('complete market rules required')
@@ -73,6 +81,8 @@ class Market:
     closes: datetime
     active: bool
     early: bool
+    early_condition: str | None
+    occurrence_at: datetime | None
     rules_hash: str
 
 
@@ -89,11 +99,29 @@ def parse_market(doc, ticker):
         raise InvalidData('unknown market status')
     if type(row['can_close_early']) is not bool:
         raise InvalidData('early-close flag required')
+    early_condition = row.get('early_close_condition')
+    if early_condition is not None and type(early_condition) is not str:
+        raise InvalidData('invalid early-close condition')
+    occurrence_at = row.get('occurrence_datetime')
+    if occurrence_at is not None:
+        occurrence_at = timestamp(occurrence_at)
     opens, closes = timestamp(row['open_time']), timestamp(row['close_time'])
     if opens >= closes:
         raise InvalidData('invalid trading interval')
     return Market(identity(ticker), identity(row['event_ticker']), integer(row['exchange_index'],0,2**31-1),
-                  tick_bands(row['price_ranges']), opens, closes, status=='active', row['can_close_early'], rules_digest(row))
+                  tick_bands(row['price_ranges']), opens, closes, status=='active',
+                  row['can_close_early'], early_condition, occurrence_at,
+                  rules_digest(row))
+
+
+def scheduled_release_timing(market, milestone_type, milestone_start):
+    """Whether current venue fields still match the reviewed release family."""
+    return (isinstance(market, Market)
+        and market.early
+        and market.early_condition == SCHEDULED_RELEASE_CONDITION
+        and milestone_type in SCHEDULED_RELEASE_TYPES
+        and market.occurrence_at is not None
+        and market.occurrence_at >= utc(milestone_start))
 
 
 def fee_pair(kind, multiplier):
@@ -569,6 +597,9 @@ class ExitInputService:
                 kind,start,primary = milestone.value
                 if kind!=review.milestone_type or m.event not in primary:
                     blockers.append('milestone_binding_conflict')
+                elif (review.review_reference == SCHEDULED_RELEASE_REVIEW
+                        and not scheduled_release_timing(m, kind, start)):
+                    blockers.append('timing_review_conflict')
                 else: risk_at = start
             profile = self.fee_profile
             if profile is None or now>=profile.valid_until:

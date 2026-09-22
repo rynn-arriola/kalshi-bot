@@ -26,12 +26,14 @@ Admission retains owners and rotates only flat, clear subscription scope.
 The operator accepted automatic primary-milestone preparation to remove the
 one-market bottleneck. Milestone uniqueness is established before applying the
 T-5 entry buffer, so an imminent binding cannot be discarded in favor of a
-later one. Automatic preparation excludes `can_close_early` markets because a
-rules digest proves identity, not the meaning of natural-language early-close
-conditions. Separately reviewed launch inputs retain the existing explicit
-early-close path. Current rules, lifecycle, active state and milestone binding
-are rechecked at runtime; any conflict blocks entry. This is not a claim that a
-reward will be paid or that a market is profitable.
+later one. D-082 supersedes the initial blanket early-close exclusion for one
+bounded family only: the exact Kalshi scheduled-economic-data release condition
+with a venue occurrence timestamp and a sole future primary milestone of type
+`company_report`, `one_off_milestone` or `truflation`. The occurrence timestamp
+is part of the rules digest; a milestone later than occurrence blocks review.
+Current rules, lifecycle, active state, family and milestone timing are rechecked
+at runtime. Every other automatic early-close case remains excluded. This is not
+a claim that a reward will be paid or that a market is profitable.
 
 ## Operation and safety
 
@@ -53,18 +55,21 @@ position, loss, fee or shutdown limits.
 
 ## Evidence
 
-The final credential-free real refresh on 2026-09-22 returned 4,759 active incentive
-rows and 4,753 matching market rows, inspected 3,228 future milestones, prepared
-1,024 bounded candidates and 128 initial WebSocket markets, and reported 1,874
-missing plus 38 ambiguous future-primary bindings. The resulting ignored input
-parses successfully. No account key, bot process or mutation endpoint was used.
+The final credential-free real refresh after D-082 on 2026-09-22 returned 4,923
+incentive rows and 4,917 matching market rows, inspected 3,254 future milestones,
+prepared 1,024 bounded candidates and 128 initial WebSocket markets, and reported
+1,505 unknown early-close rules, 1,960 missing plus 38 ambiguous future-primary
+bindings and six inactive/capped programs. The resulting ignored input parses
+successfully and contains no withdrawn blanket approvals. No account key, bot
+process or mutation endpoint was used.
 
-Synthetic tests cover exact binding, event-diverse selection, unsupported,
-early-close, imminent and ambiguous exclusions, duplicate identities, public
+Synthetic tests cover exact binding, event-diverse selection, the reviewed
+scheduled-release family, unsupported/unknown early-close, occurrence/milestone
+conflicts, imminent and ambiguous exclusions, duplicate identities, public
 endpoint scope, candidate authority above subscription capacity, launch-event
 logging, rotated-owner restart and legacy automatic-input rejection. Final
-suite: `python -B -m unittest discover -s tests -q` — **1,412 run, 1,411 passed
-and one expected Windows privilege skip** in 215.358 seconds.
+suite: `python -B -m unittest discover -s tests -q` — **1,431 run, 1,430 passed
+and one expected Windows privilege skip** in 216.808 seconds.
 
 Existing resource gates remain green. Reward tracking at 30/120 markets used
 0.3594/1.4531 CPU seconds with update p99 2.230/2.205 ms and loop p99

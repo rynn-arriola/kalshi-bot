@@ -1,21 +1,27 @@
 # Findings — kalshi-bot
 
-## 119. Actual candidate preparation remains blocked; Poly comparison — 2026-09-22
+## 119. Scheduled-release candidates unblock preparation; sports remain unknown — 2026-09-22
 
-VERIFIED CODE/PUBLIC DATA: at 19:58:01 UTC the current public candidate loop
-accepted zero markets. The old saved 1,024-row input asserts withdrawn automatic
-early-close reviews and is correctly rejected. Removing those assertions is
-insufficient: 2,878 current markets reach the blanket early-close exclusion.
-The remaining exclusions and sampled rules are in the
+VERIFIED CODE/PUBLIC DATA: the pre-fix public candidate loop accepted zero
+markets because 2,878 reached the blanket early-close exclusion. D-082 now
+recognizes one exact Kalshi family: economic-data releases whose early-close
+condition, occurrence time, reviewed milestone type and sole future primary
+milestone all agree. Occurrence time is included in the rules digest and the
+timing relation is rechecked from current metadata before entry.
+
+The post-fix public refresh prepared 1,024 bounded candidates and 128 initial
+books from 4,923 incentive rows and 4,917 markets. It still blocked 1,505 unknown
+early-close rules, 1,960 missing primary milestones and 38 ambiguous bindings.
+These candidates remain subject to current incentive-catalog membership, fresh
+WebSocket-book ranking, metadata, account, risk and dispatch checks; preparation
+does not prove reward payment or profitability.
+
+Poly's executable sports path still requires supported structure, scheduled
+time, fresh parent-event evidence, durable started state and send-time rechecks.
+Kalshi related-event links alone do not establish safe timing or reward
+eligibility. A table-tennis provider sample had unresolved freshness semantics,
+so D-082 does not approve sports or any other unknown early-close family. See the
 [candidate timing audit](docs/REVIEW_CANDIDATE_TIMING_POLY.md).
-
-Poly's actual executable path combines supported structure, scheduled time,
-fresh parent-event evidence, durable started state and send-time rechecking.
-Kalshi's primary-only milestone join also omits documented related-event links;
-those links alone do not establish safe timing or reward eligibility. A public
-table-tennis live-data sample reports not_started but has an older provider
-update time, so freshness semantics remain unresolved. Proposed adaptation is
-recorded; qualification logic is unchanged and live launch remains blocked.
 
 ## 118. D-081 lifecycle blockers are repaired offline — 2026-09-22
 

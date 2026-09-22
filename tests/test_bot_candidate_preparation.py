@@ -5,6 +5,8 @@ from decimal import Decimal as D
 import unittest
 
 from kalshi_bot.candidate_preparation import INCENTIVE_QUERY, prepare_candidates
+from kalshi_bot.market_inputs import (SCHEDULED_RELEASE_CONDITION,
+    SCHEDULED_RELEASE_REVIEW)
 from kalshi_bot.rest import PageSet, ReadResult
 from kalshi_bot.values import InvalidData
 from test_bot_engine import NOW
@@ -87,6 +89,35 @@ class CandidatePreparationTests(unittest.IsolatedAsyncioTestCase):
         result = await prepare_candidates(reads, now=NOW)
         self.assertEqual(tuple(r.ticker for r in result.reviews), ('B',))
         self.assertIn(('early_close_unreviewed',1), result.excluded)
+
+    async def test_reviews_exact_scheduled_release_family(self):
+        release = {**market('A'), 'event_ticker':'E1', 'can_close_early':True,
+            'early_close_condition':SCHEDULED_RELEASE_CONDITION,
+            'occurrence_datetime':(NOW+timedelta(hours=2)).isoformat()}
+        binding = milestone('E1','M1') | {'type':'company_report'}
+        result = await prepare_candidates(Reads([program('A','pa')], [release],
+            [binding]), now=NOW)
+        review = result.reviews[0]
+        self.assertTrue(review.early_close_reviewed)
+        self.assertEqual(review.review_reference, SCHEDULED_RELEASE_REVIEW)
+
+    async def test_scheduled_release_requires_reviewed_type_and_safe_clock(self):
+        release = {**market('A'), 'event_ticker':'E1', 'can_close_early':True,
+            'early_close_condition':SCHEDULED_RELEASE_CONDITION,
+            'occurrence_datetime':(NOW+timedelta(hours=2)).isoformat()}
+        regular = {**market('B'), 'event_ticker':'E2'}
+        programs = [program('A','pa'), program('B','pb')]
+        unsupported = milestone('E1','M1') | {'type':'sports_game'}
+        result = await prepare_candidates(Reads(programs, [release,regular],
+            [unsupported,milestone('E2','M2')]), now=NOW)
+        self.assertEqual(tuple(r.ticker for r in result.reviews), ('B',))
+        self.assertIn(('early_close_unreviewed',1), result.excluded)
+
+        conflicting = milestone('E1','M1',hours=3) | {'type':'company_report'}
+        result = await prepare_candidates(Reads(programs, [release,regular],
+            [conflicting,milestone('E2','M2')]), now=NOW)
+        self.assertEqual(tuple(r.ticker for r in result.reviews), ('B',))
+        self.assertIn(('scheduled_release_timing_conflict',1), result.excluded)
 
     async def test_imminent_binding_is_not_discarded_before_ambiguity_check(self):
         reads = Reads([program('A','pa')], [{**market('A'),'event_ticker':'E1'}],

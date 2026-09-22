@@ -1,14 +1,13 @@
 # Active work queue
 
-## Immediate launch blocker: candidate qualification
+## Candidate qualification resolved; next is supervised live acceptance
 
-The real public preparation currently yields zero eligible markets. Before
-supervisor checklist item 7, implement the reviewed timing-family/event-state
-scope in the [Poly reference audit and Kalshi proposal](docs/REVIEW_CANDIDATE_TIMING_POLY.md),
-including useful exclusion diagnostics. Resolve the supported family set and
-provider freshness semantics explicitly; keep current risk limits. Then run
-synthetic boundary tests and the real public refresh. Do not restore blanket
-early-close approval or assume initialization will automatically fix the scope.
+D-082 implements and verifies the first bounded timing family: exact scheduled
+economic-data releases with current occurrence and primary-milestone proof.
+The real public refresh now prepares 1,024 reviewed candidates and 128 initial
+books. Unknown early-close rules and sports remain blocked; provider freshness
+must be resolved before adding a sports family. Do not restore blanket approval.
+The next required item is supervisor checklist item 7 below.
 
 ## Production supervisor connection — ordered checklist
 
@@ -91,10 +90,10 @@ provisional until item 1 resolves the production recovery boundary.
 
 ## Foreground-launch context
 
-D-079 removes the one-market launch-input bottleneck. The pre-fix ignored local
-input is intentionally rejected because it asserted automatic early-close
-review; the first explicit initialization refreshes a corrected broad scope from
-public sources before any trading authority exists. Do not
+D-079 removes the one-market launch-input bottleneck, and D-082 supplies a
+validated broad local scope for the reviewed scheduled-release family. The first
+explicit initialization refreshes that scope from public sources before any
+trading authority exists. Do not
 replace final WebSocket competition ranking with reward/target, describe all
 catalog rows as eligible, or refresh candidate authority over a non-flat or
 uncertain existing ledger. The next work is supervised live acceptance item 7;

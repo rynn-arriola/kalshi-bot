@@ -1,20 +1,25 @@
 # Current status
 
-## Launch blocked by candidate timing coverage — 2026-09-22
+## Candidate timing blocker fixed; live acceptance remains — 2026-09-22
 
-The supervisor repairs below remain verified offline, but the actual launch
-inputs fail validation. All 1,024 saved automatic early-close approvals were
-withdrawn by the earlier safety correction. A fresh public preparation at
-19:58:01 UTC selected **zero** markets: 2,878 lacked early-close review, 1,943
-lacked a future primary binding, 38 had ambiguous bindings and two were imminent.
-Initialization's automatic refresh therefore cannot currently clear readiness.
+D-082 implements the bounded scheduled-release family from the
+[executable Poly comparison and Kalshi adaptation](docs/REVIEW_CANDIDATE_TIMING_POLY.md).
+Automatic preparation now accepts only the exact Kalshi economic-data release
+condition with a reviewed release milestone type, an occurrence timestamp and a
+safe occurrence/milestone relation. The occurrence timestamp is rules-bound and
+the relation is rechecked from current metadata at runtime. Unknown early-close
+families, including sports, remain blocked.
 
-The [executable Poly comparison and Kalshi adaptation](docs/REVIEW_CANDIDATE_TIMING_POLY.md)
-records actual reference code, public rule/event samples and a proposed bounded
-rule-family/event-state fix. It is not implemented. No production ledger or
-trading runtime was created; failed preparation did not replace local inputs.
-Fix and verify candidate qualification against current public data before
-calling the bot launch-ready. No account or order request was made by this audit.
+A fresh credential-free public refresh prepared **1,024** reviewed candidates
+and 128 initial WebSocket markets from 4,923 incentive rows and 4,917 market
+rows. First-failure exclusions were 1,505 unknown early-close rules, 1,960
+missing future primary milestones, 38 ambiguous milestones and six inactive or
+capped programs. The ignored local input validates with no legacy blanket
+approvals. The full offline suite ran 1,431 tests, with 1,430 passed and one
+expected Windows privilege skip. A 45-second read-only startup connected all required feeds and
+reported `startup_verified=true`; it intentionally placed no orders and created
+no production ledger. First supervised live acceptance is still unverified and
+requires a separate explicit operator launch.
 
 ## End-to-end supervisor repairs verified offline — 2026-09-22
 
@@ -72,14 +77,15 @@ manual ticker. Public launch preparation joins active reward programs to full
 market rules and one future primary milestone, then stores at most 1,024
 candidates with 128 initial WebSocket books. The unchanged selector ranks fresh
 book competition; the unchanged entry cap is 30. Cheap density remains only a
-head/tail exploration hint. Automatic preparation now excludes early-closing
-markets and resolves milestone uniqueness before its T-5 cutoff.
+head/tail exploration hint. Automatic preparation initially excluded all
+early-closing markets and resolves milestone uniqueness before its T-5 cutoff.
+D-082 above now admits only the reviewed scheduled-release subset while retaining
+the unknown-rule exclusion.
 
 A pre-fix credential-free refresh prepared 1,024 candidates from 4,759 program
 rows and 4,753 matching markets, with 3,228 future milestones inspected. That
-ignored input used the withdrawn automatic early-close approval and is now
-rejected until the normal initialization refresh replaces it. No bot, account
-signer or mutation endpoint was started. [Build record and boundaries](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+unsafe ignored input was superseded by D-082's current validated scope. No bot,
+account signer or mutation endpoint was started. [Build record and boundaries](docs/BUILD_AUTOMATIC_CANDIDATES.md).
 Full suite: 1,412 run / 1,411 passed / one expected Windows privilege skip.
 Existing 30/120-market tracker and admission resource gates pass.
 

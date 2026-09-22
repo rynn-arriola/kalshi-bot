@@ -1,8 +1,9 @@
 # Candidate timing: executable Polymarket reference and Kalshi adaptation
 
-2026-09-22. Research/design result; the qualification changes below are proposed,
-not implemented or evidence that the bot is ready to launch. No live runtime,
-credentials, account reads or orders were used. Polymarket was read only.
+2026-09-22. Research/design plus D-082 implementation record. One bounded
+scheduled-release family described below is implemented and verified; sports
+and other unknown early-close rules remain research only. This is not evidence
+of live acceptance. No trading runtime or order was used. Polymarket was read only.
 
 ## Diagnosis and fresh evidence
 
@@ -73,7 +74,25 @@ program end times and a five-minute event deadline. Reuse these components.
 Do not copy Poly's market-type strings, reward periods, historical yield priors,
 provider status fields or numeric economic thresholds into Kalshi.
 
-## Recommended Kalshi change
+## Implemented bounded first family
+
+D-082 implements the exact venue condition “This market will close and expire
+early if the economic data is released.” only for `company_report`,
+`one_off_milestone` and `truflation` primary milestones. The market must provide
+`occurrence_datetime`, and the sole future milestone must not be later than that
+occurrence. The occurrence field is included in the rules digest. Runtime
+metadata repeats the condition/type/clock check; drift blocks entry. Unknown
+conditions, missing clocks, sports and related-only bindings remain excluded.
+
+A post-change public refresh returned 4,923 incentive rows, 4,917 matching
+markets and 3,254 future milestones, then prepared the bounded maximum of 1,024
+candidates and 128 initial books. First-failure exclusions were 1,505 unknown
+early-close rules, 1,960 missing primary milestones, 38 ambiguous milestones and
+six inactive/capped programs. The full suite ran 1,431 tests, with 1,430 passed
+and one expected Windows privilege skip. A read-only 45-second startup verified the feed graph
+and stopped without a ledger or order.
+
+## Remaining Kalshi adaptation
 
 Replace blanket early-close exclusion with a bounded registry of reviewed
 market-rule families. The rule review is reusable; current exact market rules,
@@ -81,9 +100,9 @@ event membership and time still have to match on each admission. Unknown or
 changed rules remain excluded with a specific reason. Merely finding words
 such as 'winner' or 'released', a ticker prefix, or a rules hash is insufficient.
 
-1. **Resolve timing by market family.** Begin with explicitly reviewed scheduled
-   event contracts. Match event/participants, full rule pattern and settlement
-   exceptions to the official milestone. Accept related-event links only when
+1. **Resolve additional timing by market family.** Match event/participants,
+   full rule pattern and settlement exceptions to the official milestone.
+   Accept related-event links only when
    the reviewed family binds that contract to that occurrence. Missing and
    ambiguous timing remain unresolved; no fallback from expiry or title guesses.
 2. **Check real event state where supported.** For sports, validate the actual
@@ -106,13 +125,13 @@ such as 'winner' or 'released', a ticker prefix, or a rules hash is insufficient
    error is misleading when early-close review is the decisive failure.
 
 This is not a proposal to make Kalshi sports-only. Scheduled economic releases
-can have a separate reviewed adapter; rolling thresholds, announcements that
+now have the bounded adapter above; rolling thresholds, announcements that
 can happen at any time and unsupported tournament structures cannot borrow a
-match-start rule. The first supported family set and event-state freshness
+match-start rule. Any additional supported family and event-state freshness
 contract must be explicit before changing automatic qualification. Keep all
 approved capital, order, inventory and loss limits.
 
-## Implementation and acceptance
+## Acceptance boundary for additional families
 
 Affected components: `candidate_preparation.py`, `market_inputs.py`, shared
 REST/metadata scheduling, entry source checks and, if observed-start state is

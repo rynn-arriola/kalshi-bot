@@ -8,7 +8,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 
-from .market_inputs import TimingReview, parse_market, timestamp
+from .market_inputs import (
+    SCHEDULED_RELEASE_CONDITION,
+    SCHEDULED_RELEASE_REVIEW,
+    SCHEDULED_RELEASE_TYPES,
+    TimingReview,
+    parse_market,
+    scheduled_release_timing,
+    timestamp,
+)
 from .quoting import parse_program
 from .ranking import seconds
 from .rest import PageSet
@@ -71,6 +79,27 @@ def _select(rows, limit):
     # silently becoming a profitability filter before books are observed.
     selected.extend(tail[((index+1)*len(tail)-1)//slots] for index in range(slots))
     return selected
+
+
+def _automatic_review(market, binding):
+    """Review one bounded timing family; unknown early-close rules stay blocked."""
+    milestone_id, kind, risk_at = binding
+    if not market.early:
+        return TimingReview(market.ticker, market.event, milestone_id, kind,
+            market.rules_hash, 'automatic-primary-milestone-v1', market.closes,
+            early_close_reviewed=False), None
+    if (market.early_condition != SCHEDULED_RELEASE_CONDITION
+            or kind not in SCHEDULED_RELEASE_TYPES):
+        return None, 'early_close_unreviewed'
+    if market.occurrence_at is None:
+        return None, 'scheduled_release_occurrence_missing'
+    # A milestone earlier than the occurrence produces a conservative exit. A
+    # later milestone would authorize entry after the event may have happened.
+    if not scheduled_release_timing(market, kind, risk_at):
+        return None, 'scheduled_release_timing_conflict'
+    return TimingReview(market.ticker, market.event, milestone_id, kind,
+        market.rules_hash, SCHEDULED_RELEASE_REVIEW, market.closes,
+        early_close_reviewed=True), None
 
 
 async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128):
@@ -182,16 +211,10 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
         if risk_at <= now+timedelta(minutes=5):
             excluded['milestone_imminent'] = excluded.get('milestone_imminent', 0)+1
             continue
-        # A rules digest proves identity, not the meaning of natural-language
-        # early-close conditions. Automatic preparation therefore cannot issue
-        # an early-close review. A separately reviewed input can still carry
-        # that authority through the existing explicit launch-input path.
-        if market.early:
-            excluded['early_close_unreviewed'] = excluded.get('early_close_unreviewed', 0)+1
+        review, reason = _automatic_review(market, bindings[0])
+        if reason is not None:
+            excluded[reason] = excluded.get(reason, 0)+1
             continue
-        review = TimingReview(ticker, market.event, milestone_id, kind, market.rules_hash,
-            'automatic-primary-milestone-v1', market.closes,
-            early_close_reviewed=False)
         eligible.append((-scores[ticker], ticker, market, review))
     eligible.sort(key=lambda row:(row[0], row[1]))
     selected = _select(eligible, min(max_reviews, len(eligible)))

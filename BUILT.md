@@ -15,12 +15,13 @@ and 30/120-market resource gates pass. Live acceptance remains unverified.
 primary-milestone preparation, broad candidate authority (1,024), a 128-book
 seed and rewarded-head/stratified-tail exploration. Existing WebSocket book
 competition remains the final rank and existing risk/dispatch limits remain.
-Early-closing markets are excluded from automatic review, milestone ambiguity is
-checked before the entry buffer, restart subscriptions prioritize durable owners,
-and preparation logging is schema-valid. The pre-fix ignored scope is rejected
-until initialization refreshes it. Full suite: 1,412 run, 1,411 passed and one
-expected Windows privilege skip; relevant tracker/discovery/admission resource
-gates pass.
+D-082 adds one bounded early-close adapter for the venue's exact scheduled
+economic-data release condition. It requires an occurrence timestamp and a sole
+future primary milestone of a reviewed release type, binds occurrence into the
+rules digest and repeats the timing check at runtime. Unknown early-close rules
+remain excluded. The latest public refresh prepared 1,024 candidates and 128
+initial books; the full suite ran 1,431 tests, with 1,430 passed and one expected
+Windows privilege skip. Relevant tracker/discovery/admission resource gates pass.
 
 ## Live-launcher selection integration — 2026-09-22
 
