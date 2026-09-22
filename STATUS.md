@@ -1,5 +1,15 @@
 # Current status
 
+## Live start blocked: end-to-end supervisor review — 2026-09-22
+
+The [D-081 review](docs/REVIEW_D081_END_TO_END.md) found seven unresolved defects
+in production ownership, preparation, recovery restrictions and terminal status.
+The previous software-ready statement below is withdrawn. Existing focused
+tests pass (7 production + 26 runtime), but six additional offline probes
+reproduce missing lifecycle coverage; one further omission is source-traced.
+Checklist items 2–6 are reopened. No code fix or live operation occurred;
+repair these integration defects before the first supervised live acceptance.
+
 ## D-081 production supervisor connected and verified offline — 2026-09-22
 
 The foreground start/stop/status scripts now route through the native Windows

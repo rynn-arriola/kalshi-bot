@@ -2,6 +2,11 @@
 
 ## Production supervisor connection — ordered checklist
 
+**Launch blocked.** The [end-to-end review](docs/REVIEW_D081_END_TO_END.md)
+reopens items 2–6. Repair R1–R7 in that priority order, add production-path
+regressions, and re-review before item 7. The earlier checked boxes overstated
+verification; existing passing suites did not exercise these lifecycle gaps.
+
 D-080 requested this checklist first; D-081 implements the software connection.
 This is not permission to launch. Reuse the existing
 [native design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md) and
@@ -20,7 +25,7 @@ provisional until item 1 resolves the production recovery boundary.
    clearing that hold. Specify whether successful recovery resumes entries or
    stays paused. Acceptance: reviewed transition/failure table and module map;
    any changed restart policy is explicitly identified before implementation.
-2. [x] **Connect a fixed production child to the existing host.** Reuse native
+2. [ ] **Connect a fixed production child to the existing host.** Reuse native
    leases, IPC, control journal and bounded scheduling. Give only the child
    credential access, financial-ledger ownership and existing mutation authority.
    Preserve fixture restrictions through a separate explicit production path.
@@ -28,7 +33,7 @@ provisional until item 1 resolves the production recovery boundary.
    direct launcher and supervised child from running concurrently. Acceptance:
    one parent/child and one financial writer across launch paths, with injectable
    synthetic dependencies exercising the production composition.
-3. [x] **Make initialization and recovery survive process failure.** Preserve the
+3. [ ] **Make initialization and recovery survive process failure.** Preserve the
    same ledger, opening boundary, loss windows, inventory clocks and uncertain
    orders. Never replay `--initialize`, delete a partial ledger or create a new
    risk baseline on retry. Reconcile before enabling new entries; do not replay
@@ -38,14 +43,14 @@ provisional until item 1 resolves the production recovery boundary.
    uncertain ledger. Acceptance: crashes before/after opening approval and
    durable order send recover or produce a precise attention state without
    duplicate orders, lost owners or reset restrictions.
-4. [x] **Connect health, stop and operator controls.** Route start/stop/status
+4. [ ] **Connect health, stop and operator controls.** Route start/stop/status
    scripts through the production host. Report parent/child identity, useful
    runtime progress, stage, restart attempts and the exact blocker; distinguish
    saved snapshots from current liveness. Operator stop must persist through
    backoff and parent restart. Preserve graceful order/inventory drain and require
    actual child exit before replacement. Acceptance: stop wins during startup,
    retry and drain; stale status/IPC cannot re-arm or report a flat account.
-5. [x] **Test failure recovery and resource limits.** Use disposable ledgers and
+5. [ ] **Test failure recovery and resource limits.** Use disposable ledgers and
    fake venue wires for child/parent death, stalled progress, disconnects, 429
    cooldowns, partial fills, unknown sends, logging/disk/IPC failure and interrupted
    shutdown. Verify bounded retries, no competing child and retained safety
@@ -53,7 +58,7 @@ provisional until item 1 resolves the production recovery boundary.
    parent idle CPU, loop latency and handle/task cleanup. Acceptance: focused
    regressions and relevant full suite pass; measured budgets are met. These are
    software fault tests, not a paper-profitability stage.
-6. [x] **Review and publish the software.** Review the actual production diff for
+6. [ ] **Review and publish the software.** Review the actual production diff for
    ownership races, recovery mistakes and accidental fixture bypasses; fix valid
    findings and rerun affected checks. Update the run guide, current status and
    verification records, commit/push, and verify repository parity. Acceptance:
@@ -83,7 +88,7 @@ review; the first explicit initialization refreshes a corrected broad scope from
 public sources before any trading authority exists. Do not
 replace final WebSocket competition ranking with reward/target, describe all
 catalog rows as eligible, or refresh candidate authority over a non-flat or
-uncertain existing ledger. The next planned work is checklist item 1 above;
+uncertain existing ledger. The next work is the review repair queue above;
 first live initialization remains a separately authorized operation.
 
 The [D-078 automatic reviewed-market selection](docs/BUILD_LIVE_SELECTION.md)

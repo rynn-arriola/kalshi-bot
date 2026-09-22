@@ -1,5 +1,10 @@
 # D-081 — production supervisor connection
 
+**Superseding review:** [end-to-end findings](REVIEW_D081_END_TO_END.md)
+withdraw software readiness and record seven unresolved defects. The historical
+verification below did not cover the admitted production lifecycle; in
+particular, claimed review fix 3 still fails when RESULT is not delivered.
+
 Implemented September 22, 2026 on native Windows. This connects the existing
 foreground live runtime to the reviewed native supervisor; it does not authorize
 or perform the first live run.

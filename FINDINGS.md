@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 117. Production wiring passed tests but missed lifecycle guarantees — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: [D-081 end-to-end review](docs/REVIEW_D081_END_TO_END.md)
+finds seven unresolved defects; six are reproduced with isolated offline probes.
+Passing 7 production and 26 live-runtime tests did not cover account-lease
+release during exception drain, stalled preparation supervision, sticky health
+holds, lost terminal status, expired-candidate recovery or exit-27 mismatch.
+Actual cooldown/exhaustion restoration is also absent in the production path.
+Finding 116's entry-pause wiring exists, but its implied recovery readiness is
+withdrawn. No live run or implementation fix occurred. Repair checklist 2–6
+before supervised live acceptance; full evidence and acceptance cases are linked.
+
 ## 116. Production restarts must be recovery-only — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: the production host now launches only the fixed
