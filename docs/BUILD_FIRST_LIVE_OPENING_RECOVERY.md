@@ -39,6 +39,18 @@ new explicitly armed child obtains a fresh inspection and may approve that same
 checkpoint. It cannot replay initialization, change the boundary, delete state
 or silently treat a normal restart as opening authority.
 
+The first re-arm after that correction was refused before child creation by the
+Windows control-file guard. SQLite's prior clean close had recreated WAL/SHM
+sidecars with the protected directory's exact user/System full-control grants,
+but Windows marked those grants inherited instead of explicitly protected. The
+guard now permits either exact representation for SQLite sidecars only. The
+control root and database still require their explicit protected DACLs, and any
+extra sidecar principal/permission remains invalid. No ACL is repaired or
+broadened by this compatibility rule. The current native/focused supervisor
+set passed 61 tests with one expected privilege skip. The complete suite after
+this correction ran 1,445 tests in 218.331 seconds: 1,444 passed and one
+expected skip.
+
 ## Verification
 
 Focused accounting/account-release/supervisor tests: 68 passed. The supported

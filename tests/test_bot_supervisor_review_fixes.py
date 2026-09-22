@@ -452,6 +452,23 @@ class NativeFixTests(unittest.IsolatedAsyncioTestCase):
         finally:
             guard.close()
 
+    async def test_exact_inherited_sqlite_sidecars_are_accepted_after_clean_close(self):
+        await self.owner.close()
+        # SQLite may recreate these during final close. Files created under the
+        # protected root inherit only its exact user/System full-control ACEs.
+        for suffix in ('-wal', '-shm'):
+            path = Path(str(self.scope.store_path)+suffix)
+            if path.exists():
+                path.unlink()
+            path.write_bytes(b'')
+        guard = ProtectedControlFiles(self.scope.store_path,
+                                      self.scope.approved_user_sid,
+                                      readonly=True)
+        try:
+            self.assertEqual(set(guard.sidecar_handles), {'-wal', '-shm'})
+        finally:
+            guard.close()
+
     async def test_permissive_replaced_database_is_refused_without_repair(self):
         await self.owner.close()
         data = self.scope.store_path.read_bytes()

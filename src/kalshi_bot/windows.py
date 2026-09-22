@@ -151,7 +151,7 @@ def _security_sddl(advapi, descriptor, information):
 
 def _validate_handle_security(handle, user_sid, *, access_mask=0,
                               object_type=SE_KERNEL_OBJECT, expected_dacl=None,
-                              owner_only=False):
+                              allowed_dacls=(), owner_only=False):
     """Require the approved owner class and exact protected user/System DACL."""
     approved = validate_identity(user_sid)
     advapi = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -191,7 +191,7 @@ def _validate_handle_security(handle, user_sid, *, access_mask=0,
             actual = actual.replace("D:PAI(", "D:P(")
         mask = f"0x{access_mask:x}"
         expected = expected_dacl or f"D:P(A;;{mask};;;SY)(A;;{mask};;;{approved})"
-        if actual != expected:
+        if actual not in (expected, *allowed_dacls):
             raise InvalidData("Windows object DACL differs")
     finally:
         api.LocalFree(descriptor)
@@ -230,6 +230,14 @@ def _control_path(path, *, directory):
 def _file_dacl(user_sid, *, directory=False):
     flags = "OICI" if directory else ""
     return f"D:P(A;{flags};FA;;;SY)(A;{flags};FA;;;{user_sid})"
+
+
+def _inherited_sidecar_dacl(user_sid):
+    # SQLite can recreate WAL/SHM during its final close after our originally
+    # protected sidecar is delete-pending. The protected parent grants only
+    # these two inheritable ACEs, so the resulting file is equally scoped even
+    # though Windows marks its DACL/ACEs as inherited.
+    return f"D:AI(A;ID;FA;;;SY)(A;ID;FA;;;{user_sid})"
 
 
 def protect_fresh_control_root(root, user_sid):
@@ -304,7 +312,8 @@ class ProtectedControlFiles:
                 # read/write sharing.  Revalidate the same kernel object without
                 # reopening and retraversing the filesystem on every operation.
                 _validate_handle_security(retained, self.user_sid, object_type=1,
-                    expected_dacl=_file_dacl(self.user_sid))
+                    expected_dacl=_file_dacl(self.user_sid),
+                    allowed_dacls=(_inherited_sidecar_dacl(self.user_sid),))
                 continue
             exists = target.exists()
             create = not exists and create_missing and suffix != "-journal"
@@ -317,7 +326,8 @@ class ProtectedControlFiles:
             try:
                 _control_path(target, directory=False)
                 _validate_handle_security(handle, self.user_sid, object_type=1,
-                    expected_dacl=_file_dacl(self.user_sid))
+                    expected_dacl=_file_dacl(self.user_sid),
+                    allowed_dacls=(_inherited_sidecar_dacl(self.user_sid),))
                 self.sidecar_handles[suffix] = handle
             except BaseException:
                 _close_handle(handle)

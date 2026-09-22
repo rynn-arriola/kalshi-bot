@@ -23,6 +23,15 @@ production-supervisor suites pass. The full offline suite ran 1,444 tests in
 corrected supervised relaunch is the remaining acceptance step.
 [Implementation](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
 
+The first corrected re-arm exposed a separate local-control refusal before any
+child or venue connection: SQLite had recreated the supervisor WAL/SHM with the
+protected parent's exact user/System grants marked inherited. The sidecar guard
+now accepts only that semantically identical inherited representation while the
+root/database remain explicit and protected. Native and full-suite verification
+now pass: 61 focused/native supervisor tests passed with one expected privilege
+skip, and the complete suite ran 1,445 tests in 218.331 seconds with 1,444
+passed and one expected skip. The next step is publication, then re-arm.
+
 ## Final current-path findings repaired; final acceptance remains — 2026-09-22
 
 The four findings in the

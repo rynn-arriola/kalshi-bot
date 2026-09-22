@@ -29,6 +29,24 @@ entry states whether orders, positions or exposure were observed.
   one expected Windows privilege skip. Live-relaunch evidence is recorded in
   the linked [implementation report](docs/BUILD_FIRST_LIVE_OPENING_RECOVERY.md).
 
+### Clean supervisor shutdown left exact inherited SQLite sidecars
+
+- **Symptom:** The corrected re-arm stopped before a child started because the
+  protected supervisor store rejected its own WAL/SHM files.
+- **Mechanism:** SQLite recreated its sidecars during final close. Windows gave
+  them the protected parent directory's exact user/System full-control ACEs,
+  but marked the DACL and ACEs inherited; the validator accepted only the same
+  grants marked explicitly protected.
+- **Fix:** Only WAL/SHM/journal sidecars may use either exact representation.
+  The root and database still require protected explicit DACLs; sidecars with
+  any additional principal or permission still fail. The files remain pinned
+  and revalidated through retained handles.
+- **Verification:** A native regression recreates exact inherited sidecars after
+  clean owner close and reopens the protected guard. Existing replacement,
+  reparse, DACL and pinning reversals remain active. The current complete suite
+  ran 1,445 tests in 218.331 seconds: 1,444 passed and one expected Windows
+  privilege skip.
+
 ## 2026-09-22 — final current production-path integration repairs
 
 - The $25 loss hold blocked new selection but left existing entry orders live.
