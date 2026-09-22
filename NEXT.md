@@ -1,13 +1,90 @@
 # Active work queue
 
+## Production supervisor connection — ordered checklist
+
+D-080 requests this checklist first. This is planned work, not a completed
+production integration or permission to launch. Reuse the existing
+[native design](docs/DESIGN_WINDOWS_SUPERVISOR_S2.md) and
+[S2B implementation](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md). The current
+[foreground launcher](docs/RUN_LIQUIDITY_BOT.md) remains the implemented path.
+Items 1–6 form the software work; item 7 is live acceptance; item 8 is later host
+recovery. Track evidence here as each item finishes. Earlier hour estimates are
+provisional until item 1 resolves the production recovery boundary.
+
+1. [ ] **Define the production recovery contract.** Trace the actual Poly
+   supervisor, host recovery and runner paths against Kalshi's owners. Record
+   which faults retry in-process, permit a bounded child restart, allow only
+   recovery, or require attention. S2B currently blocks automatic relaunch after
+   a missing terminal fence (`recovery_fence_unknown`); specify the exact proof
+   and permitted operations for any proposed recovery-only child instead of
+   clearing that hold. Specify whether successful recovery resumes entries or
+   stays paused. Acceptance: reviewed transition/failure table and module map;
+   any changed restart policy is explicitly identified before implementation.
+2. [ ] **Connect a fixed production child to the existing host.** Reuse native
+   leases, IPC, control journal and bounded scheduling. Give only the child
+   credential access, financial-ledger ownership and existing mutation authority.
+   Preserve fixture restrictions through a separate explicit production path.
+   Bind approved account, checkout/configuration and child identity; prevent the
+   direct launcher and supervised child from running concurrently. Acceptance:
+   one parent/child and one financial writer across launch paths, with injectable
+   synthetic dependencies exercising the production composition.
+3. [ ] **Make initialization and recovery survive process failure.** Preserve the
+   same ledger, opening boundary, loss windows, inventory clocks and uncertain
+   orders. Never replay `--initialize`, delete a partial ledger or create a new
+   risk baseline on retry. Reconcile before enabling new entries; do not replay
+   ambiguous mutations. Carry actual exhaustion holds and shared cooldowns into
+   the control fence; obtain fresh quota/source proof. Address expired candidate
+   reviews while inventory remains, without refreshing authority over an
+   uncertain ledger. Acceptance: crashes before/after opening approval and
+   durable order send recover or produce a precise attention state without
+   duplicate orders, lost owners or reset restrictions.
+4. [ ] **Connect health, stop and operator controls.** Route start/stop/status
+   scripts through the production host. Report parent/child identity, useful
+   runtime progress, stage, restart attempts and the exact blocker; distinguish
+   saved snapshots from current liveness. Operator stop must persist through
+   backoff and parent restart. Preserve graceful order/inventory drain and require
+   actual child exit before replacement. Acceptance: stop wins during startup,
+   retry and drain; stale status/IPC cannot re-arm or report a flat account.
+5. [ ] **Test failure recovery and resource limits.** Use disposable ledgers and
+   fake venue wires for child/parent death, stalled progress, disconnects, 429
+   cooldowns, partial fills, unknown sends, logging/disk/IPC failure and interrupted
+   shutdown. Verify bounded retries, no competing child and retained safety
+   state. Reuse existing 30/120-market and native lifecycle benchmarks, including
+   parent idle CPU, loop latency and handle/task cleanup. Acceptance: focused
+   regressions and relevant full suite pass; measured budgets are met. These are
+   software fault tests, not a paper-profitability stage.
+6. [ ] **Review and publish the software.** Review the actual production diff for
+   ownership races, recovery mistakes and accidental fixture bypasses; fix valid
+   findings and rerun affected checks. Update the run guide, current status and
+   verification records, commit/push, and verify repository parity. Acceptance:
+   reproducible evidence, no known blocking finding, documented remaining live
+   criteria and a clean reviewed commit. Software completion alone is not live
+   acceptance.
+7. [ ] **Verify the first supervised live run.** Refresh and validate corrected
+   candidate inputs, current authentication/account/fee/quota evidence and launch
+   readiness. After explicit live-start authority, observe ranked resting orders,
+   fills/exits if they naturally occur, logs and status under the existing limits.
+   Verify authorized graceful stop/recovery separately; never force live failure
+   or create fills to satisfy a test. Acceptance: label each observed criterion
+   and leave unobserved failure behavior explicit; document remaining blockers.
+8. [ ] **Later: Windows host watchdog.** Plan native recovery if both parent and
+   child disappear, using the durable armed/stopped state. Recheck Poly's actual
+   at-logon trigger; do not promise reboot recovery before login. Define separate
+   resume/reboot acceptance and task removal. Install persistent tasks or alter
+   power/startup settings only with operator authorization. Acceptance: scoped
+   ownership/stop tests and an explicitly approved host test; simulated events
+   alone do not prove recovery after a real reboot.
+
+## Foreground-launch context
+
 D-079 removes the one-market launch-input bottleneck. The pre-fix ignored local
 input is intentionally rejected because it asserted automatic early-close
 review; the first explicit initialization refreshes a corrected broad scope from
 public sources before any trading authority exists. Do not
 replace final WebSocket competition ranking with reward/target, describe all
 catalog rows as eligible, or refresh candidate authority over a non-flat or
-uncertain existing ledger. Next operational step remains the separately
-operator-invoked first initialization; the coding assistant does not start it.
+uncertain existing ledger. The next planned work is checklist item 1 above;
+first live initialization remains a separately authorized operation.
 
 The [D-078 automatic reviewed-market selection](docs/BUILD_LIVE_SELECTION.md)
 integration is verified. D-079 now prepares those exact current rules/milestone
@@ -17,7 +94,7 @@ the whole reward catalog as tradable.
 A later explicit operator start captures/approves the fresh opening with
 `-Initialize`. The coding assistant does not invoke it. After launch, inspect
 real orders/fills/fees, shutdown and estimated versus paid rewards. Optional
-supervisor work and other hardening remain deferred.
+hardening remains deferred; production supervisor integration is queued above.
 
 The older milestone notes below describe their original execution-disabled
 scope; D-077's [run guide](docs/RUN_LIQUIDITY_BOT.md) owns current launch wiring.

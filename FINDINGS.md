@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 115. Supervisor connection requires a recovery-policy bridge — 2026-09-22
+
+VERIFIED CODE: `scripts/Start-LiquidityBot.ps1` invokes `kalshi_bot.live`
+directly. `supervisor_control.ScopeSpec` only accepts test account scopes and
+`supervisor_fixture.fixture_path` points to a fixed test child. The S2B contract
+holds after an incomplete terminal fence rather than automatically relaunching.
+Consequently production integration requires explicit recovery semantics as well
+as launcher wiring. [The ordered checklist](NEXT.md#production-supervisor-connection--ordered-checklist)
+tracks that work; an implementation time estimate is not completion evidence.
+
+Polymarket source comparison: `scripts/supervise_commissioning.sh` distinguishes
+clean exit, startup refusal, non-flat/integrity failure and recoverable failure;
+its host recovery-only path exits after recovery and leaves trading paused.
+`scripts/install_host_watchdog.ps1` registers an at-logon interactive task, so its
+existence does not prove unattended pre-login reboot recovery. These are source
+findings from the local read-only reference, not a current process/task audit.
+
 ## 114. A rules hash is not an early-close timing review — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: the first automatic preparation revision set

@@ -1,5 +1,17 @@
 # Current status
 
+## Production supervisor checklist prepared — 2026-09-22
+
+D-080 records the operator's request to begin with a
+[prioritized checklist](NEXT.md#production-supervisor-connection--ordered-checklist).
+The existing native supervisor and S2B fixture are built; the live launcher still
+runs directly and has no production process restart integration. S2B deliberately
+holds after a crash without a terminal fence, so item 1 must define the production
+recovery contract before connecting the child. Checklist creation is complete;
+implementation, supervised live acceptance and a later host watchdog remain open.
+This update changes documentation only. The prior 1,412-test result below remains
+the code evidence; no fresh runtime or account readiness is claimed.
+
 ## D-079 broad rewarded-market preparation implemented — 2026-09-22
 
 The existing selector can now receive a broad exact universe instead of one

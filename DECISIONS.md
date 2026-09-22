@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-080 — Prepare the production-supervisor work checklist
+
+- **Status:** ACCEPTED planning/documentation scope, 2026-09-22.
+- **Decision owner:** Operator: “Ok create a to do list for this work lets start
+  from that,” following the production supervisor and later host-watchdog discussion.
+- **Scope:** Maintain one prioritized checklist in [NEXT.md](NEXT.md#production-supervisor-connection--ordered-checklist),
+  covering production integration, recovery rules, tests, review/publication,
+  live acceptance and the separately staged Windows host watchdog. Reuse S1/S2.
+- **Boundary:** Creating the checklist does not implement or accept a new restart
+  policy, start trading, install a scheduled task, change power settings or modify
+  Polymarket. Existing model continuity and single-session rules remain.
+
 ### D-079 — Automatically prepare the best current rewarded-market universe
 
 - **Status:** ACCEPTED implementation, 2026-09-22.
