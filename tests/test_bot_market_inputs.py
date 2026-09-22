@@ -84,6 +84,18 @@ class ParsingTests(unittest.TestCase):
         row['fee_type_override']='quadratic'
         with self.assertRaises(InvalidData): parse_event({'event':row},'E')
 
+    def test_candidate_list_endpoints_are_public_and_scoped(self):
+        spec, path = request_path('markets',
+            {'tickers':'A,B','limit':1000,'mve_filter':'exclude'}, 'candidate')
+        self.assertFalse(spec.authenticated)
+        self.assertIn('tickers=A%2CB', path)
+        spec, path = request_path('milestones',
+            {'minimum_start_date':'2026-09-22T00:00:00+00:00','limit':500}, 'candidate')
+        self.assertFalse(spec.authenticated)
+        self.assertIn('minimum_start_date=', path)
+        with self.assertRaises(InvalidData):
+            request_path('markets', {'status':'open'}, 'metadata')
+
     def test_rules_hash_tracks_early_close_and_rule_changes_not_prices(self):
         row=market()
         self.assertNotEqual(rules_digest(row),rules_digest({**row,'can_close_early':True}))

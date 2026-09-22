@@ -65,7 +65,9 @@ class CandidateDiscovery:
                 chosen.add(ticker)
         remaining = [ticker for _,ticker in ranked if ticker not in chosen]
         slots = budget-len(selected)
-        head = min(slots,max(1,min(5,budget//5))) if slots else 0
+        # Keep enough cheap leaders visible to fill the approved 30-entry cap;
+        # the rest remains a rotating exploration tail and is ranked by books.
+        head = min(slots,max(1,min(30,budget//4))) if slots else 0
         selected.extend(remaining[:head])
         tail, slots = remaining[head:],slots-head
         if tail and slots:

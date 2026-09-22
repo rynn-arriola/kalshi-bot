@@ -75,13 +75,13 @@ review and whitespace checks pass. Credentials, local inputs and data remain
 ignored and untracked. Publication is scoped to this verified unit under D-065;
 the final session response records the resulting commit and remote parity.
 
-## Operational limitation
+## Operational limitation (subsequently addressed by D-079)
 
-The unchanged ignored input file contains one review. Thus software integration
-does not by itself create a broad trading universe. Additional exact timing
-reviews and actual exchange shards must be prepared before multi-market launch;
-unsupported/unreviewed markets are skipped visibly. No hot reload, automatic
-review renewal, universal timing inference, live venue acceptance or guaranteed
-reward/profit is claimed. Live launch remains a separate operator action.
+At D-078 publication the ignored input contained one review, so this integration
+alone did not create a broad universe. D-079 now prepares a bounded current
+rules/primary-milestone registry and exchange shards. Unsupported or ambiguous
+markets remain visibly excluded. No hot reload, live venue acceptance or
+guaranteed reward/profit is claimed. Live launch remains a separate operator
+action.
 
 See [run guide](RUN_LIQUIDITY_BOT.md) for input format and saved-status fields.

@@ -1,5 +1,21 @@
 # Current status
 
+## D-079 broad rewarded-market preparation implemented — 2026-09-22
+
+The existing selector can now receive a broad exact universe instead of one
+manual ticker. Public launch preparation joins active reward programs to full
+market rules and one future primary milestone, then stores at most 1,024
+candidates with 128 initial WebSocket books. The unchanged selector ranks fresh
+book competition; the unchanged entry cap is 30. Cheap density remains only a
+head/tail exploration hint.
+
+A real credential-free refresh prepared 1,024 candidates from 4,759 program
+rows and 4,753 matching markets, with 3,228 future milestones inspected. The
+ignored input parses and its prior one-market form has an ignored backup. No bot,
+account signer or mutation endpoint was started. [Build record and boundaries](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+Full suite: 1,406 run / 1,405 passed / one expected Windows privilege skip.
+Existing 30/120-market tracker and admission resource gates pass.
+
 ## D-078 automatic selection integrated and verified — 2026-09-22
 
 The actual launcher now attaches the existing admission owner. Reviewed
@@ -9,10 +25,10 @@ rules, fees and deadlines before ranking/dispatch. Skip diagnostics are bounded
 and explicit. Unknown timing is never inferred from expiry. Working orders,
 inventory, pending activity and all trading limits remain protected.
 
-The current ignored inputs still contain **one reviewed market**; neither that
-file nor any running process has been changed. Broad multi-market operation
-still needs additional reviewed inputs and separate operator launch. Component
-wiring is not venue-wide market approval or live profitability evidence.
+At D-078 publication the ignored inputs contained one reviewed market. D-079
+subsequently replaces that operational bottleneck with bounded automatic
+preparation; no running process was changed. Component wiring and a prepared
+scope are not venue-wide approval or live profitability evidence.
 [Build and verification record](docs/BUILD_LIVE_SELECTION.md).
 Final full suite: 1,401 run / 1,400 passed / one expected Windows privilege skip
 in 216.316s. Ten repeated composed discovery cases and 30/120-market resource

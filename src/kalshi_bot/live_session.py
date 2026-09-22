@@ -9,7 +9,7 @@ from .values import InvalidData, identity, decimal
 class LiveSession:
     def __init__(self, *, run_id, tickers):
         self.run_id = identity(run_id)
-        if type(tickers) is not tuple or not 1 <= len(tickers) <= 128:
+        if type(tickers) is not tuple or not 1 <= len(tickers) <= 1024:
             raise InvalidData('bounded explicit live market scope required')
         self.tickers = frozenset(identity(t) for t in tickers)
         if len(self.tickers) != len(tickers):

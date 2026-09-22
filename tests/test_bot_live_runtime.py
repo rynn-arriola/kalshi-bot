@@ -265,6 +265,13 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
 
 
 class LaunchInputTests(unittest.TestCase):
+    def test_candidate_authority_can_exceed_subscription_capacity(self):
+        reviews = tuple(SimpleNamespace(ticker=f'M{i}') for i in range(129))
+        session = LiveSession(run_id='broad-candidates',
+                              tickers=tuple(r.ticker for r in reviews))
+        self.assertEqual(len(session.tickers), 129)
+        session.close()
+
     def test_seed_scope_is_separate_from_reviewed_candidate_universe(self):
         with TemporaryDirectory() as directory:
             path = Path(directory)/'inputs.json'
@@ -285,6 +292,8 @@ class LaunchInputTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             with (patch.object(live, 'DATA', Path(directory)),
                   patch.object(live, 'WindowsLease'), patch.object(live, 'WindowsStopEvent'),
+                  patch.object(live, 'refresh_candidate_inputs', new=AsyncMock(
+                      return_value={'state':'CANDIDATES_PREPARED'})),
                   patch.object(live.LaunchInputs, 'load', return_value=SimpleNamespace(tickers=('A',))),
                   patch.object(live, 'run', new=AsyncMock(return_value={'state':'STOPPED_FLAT'})),
                   patch.object(live, 'save_result', side_effect=OSError('synthetic disk failure')),

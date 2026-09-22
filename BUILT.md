@@ -1,5 +1,15 @@
 # What exists
 
+## Automatic rewarded-market preparation — 2026-09-22
+
+[D-079](docs/BUILD_AUTOMATIC_CANDIDATES.md) adds bounded public catalog-to-rules/
+primary-milestone preparation, broad candidate authority (1,024), a 128-book
+seed and rewarded-head/stratified-tail exploration. Existing WebSocket book
+competition remains the final rank and existing risk/dispatch limits remain.
+The real ignored scope was prepared without credentials or trading. Full suite:
+1,406 run, 1,405 passed and one expected Windows privilege skip; relevant
+tracker/discovery/admission resource gates pass.
+
 ## Live-launcher selection integration — 2026-09-22
 
 [D-078](docs/BUILD_LIVE_SELECTION.md) attaches existing discovery/admission,

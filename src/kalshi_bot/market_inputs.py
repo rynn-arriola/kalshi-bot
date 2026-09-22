@@ -230,7 +230,7 @@ class ExitInputService:
         self.tickers = frozenset(identity(t) for t in tickers)
         self.reads, self.now, self.clock, self.ttl, self.diagnostics = reads, now, clock, ttl, diagnostics
         self.reviews = {}
-        if type(candidate_reviews) is not tuple or len(candidate_reviews) > 128:
+        if type(candidate_reviews) is not tuple or len(candidate_reviews) > 1024:
             raise InvalidData('bounded candidate review registry required')
         self.candidate_reviews = {}
         for review in candidate_reviews:

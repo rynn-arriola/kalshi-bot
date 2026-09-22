@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-079 adds [bounded automatic candidate preparation](BUILD_AUTOMATIC_CANDIDATES.md)
+ahead of D-078. Public REST supplies information unavailable from the live book
+stream: current incentive definitions, complete rules and primary milestones.
+It creates at most 1,024 exact candidate bindings and 128 initial book
+subscriptions. Fresh order books remain WebSocket-owned and the existing
+competition-aware selector remains final; no per-market REST book scanner is
+introduced. Candidate authority is not subscription or order authority.
+
 D-077's [foreground original-runtime composition](RUN_LIQUIDITY_BOT.md) now
 connects these owners through an explicit process-local live session, preserving
 accounting/source/quota authorization. D-078 attaches the existing admission

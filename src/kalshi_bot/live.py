@@ -10,16 +10,18 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import time
 from uuid import uuid4
 
 from .config import BotConfig
 from .candidate_inputs import CandidateInputs
+from .candidate_preparation import prepare_candidates
 from .dispatch_sources import InventoryDispatchSource
 from .live_session import LiveSession
 from .market_inputs import ExitInputService, FeeProfile, TimingReview, timestamp
 from .mutation_transport import OrderMutationTransport
-from .observability import Diagnostics, safe_error
+from .observability import Diagnostics, NO_LOG, safe_error
 from .quota import ProbeConfig, QuotaGuard, QuotaPolicy
 from .quota_supervisor import QuotaSupervisor
 from .rest import RestReads, TokenBudget
@@ -54,14 +56,14 @@ class LaunchInputs:
 
     @classmethod
     def load(cls, path, now):
-        if path.stat().st_size > 131072:
+        if path.stat().st_size > 1048576:
             raise InvalidData('launch inputs exceed size limit')
         raw = json.loads(path.read_text(encoding='utf-8-sig'))
         required = {'timing_reviews', 'fee_profile', 'exchange_indices'}
         if type(raw) is not dict or not required <= set(raw) or set(raw)-required-{'initial_tickers'}:
             raise InvalidData('exact launch input fields required')
-        if type(raw['timing_reviews']) is not list or not 1 <= len(raw['timing_reviews']) <= 128:
-            raise InvalidData('one to 128 reviewed markets required')
+        if type(raw['timing_reviews']) is not list or not 1 <= len(raw['timing_reviews']) <= 1024:
+            raise InvalidData('one to 1024 reviewed markets required')
         reviews = tuple(TimingReview(**(row | {'valid_until': timestamp(row['valid_until'])}))
                         for row in raw['timing_reviews'])
         profile = FeeProfile(**(raw['fee_profile'] | {
@@ -79,6 +81,66 @@ class LaunchInputs:
                 or not set(seeds) <= {row.ticker for row in reviews}):
             raise InvalidData('initial subscriptions must be a nonempty reviewed subset')
         return cls(reviews, profile, tuple(integer(v, 0, 2**31-1) for v in shards), tuple(seeds))
+
+
+def _input_document(inputs):
+    def stamp(value):
+        return value.isoformat().replace('+00:00', 'Z')
+    return dict(
+        timing_reviews=[dict(ticker=r.ticker, event=r.event, milestone_id=r.milestone_id,
+            milestone_type=r.milestone_type, rules_hash=r.rules_hash,
+            review_reference=r.review_reference, valid_until=stamp(r.valid_until),
+            early_close_reviewed=r.early_close_reviewed) for r in inputs.reviews],
+        fee_profile=dict(balance_quantum=str(inputs.fee_profile.balance_quantum),
+            review_reference=inputs.fee_profile.review_reference,
+            valid_until=stamp(inputs.fee_profile.valid_until)),
+        exchange_indices=list(inputs.exchange_indices),
+        initial_tickers=list(inputs.initial_tickers))
+
+
+async def refresh_candidate_inputs(path, now, diagnostics):
+    """Replace only the ignored candidate scope; preserve reviewed member fees."""
+    if path.stat().st_size > 1048576:
+        raise InvalidData('launch inputs exceed size limit')
+    raw = json.loads(path.read_text(encoding='utf-8-sig'))
+    if type(raw) is not dict or 'fee_profile' not in raw:
+        raise InvalidData('launch fee profile required')
+    profile = FeeProfile(**(raw['fee_profile'] | {
+        'valid_until':timestamp(raw['fee_profile']['valid_until'])}))
+    if profile.valid_until <= now:
+        raise InvalidData('launch fee profile expired')
+    # Public-only launch preparation is request-latency bound. This local
+    # scheduler still caps concurrency at RestReads' default two workers.
+    reads = RestReads(TokenBudget(rate=50, capacity=100, default_cost=1,
+        initial_tokens=100, clock=time.monotonic), diagnostics=diagnostics)
+    try:
+        prepared = await prepare_candidates(reads, now=now)
+    finally:
+        await reads.close()
+    inputs = LaunchInputs(prepared.reviews, profile,
+                          prepared.exchange_indices, prepared.initial_tickers)
+    document = _input_document(inputs)
+    if len(json.dumps(document, indent=2, allow_nan=False).encode('utf-8'))+1 > 1048576:
+        raise InvalidData('prepared launch inputs exceed size limit')
+    staging = path.with_name(path.stem+'.candidate.local.json')
+    save_result(staging, document)
+    try:
+        checked = LaunchInputs.load(staging, now)
+        if checked != inputs:
+            raise InvalidData('saved candidate scope does not match prepared scope')
+    except BaseException:
+        staging.unlink(missing_ok=True)
+        raise
+    backup = ROOT/'backups'/'live-inputs.before-automatic-candidates.json'
+    if not backup.exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup)
+    os.replace(staging, path)
+    return dict(state='CANDIDATES_PREPARED', reviewed_markets=len(inputs.reviews),
+        initial_websocket_markets=len(inputs.seed_tickers),
+        incentive_rows=prepared.incentive_rows, market_rows=prepared.market_rows,
+        milestone_rows=prepared.milestone_rows, excluded=dict(prepared.excluded),
+        trading_started=False)
 
 
 async def initial_scope(writer, inputs, now):
@@ -249,7 +311,8 @@ async def run(args, inputs, session, diagnostics, stop):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('run', 'status', 'stop', 'check-inputs'))
+    parser.add_argument('command', choices=('run', 'status', 'stop', 'check-inputs',
+                                            'refresh-candidates'))
     parser.add_argument('--live', action='store_true')
     parser.add_argument('--initialize', action='store_true')
     parser.add_argument('--inputs', type=Path, default=ROOT/'config'/'live-inputs.local.json')
@@ -269,10 +332,23 @@ def main(argv=None):
             result = dict(stop_requested=WindowsStopEvent(IDENTITY).request(),
                           semantics='pause entries, cancel owned entries, manage inventory to flat')
             code = 0 if result['stop_requested'] else 2
+        elif args.command == 'refresh-candidates':
+            BotConfig.load(ROOT/'config'/'bot.json')
+            if (DATA/'account.db').exists():
+                try:
+                    saved = json.loads((DATA/'status.json').read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    saved = {}
+                if saved.get('state') != 'STOPPED_FLAT':
+                    raise InvalidData('candidate refresh requires no ledger or verified flat shutdown')
+            with WindowsLease(IDENTITY):
+                result = asyncio.run(refresh_candidate_inputs(
+                    args.inputs, datetime.now(timezone.utc), NO_LOG))
+            code = 0
         else:
             BotConfig.load(ROOT/'config'/'bot.json')  # Preserve approved risk configuration.
-            inputs = LaunchInputs.load(args.inputs, datetime.now(timezone.utc))
             if args.command == 'check-inputs':
+                inputs = LaunchInputs.load(args.inputs, datetime.now(timezone.utc))
                 result = dict(state='INPUTS_PARSED', tickers=inputs.tickers,
                               initial_tickers=inputs.seed_tickers, automatic_admission=True,
                               venue_inputs_verified=False, trading_started=False)
@@ -282,8 +358,15 @@ def main(argv=None):
                     raise InvalidData('explicit --live required')
                 with WindowsLease(IDENTITY), WindowsStopEvent(IDENTITY) as stop:
                     DATA.mkdir(parents=True, exist_ok=True)
-                    session = LiveSession(run_id=uuid4().hex, tickers=inputs.tickers)
                     with Diagnostics(DATA/'logs') as diagnostics:
+                        # A first approved opening prepares the broad public
+                        # reward scope before any signer/session/order authority.
+                        if args.initialize and not (DATA/'account.db').exists():
+                            refresh = asyncio.run(refresh_candidate_inputs(
+                                args.inputs, datetime.now(timezone.utc), diagnostics))
+                            diagnostics.emit('candidate_scope_prepared', **refresh)
+                        inputs = LaunchInputs.load(args.inputs, datetime.now(timezone.utc))
+                        session = LiveSession(run_id=uuid4().hex, tickers=inputs.tickers)
                         try:
                             launch_attempted = True
                             result = asyncio.run(run(args, inputs, session, diagnostics, stop))

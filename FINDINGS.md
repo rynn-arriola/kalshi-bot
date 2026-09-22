@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 113. Ranking existed, but one input ticker made it meaningless — 2026-09-22
+
+VERIFIED CODE/READ-ONLY: the selector already ranks gross hourly reward from
+fresh order-book competition and then capital efficiency. Its launch authority,
+however, contained one timing review, so no cross-market ranking was possible.
+D-079 now prepares a bounded broad scope from current public incentives, complete
+rules and unique future primary milestones. A real refresh produced 1,024
+candidates and 128 initial books without account or mutation access.
+
+The cheap reward/target hint is known not to identify actual revenue. It is now
+limited to a 30-market head while a stratified event-diverse tail preserves
+exploration; final selection still requires WebSocket books. This improves the
+candidate universe but does not prove the globally best market, paid reward or
+profitability. [Evidence](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+
 ## 112. Reviewed candidates and subscribed books are different scopes — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: D-071 admission was built but absent from D-077's
@@ -12,9 +27,9 @@ Unsupported fees and unreviewed candidates do not dispatch. Source review also
 found that entry dispatch did not explicitly test metadata result blockers;
 that check is now retained at the handoff.
 
-The unchanged local file has one reviewed market. This implementation is not
-automatic rule interpretation, a verified broad live universe or a profitability
-result. [Evidence and boundaries](docs/BUILD_LIVE_SELECTION.md).
+D-079 subsequently replaces the one-market operational limitation with bounded
+public rules/primary-milestone preparation. Neither implementation is a
+profitability result. [Evidence and boundaries](docs/BUILD_LIVE_SELECTION.md).
 
 ## 111. Component tests did not establish an operable composition — 2026-09-22
 

@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-079 — Automatically prepare the best current rewarded-market universe
+
+- **Status:** ACCEPTED implementation, 2026-09-22.
+- **Decision owner:** Operator: “We need to fix it that we get the best rewarded
+  market,” after confirming the existing one-market input defeated ranking.
+- **Scope:** Use public active incentives, complete market rules and exactly one
+  future official primary milestone to prepare at most 1,024 candidates; seed at
+  most 128 WebSocket books and retain the existing actual-book ranking and
+  30-resting-order limit. Keep a rewarded head plus stratified discovery tail.
+- **Boundary:** Cheap reward density is exploration, not final selection or a
+  profit claim. Runtime rules/milestone/lifecycle checks, T-5 deadline, fee,
+  capital, position, loss, ownership and dispatch gates remain. No live start or
+  order is authorized. Refresh is blocked with an existing ledger unless saved
+  shutdown is verified flat.
+- **Contract:** [Automatic candidate preparation](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+
 ### D-078 — Connect automatic selection to the original launcher
 
 - **Status:** ACCEPTED implementation, 2026-09-22.
@@ -23,8 +39,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   rules, sports-only filter, score-chasing cancellations or risk-limit changes.
   Working orders, inventory and uncertain owners remain protected. No live
   start, private-input change, order or deployment is authorized by this build.
-  Current local inputs contain one review; code integration alone cannot make
-  unreviewed markets eligible. Additional exact reviews remain operational inputs.
+  At D-078 publication local inputs contained one review; D-079 subsequently
+  supplies bounded exact preparation. D-078 itself never made unknown markets
+  eligible.
 
 ### D-077 — Finish the existing bot's minimum operating path
 

@@ -1,11 +1,17 @@
 # Active work queue
 
+D-079 removes the one-market launch-input bottleneck. The ignored local input
+now carries a bounded broad current scope and the first explicit initialization
+refreshes it from public sources before any trading authority exists. Do not
+replace final WebSocket competition ranking with reward/target, describe all
+catalog rows as eligible, or refresh candidate authority over a non-flat or
+uncertain existing ledger. Next operational step remains the separately
+operator-invoked first initialization; the coding assistant does not start it.
+
 The [D-078 automatic reviewed-market selection](docs/BUILD_LIVE_SELECTION.md)
-integration is verified. Next: review additional current rules/milestone/shard
-inputs for multi-market operation;
-the ignored local input file still has one review. Do not replace missing timing
-with expiry or describe the whole reward catalog as tradable. Its existing
-review expires 2026-09-23 and cannot be reused for another market/date.
+integration is verified. D-079 now prepares those exact current rules/milestone
+bindings automatically. Do not replace missing timing with expiry or describe
+the whole reward catalog as tradable.
 
 A later explicit operator start captures/approves the fresh opening with
 `-Initialize`. The coding assistant does not invoke it. After launch, inspect

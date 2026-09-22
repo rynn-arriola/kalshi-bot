@@ -32,10 +32,11 @@ and the reward catalog; then joined its readers. The catalog contained 4,717
 rows covering 4,711 current markets, not 4,711 launch-eligible selections.
 Its status and bounded logs remain ignored under `data/runtime-startup/`.
 
-The ignored launch-input file is installed for one current reviewed market. The
-remaining live step is the first real opening baseline, captured only by an
-explicit operator `-Initialize` start. No production `data/trader/account.db` has
-been initialized.
+The ignored launch-input file now contains the bounded D-079 public preparation:
+1,024 exact candidate bindings and 128 initial WebSocket markets. The remaining
+live step is the first real opening baseline, captured only by an explicit
+operator `-Initialize` start. No production `data/trader/account.db` has been
+initialized.
 
 The initial scope is `KXAAAGASD-26SEP23-4.4750`. At 15:15:51 UTC on 2026-09-22,
 its book produced a $1.06 remaining-reward estimate and $9.60 combined quoted
@@ -47,6 +48,18 @@ review expires at 04:00 UTC; it cannot be reused for another market or date.
 These are snapshot estimates, not guaranteed rewards or profitability evidence.
 
 ## Prepare the reviewed scope
+
+The first `-Initialize` launch automatically refreshes candidates from public
+incentive, market and milestone endpoints before loading credentials or creating
+trading authority. An operator may run the same safe preparation separately:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m kalshi_bot.live refresh-candidates
+```
+
+It refuses to replace scope over an existing ledger unless saved shutdown is
+`STOPPED_FLAT`. The previous local file is backed up once under ignored
+`backups/`. Public preparation is not an account read or order command.
 
 The ignored input file requires `timing_reviews`, `fee_profile` and
 `exchange_indices`; optional `initial_tickers` selects a nonempty reviewed
@@ -61,7 +74,7 @@ The rules digest is computed by `market_inputs.rules_digest` from the complete
 current market document. Verify the event's primary milestone, rules, early-close
 behavior and member precision; never substitute expiry for event-risk time or
 silently default FCM membership. REST revalidates all those bindings at runtime.
-Under D-078 the timing rows define the reviewed candidate universe (at most 128),
+Under D-079 the timing rows define the reviewed candidate universe (at most 1,024),
 not a desired market count. The actual launcher attaches automatic admission:
 active reward discovery filters this universe, replaces only flat/clear book
 scope, resolves metadata on the existing shared reads and ranks fresh books.
@@ -70,12 +83,12 @@ introduced. Reviews survive subscription retirement; explicitly revoked reviews
 are not restored. On restart, durable exposure owners are added to the seed set; unresolved
 ownership retains the full reviewed universe for recovery, not entry permission.
 
-**The existing local input file still has only one review.** This change does
-not manufacture reviews, edit that file or enable unrestricted venue-wide
-trading. Additional market-specific rules/milestone bindings and actual exchange
-shards must be reviewed before a broader operator launch. Expiry alone is not a
-safe event-start clock. There is no hot reload or automatic renewal of reviews.
-See [integration and verification](BUILD_LIVE_SELECTION.md).
+Preparation requires exactly one future primary milestone and complete supported
+rules. Missing or ambiguous bindings are excluded; expiry never substitutes for
+event start. It retains a rewarded head plus stratified tail, while fresh
+WebSocket competition supplies final ranking. There is no hot reload during a
+run. See [preparation](BUILD_AUTOMATIC_CANDIDATES.md) and
+[integration](BUILD_LIVE_SELECTION.md).
 
 Saved runtime status includes `admission` and
 `selection.candidate_inputs`: timestamped skip counts and at most 32 ticker/reason

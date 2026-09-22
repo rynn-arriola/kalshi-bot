@@ -8,6 +8,22 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — one-market discovery bottleneck
+
+- The reward filter/ranker was connected, but its candidate authority came from
+  an ignored file containing one ticker. It could not compare markets.
+- Public preparation now joins active reward programs to complete current rules
+  and one future primary milestone, with bounded exclusions and exact digests.
+- Candidate authority (1,024), active books (128) and resting entries (30) are
+  separate. A 30-market cheap head plus stratified tail feeds the existing
+  actual-book rank; reward/target is not promoted to final selection.
+- The first real generated file exposed the old 128-KB one-market input limit.
+  The validated bound is now 1 MB for at most 1,024 strict review records; the
+  actual generated artifact is about 452 KB.
+
+No trading process, credential or mutation endpoint was used. See
+[D-079](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+
 ## 2026-09-22 — live selector composition
 
 - The launcher did not attach the existing admission owner. It now connects
