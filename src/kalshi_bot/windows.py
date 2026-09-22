@@ -277,6 +277,7 @@ class ProtectedControlFiles:
     def __init__(self, path, user_sid, *, create=False, readonly=False):
         self.path, self.user_sid = Path(path), user_sid
         self.handles = []
+        self.sidecar_handles = {}
         try:
             for target, directory in ((self.path.parent, True), (self.path, False)):
                 if not directory and create:
@@ -297,21 +298,35 @@ class ProtectedControlFiles:
     def validate_sidecars(self, *, create_missing=False):
         for suffix in ("-wal", "-shm", "-journal"):
             target = Path(str(self.path)+suffix)
-            create = not target.exists() and create_missing and suffix != "-journal"
-            if not target.exists() and not create:
+            retained = self.sidecar_handles.get(suffix)
+            if retained is not None:
+                # The retained handle denies delete/rename while allowing SQLite
+                # read/write sharing.  Revalidate the same kernel object without
+                # reopening and retraversing the filesystem on every operation.
+                _validate_handle_security(retained, self.user_sid, object_type=1,
+                    expected_dacl=_file_dacl(self.user_sid))
+                continue
+            exists = target.exists()
+            create = not exists and create_missing and suffix != "-journal"
+            if not exists and not create:
                 continue
             if not create:
                 _control_path(target, directory=False)
-            handle = _file_handle(target, create=create, share_delete=True,
+            handle = _file_handle(target, create=create, share_delete=False,
                                   user_sid=self.user_sid)
             try:
                 _control_path(target, directory=False)
                 _validate_handle_security(handle, self.user_sid, object_type=1,
                     expected_dacl=_file_dacl(self.user_sid))
-            finally:
+                self.sidecar_handles[suffix] = handle
+            except BaseException:
                 _close_handle(handle)
+                raise
 
     def close(self):
+        while self.sidecar_handles:
+            _, handle = self.sidecar_handles.popitem()
+            _close_handle(handle)
         while self.handles:
             _close_handle(self.handles[-1])
             self.handles.pop()

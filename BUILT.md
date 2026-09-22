@@ -1,5 +1,16 @@
 # What exists
 
+## Native S2A resource clearance and fresh quota evidence — 2026-09-22
+
+[Build record](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md): SQLite sidecars
+are pinned against replacement and revalidated by retained handle; materially
+idle timer ticks avoid redundant FULL journal writes without suppressing clock,
+deadline, action or state transitions. The 60-second/100-cycle native fixture now
+passes all declared S2A resource targets. Bounded read-only account limits/cost
+verification also validates current quota values and document syntax. S2B,
+fee-profile proof, market-specific
+timing reviews and launch-boundary account evidence remain unbuilt/unverified.
+
 ## Production reward reflection/checkpoint lifecycle — 2026-09-22
 
 [Build record](docs/BUILD_REWARD_REFLECTION.md): one account-wide queue-position

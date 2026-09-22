@@ -1,5 +1,27 @@
 # Current status
 
+## D-074 supervisor resource clearance and quota evidence — 2026-09-22
+
+[Implemented and verified](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md):
+retained, non-delete-sharing WAL/SHM handles remove repeated path work while
+preserving exact DACL validation; host timer ticks coalesce only materially idle
+results after full clock/policy evaluation. The native 60-second/100-cycle
+acceptance now passes every target: parent CPU 0.781%, loop p99 16.048 ms,
+39,587,840 added bytes, backlog 1 and warmed handle/thread deltas -2/-2/0.
+
+114 focused S1/S2 tests pass with one expected privilege skip; 67 write/quota
+and 11 entry-dispatch checks pass. Final complete suite: 1,352 run in 188.770
+seconds, 1,351 passed and one expected privilege skip. A separately
+authorized bounded read-only quota verification returned HTTP 200 and validated: Basic read
+200/600, write 100/100, default cost 10, 17 overrides and no grants. Current
+colon/wildcard route syntax now validates; single cancel costs 2 while supported
+creates and quota-control reads fall back to 10. Fee-member profile and selected-market
+timing reviews remain unknown; launch-boundary account evidence and S2B remain
+required. Current fee guidance also makes the old per-fragment balance-rounding
+bound overly pessimistic; it remains safe and unchanged pending an explicit
+reviewed fee-bound decision. No bot, order endpoint, configuration, deployment
+or restart occurred.
+
 ## D-073 reward reflection/checkpoint lifecycle — 2026-09-22
 
 [Implemented execution-disabled](docs/BUILD_REWARD_REFLECTION.md): the tracker now

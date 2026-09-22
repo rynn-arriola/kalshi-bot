@@ -338,13 +338,27 @@ class SupervisorStore:
         if cursor.rowcount != 1:
             raise InvalidData("missing supervisor native state")
 
-    def _apply_locked(self, event, policy):
+    def _apply_locked(self, event, policy, *, coalesce_noop_tick=False):
         revision, before = self._read_row()
         boot_id, wall_utc, monotonic, control_utc, clock_trusted = (
             self._control_sample(before))
         decision = decide(before, event, policy, control_utc=control_utc,
                           clock_trusted=clock_trusted)
         after = decision.state
+        materially_idle = False
+        if (coalesce_noop_tick and event.kind == EventKind.TICK
+                and not decision.actions and not decision.stale):
+            before_material = before.to_dict()
+            after_material = after.to_dict()
+            before_material.pop("updated_utc")
+            after_material.pop("updated_utc")
+            materially_idle = after_material == before_material
+        if materially_idle:
+            # An idle tick still samples and validates both clocks, but it need
+            # not fsync a journal row whose only change is the observation time.
+            # The prior durable clock sample remains the continuity anchor; any
+            # later drift, reboot, deadline or policy transition is persisted.
+            return decision
         new_revision = revision+1
         cursor = self.connection.execute(
             "UPDATE control SET revision=?,payload=? WHERE singleton=1 AND revision=?",
@@ -378,6 +392,13 @@ class SupervisorStore:
             raise InvalidData("typed supervisor event required")
         with self.transaction():
             return self._apply_locked(event, policy)
+
+    def tick(self, event: SupervisorEvent, policy=SupervisorPolicy()):
+        """Evaluate a host timer tick and coalesce a materially idle result."""
+        if not isinstance(event, SupervisorEvent) or event.kind != EventKind.TICK:
+            raise InvalidData("typed supervisor tick required")
+        with self.transaction():
+            return self._apply_locked(event, policy, coalesce_noop_tick=True)
 
     def begin_parent_session(self, session_id, *, observed_utc=None,
                              policy=SupervisorPolicy()):

@@ -74,6 +74,28 @@ class WriteBudgetTests(unittest.TestCase):
         other = budget(snapshot(default=6, rows=[]))
         self.assertEqual(self.reserve(other, method='DELETE', route=ORDER).cost, 6)
 
+    def test_current_venue_colon_templates_and_unrelated_wildcards_validate(self):
+        rows = [
+            dict(method='DELETE',
+                 path='/trade-api/v2/portfolio/events/orders/:order_id', cost=2),
+            dict(method='GET', path='/trade-api/v2/cfbenchmarks/*endpoint', cost=50),
+            dict(method='POST', path='/trade-api/v2/account/api_usage_level/upgrade',
+                 cost=30),
+        ]
+        evidence = snapshot(rate=100, capacity=100, default=10, rows=rows)
+        core = budget(evidence)
+        self.assertEqual(self.reserve(core).cost, 10)
+        self.assertEqual(self.reserve(core, method='DELETE', route=ORDER).cost, 2)
+        self.assertIn(('DELETE', CANCEL), dict(evidence.costs))
+
+    def test_colon_and_braced_templates_are_duplicate_canonical_routes(self):
+        with self.assertRaises(InvalidData):
+            snapshot(rows=[
+                dict(method='DELETE', path=CANCEL, cost=2),
+                dict(method='DELETE',
+                     path='/trade-api/v2/portfolio/events/orders/:order_id', cost=3),
+            ])
+
     def test_batch_create_cost_is_per_item_and_unscoped_by_caller(self):
         rows = [dict(method='POST', path=BATCH_ORDERS, cost=10)]
         core = budget(snapshot(rate=100, capacity=100, rows=rows))

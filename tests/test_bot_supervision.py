@@ -599,6 +599,40 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(reopened.read().state, SupervisorState.BACKOFF)
             self.assertFalse(reopened.read().live_ready)
 
+    def test_host_tick_coalesces_only_materially_idle_journal_work(self):
+        clock = ControlledClock()
+        with self.open(clock=clock.utc, monotonic_clock=clock.monotonic,
+                boot_id=clock.boot_id) as store:
+            before_revision = store.revision()
+            before_events = len(store.history(limit=store.event_limit))
+            clock.advance(1)
+            idle = store.tick(event(EventKind.TICK, 101))
+            self.assertEqual(idle.state.updated_utc, 101)
+            self.assertEqual(store.read().updated_utc, 100)
+            self.assertEqual(store.revision(), before_revision)
+            self.assertEqual(len(store.history(limit=store.event_limit)), before_events)
+
+            armed = store.apply(self.arm_event(store.read().generation, 101)).state
+            before_revision = store.revision()
+            due = store.tick(event(EventKind.TICK, 101))
+            self.assertEqual(due.actions, (SupervisorAction.START_DUE,))
+            self.assertEqual(store.revision(), before_revision+1)
+            self.assertEqual(store.read().updated_utc, 101)
+            self.assertEqual(due.state.generation, armed.generation)
+
+    def test_host_tick_persists_clock_fault_instead_of_coalescing(self):
+        clock = ControlledClock()
+        with self.open(clock=clock.utc, monotonic_clock=clock.monotonic,
+                boot_id=clock.boot_id) as store:
+            before_revision = store.revision()
+            clock.wall = 10_000
+            clock.monotonic_value = 1
+            held = store.tick(event(EventKind.TICK, 10_000)).state
+            self.assertEqual(store.revision(), before_revision+1)
+            self.assertEqual(held.state, SupervisorState.ATTENTION_REQUIRED)
+            self.assertEqual(held.attention_reason, AttentionReason.CLOCK_UNTRUSTED)
+            self.assertEqual(store.read(), held)
+
     def test_start_attempt_is_durable_before_spawn_action(self):
         with self.open() as store:
             armed = store.apply(self.arm_event()).state

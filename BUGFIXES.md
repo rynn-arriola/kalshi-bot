@@ -8,6 +8,36 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — native supervisor resource acceptance
+
+### Current endpoint-cost template syntax rejected the complete quota pair
+
+**Symptom.** The fresh account endpoint-cost document passed the general quota
+validator but `WriteQuotaSnapshot` would reject it before installing write
+evidence. **Mechanism.** Kalshi currently returns Express-style `:order_id`
+templates and an unrelated `*endpoint` wildcard; the stricter write parser only
+accepted literal and `{order_id}` segments. **Fix.** Validate all three bounded
+template forms, canonicalize colon parameters to braces and retain duplicate
+detection across representations. **Verification.** A regression containing the
+current document shapes installs cancel cost 2 and default create cost 10; the
+fresh read-only pair is revalidated through `WriteQuotaSnapshot`. The 67
+write/quota and 11 entry-dispatch tests pass; the final full suite also passes.
+
+### Repeated sidecar opens and timestamp-only commits exceeded idle CPU
+
+**Symptom.** The corrected inert S2A benchmark reported 2.03–2.14% parent CPU
+against the declared under-1% target while warmed lifecycle ownership was stable.
+**Mechanism.** Every control command retraversed paths and reopened WAL/SHM for
+the same DACL validation, and each one-second timer wrote/fsynced a journal row
+even when policy changed only `updated_utc`.
+**Fix.** Retain sidecar handles without delete sharing and revalidate their exact
+DACLs in place. Route host timers through a store method that coalesces only a
+no-action, non-stale, materially identical result after clock/policy evaluation.
+**Verification.** 114 focused tests pass (one privilege skip); regressions cover
+sidecar replacement, no-op revision/history, action persistence and clock-fault
+persistence. The full 60-second/100-cycle benchmark passes all targets at 0.781%
+parent CPU. See [build evidence](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md).
+
 ## 2026-09-21 — development components, no live account use
 
 ### Admission: cancellation during final inventory proof

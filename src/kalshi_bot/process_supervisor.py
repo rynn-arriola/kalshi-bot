@@ -241,7 +241,8 @@ class SupervisorHost:
 
     async def _apply(self, event):
         began = time.perf_counter()
-        receipt = await self.owner.submit("apply", event)
+        operation = "tick" if event.kind == EventKind.TICK else "apply"
+        receipt = await self.owner.submit(operation, event)
         self.policy_latencies_ms.append((time.perf_counter()-began)*1000)
         self.controller_state = receipt.state
         for action in (() if receipt.decision is None else receipt.decision.actions):

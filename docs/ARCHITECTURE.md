@@ -77,9 +77,10 @@ lifecycle foundations followed by separately assigned S2B offline runtime and
 restriction transfer. D-056 [implements S2A](BUILD_WINDOWS_SUPERVISOR_S2A.md)
 offline. Its [Astra review](REVIEW_D056_ASTRA.md) identified ownership, launch,
 IPC, validation, power, security, diagnostics and journal defects. D-057
-[implements corrections](BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md) under the operator's
-Astra fix-phase exception; independent review remains required. S2B remains
-unimplemented, blocked and separately assigned.
+[implements corrections](BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md). D-074's
+[resource follow-up](BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md) preserves the
+security/clock contracts and clears every declared 60-second/100-cycle S2A
+resource target. S2B remains unimplemented and separately assigned.
 
 D-050 [native Windows supervisor proposal](DESIGN_WINDOWS_SUPERVISOR.md) specifies
 one process supervisor and one runtime child, durable operator control and bounded

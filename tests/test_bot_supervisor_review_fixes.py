@@ -423,6 +423,21 @@ class NativeFixTests(unittest.IsolatedAsyncioTestCase):
         finally:
             guard.close()
 
+    async def test_sqlite_sidecars_are_pinned_and_revalidated_without_reopening(self):
+        guard = ProtectedControlFiles(self.scope.store_path, self.scope.approved_user_sid,
+                                      readonly=True)
+        try:
+            guard.validate_sidecars(create_missing=True)
+            retained = dict(guard.sidecar_handles)
+            self.assertEqual(set(retained), {"-wal", "-shm"})
+            guard.validate_sidecars()
+            self.assertEqual(guard.sidecar_handles, retained)
+            wal = Path(str(self.scope.store_path)+"-wal")
+            with self.assertRaises(OSError):
+                wal.rename(Path(str(wal)+".moved"))
+        finally:
+            guard.close()
+
     async def test_permissive_replaced_database_is_refused_without_repair(self):
         await self.owner.close()
         data = self.scope.store_path.read_bytes()

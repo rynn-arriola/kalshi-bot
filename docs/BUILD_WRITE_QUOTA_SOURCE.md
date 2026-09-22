@@ -3,7 +3,10 @@
 Offline implementation, 2026-09-21. `WriteQuotaSource` consumes the existing
 guarded `RestReads` control-plane pair; it does not issue its own requests,
 poll per market, infer tier numbers or create an order transport. Mandatory
-`offline_fixture=True`; no account requests/credentials are used in verification.
+`offline_fixture=True`; no account requests/credentials are used in this
+historical build verification. D-074 later validates the current real document
+shape and records the dated read-only values in
+[the resource/readiness follow-up](BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md).
 
 Attach once before reads are used. The existing refresh/supervisor reads costs
 then limits through the same account-wide Read allowance, validates full write

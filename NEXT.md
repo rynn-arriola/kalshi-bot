@@ -3,9 +3,15 @@
 D-073 completes #3's execution-disabled [reward reflection and checkpoint
 lifecycle](docs/BUILD_REWARD_REFLECTION.md). Do not add per-market book polling,
 treat a queue row as atomic cross-source proof, restore live samples from disk or
-count estimates as paid rewards. The next priority is real fee/timing/account/
-quota input verification, followed by native supervisor S2B/readiness acceptance
-and a separately authorized launch decision.
+count estimates as paid rewards.
+
+D-074 clears the S2A CPU/ownership resource gate and records a fresh validated
+[read-only quota pair](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md). Do not
+hardcode the observed limits or infer a direct-member fee profile. Next priority:
+implement/review S2B runtime ownership and restriction transfer from the approved
+design, then establish the member fee profile and decide the current per-order
+fee-bound correction, prepare market-specific timing reviews and capture
+launch-boundary account evidence. A live start remains a separate operator decision.
 
 D-072 completes #2's execution-disabled [entry-pair dispatch and mutation
 transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md). Do not rebuild it or infer
@@ -38,8 +44,8 @@ D-073; unknown remains unknown whenever its short-lived join is absent.
 New category filters, payout gates and numerical rotation thresholds require
 their own decision, not an automatic copy of Poly configuration.
 
-Next work: priority 5 production reward reflection/checkpoint integration,
-followed by priority 6 runtime/readiness acceptance. Priority 4's
+Priority 5 production reward reflection/checkpoint integration is complete.
+Next work is priority 6 runtime/readiness acceptance. Priority 4's
 [supervised injected lifecycle](docs/BUILD_DISPATCH_LIFECYCLE.md) now covers stop,
 outcome drain, failure propagation and no-replay ledger reopen. This does not
 clear production transport, real input or native S2B review/resource gates.
@@ -115,17 +121,10 @@ retained connection-finalization finding. Both prerequisite review gates are
 complete; no Sol fix phase is needed for either review.
 
 D-057 [implements the S2A corrections](docs/BUILD_WINDOWS_SUPERVISOR_S2A_FIXES.md)
-from the [D-056 review](docs/REVIEW_D056_ASTRA.md), under the operator's explicit
-Astra fix-phase exception. **STOP after verification for independent Astra review.**
-Review retained ownership through spawn/bind/IPC/control/diagnostic teardown,
-conservative uncertain-creation handling, launch grants, file security and
-protocol/power ordering against the deterministic tests. Verify the qualified
-resource evidence: corrected parent CPU is 2.135% against <1%, and cold-baseline
-+13 handles are unattributed despite stable 100-cycle ownership. Require focused
-CPU/handle attribution before performance clearance; do not infer 30/120-market
-or unsupervised-baseline coverage. Do not weaken security to reach a target.
-S2B remains blocked and separately assigned; no service/task, bot start, account
-call, baseline or live authority. Account-continuity Phase 2/3 remains unapproved.
+from the [D-056 review](docs/REVIEW_D056_ASTRA.md). D-074 subsequently attributes
+and fixes the idle CPU cost without weakening file security; the full native
+resource fixture passes. S2B remains unimplemented and separately reviewed; no
+service/task, bot start or live authority follows from S2A clearance.
 
 D-061 supersedes D-049's mandatory recommendations and manual model switches.
 Continue authorized work with the active model while preserving review,

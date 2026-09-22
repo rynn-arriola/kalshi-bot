@@ -1,5 +1,36 @@
 # Findings — kalshi-bot
 
+## 108. S2A idle cost was redundant security traversal plus no-op durability — 2026-09-22
+
+VERIFIED CODE/MEASURED: reopening and retraversing protected SQLite sidecars on
+each serialized command plus FULL commits for timestamp-only timer ticks kept
+the inert parent above its CPU target. Retained non-delete-sharing sidecar
+handles preserve exact DACL revalidation and prevent replacement. Timer-specific
+coalescing occurs only after trusted clock and full policy evaluation and never
+suppresses an action or material transition. The complete 60-second/100-cycle
+fixture now passes at 0.781% parent CPU with -2 warmed handles, -2 native threads
+and no retained Python/supervisor thread. [Exact evidence](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md).
+
+VERIFIED ACCOUNT READ: bounded authorized verification beginning
+2026-09-22T05:13:56Z used two limits/cost pairs plus one costs-only inspection
+and validated read 200/600, write 100/100 and default cost 10.
+The real document's `:order_id` and `*endpoint` forms exposed and now regress a
+parser incompatibility; supported single cancel costs 2, while creates use the
+default 10. This is current quota input, not token balance or permanent
+entitlement. Member fee class, selected-market timing and launch-boundary account
+state remain UNKNOWN.
+
+## 107. Reward estimates require exact short-lived cross-source reflection — 2026-09-22
+
+VERIFIED CODE/OFFLINE: production estimate publication now requires exact equality
+between the fresh private resting-order set, account-wide queue-position rows and
+the expected exchange-indexed aggregate WebSocket level. Any missing, extra,
+stale or raced identity revokes the sample to UNKNOWN. Checkpoints preserve
+bounded historical estimates but never restore live proof or claim payment.
+Runtime owns load-before-observation, periodic coalesced save and final joined
+flush. [Exact contracts and tests](docs/BUILD_REWARD_REFLECTION.md). No account
+call, order action or live process was used for this implementation evidence.
+
 ## 106. A local atomic pair does not make the venue batch atomic — 2026-09-22
 
 VERIFIED DOCS/CODE: Kalshi V2 batch create returns per-order rows, permits a

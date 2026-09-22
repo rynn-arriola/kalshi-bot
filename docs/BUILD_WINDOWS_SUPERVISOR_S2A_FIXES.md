@@ -1,5 +1,9 @@
 # D-057 — S2A review corrections
 
+The resource blockers in this historical build record are resolved by the
+[D-074 follow-up](BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md). The measurements
+below remain the exact pre-fix evidence.
+
 September 21, 2026. Astra implementation under the operator's task-specific
 exception to D-049. Addresses [D-056 R1-R8](REVIEW_D056_ASTRA.md) within the
 [approved S2A design](DESIGN_WINDOWS_SUPERVISOR_S2.md). This is implementation

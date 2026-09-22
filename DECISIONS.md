@@ -1122,6 +1122,28 @@ and explicitly withdraws the proposed fixed 60-market pool.
   strategy/runtime work is production reward reflection/checkpoint lifecycle.
 - **Implementation contract:** [Entry dispatch and transport](docs/BUILD_ENTRY_DISPATCH_TRANSPORT.md).
 
+### D-073 — Build production reward reflection/checkpoint lifecycle
+
+- **Status:** ACCEPTED execution-disabled implementation, 2026-09-22.
+- **Decision owner:** Operator: "After this can you start working on 3 and 4?"
+- **Scope:** Join exact own resting orders, public book levels and queue-position
+  evidence for estimate-only reward tracking; own bounded checkpoint load/save
+  in runtime lifecycle. Unknown or raced evidence remains UNKNOWN.
+- **Boundary:** No paid-reward claim, strategy/risk change, bot start or live
+  order authority. [Implementation](docs/BUILD_REWARD_REFLECTION.md).
+
+### D-074 — Continue readiness work after reward reflection
+
+- **Status:** ACCEPTED implementation/read-only verification, 2026-09-22.
+- **Decision owner:** Operator requested #4 after #3 and directed remaining work
+  in priority order.
+- **Scope:** Resolve the existing S2A resource blocker without weakening safety;
+  use previously authorized read-only credentials for current limits/costs when
+  needed; preserve unresolved fee/timing/account evidence explicitly.
+- **Boundary:** No strategy/risk choice, authenticated write, order action,
+  service/task, bot start/restart or live launch. S2B and launch remain separate.
+- **Implementation contract:** [resource/readiness evidence](docs/BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md).
+
 ### Earlier concentration question — superseded by D-070
 
 - **Status:** Historical discussion; D-070 above is the current build direction.

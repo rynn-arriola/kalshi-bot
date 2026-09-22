@@ -1,5 +1,16 @@
 # Kalshi rate-limit handling — D-036, September 20, 2026
 
+**Fresh account evidence, September 22, 2026:** D-074 performed a bounded
+read-only verification (two limits/cost pairs and one costs-only inspection).
+The production validators accepted Basic read
+200/s with 600 capacity, write 100/s with 100 capacity, default cost 10, 17
+overrides and no event-contract grant. The current single event-order DELETE
+template costs 2; create and batch-create use default 10 per order. Current cost
+rows use both `:parameter` and `*wildcard` segments, now normalized/validated by
+`WriteQuotaSnapshot`; see the [D-074 evidence](BUILD_WINDOWS_SUPERVISOR_RESOURCE_FIXES.md).
+These are dated account inputs, never hardcoded entitlement or available-token
+balances. The guarded pair refresh remains the runtime source of truth.
+
 Review update: [Astra review](REVIEW_D036_ASTRA.md) reproduced priority admission
 and head-wait reconfiguration gaps (R2/R4). Sol fixed these, added regressions
 and reran the token resource checks. Critical reads retain two in-flight admission

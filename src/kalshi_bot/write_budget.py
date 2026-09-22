@@ -20,7 +20,8 @@ ORDERS = '/portfolio/events/orders'
 BATCH_ORDERS = ORDERS + '/batched'
 CANCEL = ORDERS + '/{order_id}'
 _METHODS = frozenset(('GET', 'POST', 'DELETE', 'PUT', 'PATCH', 'HEAD', 'OPTIONS'))
-_SEGMENT = re.compile(r'(?:[A-Za-z0-9_.-]+|\{[A-Za-z_][A-Za-z0-9_]*\})')
+_SEGMENT = re.compile(
+    r'(?:[A-Za-z0-9_.-]+|\{[A-Za-z_][A-Za-z0-9_]*\}|:[A-Za-z_][A-Za-z0-9_]*|\*[A-Za-z_][A-Za-z0-9_]*)')
 
 
 def _number(value):
@@ -42,10 +43,13 @@ def _route(method, path):
         raise InvalidData('invalid cost route')
     if path.startswith('/trade-api/v2/'):
         path = path[len('/trade-api/v2'):]
-    if any(part in ('.', '..') or not _SEGMENT.fullmatch(part)
-           for part in path[1:].split('/')):
+    parts = path[1:].split('/')
+    if any(part in ('.', '..') or not _SEGMENT.fullmatch(part) for part in parts):
         raise InvalidData('invalid cost route')
-    return path
+    # Current venue cost documents use Express-style ``:name`` templates,
+    # while older fixtures/OpenAPI use ``{name}``.  Store one canonical key.
+    parts = ['{'+part[1:]+'}' if part.startswith(':') else part for part in parts]
+    return '/'+('/'.join(parts))
 
 
 @lru_cache(maxsize=512)

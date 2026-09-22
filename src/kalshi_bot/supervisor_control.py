@@ -187,6 +187,10 @@ class ControlOwner:
             decision = store.apply(args[0], self.policy)
             return ControlReceipt(store.revision(), decision, decision.state,
                                   store.read_native())
+        if operation == "tick":
+            decision = store.tick(args[0], self.policy)
+            return ControlReceipt(store.revision(), decision, decision.state,
+                                  store.read_native())
         if operation == "session":
             decision = store.begin_parent_session(args[0], observed_utc=args[1],
                                                   policy=self.policy)
