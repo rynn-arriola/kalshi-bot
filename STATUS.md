@@ -1,5 +1,20 @@
 # Current status
 
+## Priority 5 incentive discovery/refresh — 2026-09-21
+
+[Bounded catalog integration](docs/BUILD_INCENTIVE_DISCOVERY.md) connects one
+runtime-owned refresh service to the existing advisory selector and shared
+read budget. Complete pagination, source/expiry fences, per-market unsupported
+input exclusion, bounded retries and joined shutdown are implemented offline.
+26 focused tests and the 5k/10k-catalog resource gates pass. Final full suite:
+1,247 run, 1,246 passed, one expected Windows privilege skip. Review, documentation
+and secret checks pass; disabled preflight remains `live_ready=false`.
+No venue/account request, credentials, bot operation or risk change occurred.
+
+Next: inventory-safe subscription rotation/admission, verified working-order
+reflection and source-bound entry-pair dispatch. These and runtime/readiness
+gates still prevent claiming a finished live trader. Live execution is disabled.
+
 ## D-069 reward-aware selection component — 2026-09-21
 
 [Implementation and verification](docs/BUILD_MARKET_SELECTION.md) adds hourly
@@ -11,7 +26,7 @@ tests and representative 30/120-market resource gates pass. Full suite: 1,221
 run, 1,220 passed, one expected Windows privilege skip; disabled preflight
 remains `live_ready=false`. Live execution remains disabled.
 
-Priority 5 is not fully connected: automatic incentive discovery/refresh,
+Priority 5 is not fully connected: discovery/refresh is now connected above;
 rotating subscription admission, verified resting-order reflection and entry
 dispatch handoff remain. No new policy approval is needed to repeat this
 accepted selection direction; new repricing thresholds/live activation are

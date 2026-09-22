@@ -36,6 +36,8 @@ class RuntimeSelection:
         Producer must finish its bounded metadata enumeration first. Publication
         replaces even an empty set and invalidates older ranking evidence.
         """
+        if self.runtime.incentives is not None:
+            raise InvalidData('programs owned by incentive discovery')
         if ticker not in self.runtime.engine.market_shard:
             raise InvalidData('programs outside subscribed scope')
         self.programs.pop(ticker, None)
@@ -54,6 +56,13 @@ class RuntimeSelection:
         self.runtime.engine.dirty.mark(ticker)
         self.runtime.engine.wake.set()
 
+    def _observation(self, ticker):
+        service = self.runtime.incentives
+        if service is None:
+            return self.programs.get(ticker)
+        catalog = service.current()
+        return catalog.observations.get(ticker) if catalog is not None else None
+
     def _available(self):
         r = self.runtime
         r.diagnostics.ensure_healthy()
@@ -67,7 +76,7 @@ class RuntimeSelection:
             return False
         plan, observation, report = proof
         now = utc(self.runtime.now())
-        return (observation is self.programs.get(ticker)
+        return (observation is self._observation(ticker)
                 and observation.observed_at <= now < observation.valid_until
                 and self.runtime.account.current_report(now) is report
                 and self.runtime.management.current(ticker) is plan)
@@ -79,7 +88,7 @@ class RuntimeSelection:
         if not self._available():
             return
         now = utc(r.now())
-        observation = self.programs.get(ticker)
+        observation = self._observation(ticker)
         plan = r.management.current(ticker)
         report = r.account.current_report(now)
         if (observation is None or not observation.programs or plan is None or plan.terms is None
@@ -145,8 +154,9 @@ class RuntimeSelection:
         return replace(result, exclusions=result.exclusions+missing)
 
     def status(self):
-        return dict(authorized=False, program_markets=len(self.programs),
+        return dict(authorized=False, program_markets=sum(
+                        self._observation(t) is not None for t in self.runtime.engine.market_shard),
                     cached_markets=len(self.selector.board.markets),
-                    current_markets=sum(self.current(t) for t in self._proofs),
+                    current_markets=sum(self.current(t) for t in tuple(self._proofs)),
                     rejected_markets=len(self._rejected),
                     venue_requests=0, automatic_repricing=False)

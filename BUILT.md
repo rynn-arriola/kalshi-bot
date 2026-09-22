@@ -1,5 +1,14 @@
 # What exists
 
+## Bounded incentive discovery/refresh — 2026-09-21
+
+[Build record](docs/BUILD_INCENTIVE_DISCOVERY.md): `incentive_discovery.py`
+enumerates active liquidity definitions through the existing shared reads,
+normalizes in bounded chunks and publishes immutable source-bound observations.
+The runtime owns refresh/stop/failure handling; selection rejects old catalog
+identities. Synthetic tests and 5k/10k-row resource fixtures exercise this path.
+No subscription rotation, venue transport activation or trading authority.
+
 ## Reward-aware selection component — 2026-09-21
 
 [Build record](docs/BUILD_MARKET_SELECTION.md): `selection.py` proposes whole

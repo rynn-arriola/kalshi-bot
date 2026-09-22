@@ -108,9 +108,10 @@ text is logged.
 ## Explicit remaining integration/readiness work
 
 This completes the bounded selection component, not all priority-5/live work.
-Selection currently covers the runtime's supplied subscribed universe. Automated
-complete program discovery/refresh and rotating discovery subscriptions are not
-connected. Runtime working-order reward share is intentionally unknown without
+Selection currently covers the runtime's supplied subscribed universe.
+[Bounded program discovery/refresh](BUILD_INCENTIVE_DISCOVERY.md) now supplies
+that scope; rotating discovery subscriptions are not connected. Runtime
+working-order reward share is intentionally unknown without
 public-book reflection evidence; private receipts alone do not establish it.
 Explicit-quote arithmetic is available, but is not an automatic repricing loop.
 

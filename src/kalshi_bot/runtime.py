@@ -100,6 +100,7 @@ class RecoveryRuntime:
         self._shutdown_task = None
         self.dispatch_supervisor = None  # Explicit offline attachment only.
         self.selection = None  # Advisory only, attached before runtime start.
+        self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -153,6 +154,16 @@ class RecoveryRuntime:
             raise InvalidData('dispatch requires matching unused runtime')
         service = DispatchSupervisor(source, dispatcher, offline_fixture=offline_fixture)
         self.dispatch_supervisor = service
+        return service
+
+    def attach_incentives(self, *, offline_fixture=False, interval=300, attempts=3):
+        from .incentive_discovery import IncentiveDiscovery
+        service = IncentiveDiscovery(self, offline_fixture=offline_fixture,
+                                     interval=interval, attempts=attempts)
+        self.incentives = service
+        # The catalog becomes the sole program producer; revoke manual fixtures.
+        self.selection.programs.clear()
+        service._changed()
         return service
 
     def request_dispatch(self, ticker, priority):
@@ -734,6 +745,8 @@ class RecoveryRuntime:
                 attempt += 1
 
     def stop(self):
+        if self.incentives is not None:
+            self.incentives.stop()
         if self.dispatch_supervisor is not None:
             self.dispatch_supervisor.stop()
         if self.quota_supervisor is not None:
@@ -754,6 +767,11 @@ class RecoveryRuntime:
             if self.dispatch_supervisor is not None:
                 try:
                     await self.dispatch_supervisor.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            if self.incentives is not None:
+                try:
+                    await self.incentives.close()
                 except BaseException as exc:
                     failures.append(exc)
             for task in tasks:
@@ -785,6 +803,7 @@ class RecoveryRuntime:
         self.used, self.running = True, True
         tasks = []
         dispatch_task = None
+        incentive_task = None
         primary_error = None
         try:
             await self._load_continuity_history()
@@ -795,6 +814,9 @@ class RecoveryRuntime:
                      asyncio.create_task(self._diagnostic_health(), name='kalshi-log-health')]
             if self.metadata_scheduler is not None:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
+            if self.incentives is not None:
+                incentive_task = asyncio.create_task(self.incentives.run(), name='kalshi-incentives')
+                tasks.append(incentive_task)
             if self.quota_supervisor is not None:
                 tasks.append(asyncio.create_task(self.quota_supervisor.run(), name='kalshi-quota'))
             if self.dispatch_supervisor is not None:
@@ -815,6 +837,8 @@ class RecoveryRuntime:
                         task.result()
                         if task is dispatch_task and not self.stop_requested.is_set():
                             raise InvalidData('dispatch service ended without runtime stop')
+                        if task is incentive_task and not self.stop_requested.is_set():
+                            raise InvalidData('incentive service ended without runtime stop')
                     if task is stop or self.engine.failed or self.writer.failed:
                         self.stop_requested.set()
                 if self.stop_requested.is_set():
@@ -872,6 +896,7 @@ class RecoveryRuntime:
             quota=self.quota_supervisor.status() if self.quota_supervisor is not None else dict(state='unmanaged'),
             dispatch=self.dispatch_supervisor.status() if self.dispatch_supervisor is not None else None,
             selection=self.selection.status() if self.selection is not None else None,
+            incentives=self.incentives.status() if self.incentives is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):

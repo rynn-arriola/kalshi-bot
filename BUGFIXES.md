@@ -10,6 +10,18 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Incentive refresh: retained wire age and late-publication fences
+
+**Review finding in the new offline component.** A shared request retained
+after caller timeout could be joined by a later refresh and stamped with its
+new observation start. A completed result could also outlive invalidation or
+quota loss before its scheduling turn consumed it.
+**Fix.** Use a distinct coalescing scope per catalog attempt; recheck generation,
+expiry and quota before publication and source identity during selection.
+**Verification.** Focused regressions cover both completion windows, old wire
+ownership, inventory preservation and distinct observation scopes. No live
+defect claimed. See [build record](docs/BUILD_INCENTIVE_DISCOVERY.md).
+
 ### Selection: hypothetical quotes, invalidation and repeated book validation
 
 **Integration gaps.** Reference-quote rankings alone could not describe an

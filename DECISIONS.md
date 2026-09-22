@@ -1075,6 +1075,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 - **Build contract:** [Selection integration](docs/BUILD_MARKET_SELECTION.md)
   records bounded advisory integration, tests and remaining activation gates.
 
+### Pending refinement — payout-aware concentration versus moneyline-only
+
+- **Status:** Requested direction needs scope clarification, 2026-09-21.
+- **Operator concern:** Rotation may spread earnings below the $1 payout
+  minimum; concentrate on the strongest opportunities, referencing Poly's
+  moneyline approach. Clarify strict sports moneyline-only versus best eligible
+  programs across categories with less rotation before changing selection.
+- **Verified rule:** [Kalshi help](https://help.kalshi.com/en/articles/16076644-liquidity-and-volume-incentive-programs-where-to-find-them)
+  says a final reward below $1 per individual program is not paid. This is not
+  an aggregate event/day/account minimum; estimates can change before payment.
+- **Recommendation, not implemented:** Prefer feasible programs with enough
+  safe remaining earning time to clear the minimum with a margin; reduce
+  unnecessary rotation and track program-specific estimated accrual. Neither
+  moneyline classification nor an estimate guarantees payment. Never keep risk
+  solely to reach $1 or override existing exit, exposure and stop-loss rules.
+- **Boundary:** No new category filter, hard earnings gate, dwell period,
+  repricing rule or launch authority accepted/implemented in this build unit.
+
 ### Earlier recovery-import question — superseded by D-025
 
 The stricter proposal below was not selected verbatim. D-025 selects a

@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 103. A complete incentive catalog is not market admission — 2026-09-21
+
+VERIFIED CODE/OFFLINE: complete active-liquidity cursor enumeration now feeds
+the existing subscribed selection scope. Unsupported reward terms exclude the
+identified market; duplicates/incomplete scope reject the entire publication.
+Freshness starts before enumeration, and distinct refresh attempts cannot
+re-age a retained older wire call. Catalog disappearance never releases an
+inventory owner. Cursor exhaustion is not an atomic exchange snapshot.
+MEASURED: 5k/10k synthetic catalogs satisfy the declared component CPU, memory
+and loop-delay budgets; [scope and evidence](docs/BUILD_INCENTIVE_DISCOVERY.md).
+Subscription rotation and entry dispatch remain separate build work.
+
 ## 102. A good replacement quote does not prove a resting order earns — 2026-09-21
 
 VERIFIED CODE/OFFLINE: explicit quote sets can be discounted or pushed beyond

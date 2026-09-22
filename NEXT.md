@@ -2,11 +2,17 @@
 
 Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md).
 Do not repeat the Poly audit or ask again for the accepted hourly/efficiency
-direction. Next connect bounded incentive discovery/refresh and candidate
-subscription management, then source-bound entry-pair admission/dispatch.
+direction. [Incentive discovery/refresh](docs/BUILD_INCENTIVE_DISCOVERY.md) now
+feeds the offline selection attachment through shared bounded reads. Next:
+inventory-safe candidate subscription management, then source-bound entry-pair
+admission/dispatch. Do not rebuild the catalog or add a second REST budget.
 Working-order score monitoring still needs reflection evidence, not guessed
 private/public synchronization. Automatic repricing thresholds and live launch
 remain separate decisions. Preserve all inventory/unknown owners during rotation.
+
+Operator has raised payout-aware concentration and possibly sports moneyline-only.
+Resolve the scope in `DECISIONS.md` before changing category filters, payout
+admission thresholds or dwell/rotation policy; the existing D-069 policy remains.
 
 Next work: priority 5 reward ranking/admission integration, followed by priority
 6 runtime/readiness acceptance. Priority 4's
