@@ -232,7 +232,7 @@ class RecoveryRuntime:
         plan = self.management.current(ticker)
         if plan is None or plan.exit is None:
             return
-        if (self.live_session is not None and self.live_session.entries_paused
+        if (self.entry_pause_active
                 and any(r.owned and not r.reducing and not r.order.terminal
                         for r in plan.inventory.orders)):
             self.request_dispatch(ticker, SAFETY_CANCEL)
@@ -311,11 +311,18 @@ class RecoveryRuntime:
             account_known=False, offline_fixture=False)
 
     @property
+    def entry_pause_active(self):
+        """Operator/recovery pause or durable hard loss hold; never a cap reset."""
+        window = getattr(self.accounting_result, 'window', None)
+        return bool((self.live_session is not None and self.live_session.entries_paused)
+                    or (window is not None and window.held))
+
+    @property
     def entry_allowed(self):
         from .live_session import permits
         lease = self.writer._accounting_lease
         return (permits(self.live_session, self.writer)
-                and not self.live_session.entries_paused
+                and not self.entry_pause_active
                 and self.accounting_result is not None and self.accounting_result.released
                 and lease is not None and lease.fence.current()
                 and not self.stop_requested.is_set())

@@ -1,6 +1,6 @@
 # Active work queue
 
-## First: repair the final current-path review findings
+## Current-path review findings repaired
 
 [Current review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md), priority order:
 
@@ -9,9 +9,9 @@
 3. R3: allow exact owned cancellations without requiring a recent book price.
 4. R4: qualify/tier overlapping programs before selecting one per market.
 
-Review scope only so far; fixes remain unimplemented. Add focused regressions,
-verify/review the repair diff, and publish before supervised live acceptance.
-These current-path defects precede item 7 below; no optional feature was added.
+All four are implemented with focused production-path regressions and bounded
+resource checks. The 1,441-test suite and GET-only startup pass. This repair unit
+is reviewed and published; proceed to item 7. No optional feature was added.
 
 ## Candidate timing qualification resolved; live acceptance follows review fixes
 
@@ -81,7 +81,7 @@ provisional until item 1 resolves the production recovery boundary.
    parent idle CPU, loop latency and handle/task cleanup. Acceptance: focused
    regressions and relevant full suite pass; measured budgets are met. These are
    software fault tests, not a paper-profitability stage.
-6. [ ] **Review and publish the software.** Review the actual production diff for
+6. [x] **Review and publish the software.** Review the actual production diff for
    ownership races, recovery mistakes and accidental fixture bypasses; fix valid
    findings and rerun affected checks. Update the run guide, current status and
    verification records, commit/push, and verify repository parity. Acceptance:

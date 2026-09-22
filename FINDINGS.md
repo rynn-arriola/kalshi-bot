@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 122. Current-path findings are repaired without weakening create proof — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: R1–R4 from finding 121 are connected to their actual
+consumers. A durable hard loss hold now drains exact owned entries and blocks
+entry/admission; cancellation retains account/order/writer/quota proof while
+dropping irrelevant price/terms freshness; the exact selected reward program is
+pinned through both send fences; and every overlapping program is qualified and
+tiered before one is selected per market. New production-path regressions and
+30/120 resource gates pass. This does not change lower loss-tier rotation,
+inventory exit policy, live authorization or profitability evidence. Full
+mechanisms: [build report](docs/BUILD_CURRENT_PATH_REPAIRS.md).
+
 ## 121. Final live-path review finds four missing integration cases — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC at `4818612`: a held loss window leaves flat-market entry

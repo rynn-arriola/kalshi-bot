@@ -131,8 +131,7 @@ class RankingBoard:
                 quote_basis='explicit_quotes' if proposed is not None else 'hypothetical_reference'))
         self.markets[ticker] = tuple(rows)
 
-    def ranked(self, *, now, by: str) -> tuple[RankedMarket, ...]:
-        """One best program per market, explicit view; never an order allocation."""
+    def _ranked(self, *, now, by: str, per_program: bool) -> tuple[RankedMarket, ...]:
         fields = {"remaining_reward": "gross_remaining_usd", "reward_rate": "gross_hourly_usd",
                   "capital_efficiency": "gross_hourly_per_capital", "selection": "gross_hourly_usd"}
         if by not in fields:
@@ -159,5 +158,13 @@ class RankingBoard:
                                                   warnings=warnings+payout_warnings(remaining)))
                 else:
                     candidates.append(row)
-            chosen.append(min(candidates, key=key))
+            chosen.extend(candidates if per_program else (min(candidates, key=key),))
         return tuple(sorted(chosen, key=key))
+
+    def ranked(self, *, now, by: str) -> tuple[RankedMarket, ...]:
+        """One best program per market, explicit view; never an order allocation."""
+        return self._ranked(now=now, by=by, per_program=False)
+
+    def ranked_programs(self, *, now, by: str) -> tuple[RankedMarket, ...]:
+        """All programs for qualification before one-per-market selection."""
+        return self._ranked(now=now, by=by, per_program=True)

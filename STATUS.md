@@ -1,18 +1,22 @@
 # Current status
 
-## Final current-path review: launch blocked by code findings — 2026-09-22
+## Final current-path findings repaired; final acceptance remains — 2026-09-22
 
-The [review of current production code](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md)
-reproduces three P1 gaps: a loss hold does not cancel resting entries, incentive
-revocation can be missed at final entry send, and quiet books block graceful
-entry cancellation. One P2 ranking defect can hide a qualifying overlapping
-program. Fix and verify these before first live acceptance. This supersedes the
-prior informal ready-to-start assessment, not the historical component tests.
-No Kalshi production process was found; no launch or runtime mutation occurred.
-Review only: no bot logic or configuration was changed.
-Fresh full suite: 1,434 run in 217.273 seconds, 1,433 passed and one expected
-Windows privilege skip. Five synthetic probes independently reproduce the
-four findings; the passing existing suite does not invalidate those findings.
+The four findings in the
+[current-path review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md) are repaired.
+The $25 hard loss hold drains owned entries; reward/program authority survives
+to both final send fences; exact cancellation no longer requires current book or
+terms; and overlapping programs are qualified/tiered before one-per-market
+selection. Permanent regressions and related suites pass, as do the 30/120
+selection, admission and dispatch performance gates. No trading process,
+credential exposure/mutation, production ledger or order endpoint was used. The
+GET-only startup used the configured account credentials for read-only account
+verification. Final suite: 1,441 tests in
+218.486 seconds, 1,440 passed and one expected Windows privilege skip. The
+1,024-candidate input parses; a 45-second GET-only startup verified the account,
+book/lifecycle, quota, logging and incentive feed graph and stopped cleanly with
+no dispatch. First supervised live acceptance remains separate.
+[Implementation](docs/BUILD_CURRENT_PATH_REPAIRS.md).
 
 ## Entry-quality filters implemented; live start still separate — 2026-09-22
 

@@ -280,7 +280,7 @@ async def local_status(runtime):
     restrictions = dict(component_holds=(['quota_refresh_exhausted']
         if quota is not None and quota.exhausted else []), cooldowns=cooldowns)
     return dict(observed_at=runtime.now().isoformat(), pid=os.getpid(),
-        entries_paused=runtime.live_session.entries_paused,
+        entries_paused=runtime.entry_pause_active,
         entry_allowed=runtime.entry_allowed, resting_entries=view.entry_count,
         positions={ticker: str(value) for ticker, value in view.positions if value},
         exposure_usd=str(view.total), risk_blockers=list(view.blockers),
@@ -320,14 +320,14 @@ async def supervise(runtime, *, stop, publish, interval=1):
         while not task.done():
             if stop():
                 runtime.live_session.entries_paused = True
-            if runtime.live_session.entries_paused:
+            if runtime.entry_pause_active:
                 for ticker in runtime.engine.market_shard:
                     runtime.engine.dirty.mark(ticker)
                 runtime.engine.wake.set()
             result = await local_status(runtime)
-            result['state'] = 'DRAINING' if runtime.live_session.entries_paused else 'RUNNING'
+            result['state'] = 'DRAINING' if runtime.entry_pause_active else 'RUNNING'
             await asyncio.to_thread(publish, result)
-            if (runtime.live_session.entries_paused and result['account_current']
+            if (runtime.entry_pause_active and result['account_current']
                     and not result['positions'] and not result['resting_entries']
                     and not result['risk_blockers'] and runtime.last_reports is not None):
                 if await verified_flat(runtime):

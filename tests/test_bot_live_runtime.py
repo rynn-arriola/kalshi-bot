@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from kalshi_bot.config import BotConfig
+from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.dispatch import ENTRY_PAIR, PASSIVE_REDUCER, SAFETY_CANCEL, DUE_IOC
 from kalshi_bot.dispatch_sources import InventoryDispatchSource
 from kalshi_bot.live import LaunchInputs, compose, initial_scope, verified_flat
@@ -26,6 +27,7 @@ from kalshi_bot.rest import WireResponse
 from kalshi_bot.rest import RestReads, TokenBudget
 from kalshi_bot.quota import QuotaGuard, QuotaPolicy, ProbeConfig
 from kalshi_bot.quota_supervisor import QuotaSupervisor
+from kalshi_bot.risk import WindowState, window_bounds
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.startup import save_result
 from kalshi_bot.transport import MutationSigner
@@ -110,6 +112,49 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
             (self.f.now+timedelta(hours=1)).timestamp()) for r in self.calls[0][1]))
         self.assertEqual({r['phase'] for r in await self.f.writer.mutations()}, {'ACK'})
         self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
+
+    async def test_reward_revocation_after_reservation_never_reaches_transport(self):
+        original = self.f.writer.reserve_entry_pair
+        async def revoke_after_reservation(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.selection.set_programs('A', (), observed_at=self.f.now,
+                valid_until=self.f.now+timedelta(minutes=5))
+            return result
+        self.f.writer.reserve_entry_pair = revoke_after_reservation
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertEqual({row['phase'] for row in await self.f.writer.mutations()},
+                         {'NOT_SENT'})
+
+    async def test_reward_revocation_after_sending_never_reaches_transport(self):
+        original = self.f.writer.begin_batch_send
+        async def revoke_after_sending(batch):
+            result = await original(batch)
+            self.selection.set_programs('A', (), observed_at=self.f.now,
+                valid_until=self.f.now+timedelta(minutes=5))
+            return result
+        self.f.writer.begin_batch_send = revoke_after_sending
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        with self.assertRaises(CommandDenied):
+            await self.dispatcher.run_one()
+        self.assertFalse(self.calls)
+        self.assertEqual({row['phase'] for row in await self.f.writer.mutations()},
+                         {'UNKNOWN'})
+
+    async def test_entry_selection_expiry_after_reservation_never_reaches_transport(self):
+        original = self.f.writer.reserve_entry_pair
+        async def expire_after_reservation(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.f.now += timedelta(seconds=5)
+            self.f.tick += 5
+            return result
+        self.f.writer.reserve_entry_pair = expire_after_reservation
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
 
     async def test_session_does_not_replace_accounting_lease(self):
         self.f.account.revoke_accounting()
@@ -273,6 +318,26 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         session.entries_paused = True
         await self.f.runtime._evaluate('A', None, 0)
         self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL,'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(self.f.calls[0][0], 'cancel')
+
+    async def test_hard_loss_hold_queues_flat_entry_cancel(self):
+        await self.f.ready(filled='0', remaining='10')
+        held = WindowState(*window_bounds(self.f.now), D(-25), 0, True, self.f.now)
+        self.f.runtime.accounting_result = SimpleNamespace(released=True, window=held)
+        self.assertTrue(self.f.runtime.entry_pause_active)
+        await self.f.runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(self.f.calls[0][0], 'cancel')
+
+    async def test_paused_entry_cancel_does_not_require_recent_book_price(self):
+        await self.f.ready(filled='0', remaining='10')
+        self.f.runtime.live_session = SimpleNamespace(entries_paused=True)
+        self.f.runtime.management.revoke_terms('A')
+        self.f.mono += 6
+        await self.f.runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertEqual(self.f.calls[0][0], 'cancel')
 

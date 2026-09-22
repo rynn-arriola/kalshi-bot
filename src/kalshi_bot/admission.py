@@ -63,7 +63,7 @@ class MarketAdmission:
         r = self.runtime
         due = r.engine.deadlines.next_deadline()
         return (not self.stopping and not r.stop_requested.is_set()
-                and (r.live_session is None or not r.live_session.entries_paused)
+                and not r.entry_pause_active
                 and (r.dispatch_supervisor is None
                      or r.dispatch_supervisor.dispatcher.status().active is None)
                 and r.selection._available() and not r.engine.running_step

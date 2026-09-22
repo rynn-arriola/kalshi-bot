@@ -1,12 +1,13 @@
 # What exists
 
-## Current-path verification correction — 2026-09-22
+## Current-path review repairs — 2026-09-22
 
-The [final review](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md) reproduces four
-unfixed gaps across risk-hold drain, final incentive proof, cancellation and
-overlapping-program selection. Existing components and previous test results
-remain, but they do not establish end-to-end launch readiness. No implementation
-or configuration changed in this review.
+The [four final-review findings](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md) are
+implemented in the existing production path: hard-loss entry drain, pinned
+reward authority through SENDING, price-independent exact cancellation and
+qualification-before-deduplication for overlapping programs. Permanent
+regressions and bounded performance checks exist. Details:
+[implementation report](docs/BUILD_CURRENT_PATH_REPAIRS.md).
 
 ## Entry-quality and reward-tier selection — 2026-09-22
 

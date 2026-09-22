@@ -3,8 +3,10 @@
 Reviewed code: `481861295c1763e0f78a61b441f3e55951f763c8`.
 Scope: the existing supervised production launcher and original live runtime,
 not the retired REST canary, future watchdog or other pending improvements.
-**Result: changes required before live acceptance.** This review supersedes
-the earlier informal readiness assessment; it does not authorize a launch.
+**Historical result at the reviewed commit: changes required before live
+acceptance.** R1–R4 are now repaired as recorded in the
+[implementation report](BUILD_CURRENT_PATH_REPAIRS.md). This review still does
+not authorize a launch.
 
 Read-only process inspection found no active Kalshi production child/runtime.
 The review therefore covers the code intended to run, not observed live trading.
@@ -113,10 +115,12 @@ passive/IOC exits, quotas, logging, stop/drain, and supervisor recovery/cleanup.
 The existing D-081 repairs remain present; no new finding is asserted in their
 ownership/cleanup fixes. No claim of exhaustive proof or live profitability.
 
-Local reproducer: `data/review-final-4818612/probes.py` (ignored, synthetic only).
-Run with `.venv\Scripts\python.exe -B data/review-final-4818612/probes.py`.
-Its five probes confirm the four defects (R2 has both fixture and production-mode
-coverage). Source code, tests, configuration and runtime state are unchanged.
+The ignored historical reproducer was
+`data/review-final-4818612/probes.py` (synthetic only). Its assertions describe
+the defects at the reviewed commit and are superseded by the permanent repair
+regressions; it is not a post-repair pass command. Its five probes originally
+confirmed the four defects (R2 had both fixture and production-mode coverage).
+Source code, tests, configuration and runtime state were unchanged by the review.
 Fresh standard verification:
 `.venv\Scripts\python.exe -B -m unittest discover -s tests` ran 1,434 tests
 in 217.273 seconds: 1,433 passed and one expected Windows privilege skip.
@@ -130,3 +134,13 @@ Repair R1-R3 before launch, then correct R4 in the same focused fix pass. Rerun
 the new regressions, relevant integration suites and complete offline suite,
 review the fixes and publish. First supervised live acceptance remains separate;
 no optional pending feature is added to this review's scope.
+
+## Resolution — 2026-09-22
+
+R1–R4 are implemented with permanent production-path regressions. The loss hold
+drains exact owned entries; entry proofs retain incentive/program authority
+through both final send fences; exact cancellation no longer depends on book or
+terms freshness; and overlapping programs are qualified/tiered before market
+deduplication. See the [build report](BUILD_CURRENT_PATH_REPAIRS.md) for exact
+boundaries and verification. Live acceptance remains unobserved until a
+separately authorized supervised run.

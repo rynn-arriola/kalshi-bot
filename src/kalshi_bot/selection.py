@@ -141,7 +141,7 @@ class MarketSelector:
         additions, exclusions = [], []
         entries, spent = view.entry_count, Decimal(0)
         config = BotConfig()
-        ranked = self.board.ranked(now=now, by='selection')
+        ranked = self.board.ranked_programs(now=now, by='selection')
         # Stable tiers preserve the existing reward-rate/capital ordering within
         # each tier while reserving available slots for projected $2+ programs.
         ranked = tuple(sorted(ranked, key=lambda row: (
@@ -149,30 +149,51 @@ class MarketSelector:
             row.gross_remaining_usd is None
             or row.gross_remaining_usd < config.priority_projected_reward_usd,
         )))
+        source_current = {}
+        def entry_blockers(row):
+            blocked = row.blockers
+            if row.ticker in retained:
+                blocked += ('existing_owner_retained',)
+            if row.ticker not in source_current:
+                source_current[row.ticker] = current(row.ticker) is True
+            if not source_current[row.ticker]:
+                blocked += ('selection_sources_changed',)
+            if not blocked:
+                # No partial pair, duplicates, resized or zero-reward order set.
+                if (len(row.quotes) != 2 or {q.side for q in row.quotes} != {'bid', 'ask'}
+                        or any(q.quantity != config.entry_contracts for q in row.quotes)
+                        or row.quote_basis != 'hypothetical_reference'):
+                    blocked += ('unsupported_entry_pair',)
+                elif (row.quote_statuses != ('full_price_weight', 'full_price_weight')
+                      or any(q.yes_price != (row.bid_reference if q.side == 'bid'
+                                            else row.ask_reference)
+                             for q in row.quotes)):
+                    blocked += ('initial_quote_not_at_full_weight_reference',)
+                elif row.gross_hourly_usd is None or row.gross_hourly_usd <= 0:
+                    blocked += ('no_projected_reward',)
+                elif (row.gross_remaining_usd is None
+                      or row.gross_remaining_usd < config.minimum_projected_reward_usd):
+                    blocked += ('projected_reward_below_minimum',)
+            return blocked
+
+        # Qualify every overlapping program before retaining exactly one market
+        # row. Otherwise a short high-rate program can hide an eligible longer one.
+        selected, first_blocked, chosen = set(), {}, []
+        for row in ranked:
+            if row.ticker in selected:
+                continue
+            blocked = entry_blockers(row)
+            if blocked:
+                first_blocked.setdefault(row.ticker, row)
+                continue
+            selected.add(row.ticker)
+            chosen.append(row)
+        chosen.extend(row for ticker, row in first_blocked.items() if ticker not in selected)
+        ranked = tuple(chosen)
         with localcontext() as ctx:
             ctx.prec = 40
             for row in ranked:
-                blocked = row.blockers
-                if row.ticker in retained:
-                    blocked += ('existing_owner_retained',)
-                if current(row.ticker) is not True:
-                    blocked += ('selection_sources_changed',)
-                if not blocked:
-                    # No partial pair, duplicates, resized or zero-reward order set.
-                    if (len(row.quotes) != 2 or {q.side for q in row.quotes} != {'bid', 'ask'}
-                            or any(q.quantity != config.entry_contracts for q in row.quotes)
-                            or row.quote_basis != 'hypothetical_reference'):
-                        blocked += ('unsupported_entry_pair',)
-                    elif (row.quote_statuses != ('full_price_weight', 'full_price_weight')
-                          or any(q.yes_price != (row.bid_reference if q.side == 'bid'
-                                                else row.ask_reference)
-                                 for q in row.quotes)):
-                        blocked += ('initial_quote_not_at_full_weight_reference',)
-                    elif row.gross_hourly_usd is None or row.gross_hourly_usd <= 0:
-                        blocked += ('no_projected_reward',)
-                    elif (row.gross_remaining_usd is None
-                          or row.gross_remaining_usd < config.minimum_projected_reward_usd):
-                        blocked += ('projected_reward_below_minimum',)
+                blocked = entry_blockers(row)
                 if not blocked:
                     cost = row.capital_usd + self._fees[(row.ticker, row.program_id)]
                     blocked = admit_entry(config, window=window, ticker=row.ticker,

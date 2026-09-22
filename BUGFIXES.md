@@ -8,6 +8,27 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — final current production-path integration repairs
+
+- The $25 loss hold blocked new selection but left existing entry orders live.
+  It now becomes the same effective entry pause/drain used by supervised stop,
+  while normal inventory exits and restart-persistent risk ownership remain.
+- Selection authority ended before the writer's final send fences. The exact
+  program/observation/source proof is now pinned through preparation and SENDING;
+  revocation or expiry produces no transport call.
+- Exact owned cancellation incorrectly inherited book and terms freshness from
+  price-dependent creates. Its proof is now account/order/writer based; creates,
+  reducers and IOC retain all prior market proof.
+- Program deduplication ran before the $1/$2 qualification tiers. Qualification
+  now runs per program, then chooses one program per market without summing.
+
+Verification: permanent nonfixture send-boundary, loss-drain, stale-source cancel
+and overlapping-program regressions pass with related component suites and all
+30/120 selection/admission/dispatch gates. A GET-only startup also passed; no
+trading runtime, credential exposure/mutation, production ledger or order
+endpoint was used. See the
+[implementation report](docs/BUILD_CURRENT_PATH_REPAIRS.md).
+
 ## 2026-09-22 — zero-candidate timing filter
 
 - The safety correction that withdrew blanket early-close approval left the

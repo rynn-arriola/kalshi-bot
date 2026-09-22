@@ -24,6 +24,7 @@ class _Proof:
     report_observed_at: datetime
     kind: str
     request_json: object
+    entry_selection: object = None
 
 
 class InventoryDispatchSource:
@@ -78,7 +79,8 @@ class InventoryDispatchSource:
                 and not runtime.engine.private and not runtime.account._processing
                 and runtime.account.connected and not runtime.writer.failed)
 
-    def _plan_current(self, plan, report_observed_at, *, sending=False):
+    def _plan_current(self, plan, report_observed_at, *, sending=False,
+                      require_book=True):
         if not self._available():
             return False
         runtime = self.runtime
@@ -88,22 +90,24 @@ class InventoryDispatchSource:
         manager = runtime.management
         if sending:
             current = manager.current_for_dispatch(plan.ticker,
-                prior_revision=plan.inventory.writer_revision)
+                prior_revision=plan.inventory.writer_revision,
+                require_market=require_book)
         else:
-            current = manager.current(plan.ticker)
-        if current is not plan or plan.book_revision < 0:
+            current = manager.current(plan.ticker, require_market=require_book)
+        if current is not plan or (require_book and plan.book_revision < 0):
             return False
-        if plan.inventory.position and plan.terms is not None and now >= plan.terms.close_at:
-            return False
-        # A still-fresh price cannot carry an action across an age/deadline or
-        # IOC retry boundary. A new evaluation, not an old passive quote, wins.
-        next_at = plan.exit.next_at
-        if next_at is not None and plan.observed_at < next_at <= now:
-            return False
-        journal = plan.inventory.exit_journal
-        if plan.exit.mode == 'ioc' and journal.started_at is not None:
-            if not timedelta(0) <= now-journal.started_at < timedelta(seconds=30):
+        if require_book:
+            if plan.inventory.position and plan.terms is not None and now >= plan.terms.close_at:
                 return False
+            # A still-fresh price cannot carry a create across an age/deadline
+            # or IOC retry boundary. Exact owned cancellation uses no price.
+            next_at = plan.exit.next_at
+            if next_at is not None and plan.observed_at < next_at <= now:
+                return False
+            journal = plan.inventory.exit_journal
+            if plan.exit.mode == 'ioc' and journal.started_at is not None:
+                if not timedelta(0) <= now-journal.started_at < timedelta(seconds=30):
+                    return False
         return True
 
     async def refresh(self, ticker, priority):
@@ -126,7 +130,8 @@ class InventoryDispatchSource:
             if priority == ENTRY_PAIR and runtime.selection is not None:
                 runtime.selection.refresh(ticker)
             if (plan is None or plan.exit is None or plan.inventory.blockers
-                    or not self._plan_current(plan, report.observed_at)
+                    or not self._plan_current(plan, report.observed_at,
+                                              require_book=priority != SAFETY_CANCEL)
                     or runtime.account.current_report(runtime.now()) is not report):
                 return None
             if priority == ENTRY_PAIR:
@@ -162,6 +167,10 @@ class InventoryDispatchSource:
                     p for p in observation.programs if p.program_id == row.program_id)
                 if len(programs) != 1:
                     return None
+                entry_selection = selection.capture_dispatch_proof(
+                    ticker, row.program_id, row.valid_until)
+                if entry_selection is None:
+                    return None
                 expires = int(min(plan.terms.deadline, programs[0].end).timestamp())
                 if expires <= utc(runtime.now()).timestamp():
                     return None
@@ -181,7 +190,7 @@ class InventoryDispatchSource:
                 if (generation != self._generation
                         or not self._plan_current(plan, report.observed_at)
                         or runtime.account.current_report(runtime.now()) is not report
-                        or not selection.current(ticker)
+                        or not selection.dispatch_proof_current(entry_selection)
                         or inputs.values.get(('market', ticker)) is not source
                         or inputs.results.get(ticker) is not result
                         or not inputs._fresh(source)
@@ -193,7 +202,8 @@ class InventoryDispatchSource:
                     plan.terms.taker_fee_per_contract_bound,
                     source.value.exchange)
                 self._proof = _Proof(plan, report.observed_at, 'batch_create',
-                    tuple(encoded_request(request) for request in requests))
+                    tuple(encoded_request(request) for request in requests),
+                    entry_selection)
                 return candidate
             exit_plan, passive = plan.exit, plan.passive
             journal = plan.inventory.exit_journal
@@ -203,8 +213,7 @@ class InventoryDispatchSource:
                 # Only the cancellation selected by the existing strategy.
                 # Never bypass a blocked/wait/attention exit via its subplan.
                 allowed = {'await_terminal_cancellation_and_fill_proof'}
-                paused = (runtime.live_session is not None
-                          and runtime.live_session.entries_paused)
+                paused = runtime.entry_pause_active
                 entry_ids = tuple(sorted(r.order.order_id for r in plan.inventory.orders
                     if r.owned and not r.reducing and not r.order.terminal)) if paused else ()
                 if not entry_ids and (exit_plan.mode not in {'flat', 'passive', 'cancel_before_ioc'}
@@ -246,7 +255,8 @@ class InventoryDispatchSource:
                 evidence = await runtime.writer.reduction_evidence(request, now=runtime.now())
                 kind = 'create'
             if (evidence is None or generation != self._generation
-                    or not self._plan_current(plan, report.observed_at)
+                    or not self._plan_current(plan, report.observed_at,
+                                              require_book=priority != SAFETY_CANCEL)
                     or runtime.account.current_report(runtime.now()) is not report):
                 return None
             candidate = DispatchCandidate(ticker, priority, str(uuid4()), request,
@@ -262,7 +272,7 @@ class InventoryDispatchSource:
             from .live_session import permits
             if not permits(self.runtime.live_session, self.runtime.writer):
                 return False
-            if kind == 'batch_create' and self.runtime.live_session.entries_paused:
+            if kind == 'batch_create' and self.runtime.entry_pause_active:
                 return False
         proof = self._proof
         encoded = (tuple(encoded_request(row) for row in request)
@@ -271,4 +281,10 @@ class InventoryDispatchSource:
                    else None)
         return (proof is not None and kind == proof.kind
                 and encoded == proof.request_json
-                and self._plan_current(proof.plan, proof.report_observed_at, sending=True))
+                and self._plan_current(proof.plan, proof.report_observed_at, sending=True,
+                                       require_book=kind != 'cancel')
+                and (kind != 'batch_create'
+                     or (proof.entry_selection is not None
+                         and self.runtime.selection is not None
+                         and self.runtime.selection.dispatch_proof_current(
+                             proof.entry_selection))))

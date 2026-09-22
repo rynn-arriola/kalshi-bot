@@ -60,31 +60,34 @@ class InventoryManager:
             return shard, None
         return shard, book
 
-    def _current(self, ticker, *, plan_writer_revision, current_writer_revision):
+    def _current(self, ticker, *, plan_writer_revision, current_writer_revision,
+                 require_market=True):
         plan = self._plans.get(ticker)
         account = self.runtime.account
         writer = self.runtime.writer
         if (plan is None or not account.connected or self.runtime.engine.stopped
                 or writer.failed or writer.revision != current_writer_revision):
             return None
-        if plan.terms is not self.terms.get(ticker):
+        if require_market and plan.terms is not self.terms.get(ticker):
             return None
-        if plan.terms is not None and not plan.terms.observed_at <= utc(self.runtime.now()) < plan.terms.valid_until:
+        if (require_market and plan.terms is not None
+                and not plan.terms.observed_at <= utc(self.runtime.now()) < plan.terms.valid_until):
             return None
-        shard, book = self._book(ticker)
+        shard, book = self._book(ticker) if require_market else (None, None)
         if ((plan.generation, plan.account_revision) != (account.generation, account.revision)
                 or (plan.inventory.writer_epoch, plan.inventory.writer_revision) !=
                    (writer.epoch, plan_writer_revision)
                 or not timedelta(0) <= utc(self.runtime.now())-plan.observed_at <= timedelta(seconds=5)
-                or plan.book_generation != (shard.generation if shard else 0)
-                or plan.book_revision != (book.revision if book else -1)):
+                or (require_market and plan.book_generation != (shard.generation if shard else 0))
+                or (require_market and plan.book_revision != (book.revision if book else -1))):
             return None
         return plan
 
-    def current(self, ticker):
+    def current(self, ticker, *, require_market=True):
         revision = self.runtime.writer.revision
         return self._current(ticker, plan_writer_revision=revision,
-                             current_writer_revision=revision)
+                             current_writer_revision=revision,
+                             require_market=require_market)
 
     def current_after_prepare(self, ticker, *, prior_revision, prepared_revision):
         if prepared_revision != prior_revision+1:
@@ -92,7 +95,7 @@ class InventoryManager:
         return self._current(ticker, plan_writer_revision=prior_revision,
                              current_writer_revision=prepared_revision)
 
-    def current_for_dispatch(self, ticker, *, prior_revision):
+    def current_for_dispatch(self, ticker, *, prior_revision, require_market=True):
         """Source fence only, never a substitute for a prepared receipt.
 
         The sole executor checks the exact receipt/revision around begin_send;
@@ -103,7 +106,8 @@ class InventoryManager:
         if revision not in (prior_revision+1, prior_revision+2):
             return None
         return self._current(ticker, plan_writer_revision=prior_revision,
-                             current_writer_revision=revision)
+                             current_writer_revision=revision,
+                             require_market=require_market)
 
     async def refresh(self, ticker):
         runtime, account = self.runtime, self.runtime.account

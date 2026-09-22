@@ -230,6 +230,24 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(row.program_id, 'P2')
         self.assertEqual(len(self.choose().additions), 1)
 
+    def test_short_program_cannot_hide_eligible_overlapping_program(self):
+        fast = program(program_id='FAST', pool_centicents=5000000,
+                       end=NOW+timedelta(seconds=30))
+        longer = program(program_id='LONG', pool_centicents=5000000)
+        self.add(programs=(fast, longer))
+        row = self.choose().additions[0]
+        self.assertEqual(row.program_id, 'LONG')
+        self.assertGreaterEqual(row.gross_remaining_usd, D(2))
+
+    def test_priority_overlap_beats_faster_fallback_program(self):
+        fast_fallback = program(program_id='FAST', pool_centicents=125000000,
+                                end=NOW+timedelta(seconds=30))
+        priority = program(program_id='PRIORITY', pool_centicents=5000000)
+        self.add(programs=(fast_fallback, priority))
+        row = self.choose().additions[0]
+        self.assertEqual(row.program_id, 'PRIORITY')
+        self.assertGreaterEqual(row.gross_remaining_usd, D(2))
+
     def test_repeated_invalidation_bounds_auxiliary_state(self):
         for i in range(50):
             self.add(programs=(program(program_id=str(i)),))

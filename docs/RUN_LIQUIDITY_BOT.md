@@ -148,6 +148,13 @@ or inventory: `NEEDS_ATTENTION` is not canceled/flat. Do not force-close the win
 as the normal stop method. Keep the laptop awake and online; no power settings
 have been changed.
 
+The durable $25 settled-loss hold uses the same drain behavior: it revokes new
+entry/admission authority, reports `DRAINING`, cancels exact proven-owned entry
+orders even when price/market terms are stale, and leaves open inventory to the
+existing approved reducer/IOC policy. It does not force liquidation, loosen
+ownership proof or reset automatically on process restart. Lower loss-tier caps
+continue to restrict new admission without a newly introduced rotation policy.
+
 An unexpected child exit receives at most the supervisor's bounded retry budget.
 Every replacement child is recovery-only: entries are paused before composition,
 the same financial ledger is opened, and only reconciliation, owned-order

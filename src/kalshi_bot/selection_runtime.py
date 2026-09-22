@@ -4,13 +4,22 @@ from datetime import datetime, timedelta
 
 from .quoting import Program
 from .selection import MarketSelector, SelectionReport
-from .values import InvalidData, decimal, utc
+from .values import InvalidData, decimal, identity, utc
 
 
 @dataclass(frozen=True)
 class ProgramObservation:
     programs: tuple[Program, ...]
     observed_at: datetime
+    valid_until: datetime
+
+
+@dataclass(frozen=True)
+class SelectionDispatchProof:
+    ticker: str
+    program: Program
+    observation: ProgramObservation
+    source_proof: object
     valid_until: datetime
 
 
@@ -124,6 +133,36 @@ class RuntimeSelection:
                 and observation.observed_at <= now < observation.valid_until
                 and self.runtime.account.current_report(now) is report
                 and self.runtime.management.current(ticker) is plan)
+
+    def capture_dispatch_proof(self, ticker, program_id, valid_until):
+        """Pin entry-only selection inputs before the writer advances revision."""
+        ticker, program_id, valid_until = identity(ticker), identity(program_id), utc(valid_until)
+        if not self.current(ticker):
+            return None
+        source = self._proofs.get(ticker)
+        observation = self._observation(ticker)
+        programs = () if observation is None else tuple(
+            program for program in observation.programs if program.program_id == program_id)
+        if len(programs) != 1:
+            return None
+        proof = SelectionDispatchProof(ticker, programs[0], observation, source, valid_until)
+        return proof if self.dispatch_proof_current(proof) else None
+
+    def dispatch_proof_current(self, proof):
+        """Synchronous send fence that tolerates only the writer's own prepare."""
+        if not isinstance(proof, SelectionDispatchProof) or not self._available():
+            return False
+        r, now = self.runtime, utc(self.runtime.now())
+        if r.admission is not None and r.admission.transitioning:
+            return False
+        observation = self._observation(proof.ticker)
+        return (self._proofs.get(proof.ticker) is proof.source_proof
+                and observation is proof.observation
+                and any(program is proof.program for program in observation.programs)
+                and observation.observed_at <= now < observation.valid_until
+                and now < proof.valid_until
+                and (self.candidate_inputs is None
+                     or not self.candidate_inputs.blockers(proof.ticker, now)))
 
     def refresh(self, ticker):
         """Synchronous dirty-market work AFTER management refresh; no extra DB read."""
