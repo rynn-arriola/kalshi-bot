@@ -7,13 +7,15 @@ manual ticker. Public launch preparation joins active reward programs to full
 market rules and one future primary milestone, then stores at most 1,024
 candidates with 128 initial WebSocket books. The unchanged selector ranks fresh
 book competition; the unchanged entry cap is 30. Cheap density remains only a
-head/tail exploration hint.
+head/tail exploration hint. Automatic preparation now excludes early-closing
+markets and resolves milestone uniqueness before its T-5 cutoff.
 
-A real credential-free refresh prepared 1,024 candidates from 4,759 program
-rows and 4,753 matching markets, with 3,228 future milestones inspected. The
-ignored input parses and its prior one-market form has an ignored backup. No bot,
-account signer or mutation endpoint was started. [Build record and boundaries](docs/BUILD_AUTOMATIC_CANDIDATES.md).
-Full suite: 1,406 run / 1,405 passed / one expected Windows privilege skip.
+A pre-fix credential-free refresh prepared 1,024 candidates from 4,759 program
+rows and 4,753 matching markets, with 3,228 future milestones inspected. That
+ignored input used the withdrawn automatic early-close approval and is now
+rejected until the normal initialization refresh replaces it. No bot, account
+signer or mutation endpoint was started. [Build record and boundaries](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+Full suite: 1,412 run / 1,411 passed / one expected Windows privilege skip.
 Existing 30/120-market tracker and admission resource gates pass.
 
 ## D-078 automatic selection integrated and verified — 2026-09-22

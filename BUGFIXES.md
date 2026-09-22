@@ -8,6 +8,25 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — automatic candidate launch blockers and timing authority
+
+- First initialization emitted an unregistered diagnostic event, poisoning the
+  logging health gate before runtime. The event and bounded count fields are now
+  part of the static schema and covered with the real diagnostics writer.
+- A full 128-market seed set was unioned with rotated-in inventory, so one later
+  owner made restart exceed capacity. Durable positions, order exposure and
+  pending fills now take slots first; optional seeds fill only remaining room.
+- Automatic preparation marked every market's early-close rules reviewed even
+  though it only hashed their text. It now excludes early-closing markets, and
+  legacy automatic approval files fail closed until refreshed.
+- The T-5 filter ran before milestone uniqueness, allowing an imminent binding
+  to disappear and a later binding to become the deadline. Uniqueness now runs
+  first and a sole imminent binding receives its own exclusion.
+
+Verification: 62 focused tests passed. Full offline suite: 1,412 run, 1,411
+passed and one expected Windows privilege skip. No bot process, account request,
+order endpoint or live input file was changed.
+
 ## 2026-09-22 — one-market discovery bottleneck
 
 - The reward filter/ranker was connected, but its candidate authority came from

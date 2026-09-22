@@ -23,7 +23,8 @@ and explicitly withdraws the proposed fixed 60-market pool.
   profit claim. Runtime rules/milestone/lifecycle checks, T-5 deadline, fee,
   capital, position, loss, ownership and dispatch gates remain. No live start or
   order is authorized. Refresh is blocked with an existing ledger unless saved
-  shutdown is verified flat.
+  shutdown is verified flat. Automatic preparation excludes early-closing
+  markets; their natural-language conditions require a separate explicit review.
 - **Contract:** [Automatic candidate preparation](docs/BUILD_AUTOMATIC_CANDIDATES.md).
 
 ### D-078 — Connect automatic selection to the original launcher

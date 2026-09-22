@@ -167,8 +167,10 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
         except InvalidData:
             excluded['unsupported_market'] = excluded.get('unsupported_market', 0)+1
             continue
-        bindings = [value for value in primary.get(market.event, ())
-                    if value[2] > now+timedelta(minutes=5)]
+        # Resolve uniqueness across the complete future result before applying
+        # the entry buffer. Otherwise an imminent binding can be discarded and
+        # a later binding incorrectly promoted to the event's risk deadline.
+        bindings = primary.get(market.event, ())
         if len(bindings) != 1:
             key = 'milestone_missing' if not bindings else 'milestone_ambiguous'
             excluded[key] = excluded.get(key, 0)+1
@@ -176,12 +178,20 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
         if not market.active or not market.opens <= now < market.closes:
             excluded['market_inactive'] = excluded.get('market_inactive', 0)+1
             continue
-        milestone_id, kind, _ = bindings[0]
+        milestone_id, kind, risk_at = bindings[0]
+        if risk_at <= now+timedelta(minutes=5):
+            excluded['milestone_imminent'] = excluded.get('milestone_imminent', 0)+1
+            continue
+        # A rules digest proves identity, not the meaning of natural-language
+        # early-close conditions. Automatic preparation therefore cannot issue
+        # an early-close review. A separately reviewed input can still carry
+        # that authority through the existing explicit launch-input path.
+        if market.early:
+            excluded['early_close_unreviewed'] = excluded.get('early_close_unreviewed', 0)+1
+            continue
         review = TimingReview(ticker, market.event, milestone_id, kind, market.rules_hash,
             'automatic-primary-milestone-v1', market.closes,
-            # The approved entry deadline remains T-5 before the exact primary
-            # milestone; runtime lifecycle/metadata changes still revoke entry.
-            early_close_reviewed=True)
+            early_close_reviewed=False)
         eligible.append((-scores[ticker], ticker, market, review))
     eligible.sort(key=lambda row:(row[0], row[1]))
     selected = _select(eligible, min(max_reviews, len(eligible)))

@@ -46,6 +46,7 @@ EVENTS = {
     'mutation_ack': ('INFO', 'execution'), 'mutation_unknown': ('ERROR', 'execution'),
     'mutation_failed': ('ERROR', 'execution'), 'inventory_plan_changed': ('INFO', 'inventory'),
     'selection_inputs_rejected': ('WARNING', 'selection'),
+    'candidate_scope_prepared': ('INFO', 'selection'),
     'incentives_retry': ('WARNING', 'selection'),
     'incentives_exhausted': ('ERROR', 'selection'),
     'incentives_failed': ('ERROR', 'selection'),
@@ -63,7 +64,9 @@ EVENTS = {
     'quota_stopped': ('INFO', 'rest'),
     'quota_rollover_deferred': ('INFO', 'rest'),
 }
-NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count'))
+NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count',
+                     'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
+                     'market_rows', 'milestone_rows'))
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1')),
          'command': frozenset(('close', 'fill', 'stage_fill', 'pending_fills', 'apply_pending', 'observe',

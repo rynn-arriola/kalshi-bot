@@ -1,8 +1,9 @@
 # Active work queue
 
-D-079 removes the one-market launch-input bottleneck. The ignored local input
-now carries a bounded broad current scope and the first explicit initialization
-refreshes it from public sources before any trading authority exists. Do not
+D-079 removes the one-market launch-input bottleneck. The pre-fix ignored local
+input is intentionally rejected because it asserted automatic early-close
+review; the first explicit initialization refreshes a corrected broad scope from
+public sources before any trading authority exists. Do not
 replace final WebSocket competition ranking with reward/target, describe all
 catalog rows as eligible, or refresh candidate authority over a non-flat or
 uncertain existing ledger. Next operational step remains the separately

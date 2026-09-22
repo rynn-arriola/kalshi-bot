@@ -24,11 +24,14 @@ and capital efficiency from fresh books before account/risk/dispatch gates.
 Admission retains owners and rotates only flat, clear subscription scope.
 
 The operator accepted automatic primary-milestone preparation to remove the
-one-market bottleneck. `can_close_early` is accepted under that policy only with
-the unchanged T-5 entry deadline before the exact primary milestone. Current
-rules, lifecycle, active state and milestone binding are rechecked at runtime;
-any conflict blocks entry. This is not a claim that early closure is impossible,
-that a reward will be paid, or that a market is profitable.
+one-market bottleneck. Milestone uniqueness is established before applying the
+T-5 entry buffer, so an imminent binding cannot be discarded in favor of a
+later one. Automatic preparation excludes `can_close_early` markets because a
+rules digest proves identity, not the meaning of natural-language early-close
+conditions. Separately reviewed launch inputs retain the existing explicit
+early-close path. Current rules, lifecycle, active state and milestone binding
+are rechecked at runtime; any conflict blocks entry. This is not a claim that a
+reward will be paid or that a market is profitable.
 
 ## Operation and safety
 
@@ -40,9 +43,13 @@ An existing non-flat/uncertain ledger blocks explicit refresh. The original
 one-market input is backed up once under ignored `backups/`.
 
 The broad scope is bounded independently from the 128-book engineering capacity.
-An uncertain restart still fails closed if protected owners cannot fit; this
-change does not invent recovery authority, hot-reload candidates, start a
-service, or loosen capital, size, position, loss, fee or shutdown limits.
+On restart, durable positions, active-order exposure and pending-fill owners
+take subscription priority; optional discovery seeds fill only the remaining
+capacity. Uncertain account state still blocks entry, but no longer expands one
+known owner into the whole 1,024-market candidate universe. Restart fails closed
+if actual protected owners cannot fit. This change does not invent recovery
+authority, hot-reload candidates, start a service, or loosen capital, size,
+position, loss, fee or shutdown limits.
 
 ## Evidence
 
@@ -52,11 +59,12 @@ rows and 4,753 matching market rows, inspected 3,228 future milestones, prepared
 missing plus 38 ambiguous future-primary bindings. The resulting ignored input
 parses successfully. No account key, bot process or mutation endpoint was used.
 
-Synthetic tests cover exact binding, event-diverse selection, unsupported and
-ambiguous exclusions, duplicate identities, public endpoint scope, candidate
-authority above subscription capacity, and the existing discovery/launcher
-graph. Final suite: `python -B -m unittest discover -s tests -q` — **1,406 run,
-1,405 passed and one expected Windows privilege skip** in 217.976 seconds.
+Synthetic tests cover exact binding, event-diverse selection, unsupported,
+early-close, imminent and ambiguous exclusions, duplicate identities, public
+endpoint scope, candidate authority above subscription capacity, launch-event
+logging, rotated-owner restart and legacy automatic-input rejection. Final
+suite: `python -B -m unittest discover -s tests -q` — **1,412 run, 1,411 passed
+and one expected Windows privilege skip** in 215.358 seconds.
 
 Existing resource gates remain green. Reward tracking at 30/120 markets used
 0.3594/1.4531 CPU seconds with update p99 2.230/2.205 ms and loop p99

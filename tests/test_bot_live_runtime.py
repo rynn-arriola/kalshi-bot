@@ -133,10 +133,28 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         await self.f.writer.reserve_intent(request['client_order_id'], request, self.f.now)
         self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A','B'))
         await self.f.writer.transition_intent(request['client_order_id'], 'SENDING')
-        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A','B','C'))
+        # The ambiguous send remains a protected owner and blocks entry through
+        # portfolio state; it does not require every reviewed candidate book.
+        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), ('A','B'))
         self.session.tickers = frozenset(('A',))
         with self.assertRaises(InvalidData):
             await initial_scope(self.f.writer, LaunchInputs(reviews[:1], None, (0,1)), self.f.now)
+
+    async def test_startup_scope_drops_optional_seed_for_rotated_owner(self):
+        import test_bot_market_inputs as metadata
+        tickers = tuple(f'M{i:03}' for i in range(129))
+        self.session.tickers = frozenset(tickers)
+        self.f.writer.market_capacity = 128
+        reviews = tuple(metadata.review(metadata.market(t)) for t in tickers)
+        inputs = LaunchInputs(reviews, None, (0,1), tickers[:128])
+        request = pair()[0] | {'ticker':tickers[-1]}
+        await self.f.writer.reserve_intent(request['client_order_id'], request, self.f.now)
+        scope = await initial_scope(self.f.writer, inputs, self.f.now)
+        self.assertEqual(len(scope), 128)
+        self.assertIn(tickers[-1], scope)
+        self.assertNotIn(tickers[127], scope)
+        await self.f.writer.transition_intent(request['client_order_id'], 'SENDING')
+        self.assertEqual(await initial_scope(self.f.writer, inputs, self.f.now), scope)
 
     async def test_release_keeps_original_account_age_and_rebases_only_own_audit(self):
         report = self.f.account.current_report(self.f.now)
@@ -321,6 +339,17 @@ class LaunchInputTests(unittest.TestCase):
             document['timing_reviews'][0]['valid_until'] = '2000-01-01T00:00:00Z'
             save_result(path, document)
             with self.assertRaises(InvalidData):
+                LaunchInputs.load(path, datetime.now(timezone.utc))
+
+    def test_legacy_automatic_scope_cannot_claim_early_close_review(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'inputs.json'
+            document = self.document()
+            document['timing_reviews'][0].update(
+                review_reference='automatic-primary-milestone-v1',
+                early_close_reviewed=True)
+            save_result(path, document)
+            with self.assertRaisesRegex(InvalidData, 'incomplete launch scope'):
                 LaunchInputs.load(path, datetime.now(timezone.utc))
 
     def test_atomic_status_contains_last_whole_result(self):

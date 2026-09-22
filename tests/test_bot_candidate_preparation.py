@@ -45,7 +45,7 @@ def milestone(event, name, hours=1):
 class CandidatePreparationTests(unittest.IsolatedAsyncioTestCase):
     async def test_builds_exact_broad_scope_and_diverse_seed(self):
         markets = [{**market('A'), 'event_ticker':'E1', 'exchange_index':2,
-                    'can_close_early':True},
+                    'can_close_early':False},
                    {**market('B'), 'event_ticker':'E1'},
                    {**market('C'), 'event_ticker':'E2'}]
         programs = [program('A','pa',period_reward=3000000),
@@ -56,7 +56,7 @@ class CandidatePreparationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tuple(r.ticker for r in result.reviews), ('A','C'))
         self.assertEqual(result.initial_tickers, ('A','C'))
         self.assertEqual(result.exchange_indices, (0,2))
-        self.assertTrue(all(r.early_close_reviewed for r in result.reviews))
+        self.assertFalse(any(r.early_close_reviewed for r in result.reviews))
         self.assertEqual(result.reviews[0].review_reference, 'automatic-primary-milestone-v1')
         self.assertEqual(result.reviews[0].valid_until, NOW+timedelta(hours=3))
         self.assertEqual({name for name,_ in reads.calls}, {'incentives','markets','milestones'})
@@ -76,6 +76,29 @@ class CandidatePreparationTests(unittest.IsolatedAsyncioTestCase):
                 return ReadResult({'markets':[value,value]},100)
         reads = DuplicateReads([program('A','pa')], [], [milestone('E1','M1')])
         with self.assertRaisesRegex(InvalidData, 'response scope'):
+            await prepare_candidates(reads, now=NOW)
+
+    async def test_automatic_scope_rejects_unreviewed_early_close(self):
+        early = {**market('A'), 'event_ticker':'E1', 'can_close_early':True,
+                 'early_close_condition':'Threshold can be reached before the milestone.'}
+        regular = {**market('B'), 'event_ticker':'E2'}
+        reads = Reads([program('A','pa'),program('B','pb')], [early,regular],
+                      [milestone('E1','M1'), milestone('E2','M2')])
+        result = await prepare_candidates(reads, now=NOW)
+        self.assertEqual(tuple(r.ticker for r in result.reviews), ('B',))
+        self.assertIn(('early_close_unreviewed',1), result.excluded)
+
+    async def test_imminent_binding_is_not_discarded_before_ambiguity_check(self):
+        reads = Reads([program('A','pa')], [{**market('A'),'event_ticker':'E1'}],
+                      [milestone('E1','IMMINENT',hours=.05),
+                       milestone('E1','LATER',hours=2)])
+        with self.assertRaisesRegex(InvalidData, 'no current reward market'):
+            await prepare_candidates(reads, now=NOW)
+
+    async def test_single_imminent_binding_is_excluded_explicitly(self):
+        reads = Reads([program('A','pa')], [{**market('A'),'event_ticker':'E1'}],
+                      [milestone('E1','IMMINENT',hours=.05)])
+        with self.assertRaisesRegex(InvalidData, 'no current reward market'):
             await prepare_candidates(reads, now=NOW)
 
 

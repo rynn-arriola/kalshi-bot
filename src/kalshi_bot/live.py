@@ -71,6 +71,8 @@ class LaunchInputs:
         shards = raw['exchange_indices']
         if (len({row.ticker for row in reviews}) != len(reviews)
                 or any(row.valid_until <= now for row in reviews)
+                or any(row.review_reference == 'automatic-primary-milestone-v1'
+                       and row.early_close_reviewed for row in reviews)
                 or profile.valid_until <= now or type(shards) is not list
                 or not 1 <= len(shards) <= 128 or len(set(shards)) != len(shards)
                 or 0 not in shards):
@@ -148,17 +150,18 @@ async def initial_scope(writer, inputs, now):
     session = writer.live_session
     if session is None or session.tickers != frozenset(inputs.tickers):
         raise InvalidData('launch/session market scope differs')
-    # Restart seeds must retain every durable exposure owner, even if it was
-    # admitted after the previous launch. Unknowns retain the entire reviewed
-    # universe for the existing recovery owner; they never approve new entries.
+    # Restart scope gives every durable owner priority over optional discovery
+    # seeds, including pending fills not yet reflected in portfolio exposure.
+    # Portfolio blockers still block entries; they do not turn all 1,024
+    # reviewed candidates into supposed owners and make recovery impossible.
     view = await writer.portfolio(subaccount=0, now=now)
     protected = {t for t, v in view.positions if v} | {t for t, _ in view.exposure}
-    if view.blockers:
-        protected.update(inputs.tickers)
-    seeds = tuple(sorted(set(inputs.seed_tickers) | protected))
-    if not set(seeds) <= session.tickers or len(seeds) > writer.market_capacity:
+    protected.update(row.fill.ticker for row in await writer.pending_fills(0))
+    if not protected <= session.tickers or len(protected) > writer.market_capacity:
         raise InvalidData('startup owners exceed reviewed subscription scope')
-    return seeds
+    room = writer.market_capacity-len(protected)
+    optional = tuple(t for t in inputs.seed_tickers if t not in protected)[:room]
+    return tuple(sorted(protected | set(optional)))
 
 
 async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,

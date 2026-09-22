@@ -65,6 +65,17 @@ class LoggingTests(unittest.TestCase):
         self.assertTrue(data[1]['utc'].endswith('+00:00'))
         self.assertEqual(log.status()['accepted'], log.status()['written'])
 
+    def test_candidate_preparation_event_is_registered_and_keeps_log_healthy(self):
+        log = self.start()
+        self.assertTrue(log.emit('candidate_scope_prepared', reviewed_markets=1024,
+                                 initial_websocket_markets=128, incentive_rows=4759,
+                                 market_rows=4753, milestone_rows=3228))
+        log.ensure_healthy()
+        log.close()
+        event = next(row for row in rows(self.directory)
+                     if row['event'] == 'candidate_scope_prepared')
+        self.assertEqual(event['context']['reviewed_markets'], 1024)
+
     def test_secrets_and_unknown_objects_are_never_formatted(self):
         class Poison:
             def __str__(self): raise AssertionError('formatted')

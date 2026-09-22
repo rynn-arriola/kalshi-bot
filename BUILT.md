@@ -6,9 +6,12 @@
 primary-milestone preparation, broad candidate authority (1,024), a 128-book
 seed and rewarded-head/stratified-tail exploration. Existing WebSocket book
 competition remains the final rank and existing risk/dispatch limits remain.
-The real ignored scope was prepared without credentials or trading. Full suite:
-1,406 run, 1,405 passed and one expected Windows privilege skip; relevant
-tracker/discovery/admission resource gates pass.
+Early-closing markets are excluded from automatic review, milestone ambiguity is
+checked before the entry buffer, restart subscriptions prioritize durable owners,
+and preparation logging is schema-valid. The pre-fix ignored scope is rejected
+until initialization refreshes it. Full suite: 1,412 run, 1,411 passed and one
+expected Windows privilege skip; relevant tracker/discovery/admission resource
+gates pass.
 
 ## Live-launcher selection integration — 2026-09-22
 

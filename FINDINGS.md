@@ -1,5 +1,21 @@
 # Findings — kalshi-bot
 
+## 114. A rules hash is not an early-close timing review — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: the first automatic preparation revision set
+`early_close_reviewed` for every candidate after hashing its rules. The digest
+could detect later text changes but could not prove what a natural-language
+early-close condition meant. It also filtered imminent milestones before
+checking uniqueness, registered no schema entry for its launch log, and could
+overfill restart subscriptions by unioning 128 seeds with a rotated owner.
+
+Automatic preparation now excludes early-closing markets, resolves milestone
+uniqueness before T-5, logs through a registered bounded event and gives durable
+owners subscription priority over optional seeds. The old ignored automatic
+input is deliberately rejected until initialization refreshes it. Synthetic
+regressions and the 1,412-test offline suite pass; this is safety/operability
+evidence, not profitability or a live-launch result. [Correction record](docs/BUILD_AUTOMATIC_CANDIDATES.md).
+
 ## 113. Ranking existed, but one input ticker made it meaningless — 2026-09-22
 
 VERIFIED CODE/READ-ONLY: the selector already ranks gross hourly reward from
