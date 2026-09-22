@@ -1,11 +1,13 @@
 # Active work queue
 
-Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md).
-Do not repeat the Poly audit or ask again for the accepted hourly/efficiency
-direction. [Incentive discovery/refresh](docs/BUILD_INCENTIVE_DISCOVERY.md) now
-feeds the offline selection attachment through shared bounded reads. Next:
-inventory-safe candidate subscription management, then source-bound entry-pair
-admission/dispatch. Do not rebuild the catalog or add a second REST budget.
+Priority 5 now has D-069's [bounded selection component](docs/BUILD_MARKET_SELECTION.md),
+shared [incentive discovery](docs/BUILD_INCENTIVE_DISCOVERY.md), and D-071's
+[automatic market admission/rotation](docs/BUILD_MARKET_ADMISSION.md). The latter
+owns one-reader-at-a-time joined replacement, exact removal proofs, fresh
+snapshots and bounded metadata/cache handoff. Do not rebuild these components
+or repeat the accepted Poly/hourly-efficiency policy decision. Next: #2,
+source-bound entry-pair dispatch and production order transport, still disabled
+until separate readiness/launch clearance. Do not add a second REST budget.
 Working-order score monitoring still needs reflection evidence, not guessed
 private/public synchronization. Automatic repricing thresholds and live launch
 remain separate decisions. Preserve all inventory/unknown owners during rotation.
@@ -14,8 +16,8 @@ D-070 accepts Poly-style discovery/selection and per-program estimated tracking,
 explicitly removing the proposed fixed 60-market pool. The
 [offline discovery/tracker component](docs/BUILD_REWARD_TRACKER.md) now exists;
 do not rebuild it or treat time-to-$1 estimates as paid cash or exit authority.
-Connect its advisory candidates to inventory-safe subscription admission and
-source-bound entry dispatch next. Production reflection proof and explicit
+Its candidates now reach D-071 subscription admission; source-bound entry
+dispatch remains next. Production reflection proof and explicit
 checkpoint load/flush ownership still need integration; unknown remains unknown.
 New category filters, payout gates and numerical rotation thresholds require
 their own decision, not an automatic copy of Poly configuration.
@@ -44,7 +46,7 @@ their own reconciliation; ordinary review/empty history never clears them.
 Only new schema-5 synthetic ledgers were exercised; no migration or account
 request is authorized by this build.
 
-Updated 2026-09-21. Follow accepted decisions through D-070 and `AI_OPERATOR.md`.
+Updated 2026-09-21. Follow accepted decisions through D-071 and `AI_OPERATOR.md`.
 Active folder: `C:/Users/rynna/Bots/kalshi`; do not rebuild the old OneDrive copy.
 Native Windows only; no further WSL mirroring or execution.
 Follow D-043 for the repository publication: this folder now tracks the canonical

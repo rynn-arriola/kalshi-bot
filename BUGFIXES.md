@@ -10,6 +10,19 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ## 2026-09-21 — development components, no live account use
 
+### Admission: cancellation during final inventory proof
+
+**Review finding in the new component.** The handoff checked request ownership
+before awaiting final inventory reads, but a caller could cancel while those
+reads completed. Fresh account proof alone did not prove the request still existed.
+**Fix.** Recheck the exact pending request and its result after those awaits,
+before the synchronous scope commit. Serialize the entire discovery/handoff
+cycle, not just the pending-reader phase. Join reader teardown through repeated
+cancellation; preserve connection failures and metadata retry tombstones.
+**Verification.** Dedicated cancellation-race test fails when the final ownership
+guard is removed in memory. Scope/timer/retry/metadata tests cover the companion
+boundaries. No live defect claimed; [build record](docs/BUILD_MARKET_ADMISSION.md).
+
 ### Reward estimates: source gaps, persistence races and telemetry isolation
 
 **Review findings in the new component.** Equal-valued replacement observations

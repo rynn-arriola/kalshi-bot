@@ -1,5 +1,16 @@
 # What exists
 
+## Automatic market admission/rotation — 2026-09-21
+
+[Build record](docs/BUILD_MARKET_ADMISSION.md): `admission.py` connects discovery
+to supervised book readers and the existing fresh-book selector. Runtime owns
+its task/shutdown; per-reader failure budgets survive planned rotation. Engine
+scope replacement fences old generations, scheduler removal prunes old timers,
+and idle metadata rebind preserves bounded retry/exhaustion tombstones. Tests
+cover actual reader handoff, races, protected inventory and order-slot limits.
+One shard temporarily loses book proof during replacement; account/lifecycle
+readers and the other shard remain independent. No order dispatch or live launch.
+
 ## Poly-style discovery and reward tracker — 2026-09-21
 
 [Build record](docs/BUILD_REWARD_TRACKER.md): `discovery_candidates.py` provides

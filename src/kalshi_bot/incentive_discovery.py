@@ -76,6 +76,8 @@ class IncentiveDiscovery:
             if not r.engine.stopped:
                 r.engine.dirty.mark(ticker)
         r.engine.wake.set()
+        if r.admission is not None:
+            r.admission.request()
 
     def _revoke(self):
         if self.catalog is not None:

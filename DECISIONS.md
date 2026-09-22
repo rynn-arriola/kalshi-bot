@@ -1095,6 +1095,17 @@ and explicitly withdraws the proposed fixed 60-market pool.
   approved. Track estimates as advisory, never paid cash or entry authority.
 - **Implementation:** [Tracker and discovery adaptation](docs/BUILD_REWARD_TRACKER.md).
 
+### D-071 — Connect automatic market admission and rotation
+
+- **Status:** ACCEPTED offline implementation, 2026-09-21.
+- **Decision owner:** Operator: "Ok do number 1", referring to automatic market
+  admission/rotation in the pending-work list.
+- **Scope:** Connect D-070 candidates to bounded book subscriptions and fresh
+  D-069 ranking under existing order/capital limits. Never remove inventory,
+  working orders or unresolved activity; retain uncertain scope. No fixed pool,
+  new category filter, repricing policy, live order transport or bot operation.
+- **Implementation contract:** [Admission and rotation](docs/BUILD_MARKET_ADMISSION.md).
+
 ### Earlier concentration question — superseded by D-070
 
 - **Status:** Historical discussion; D-070 above is the current build direction.

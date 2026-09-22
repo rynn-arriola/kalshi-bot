@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-071's [automatic admission owner](BUILD_MARKET_ADMISSION.md) now connects those
+candidate plans to joined book-reader replacement. One shard changes at a time;
+account/lifecycle connections remain independent. Exact flat/clear proof is
+rechecked after teardown; new book generations require snapshots. Metadata
+scope changes only when existing work is idle, retaining retry exhaustion.
+This is subscription authority in an explicit offline runtime attachment,
+not order authority or production launch clearance.
+
 D-070 adds [Poly-style candidate discovery and reward telemetry](BUILD_REWARD_TRACKER.md):
 protected owners plus bounded ranked-head/rotating-tail exploration, no fixed
 market pool. Per-program sampled estimates reuse existing actual-order sources;
@@ -11,8 +19,9 @@ D-069's [advisory selection component](BUILD_MARKET_SELECTION.md) reuses existin
 runtime/management observations, coalesced evaluations and risk primitives.
 Selection never becomes a second mutation owner. [Bounded incentive discovery](BUILD_INCENTIVE_DISCOVERY.md)
 now supplies immutable, expiring catalog observations through the shared REST
-budget. Subscription rotation, verified resting-order reflection and entry-pair
-dispatch remain explicit work, not authority conferred by ranking or benchmarks.
+budget. D-071 supplies subscription rotation above; verified resting-order
+reflection and entry-pair dispatch remain explicit work, not authority conferred
+by ranking or benchmarks.
 
 Priority-3 [opening-account accounting design](DESIGN_OPENING_ACCOUNT_ACCOUNTING.md)
 now has [D-068 operational release](BUILD_ACCOUNT_RECONCILIATION.md) on top of

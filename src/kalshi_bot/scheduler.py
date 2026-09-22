@@ -28,6 +28,14 @@ class DirtyScheduler:
             self._dirty.add(ticker)
             self._queue.append(ticker)
 
+    def unregister(self, ticker: str):
+        self.managed.discard(ticker)
+        self._dirty.discard(ticker)
+        self._due.pop(ticker, None)
+        self._queue = deque(t for t in self._queue if t != ticker)
+        self._heap = [(at, t) for at, t in self._heap if t != ticker]
+        heapq.heapify(self._heap)
+
     def schedule(self, ticker: str, monotonic_deadline: float):
         if ticker not in self.managed or not math.isfinite(monotonic_deadline):
             raise InvalidData("invalid deadline")

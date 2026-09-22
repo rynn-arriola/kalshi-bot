@@ -99,6 +99,40 @@ class EventEngine:
         self.book_failures[name] += 1
         self.book_lost(name)
 
+    def replace_book_scope(self, name, tickers, *, capacity):
+        """Only after the reader is joined and its owner proves removals clear.
+
+        Synchronous control-plane commit. Never call from a market evaluation.
+        The caller supplies ownership proof; this primitive supplies epoch fences.
+        """
+        self._check()
+        if self.running_step:
+            raise InvalidData('scope replacement during engine dispatch')
+        old = self.shards[name]
+        replacement = BookConnection(tuple(tickers), max_levels=old.max_levels)
+        other = set(self.market_shard)-old.tickers
+        if other & replacement.tickers or len(other | replacement.tickers) > capacity:
+            raise InvalidData('replacement scope exceeds unique capacity')
+        integer(capacity,1,1024)
+        self.dirty.capacity = self.deadlines.capacity = capacity
+        for ticker in old.tickers:
+            self.invalidate(ticker)
+            self.book_received.pop(ticker,None)
+        for ticker in old.tickers-replacement.tickers:
+            self.market_shard.pop(ticker)
+            self.dirty.unregister(ticker)
+            self.deadlines.unregister(ticker)
+        for ticker in replacement.tickers:
+            self.market_shard[ticker] = name
+            self.dirty.register(ticker)
+            self.deadlines.register(ticker)
+        # Fence old deliveries before the next begin_book_epoch call as well.
+        replacement.generation = old.generation+1
+        self.shards[name] = replacement
+        self.public[name].clear()
+        self.public_bytes[name] = 0
+        self.wake.set()
+
     @staticmethod
     def _freeze(event):
         if not isinstance(event, dict):

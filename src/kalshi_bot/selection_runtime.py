@@ -106,6 +106,8 @@ class RuntimeSelection:
                 and not r.writer.failed)
 
     def current(self, ticker):
+        if self.runtime.admission is not None and self.runtime.admission.transitioning:
+            return False
         proof = self._proofs.get(ticker)
         if proof is None or not self._available():
             return False
@@ -165,6 +167,8 @@ class RuntimeSelection:
         every tick: it mutates writer risk state and revokes account leases.
         """
         r = self.runtime
+        if r.admission is not None and r.admission.transitioning:
+            return SelectionReport((),(),(),('subscription_handoff_in_progress',))
         report = r.account.current_report(r.now())
         if not self._available() or report is None:
             return SelectionReport((), (), (), ('selection_sources_unavailable',))

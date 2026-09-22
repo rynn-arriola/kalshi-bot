@@ -256,6 +256,22 @@ class ExitInputService:
             raise InvalidData('one metadata scheduler listener required')
         self.listener = callback
 
+    def rebind_scope(self, tickers):
+        """Control-plane only, with all metadata workers/dependencies idle."""
+        tickers = frozenset(identity(t) for t in tickers)
+        if (self.closed or not 1 <= len(tickers) <= 1024 or self.pending
+                or self.retiring or self.refreshing):
+            raise InvalidData('metadata scope replacement requires idle bounded service')
+        removed = self.tickers-tickers
+        for ticker in removed:
+            self._clear_terms(ticker)
+            self.reviews.pop(ticker,None)
+        self.tickers = tickers
+        for event in tuple(self.event_markets):
+            self.event_markets[event].difference_update(removed)
+            if not self.event_markets[event]: self.event_markets.pop(event)
+        self._prune_dependencies()
+
     def _notify(self, kind, ticker=None):
         if self.listener is not None:
             self.listener(kind, ticker)

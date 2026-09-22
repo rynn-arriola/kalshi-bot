@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 105. Market rotation must retain ownership through reader teardown — 2026-09-21
+
+VERIFIED CODE/OFFLINE: candidate ranking now reaches actual runtime subscription
+scope through a joined book-reader replacement. Account/catalog/writer evidence
+is rechecked after teardown; removal requires exact flat/clear inventory, not a
+zero aggregate balance or missing cached plan. New scope must resnapshot before
+ranking. A canceled request is rechecked after final writer awaits to prevent
+late commits. The in-memory guard reversal reproduces that race.
+MEASURED: 30/120-market scope commits have p99 1.057/1.546 ms in ten synthetic
+cycles; not reader/venue latency. [Workload, tests and limits](docs/BUILD_MARKET_ADMISSION.md).
+Live transport activation, entry dispatch and readiness are separate work.
+
 ## 104. Qualifying time is not a guaranteed dollar — 2026-09-21
 
 VERIFIED CODE/OFFLINE: Poly uses bounded detailed discovery, refreshed cached

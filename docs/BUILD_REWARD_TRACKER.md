@@ -105,9 +105,9 @@ file and accesses no network. No venue/account call, bot operation or risk chang
 
 ## Remaining integration, not hidden completion claims
 
-- Candidate results are advisory. The subscription owner still needs the
-  flat/clear removal, protected-scope and fresh admission handoff; no automatic
-  rotation/cancellation or new repricing threshold is enabled here.
+- D-071 subsequently connects candidate results to the
+  [flat/clear subscription handoff](BUILD_MARKET_ADMISSION.md). The tracker itself
+  remains advisory; no reward-chasing cancellation or new repricing threshold.
 - Production order reflection is unverified. Only explicit fixture injection
   allows positive runtime estimates. Account ACK or aggregate matching quantity
   is insufficient; never label fixture estimates as actual earnings.

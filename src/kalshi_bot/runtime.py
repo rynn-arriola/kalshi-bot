@@ -87,6 +87,7 @@ class RecoveryRuntime:
         self.account_subscribed = False
         self.reader_states = {s.name: "not_started" for s in self.specs}
         self.connection_attempts = {s.name: 0 for s in self.specs}
+        self.reader_failures = {s.name: 0 for s in self.specs}
         self.recovery_state = "not_started"
         self.recovery_attempts = 0
         self.recovery_passes = 0
@@ -102,6 +103,7 @@ class RecoveryRuntime:
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
+        self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
         self._epoch_fills = 0
@@ -173,6 +175,11 @@ class RecoveryRuntime:
         from .reward_runtime import RuntimeRewards
         self.rewards = RuntimeRewards(self,scope=scope,offline_fixture=offline_fixture)
         return self.rewards
+
+    def attach_admission(self, *, offline_fixture=False):
+        from .admission import MarketAdmission
+        self.admission = MarketAdmission(self,offline_fixture=offline_fixture)
+        return self.admission
 
     def request_dispatch(self, ticker, priority):
         if self.dispatch_supervisor is None:
@@ -407,8 +414,8 @@ class RecoveryRuntime:
             await self.lifecycle_handler(event)
         return True
 
-    async def _connection(self, spec):
-        for attempt in range(self.attempt_limit):
+    async def _connection(self, spec, *, attempt_start=0):
+        for attempt in range(attempt_start,self.attempt_limit):
             if self.stop_requested.is_set() or self.writer.failed or self.engine.failed:
                 return
             self.connection_attempts[spec.name] += 1
@@ -591,6 +598,7 @@ class RecoveryRuntime:
                 # failure is permanent for this runtime and cannot be retried away.
                 self.reader_states[spec.name] = "disconnected"
                 reader_error = True
+                self.reader_failures[spec.name] = attempt+1
                 self.diagnostics.emit('reader_failed', error=exc, stream=spec.name,
                                       generation=generation, attempt=attempt+1)
             finally:
@@ -757,6 +765,8 @@ class RecoveryRuntime:
                 attempt += 1
 
     def stop(self):
+        if self.admission is not None:
+            self.admission.stop()
         if self.incentives is not None:
             self.incentives.stop()
         if self.dispatch_supervisor is not None:
@@ -816,6 +826,7 @@ class RecoveryRuntime:
         tasks = []
         dispatch_task = None
         incentive_task = None
+        admission_task = None
         primary_error = None
         try:
             await self._load_continuity_history()
@@ -829,12 +840,17 @@ class RecoveryRuntime:
             if self.incentives is not None:
                 incentive_task = asyncio.create_task(self.incentives.run(), name='kalshi-incentives')
                 tasks.append(incentive_task)
+            if self.admission is not None:
+                admission_task = asyncio.create_task(self.admission.run(),name='kalshi-admission')
+                tasks.append(admission_task)
             if self.quota_supervisor is not None:
                 tasks.append(asyncio.create_task(self.quota_supervisor.run(), name='kalshi-quota'))
             if self.dispatch_supervisor is not None:
                 dispatch_task = asyncio.create_task(self.dispatch_supervisor.run(), name='kalshi-dispatch')
                 tasks.append(dispatch_task)
-            tasks.extend(asyncio.create_task(self._connection(spec)) for spec in self.specs)
+            tasks.extend(asyncio.create_task(self.admission.book_loop(spec)
+                if self.admission is not None and spec.name in self.engine.shards
+                else self._connection(spec)) for spec in self.specs)
             stop = asyncio.create_task(self.stop_requested.wait())
             tasks.append(stop)
             # Reader exhaustion returns normally; engine/recovery faults stop peers.
@@ -851,6 +867,8 @@ class RecoveryRuntime:
                             raise InvalidData('dispatch service ended without runtime stop')
                         if task is incentive_task and not self.stop_requested.is_set():
                             raise InvalidData('incentive service ended without runtime stop')
+                        if task is admission_task and not self.stop_requested.is_set():
+                            raise InvalidData('admission service ended without runtime stop')
                     if task is stop or self.engine.failed or self.writer.failed:
                         self.stop_requested.set()
                 if self.stop_requested.is_set():
@@ -910,6 +928,7 @@ class RecoveryRuntime:
             selection=self.selection.status() if self.selection is not None else None,
             incentives=self.incentives.status() if self.incentives is not None else None,
             rewards=self.rewards.status() if self.rewards is not None else None,
+            admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
     def verification_status(self):

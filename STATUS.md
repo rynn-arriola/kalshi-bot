@@ -1,5 +1,23 @@
 # Current status
 
+## D-071 automatic market admission/rotation — 2026-09-21
+
+[Implemented offline](docs/BUILD_MARKET_ADMISSION.md): one supervised admission
+service now connects candidates to real runtime book-scope replacement and fresh
+ranking. It joins one old reader, rechecks exact flat/clear ownership, changes
+bounded scope and requires new snapshots. Account/lifecycle readers are not
+restarted. Inventory, orders, unresolved exits/fills and uncertain scope remain
+protected. Order/cash limits still belong to the existing selector/writer.
+
+31 focused tests and 30/120-market scope-commit resource checks pass. Review
+closed a late-commit cancellation race with a failing in-memory negative control.
+Final full suite: 1,327 run, 1,326 passed, one expected Windows privilege skip.
+Diff/documentation checks pass; detailed scope and evidence are in the build record.
+No credentials, venue/account request, live order, bot operation or risk change.
+Live execution remains disabled. Next: source-bound entry-pair dispatch and
+production order transport (#2); reward reflection/checkpoint lifecycle and
+remaining supervisor/readiness work are separate queued milestones.
+
 ## D-070 Poly-style discovery and per-program estimates — 2026-09-21
 
 [Implemented offline](docs/BUILD_REWARD_TRACKER.md): bounded ranked-head/rotating-tail

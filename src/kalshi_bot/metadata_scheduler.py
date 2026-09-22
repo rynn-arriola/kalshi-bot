@@ -28,10 +28,42 @@ class MetadataScheduler:
         self.wake = asyncio.Event()
         self.running = self.used = self.stopping = False
         self.last_clock = None
+        self.retired = {}  # Bounded retry tombstones; rotation cannot reset exhaustion.
         self.quota = getattr(service.reads, 'quota', None)
         if self.quota is not None:
             self.quota.listen(self.wake.set)
         service.listen(self._signal)
+
+    def can_rebind(self, tickers):
+        removed = self.service.tickers-set(tickers)
+        retain = set(self.retired) | {t for t in removed if t in self.failures or t in self.exhausted}
+        return (not self.stopping and not self.service.closed and not self.active
+                and not self.service.pending and not self.service.retiring
+                and not self.service.refreshing and len(retain) <= 1024)
+
+    def rebind_scope(self, tickers):
+        if not self.can_rebind(tickers):
+            raise InvalidData('metadata scope replacement deferred')
+        old = self.service.tickers
+        self.service.rebind_scope(tickers)
+        for ticker in old-self.service.tickers:
+            if ticker in self.failures or ticker in self.exhausted:
+                self.retired[ticker] = (self.failures.get(ticker,0),ticker in self.exhausted,
+                                        self.not_before.get(ticker,0))
+            for mapping in (self.due,self.ready,self.failures,self.not_before): mapping.pop(ticker,None)
+            self.dirty.discard(ticker)
+            self.exhausted.discard(ticker)
+        self.heap = [(at,serial,t) for at,serial,t in self.heap if t in self.service.tickers]
+        heapq.heapify(self.heap)
+        for ticker in self.service.tickers-old:
+            prior = self.retired.pop(ticker,None)
+            if prior is not None:
+                failures,exhausted,not_before = prior
+                self.failures[ticker] = failures
+                self.not_before[ticker] = not_before
+                if exhausted: self.exhausted.add(ticker)
+            self.request(ticker)
+        self.wake.set()
 
     def _signal(self, kind, ticker):
         if kind == 'disconnected':
