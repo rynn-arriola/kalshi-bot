@@ -5,17 +5,18 @@ does not load credentials, retry writes, infer rejection from timeouts, or
 create live authority. Tests use an injected wire with ``offline_fixture=True``.
 """
 import asyncio
+from dataclasses import dataclass, field
 import json
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-from .execution import validate_entry_pair, validate_request
+from .execution import batch_acknowledgement, validate_entry_pair, validate_request
 from .mutation_outcomes import MutationHTTPFailure
 from .rest import WireResponse, decode
 from .transport import MutationSigner, REST_BASE
-from .values import InvalidData, integer
+from .values import InvalidData, identity, integer
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -49,10 +50,66 @@ def mutation_wire(url, method, headers, body, max_bytes, timeout):
                 return WireResponse(response.status, bytes(payload))
 
 
+def batch_scope(requests):
+    validate_entry_pair(requests)
+    encoded = json.dumps(sorted(requests, key=lambda row: row['client_order_id']),
+                         sort_keys=True, separators=(',', ':'), allow_nan=False)
+    import hashlib
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+@dataclass
 class MutationActivation:
-    """Reserved launch capability; this execution-disabled build issues none."""
-    def __init__(self):
-        raise InvalidData('mutation activation unavailable')
+    """Single-use, exact-scope capability for the bounded live canary only."""
+    run_id: str | None = None
+    ticker: str | None = None
+    subaccount: int | None = None
+    exchange_index: int | None = None
+    client_order_ids: frozenset[str] = field(default_factory=frozenset)
+    batch_digest: str | None = None
+    _entry_used: bool = field(default=False, init=False, repr=False)
+    _order_ids: set[str] = field(default_factory=set, init=False, repr=False)
+
+    def __post_init__(self):
+        if None in (self.run_id, self.ticker, self.subaccount, self.exchange_index,
+                    self.batch_digest):
+            raise InvalidData('mutation activation requires exact canary scope')
+        identity(self.run_id); identity(self.ticker)
+        integer(self.subaccount, 0, 63); integer(self.exchange_index, 0, 2**31-1)
+        if (type(self.client_order_ids) is not frozenset
+                or len(self.client_order_ids) != 2):
+            raise InvalidData('canary activation requires exactly two client orders')
+        for value in self.client_order_ids:
+            identity(value)
+        if (not isinstance(self.batch_digest, str) or len(self.batch_digest) != 64
+                or any(c not in '0123456789abcdef' for c in self.batch_digest)):
+            raise InvalidData('canary batch digest required')
+
+    def authorize_batch(self, requests):
+        if self._entry_used:
+            raise InvalidData('canary entry capability already consumed')
+        validate_entry_pair(requests)
+        if ({row['ticker'] for row in requests} != {self.ticker}
+                or {row['subaccount'] for row in requests} != {self.subaccount}
+                or {row['exchange_index'] for row in requests} != {self.exchange_index}
+                or {row['client_order_id'] for row in requests} != self.client_order_ids
+                or batch_scope(requests) != self.batch_digest
+                or any(row['count'] != '10' or row['post_only'] is not True
+                       or row['reduce_only'] is not False for row in requests)):
+            raise InvalidData('batch is outside canary activation scope')
+        self._entry_used = True
+
+    def record_outcomes(self, outcomes):
+        for row in outcomes:
+            if row['state'] == 'ack':
+                self._order_ids.add(identity(row['order_id']))
+
+    def authorize_cancel(self, request):
+        if (request['subaccount'] != self.subaccount
+                or request['exchange_index'] != self.exchange_index
+                or request['market_ticker'] != self.ticker
+                or request['order_id'] not in self._order_ids):
+            raise InvalidData('cancel is outside canary activation scope')
 
 
 class OrderMutationTransport:
@@ -70,6 +127,7 @@ class OrderMutationTransport:
         self.signer, self.wire = signer, wire
         self.max_bytes, self.timeout = max_bytes, timeout
         self.offline_fixture = offline_fixture
+        self.activation = activation
 
     @staticmethod
     def _body(request):
@@ -96,6 +154,10 @@ class OrderMutationTransport:
 
     async def __call__(self, kind, request):
         validate_request(kind, request)
+        if not self.offline_fixture:
+            if kind == 'create':
+                raise InvalidData('live canary requires one exact batch create')
+            self.activation.authorize_cancel(request)
         if kind == 'create':
             return await self._send('POST', '/portfolio/events/orders',
                                     self._body(request), 201)
@@ -107,10 +169,15 @@ class OrderMutationTransport:
 
     async def batch(self, requests):
         validate_entry_pair(requests)
+        if not self.offline_fixture:
+            self.activation.authorize_batch(requests)
         # Batch writes are unscoped for quota accounting even though every leg
         # retains an explicit exchange_index in its immutable request.
-        return await self._send('POST', '/portfolio/events/orders/batched',
-                                self._body({'orders': list(requests)}), 201)
+        response = await self._send('POST', '/portfolio/events/orders/batched',
+                                    self._body({'orders': list(requests)}), 201)
+        if not self.offline_fixture:
+            self.activation.record_outcomes(batch_acknowledgement(requests, response))
+        return response
 
     def __repr__(self):
         return 'OrderMutationTransport(<redacted>, live_ready=False)'

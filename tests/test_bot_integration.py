@@ -316,16 +316,23 @@ class RestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.query, (('type', 'liquidity'),))
         self.assertTrue(result.exhausted)
 
-    async def test_cash_history_requires_explicit_terminal_cursor(self):
+    async def test_cash_history_accepts_documented_short_terminal_omission_only(self):
         class Signer:
             def headers(self, *_):
                 return {}
-        for name, field in (('settlements', 'settlements'),
-                            ('subaccount_transfers', 'transfers'),
+        client = self.client(lambda *_: wire({'settlements': []}), signer=Signer())
+        with self.assertRaisesRegex(InvalidData, 'cursor missing'):
+            await client.collect('settlements', reason='cash')
+        for name, field in (('subaccount_transfers', 'transfers'),
                             ('intra_exchange_transfers', 'transfers'),
                             ('deposits', 'deposits'), ('withdrawals', 'withdrawals')):
             with self.subTest(name=name):
                 client = self.client(lambda *_, key=field: wire({key: []}),
+                                     signer=Signer())
+                result = await client.collect(name, reason='cash')
+                self.assertTrue(result.exhausted)
+                self.assertEqual(result.rows, ())
+                client = self.client(lambda *_, key=field: wire({key: [{}]*100}),
                                      signer=Signer())
                 with self.assertRaisesRegex(InvalidData, 'cursor missing'):
                     await client.collect(name, reason='cash')

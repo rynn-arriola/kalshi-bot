@@ -8,6 +8,17 @@ bug that goes unrecorded becomes a "fact" in FINDINGS.
 
 ---
 
+## 2026-09-22 — terminal cash-history cursors
+
+### Valid terminal cash pages were rejected as incomplete
+
+**Symptom.** Fresh deposit, withdrawal, subaccount-transfer and intra-exchange
+transfer reads returned a short final page without a `cursor`, while the client
+required the field on every page. **Fix.** Only those four documented cash
+endpoints may omit a cursor, and only when the returned page is shorter than the
+requested limit. Full pages and all other account histories remain strict.
+Focused regressions and the full 1,367-test suite pass.
+
 ## 2026-09-22 — S2B restriction-transfer ordering
 
 ### Stop and coalesced-pulse races could interrupt terminal fence transfer

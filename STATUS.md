@@ -1,5 +1,21 @@
 # Current status
 
+## D-076 minimal live profitability canary — 2026-09-22
+
+[Implemented and verified](docs/BUILD_LIVE_CANARY.md): a separate one-market
+canary can prepare one fresh, exact two-sided post-only size-10 quote and monitor
+it for at most six hours. It requires a flat account, current eligible program,
+fixed book/rules, an estimated $1 minimum and an exact run-ID confirmation. The
+single-use mutation capability is bound to the full two-order request digest;
+first fill or planned end triggers cancellation of acknowledged orders.
+
+Fresh read-only evidence found $500.4268 cash, zero positions/orders and one
+same-day candidate with $9.60 maximum combined cost, $7.10 maximum one-sided
+loss and $1.49 estimated reward. That preview expired; **no live order was
+submitted**. Final suite: 1,367 passed and one expected Windows privilege skip.
+Next: obtain explicit live-canary submission authority, generate a fresh plan,
+run it, then reconcile actual reward, fees, settlement and net P&L.
+
 ## D-075 offline supervised runtime/recovery fence — 2026-09-22
 
 [Implemented and verified](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md): the fixed

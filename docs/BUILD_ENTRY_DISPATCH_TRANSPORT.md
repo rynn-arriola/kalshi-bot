@@ -35,9 +35,11 @@ The bounded V2 transport supports:
 
 It follows no redirects or proxies, limits response bytes/time, emits numeric
 HTTP status only, and never logs response bodies. `MutationSigner` signs only
-those exact order operations. The production wire is present, but the build
-issues no `MutationActivation`; normal and offline paths therefore cannot open
-live authority. Tests inject a non-network wire and ephemeral RSA key.
+those exact order operations. The production wire remains unavailable to the
+autonomous runtime. D-076 now issues only a one-use canary
+`MutationActivation` bound to an exact full batch digest, ticker, account route
+and client IDs; normal runtime and offline paths still cannot open live
+authority. Tests inject a non-network wire and ephemeral RSA key.
 
 ## Primary contract evidence
 

@@ -31,11 +31,13 @@ class Endpoint:
     authenticated: bool = True
     rows: str | None = None
     cursor: str = "cursor"
+    terminal_cursor_optional: bool = False
 
 
-def endpoint(path, fields, reasons, authenticated=True, rows=None, cursor="cursor"):
+def endpoint(path, fields, reasons, authenticated=True, rows=None, cursor="cursor",
+             terminal_cursor_optional=False):
     return Endpoint(path, frozenset(fields.split()), frozenset(reasons.split()),
-                    authenticated, rows, cursor)
+                    authenticated, rows, cursor, terminal_cursor_optional)
 
 
 ENDPOINTS = {
@@ -58,19 +60,23 @@ ENDPOINTS = {
                             "limit cursor ticker event_ticker min_ts max_ts subaccount",
                             "bootstrap reconcile cash", rows="settlements"),
     "subaccount_transfers": endpoint("/portfolio/subaccounts/transfers", "limit cursor",
-                                     "bootstrap reconcile cash", rows="transfers"),
+                                     "bootstrap reconcile cash", rows="transfers",
+                                     terminal_cursor_optional=True),
     "intra_exchange_transfers": endpoint("/portfolio/intra_exchange_instance_transfers",
                                          "limit cursor", "bootstrap reconcile cash",
-                                         rows="transfers"),
+                                         rows="transfers", terminal_cursor_optional=True),
     "deposits": endpoint("/portfolio/deposits", "limit cursor",
-                         "bootstrap reconcile cash", rows="deposits"),
+                         "bootstrap reconcile cash", rows="deposits",
+                         terminal_cursor_optional=True),
     "withdrawals": endpoint("/portfolio/withdrawals", "limit cursor",
-                            "bootstrap reconcile cash", rows="withdrawals"),
+                            "bootstrap reconcile cash", rows="withdrawals",
+                            terminal_cursor_optional=True),
     "limits": endpoint("/account/limits", "", "budget"),
     "costs": endpoint("/account/endpoint_costs", "", "budget", False),
     "incentives": endpoint("/incentive_programs", "status type incentive_description limit cursor",
                            "incentives", False, "incentive_programs", "next_cursor"),
     "market": endpoint("/markets/{ticker}", "ticker", "metadata", False),
+    "book": endpoint("/markets/{ticker}/orderbook", "ticker depth", "canary", False),
     "event": endpoint("/events/{event_ticker}", "event_ticker", "metadata", False),
     "series": endpoint("/series/{series_ticker}", "series_ticker", "metadata", False),
     "milestone": endpoint("/milestones/{milestone_id}", "milestone_id", "metadata", False),
@@ -85,7 +91,7 @@ def request_path(name: str, params: dict, reason: str) -> tuple[Endpoint, str]:
         raise InvalidData("unsupported read, parameters or fallback reason")
     query = dict(params)
     path = spec.path
-    scoped = {'market': 'ticker', 'order': 'order_id', 'event': 'event_ticker',
+    scoped = {'market': 'ticker', 'book': 'ticker', 'order': 'order_id', 'event': 'event_ticker',
               'series': 'series_ticker', 'milestone': 'milestone_id'}
     if name in scoped:
         key = scoped[name]
@@ -94,9 +100,9 @@ def request_path(name: str, params: dict, reason: str) -> tuple[Endpoint, str]:
             raise InvalidData("invalid scoped read path")
         path = path.replace("{"+key+"}", value)
     for key, value in query.items():
-        if key in {"limit", "min_ts", "max_ts", "subaccount", "exchange_index"}:
-            ceiling = 1000 if key == "limit" else 2**63-1
-            integer(value, 1 if key == "limit" else 0, ceiling)
+        if key in {"limit", "depth", "min_ts", "max_ts", "subaccount", "exchange_index"}:
+            ceiling = 1000 if key in {"limit", "depth"} else 2**63-1
+            integer(value, 1 if key in {"limit", "depth"} else 0, ceiling)
         elif not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value):
             raise InvalidData("invalid query value")
     if "min_ts" in query and "max_ts" in query and query["min_ts"] > query["max_ts"]:
@@ -682,11 +688,14 @@ class RestReads:
             if self.budget.clock() > deadline:
                 raise InvalidData("enumeration deadline exhausted; result is incomplete")
             data = result.payload.get(spec.rows)
-            if name in {"orders", "positions", "historical_orders", "fills", "historical_fills",
-                        "settlements", "subaccount_transfers", "intra_exchange_transfers",
-                        "deposits", "withdrawals", "event_fees"} and spec.cursor not in result.payload:
+            cursor_missing = spec.cursor not in result.payload
+            if (name in {"orders", "positions", "historical_orders", "fills", "historical_fills",
+                         "settlements", "subaccount_transfers", "intra_exchange_transfers",
+                         "deposits", "withdrawals", "event_fees"} and cursor_missing
+                    and not (spec.terminal_cursor_optional and isinstance(data, list)
+                             and len(data) < params["limit"])):
                 raise InvalidData("required pagination cursor missing; result is incomplete")
-            cursor = result.payload.get(spec.cursor, "")  # Optional only on some endpoints.
+            cursor = result.payload.get(spec.cursor, "")  # Some terminal cash pages omit it.
             if (not isinstance(data, list) or any(not isinstance(row, dict) for row in data)
                     or not isinstance(cursor, str) or len(cursor) > 2048):
                 raise InvalidData("invalid page rows or cursor")

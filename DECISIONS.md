@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-076 — Prioritize a minimal live profitability canary
+
+- **Status:** ACCEPTED build/prepare scope, 2026-09-22; submission pending.
+- **Decision owner:** Operator: focus on resting orders and gathering live data
+  today; defer additional production hardening until profitability is known.
+- **Decision:** Build a one-market canary using the existing Kalshi selection
+  arithmetic: two post-only 10-contract orders, at most six hours, estimated
+  reward at least $1, cancel on first observed fill or planned end, and preserve
+  actual fill/fee/settlement/reward evidence.
+- **Risk boundary:** One entry batch only; maximum net position is 10 contracts,
+  no market taking/repricing/rotation and no autonomous runtime activation.
+  Preparation is read-only. The exact live submission still requires explicit
+  operator confirmation after a fresh preview.
+
 ## Accepted decisions
 
 ### D-001 — Measure before building

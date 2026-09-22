@@ -1,5 +1,15 @@
 # Findings — kalshi-bot
 
+## 110. A bounded same-day canary can clear the estimated $1 gate — 2026-09-22
+
+VERIFIED ACCOUNT READ: primary cash was $500.4268 with zero nonzero positions
+and zero resting orders. MEASURED LIVE PUBLIC SNAPSHOT: the strict short-market
+scan rejected current sub-$1 opportunities, then a six-hour bounded scan found
+a same-day gas-price program quoting YES $0.71 / NO $0.25. At size 10 its static
+current-book estimate was $1.49, maximum combined entry cost $9.60 and maximum
+one-sided contract loss $7.10. The plan expired without submission. These are
+selection estimates, not paid rewards, realized P&L or profitability evidence.
+
 ## 109. Runtime restart may transfer restrictions, never authority — 2026-09-22
 
 VERIFIED CODE/OFFLINE: the fixed native S2B child applies a validated bounded

@@ -1,5 +1,14 @@
 # What exists
 
+## Minimal live profitability canary — 2026-09-22
+
+[Build record](docs/BUILD_LIVE_CANARY.md): a separate native Windows command can
+prepare one fresh eligible market and, only with the matching run-ID confirmation,
+submit one exact two-order post-only size-10 batch. Single-use request-digest
+authority, server expiry, fill/end cancellation, atomic ignored status and a
+flat-account send-edge check bound the test. The autonomous bot remains disabled.
+No order has yet been submitted.
+
 ## Offline native S2B runtime/recovery fence — 2026-09-22
 
 [Build record](docs/BUILD_WINDOWS_SUPERVISOR_S2B.md): one fixed credential-free

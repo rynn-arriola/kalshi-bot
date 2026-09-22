@@ -1,5 +1,12 @@
 # Active work queue
 
+Immediate experiment priority under D-076: after explicit operator approval,
+prepare a fresh one-market plan and submit only that exact bounded live canary.
+Observe/cancel its two post-only size-10 orders, retain any fill through the
+short market's settlement, and reconcile actual fees, trading P&L and reward
+credit before deciding whether more production architecture is justified. Do
+not activate the autonomous multi-market runtime or expand risk from this test.
+
 D-073 completes #3's execution-disabled [reward reflection and checkpoint
 lifecycle](docs/BUILD_REWARD_REFLECTION.md). Do not add per-market book polling,
 treat a queue row as atomic cross-source proof, restore live samples from disk or
