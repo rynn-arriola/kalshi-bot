@@ -51,3 +51,6 @@ release. Final review caught the event engine's old two-shard constructor bound;
 it now accepts one to four validated shards and has an exact regression. The
 focused set passes 402 tests; the post-fix complete suite passes 1,628 tests with
 one expected skip. Publication evidence belongs in `STATUS.md`.
+
+Reviewed implementation commit `4f5f902` was pushed to `origin/master` with
+local/remote parity before restart preflight.

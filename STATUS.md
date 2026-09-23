@@ -20,7 +20,8 @@ measurement details: [D-103](docs/BUILD_EXIT_COVERAGE_PRIORITY.md).
 Focused verification passed 402 tests. Final review found and repaired the old
 two-shard event-engine construction bound, then added an actual four-shard engine
 regression. The post-fix complete suite passed **1,628 tests** with one expected
-skip in 276.071 seconds. Commit and push evidence will be recorded after publication.
+skip in 276.071 seconds. The reviewed implementation is published as `4f5f902`;
+local and `origin/master` were verified equal before restart preflight.
 
 ## Stopped flat after recovery-only IOC — 2026-09-23
 

@@ -2,8 +2,10 @@
 
 ## D-103 prepared; restart remains a separate decision
 
-1. Finish complete-suite/documentation/security review, commit and push D-103.
-2. Keep production stopped. A later explicit restart must deploy the reviewed
+1. D-103 review, complete verification, commit and push are complete at
+   `4f5f902`.
+2. The operator subsequently authorized restart. Reconfirm current stopped/flat
+   account and supervisor state, then deploy the reviewed
    commit with the preserved ledger and limits, then verify four book readers,
    ranking state, exact passive/IOC exit behavior and current account state.
 3. After a separately authorized live run, observe actual $2 candidate/order
