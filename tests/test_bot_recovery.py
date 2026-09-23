@@ -463,6 +463,22 @@ class OwnerRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.writer.inventory()).positions, ())
         self.assertIn("unbound_fills_not_imported", result.blockers)
 
+    async def test_exact_incident_import_is_not_reblocked_as_unbound(self):
+        # A stopped-owner incident repair is the only path that may explicitly
+        # account for an external close.  Once the exact fill is durable,
+        # ordinary history recovery must validate it as a duplicate rather
+        # than require a fabricated bot-owned order binding.
+        await self.writer.fill(execution(), NOW)
+        before = await self.writer.observe(NOW)
+        result = await self.owner.recover_history(FakeReads(current=[history_row()]),
+                    start=START, end=END, now=lambda: NOW)
+        after = await self.writer.observe(NOW)
+        self.assertEqual((result.imported, result.already_recorded), (0, 1))
+        self.assertEqual(result.missing_fill_keys, ())
+        self.assertNotIn("unbound_fills_not_imported", result.blockers)
+        self.assertEqual(after.realized_pnl, before.realized_pnl)
+        self.assertEqual((await self.writer.inventory()).positions, (("A", D(10)),))
+
     async def test_bootstrap_binds_orders_but_absence_never_cancels_them(self):
         class AccountReads:
             rows = (wire_order(),)

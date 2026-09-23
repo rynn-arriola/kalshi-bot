@@ -12,7 +12,8 @@ import unittest
 from unittest.mock import patch
 
 from kalshi_bot.account import AccountCoordinator, normalize_snapshot
-from kalshi_bot.account_release import cash_limit
+from kalshi_bot.account_release import (cash_limit, record_operator_close,
+                                        validate_cash)
 from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.config import BotConfig
 from kalshi_bot.continuity import ContinuityAssessment, PrivateEpoch, REQUIRED_PRIVATE_CHANNELS
@@ -268,6 +269,38 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         with closing(Ledger(self.path)) as restarted:
             self.assertEqual(restarted.position('A'), 0)
             self.assertEqual(restarted.position('B'), 0)
+
+    async def test_explicit_operator_close_retains_external_scope_and_cash(self):
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            opening = OrderUpdate('owned-order', 'owned-client', 'A', 'bid',
+                D('.4'), D(10), D(10), D(0), 'executed', 0, 1, 1)
+            with ledger.transaction():
+                ledger.connection.execute('INSERT INTO order_evidence VALUES (?,?,?,?)',
+                    (opening.order_id, opening.client_id, opening.encode(), NOW.isoformat()))
+            ledger.record_fill(Fill('owned-trade', opening.order_id, 'A', 'bid',
+                D(10), D('.4'), D(0), int(NOW.timestamp()*1_000_000), 1), NOW)
+            external = OrderUpdate('manual-order', 'manual-client', 'A', 'ask',
+                D('.3'), D(10), D(10), D(0), 'executed', 0, 1, 2)
+            close = Fill('manual-trade', external.order_id, 'A', 'ask',
+                D(10), D('.3'), D('.1'), int(NOW.timestamp()*1_000_000)+1, 1)
+            self.assertTrue(record_operator_close(ledger, close, external,
+                reference='test-incident', now=NOW+timedelta(seconds=1)))
+            self.assertEqual(ledger.position('A'), 0)
+            self.assertFalse(ledger.connection.execute(
+                'SELECT 1 FROM order_evidence WHERE order_id=?',
+                (external.order_id,)).fetchone())
+            scope = ledger.connection.execute(
+                'SELECT reference FROM operator_fill_scopes WHERE order_id=?',
+                (external.order_id,)).fetchone()
+            self.assertEqual(scope[0], 'test-incident')
+            validate_cash(ledger)
+            with self.assertRaisesRegex(InvalidData, 'already reconciled'):
+                record_operator_close(ledger, close, external,
+                    reference='test-incident', now=NOW+timedelta(seconds=2))
+        with closing(Ledger(self.path)) as restarted:
+            self.assertEqual(restarted.position('A'), 0)
+            validate_cash(restarted)
 
     async def test_independent_cash_ceilings_no_double_subtraction_or_cross_shard_credit(self):
         await self.writer.close()

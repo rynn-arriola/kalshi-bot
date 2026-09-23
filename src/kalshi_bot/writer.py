@@ -881,6 +881,20 @@ class LedgerWriter:
                     fill = record.fill
                     if record.subaccount != scope:
                         raise InvalidData("recovered fill account scope conflicts")
+                    # A separately audited incident repair may have already
+                    # imported an exact venue fill whose order was not created
+                    # by this bot (for example, an operator-placed close).  The
+                    # durable fill is the accounting fact in that case.  Let
+                    # record_fill validate its immutable economics and venue
+                    # timestamp before asking for ordinary bot-order ownership.
+                    # This never imports a new unbound history row.
+                    actual = ledger.connection.execute(
+                        "SELECT 1 FROM fills WHERE id=?", (fill.key,)).fetchone()
+                    if actual is not None:
+                        receipts.append(self._execute(ledger, "fill", (
+                            replace(fill, executed_us=record.executed_us,
+                                    execution_precision_us=1), now)))
+                        continue
                     row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?",
                                                     (fill.order_id,)).fetchone()
                     if row is None:

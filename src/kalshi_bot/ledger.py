@@ -183,6 +183,10 @@ CREATE TABLE IF NOT EXISTS accounting_cash (
   exchange_index INTEGER PRIMARY KEY, cash TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS accounting_fees (
   client_id TEXT PRIMARY KEY, fee TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS operator_fill_scopes (
+  order_id TEXT PRIMARY KEY, fill_id TEXT NOT NULL UNIQUE,
+  order_payload TEXT NOT NULL, reference TEXT NOT NULL,
+  observed_at TEXT NOT NULL);
 """
 
 
