@@ -1,5 +1,14 @@
 # Active work queue
 
+## After generation 92 restart
+
+1. Leave the current process under its supervisor and monitor natural fills,
+   exact exits, maintained reference-price eligibility and actual paid rewards.
+2. Compare realized reward with trading loss and fees before changing strategy
+   or treating projected reward as profit.
+3. Investigate measured failures only. Do not weaken full-coverage/current-proof
+   gates merely to shorten the observed two-to-three-minute startup.
+
 ## D-106 reviewed priority revalidation
 
 The verified [priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md),

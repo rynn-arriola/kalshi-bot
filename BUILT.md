@@ -1,5 +1,15 @@
 # What exists
 
+## Exact external-close reconciliation and deterministic cancel recovery — 2026-09-23
+
+The ledger can retain a bounded, explicit operator-fill scope separately from
+bot-owned order evidence. Only a terminal, exact fill that flattens the matching
+local position can be adopted by the stopped-owner repair path; normal recovery
+cannot import new unbound fills. Cold cash validation includes that scope and
+later venue history treats its exact fill as a duplicate. Deterministic absent
+cancel targets close as rejected while ambiguous outcomes remain fail-closed.
+Commits `16256f2` and `9fad565` are published and deployed.
+
 ## D-106 reviewed priority-admission corrections — 2026-09-23
 
 Priority resolution now distinguishes recoverable missing proof from fresh hard

@@ -1,5 +1,27 @@
 # Findings — kalshi-bot
 
+## 162. Restart latency was ranking work, not a hung process — 2026-09-23
+
+VERIFIED LIVE in generation 92: the supervisor became healthy, all four book
+readers subscribed, and initial ranking advanced continuously to 1,024/1,024.
+The 120-second diagnostic timeout did not grant authority; the gate later
+released safely on complete coverage (an earlier observed run released on
+enough current priority capacity at about 145 seconds). Generation 92 then grew
+from 2 to 22 resting orders, reported 25 remembered priority candidates, a
+current account, zero positions and no book, dispatch or logging failure. Normal
+startup therefore takes roughly two to three minutes for the current universe;
+the preceding longer delay came from code and ledger verification, not restart.
+
+## 161. The manual close was real venue loss, not a fee-only discrepancy — 2026-09-23
+
+VERIFIED FROM AUTHENTICATED ACCOUNT HISTORY: the bot bought 10 YES at $0.67 and
+the operator sold 10 at $0.62 with a $0.165 fee. The exact realized result is
+-$0.665: $0.50 gross trading loss plus $0.165 fee. Fresh venue reads showed zero
+orders and positions. After exact reconciliation, the durable target position
+and lots are zero, SQLite integrity and cold cash validation pass, and accounting
+cash is $495.101 for exchange index 0. This does not prove reward payout or
+profitability.
+
 ## 160. Priority memory needs resolution classes and outcome correlation — 2026-09-23
 
 VERIFIED SYNTHETICALLY: fresh hard ineligibility and unavailable proof cannot use

@@ -10,6 +10,28 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-108 — Reconcile the explicit manual close and resume the preserved account
+
+- **Status:** ACCEPTED, implemented, published and deployed, 2026-09-23.
+- **Decision owner:** Operator reported the one open position was manually closed,
+  directed the required repair, and authorized restart.
+- **Scope:** Adopt only the exact audited terminal close fill into the stopped
+  ledger, retain its external origin for cold cash validation, reconcile the
+  account to flat, then use the normal recovery-only and live startup sequence.
+- **Boundary:** This is not general manual-trading support. Ordinary recovery
+  still rejects new unbound fills, and no position, limit or strategy changed.
+
+### D-107 — Treat deterministic absent cancel targets as terminal rejection
+
+- **Status:** ACCEPTED, implemented, published and deployed, 2026-09-23.
+- **Decision owner:** Operator directed repair of the observed slow/failing
+  cancellation path and restart after review.
+- **Scope:** A proved deterministic cancel `404` and create `400` now close the
+  exact mutation as `REJECTED` instead of crashing recovery and leaving it
+  unknown. Ambiguous transport/server failures remain fail-closed.
+- **Boundary:** No broader cancel authority, ownership relaxation, force stop,
+  market-selection change or risk-limit change is included.
+
 ### D-106 — Repair final priority-admission review findings
 
 - **Status:** ACCEPTED, implemented and published; not deployed, 2026-09-23.

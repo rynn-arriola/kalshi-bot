@@ -1,5 +1,26 @@
 # Current status
 
+## Generation 92 live after exact account reconciliation — 2026-09-23
+
+The explicit operator close is reconciled and the venue/local account are flat
+with respect to inventory before this run. The full suite passes **1,641 tests**
+with one expected Windows privilege skip; source commit `9fad565` is published
+with local/remote parity. A recovery-only launch verified zero orders, zero
+positions, current account evidence and no accounting blockers, then stopped
+flat and disarmed.
+
+Generation 92 is now running the deployed source. It completed initial ranking
+for **1,024/1,024** reviewed markets using four subscribed book shards. The most
+recent acceptance snapshot reported **22 resting orders**, 25 remembered
+priority candidates, zero positions, current account evidence, healthy logging,
+no risk/accounting blockers and no book or dispatch failure. Projected rewards
+remain estimates; paid reward and profitability are not yet proven. A subsequent
+current snapshot reached the configured **30 resting-order cap** and reported one
+10-contract short inventory position (`KXTXOIL-27MAR31-T5.8`); account evidence
+remained current with no reported risk or accounting blocker. Its normal exit
+path must now be monitored rather than treating the earlier flat snapshot as
+current.
+
 ## D-106 priority-admission review fixes published; generation 76 unchanged — 2026-09-23
 
 Generation 76 was locally observed healthy with 30 resting entries and zero

@@ -1,5 +1,41 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — manual venue close left the durable ledger long
+
+**Mechanism:** The operator closed one 10-contract position at the venue while
+recovery was active. Venue orders and positions were flat, but the bot ledger
+still held the opening fill and correctly blocked on inventory mismatch and an
+unbound external fill. Inventing bot ownership or deleting the ledger would
+have corrupted accounting.
+
+**Fix:** A stopped-owner-only primitive accepts one exact, independently audited
+terminal fill only when it exactly flattens local inventory. Its external scope
+is retained separately from bot-owned order evidence, included in cold cash
+validation, and recognized as an immutable duplicate by later history recovery.
+The production ledger was backed up, reconciled to zero position, and retained
+the exact $0.665 close loss.
+
+**Verification:** Focused account/recovery suites pass 126 tests. The complete
+suite passes 1,641 tests with one expected Windows privilege skip; compile,
+whitespace, SQLite integrity and cold cash checks pass. Source commit `9fad565`
+is published and deployed. Recovery-only stopped flat, then generation 92
+completed 1,024/1,024 ranking and began quoting with no position.
+
+## 2026-09-23 — deterministic cancel 404 crashed recovery
+
+**Mechanism:** Kalshi could return a deterministic absent-target `404` after an
+order was already gone. The mutation path treated it like an unexpected error,
+crashing recovery and retaining unknown cleanup state even though the specific
+cancel could not execute later.
+
+**Fix:** Exact deterministic cancel `404` and create `400` responses are durable
+terminal `REJECTED` outcomes. Network ambiguity and server failures remain
+unknown and fail-closed.
+
+**Verification:** The complete suite passed 1,639 tests with one expected skip.
+The deployed recovery pass cleared resting entries without the prior crash.
+Source commit: `16256f2`.
+
 ## 2026-09-23 — final priority-admission review exposed three false states
 
 **Mechanisms:** Any candidate blocker was treated as transient, so a fresh
