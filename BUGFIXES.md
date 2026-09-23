@@ -19,7 +19,10 @@ authority; parent identity/death checks are unchanged.
 **Verification:** Priority scheduling, broad-runtime construction, active-owner
 classification and stop-latched message regressions pass. The affected 120-test
 set and exact three-test composition set pass; the complete suite passes 1,630
-tests with one expected skip. Live restart evidence belongs in `STATUS.md`.
+tests with one expected skip. Recovery-only generation 75 stopped flat and
+disarmed without the prior false failure. Normal generation 76 reached metadata
+high-water four, 1,024/1,024 ranking coverage and 15 simultaneously observed
+owned markets. Full live evidence belongs in `STATUS.md`.
 
 ## 2026-09-23 — invalid passive reducer, stranded due IOC and partial fallback
 

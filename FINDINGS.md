@@ -17,6 +17,13 @@ and zero positions, but an in-flight parent pulse after the stop latch prevented
 the terminal fence and produced a false supervisor `unknown_failure`. D-104
 repairs both mechanisms without expanding trading authority.
 
+VERIFIED LIVE after D-104: recovery-only generation 75 stopped flat and disarmed
+without the false failure. Normal generation 76 reached metadata high-water four,
+1,024/1,024 reasoned coverage and 30 orders across 15 markets. After admission
+settled, all 15 owners were simultaneously observed and retained with full price
+weight on both sides; 14 pairs exactly matched their references and one bid was
+better than reference. No position or runtime error was reported at acceptance.
+
 ## 157. Initial books are fast; 512-market freshness fails on two shards — 2026-09-23
 
 VERIFIED READ-ONLY: the production transport/parser received all initial books

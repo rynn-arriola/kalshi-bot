@@ -1,18 +1,13 @@
 # Active work queue
 
-## D-104 publish and controlled restart
+## After D-104 live acceptance — generation 76 running
 
-1. Review the six-file owner-priority/shutdown repair, update canonical records,
-   commit, push and verify local/remote parity.
-2. Update the ignored deployed-commit marker without resetting the production
-   ledger, then use the supported normal launcher under the operator's existing
-   restart authority.
-3. Verify one protected parent/child, four subscribed book readers, current
-   account authority, complete ranking, up to 30 resting entries, no unexpected
-   position, metadata high-water four and recurring current incumbent metadata.
-4. Inspect the new generation's warnings/errors and public-only reference/market
-   quality evidence. Do not stop a healthy run solely to manufacture another
-   shutdown test; the next necessary stop will provide live confirmation.
+1. Monitor natural fills, exact exits, incumbent reference maintenance, reward
+   progress and source-known time. Do not induce fills or churn for acceptance.
+2. Reconcile actual venue payout and net trading result before changing market
+   strategy or treating projected reward as income.
+3. Preserve the ledger and current limits. Investigate measured live failures
+   before adding architecture or relaxing freshness/economic gates.
 
 ## D-103 prepared; restart remains a separate decision
 

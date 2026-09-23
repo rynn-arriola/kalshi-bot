@@ -8,7 +8,8 @@ retains two. Due markets with inventory, owned orders or maintenance bindings
 run before optional discovery candidates, with priority backlog/active counts in
 status. A stop-latched supervised child accepts parent liveness pulses and exact
 cleanup messages without restoring admission or mutation authority. Build and
-live state belong in `STATUS.md`; defect details are in `BUGFIXES.md`.
+live state belong in `STATUS.md`; defect details are in `BUGFIXES.md`. Source
+commit `e614981` is deployed in normal generation 76.
 
 ## D-103 exit/coverage/priority repair — 2026-09-23
 

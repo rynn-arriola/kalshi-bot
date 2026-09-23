@@ -66,3 +66,8 @@ D-104 uses four bounded metadata workers in broad mode, prioritizes due owned
 markets, and permits only liveness/cleanup control messages after stop. Complete
 verification passes 1,630 tests with one expected skip; deployment evidence
 belongs in `STATUS.md`.
+
+Reviewed D-104 source commit `e614981` was pushed with local/remote parity.
+Recovery-only generation 75 live-verified the repaired terminal stop; normal
+generation 76 live-verified metadata high-water four, complete ranking and 15
+current owned maintenance markets. Current operation remains owned by STATUS.

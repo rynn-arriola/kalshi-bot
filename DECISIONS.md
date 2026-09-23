@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-104 — Prioritize owned metadata and repair clean supervisor shutdown
 
-- **Status:** ACCEPTED implementation and controlled restart, 2026-09-23.
+- **Status:** ACCEPTED, published, deployed and live-observed, 2026-09-23.
 - **Decision owner:** Operator directed completion of the four-shard fixes and
   restart after verification, then explicitly accepted repair of the diagnosed
   metadata and shutdown defects.

@@ -1,6 +1,6 @@
 # Current status
 
-## D-104 repaired and verified; restart pending publication — 2026-09-23
+## D-104 deployed; generation 76 live acceptance — 2026-09-23
 
 Generation 72 proved that four public-book shards were not the remaining market
 coverage bottleneck: all 1,024 reviewed books received reasoned evaluations and
@@ -19,11 +19,27 @@ stop-latched child now accepts only liveness/cleanup messages (`PULSE`,
 
 Focused verification passes 120 tests, the exact composition suite passes three
 tests, and the complete suite passes **1,630 tests** with one expected skip.
-`compileall` and `git diff --check` pass. The bot is currently stopped and the
-saved runtime is `STOPPED_FLAT` with zero resting entries and zero positions;
-the old supervisor record remains `attention_required/unknown_failure` because
-it records the pre-fix shutdown. Publication and the already authorized normal
-restart remain to be completed.
+`compileall` and `git diff --check` pass. Reviewed source commit `e614981` is
+published with local/remote parity.
+
+The first supported launch ran required recovery-only generation 75 against the
+preserved ledger, verified zero entries/positions, exited `STOPPED_FLAT`,
+published its terminal result and disarmed without the former false failure.
+Normal generation 76 then subscribed four book shards plus account/lifecycle,
+reached metadata concurrency high-water four and completed reasoned ranking for
+1,024/1,024 markets before admitting entries. It reached **30 resting orders
+across 15 markets, zero positions and $118.00 reserved exposure**.
+
+After admission settled, all 15 maintenance markets were simultaneously
+`OBSERVED` and retained; all 30 sides had full reward price weight. Fourteen
+pairs exactly matched their owner-adjusted references and one bid was better
+than reference while still qualifying. Logging is healthy with zero drops;
+engine/dispatch/reward reflection report no failure. Eleven bounded
+`recovery_incomplete` warnings occurred while newly acknowledged pairs changed
+the account snapshot, with no retained warning after admission stabilized and
+no ERROR/CRITICAL event. This proves the exercised source/maintenance path, not
+paid reward, profitability or future fill/exit performance. The bot remains
+running under generation 76 with the preserved limits and ledger.
 
 ## D-103 repaired and verified offline; stopped, not restarted — 2026-09-23
 
