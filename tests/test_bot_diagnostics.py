@@ -4,6 +4,7 @@ import unittest
 
 from kalshi_bot.diagnostics import PRIVATE_SPEC, ProbeState, probe_private_streams
 from kalshi_bot.runtime import readonly_reader_factory
+from kalshi_bot.transport import Subscription
 from kalshi_bot.values import InvalidData
 
 
@@ -78,6 +79,15 @@ class ProbeStateTests(unittest.TestCase):
 
     def test_byte_budget_enforced(self):
         with self.assertRaises(InvalidData): ProbeState(max_bytes=1).consume("account", acknowledgments()[0])
+
+    def test_reader_factory_reserves_full_snapshot_capacity_only_for_lifecycle(self):
+        factory = readonly_reader_factory(None)
+        account = factory(Subscription("account", ("fill",)))
+        lifecycle = factory(Subscription("lifecycle", ("market_lifecycle_v2",)))
+        self.assertEqual((account.queue.maxsize, account.byte_capacity),
+                         (256, 2*1024*1024))
+        self.assertEqual((lifecycle.queue.maxsize, lifecycle.byte_capacity),
+                         (8192, 16*1024*1024))
 
 
 class FakeReader:

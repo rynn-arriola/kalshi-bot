@@ -1,5 +1,29 @@
 # Current status
 
+## D-090 lifecycle snapshot overflow fixed offline; deployment pending — 2026-09-22
+
+D-089 was published and deployed. The two retained proof-before-transport
+cancels were corrected only after exact ledger/log matching and backup; a
+recovery-only run then proved `STOPPED_FLAT`. The authorized normal restart
+reached live operation and placed 14 entry orders with no positions.
+
+Live evidence then exposed a separate deterministic limit mismatch: Kalshi's
+unscoped `market_lifecycle_v2` subscription delivered about 5,018 initial rows,
+while every per-stream transport had been overridden to 256 queued events. The
+lifecycle reader overflowed at `transport._receive`, repeatedly reconnected and
+paused new entries. Controlled stop canceled 7/14 orders in the first five
+seconds and all 14 within the next observed eight-second interval; final saved
+state is `STOPPED_FLAT`, zero positions and zero exposure. The parent classified
+the reconnecting child's exit as `unknown_failure`, but cleanup/account proof is
+complete and no live process remains.
+
+[D-090](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md) keeps account and scoped-book
+queues at 256 events / 2 MiB and raises only lifecycle to the transport's bounded
+8,192 events / 16 MiB defaults. Targeted verification passes 127 tests. The
+complete suite passes **1,482 tests with one expected Windows privilege skip**.
+Commit, publication, controlled recovery clearance and live restart remain
+pending.
+
 ## Pre-transport cancellation fix verified; exact live recovery pending — 2026-09-22
 
 D-088 successfully continued the recovery drain beyond three progress-making

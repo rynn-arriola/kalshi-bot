@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-090 — Size lifecycle transport for one bounded full-market snapshot
+
+- **Status:** ACCEPTED implementation and controlled restart, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Also fix this issue before restart,” “Continue
+  working,” and “Why it take so long just to cancel the order?” during the
+  authorized stop/restart investigation.
+- **Scope:** Restore the transport's existing 8,192-event / 16-MiB bounds only
+  for the unscoped lifecycle subscription, whose measured initial snapshot was
+  about 5,018 rows. Preserve account/scoped-book limits at 256 / 2 MiB.
+- **Boundary:** Queueing remains bounded and overflow remains fail-closed. No
+  ranking, reward, order, risk or stop-loss rule changes. If one complete live
+  snapshot still cannot converge, stop flat and measure high-water before any
+  further capacity change.
+
 ### D-089 — Correct proven pre-transport cancellation outcomes before restart
 
 - **Status:** ACCEPTED implementation and controlled recovery, 2026-09-22 Eastern.

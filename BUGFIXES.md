@@ -6,6 +6,25 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — lifecycle snapshot permanently overflowed its reader queue
+
+**Symptom.** The normal live restart repeatedly moved the lifecycle reader from
+subscribed to retry wait, paused new entries and never completed current market
+admission. Four retries ended at `transport._receive` queue overflow. Fourteen
+orders were observed, no positions; controlled stop reached verified flatness.
+
+**Mechanism.** Kalshi's unscoped lifecycle subscription emitted about 5,018
+initial active-market rows. `readonly_reader_factory` had reduced every
+single-stream queue from the transport default of 8,192 to 256, so reconnecting
+only replayed the same oversized snapshot.
+
+**Fix.** D-090 restores the existing bounded 8,192-event / 16-MiB transport
+limits only for lifecycle. Account and scoped-book readers remain at 256 / 2 MiB.
+
+**Verification.** A regression locks the per-stream bounds; 127 affected tests
+and all 1,482 repository tests pass (one expected Windows privilege skip).
+[Report](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md).
+
 ## 2026-09-22 — pre-transport proof change falsely became UNKNOWN
 
 **Symptom.** Two recovery cancellations never reached transport but were marked

@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 133. Lifecycle reconnect loop was a deterministic 256-row overflow — 2026-09-22
+
+VERIFIED LIVE/CODE: the normal post-D-089 restart reached 14 resting orders and
+zero positions, then repeatedly failed only `lifecycle`. Every retained stack
+ends at `transport._receive` line 152, the `asyncio.QueueFull` branch. Production
+catalog enumeration observed 5,018 rows while `readonly_reader_factory` assigned
+that connection only 256 queue entries / 2 MiB. Each reconnect replayed the full
+unscoped snapshot, so retry policy alone could not converge.
+
+Controlled stop canceled seven orders within five seconds and all fourteen by
+the next eight-second observation; saved account state is `STOPPED_FLAT`, zero
+positions/exposure. D-090 restores the transport's existing bounded defaults only
+for lifecycle. Live acceptance after deployment remains required.
+[Build](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md).
+
 ## 132. SENDING preceded transport and created false cancellation uncertainty — 2026-09-22
 
 VERIFIED LIVE/CODE: the two remaining `UNKNOWN` ledger rows are cancels created

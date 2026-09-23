@@ -1,5 +1,13 @@
 # What exists
 
+## D-090 bounded lifecycle snapshot capacity — 2026-09-22
+
+[Lifecycle snapshot buffering](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md) gives
+only the unscoped lifecycle reader enough bounded capacity for the observed
+5,018-row initial snapshot. Private account and scoped book limits are unchanged.
+The affected 127-test set and complete 1,482-test suite pass, with one expected
+Windows privilege skip. Controlled deployment and live acceptance are pending.
+
 ## D-089 proven pre-transport abort — 2026-09-22
 
 [Pre-transport outcome handling](docs/BUILD_PRETRANSPORT_ABORT.md) distinguishes

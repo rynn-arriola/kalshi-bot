@@ -28,7 +28,16 @@ def readonly_reader_factory(signer, *, connector=None):
     """Factory only; does not open sockets or load credentials."""
     def create(spec):
         kwargs = {} if connector is None else {"connector": connector}
-        return WebSocketReaders(signer, (spec,), capacity=256, byte_capacity=2*1024*1024, **kwargs)
+        # Kalshi's unscoped lifecycle subscription begins with a snapshot of
+        # every active market (more than 5,000 rows in production).  Keep the
+        # private/account and scoped-book queues tight, but allow one bounded
+        # full snapshot on the lifecycle connection so it cannot reconnect in
+        # an endless queue-overflow loop before the consumer catches up.
+        capacity, byte_capacity = ((8192, 16*1024*1024)
+                                   if spec.name == "lifecycle"
+                                   else (256, 2*1024*1024))
+        return WebSocketReaders(signer, (spec,), capacity=capacity,
+                                byte_capacity=byte_capacity, **kwargs)
     return create
 
 
