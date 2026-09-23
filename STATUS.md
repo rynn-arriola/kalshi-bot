@@ -1,5 +1,18 @@
 # Current status
 
+## Priority-selection audit after D-104 — 2026-09-23
+
+Generation 76 was locally observed healthy with 30 resting entries and zero
+reported positions during this read-only audit. Complete historical coverage
+does not prove all eligible $2 candidates received a current admission check:
+temporary source/account invalidation deletes their ranking rows. A synthetic
+unchanged-market reproduction confirms fallback can then be selected. The
+[recommended repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md) retains
+advisory candidate history and revalidates priority candidates before fallback.
+This remains proposed, not implemented. The earlier complete 5-priority/10-
+fallback count was not supported by a complete current sample; see the audit.
+
+
 ## D-104 deployed; generation 76 live acceptance — 2026-09-23
 
 Generation 72 proved that four public-book shards were not the remaining market

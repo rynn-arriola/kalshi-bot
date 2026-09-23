@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 159. Complete historical coverage can still admit fallback prematurely — 2026-09-23
+
+VERIFIED SYNTHETICALLY: with unchanged books/rewards, the real selector proposes
+a $2.475 candidate ahead of a $1.485 candidate. Invalidating only the better
+candidate leaves historical coverage complete and selects the fallback; refreshing
+the better candidate restores priority. Discovery memory and current permission
+are currently erased together. Four outer metadata workers also share only one
+background REST slot in live composition. The [investigation and recommendation](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md)
+records code evidence, Poly comparison, correction of the unproven 5/10 live-tier
+claim, and a proposed priority revalidation policy. No runtime change occurred.
+
 ## 158. Four book shards cover all markets; metadata priority was separate — 2026-09-23
 
 VERIFIED LIVE in generation 72: all four book readers plus account and lifecycle

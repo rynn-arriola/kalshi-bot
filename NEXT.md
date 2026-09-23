@@ -1,5 +1,15 @@
 # Active work queue
 
+## Proposed next: preserve and revalidate priority candidates
+
+Review the [priority-admission recommendation](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md).
+If accepted, implement separate discovery memory, bounded priority refresh and
+an evidence-based fallback gate with actual entry-tier records. Include the
+real-runtime checkpoint integration regressions. Keep current incumbents and
+measure latency before changing REST concurrency. No implementation or restart
+is authorized by this investigation alone.
+
+
 ## After D-104 live acceptance — generation 76 running
 
 1. Monitor natural fills, exact exits, incumbent reference maintenance, reward
