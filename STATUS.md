@@ -1,5 +1,39 @@
 # Current status
 
+## D-100 deployed; generation 66 live acceptance — 2026-09-23
+
+Canonical source `dddc1eb` is deployed with the preserved production ledger and
+unchanged limits. The old generation could not complete its normal stop because
+the already-full history receipt table prevented current account proof. After a
+complete authenticated GET-only enumeration verified **0 resting orders and 0
+nonzero positions at 15:18:20 UTC**, only the correlated old parent PID 11100 and
+child PID 28176 were terminated. No broad process kill, ledger reset or account-
+wide cancel was used.
+
+The first cold host safely released the stale native child reservation without
+starting a child. Recovery-only generation 65 then ran the reviewed source,
+archived the exact 4,096 old history receipts, retained one hot receipt, obtained
+current account evidence, completed one repair pass and terminated
+`STOPPED_FLAT` with all recovery reasons cleared. Reward reflection deferred
+until the account report existed and then completed without failure.
+
+Normal generation 66 is accepted at **15:28:20 UTC**: parent PID 47516, child
+PID 24180, runtime `2d25b14f931840b28a9af02c7ee34faf`, correlated build
+fingerprint `183f19e91ad294c6249aae8225d1adbf94b9a46059b96ef38bb729f59465d393`.
+Control is healthy; account and entry authority are current; all four readers
+are subscribed; engine, dispatcher and logging report no failure; and logging
+has zero drops. The bot holds **30 resting orders, no reported positions and
+$133.10 reserved exposure**. Initial ranking released at its 120-second bound
+with 762/1,024 markets evaluated across both book shards. Active six-hour
+settled P&L is **-$3.365400**.
+
+Startup emitted bounded first-attempt HTTP-429 retries and transient incomplete
+reconciliations while acknowledged entry orders changed the account snapshot;
+later passes repaired and current authority was restored. Reward-reflection
+failures during those moving snapshots were followed by successful reflections
+and no retained error. These observations do not prove payout, profitability,
+future source availability or a future live drain latency.
+
 ## D-100 reliability bundle prepared; generation 63 recovery-blocked — 2026-09-23
 
 [Implementation and review](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md) repair

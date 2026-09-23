@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 154. D-100 archives the live history boundary and restarts normally — 2026-09-23
+
+VERIFIED LIVE: after complete GET-only evidence showed zero venue orders and
+positions, recovery-only generation 65 archived all 4,096 exact hot history
+receipts in one compressed ledger archive, retained one current hot receipt,
+reconciled the account and stopped flat. Normal generation 66 then reached
+healthy current authority, four subscribed readers and 30 resting orders with
+no reported position. Startup 429 retries and account-reconciliation races were
+bounded and later repaired. This verifies the observed capacity-crash repair and
+restart path, not payout, profitability, future rejection backoff or future
+live-drain latency.
+
 ## 153. Per-recovery immutable receipts exhausted their hot table — 2026-09-23
 
 VERIFIED read-only: production `history_enumerations` contained exactly 4,096

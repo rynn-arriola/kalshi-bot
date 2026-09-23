@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-100 — Repair live maintenance timing and rejected-reducer churn
 
-- **Status:** ACCEPTED implementation and pre-restart review, 2026-09-23.
+- **Status:** ACCEPTED, deployed and live-observed, 2026-09-23.
 - **Decision owner:** Operator: “add the fix but do not restart yet,” followed by
   a request to review the change, inspect current live logs and fix unusual
   behavior before restart.
@@ -30,8 +30,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   and classify overtaken metadata publications/quota deferrals as retry/defer
   states rather than failed market attempts.
 - **Boundary:** No risk, quote-size, loss, market-selection or exit-deadline
-  change. Unknown writes remain non-retrying. Build, test, review, publish only;
-  do not deploy, stop or restart generation 63 under this decision.
+  change. Unknown writes remain non-retrying. The operator subsequently
+  authorized the controlled deployment and restart. The preserved ledger and
+  limits were used; no initialization or account-wide cancellation occurred.
 
 ### D-099 — Emergency force cancellation, shutdown repair and controlled restart
 

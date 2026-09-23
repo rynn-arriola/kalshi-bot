@@ -97,3 +97,21 @@ passed, one expected Windows privilege skip**, 259.825 seconds. Publication and
 deployment state remain owned by STATUS. The reviewed implementation was
 published as `5df66f7`, with the no-report reflection follow-up in `09cb482`;
 the active production checkout was not changed.
+
+## Live acceptance
+
+Under the operator's later explicit restart instruction, the canonical checkout
+fast-forwarded to published documentation head `dddc1eb`. A complete GET-only
+account enumeration first verified zero resting orders and zero nonzero
+positions. Recovery-only generation 65 exercised the new schema path against
+the retained production ledger: one exact 4,096-receipt archive was committed,
+one hot receipt remained, current account proof completed and the process
+terminated `STOPPED_FLAT` with no recovery reason.
+
+Normal generation 66 then reached healthy control, current account/entry
+authority, four subscribed readers and the configured 30-resting-order limit
+with no reported position. Logging remained healthy with zero drops. Exact
+identity, timestamp, exposure, ranking coverage and bounded startup warnings are
+recorded in [STATUS](../STATUS.md). No rejection or fill was induced, so live
+reducer backoff and fill/exit behavior remain observational follow-up rather than
+acceptance claims.

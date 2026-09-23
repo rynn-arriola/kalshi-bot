@@ -1,17 +1,19 @@
 # Active work queue
 
-## D-100 pre-restart bundle — 2026-09-23
+## After D-100 live acceptance — 2026-09-23
 
-Finish final suite/documentation/publication for the reviewed
-[maintenance reliability repair](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md).
-Generation 63 remains on old source in recovery-only `DRAINING` after the
-4,096-receipt writer failure. Its local zero-order/zero-position snapshot is not
-current account proof. Do not update files beneath it. After publication and
-explicit restart authority, use the normal controlled stop/drain, verify current
-venue flat/order-free state, deploy the reviewed commit, restart once and verify
-history archival/recovery, repricing cadence, rejection backoff/error codes,
-reflection joins and reduced log volume. Do not induce a fill, rejection or
-source outage for acceptance.
+The reviewed [maintenance reliability repair](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md)
+is published, deployed and running in generation 66. History archival and the
+account/reflection join are live-verified; current process and account evidence
+belong in STATUS.
+
+1. Monitor actual fills, inventory exits, reference-drift maintenance, reducer
+   rejection backoff and reward progress. Do not induce a fill, rejection or
+   source outage solely for acceptance.
+2. Measure the next operationally necessary controlled drain. Do not stop the
+   healthy bot only to manufacture a timing result.
+3. Preserve the current ledger and configured limits. Estimated rewards remain
+   advisory; reconcile actual payout and trading result before changing strategy.
 
 ## After D-099 live acceptance — 2026-09-23
 
