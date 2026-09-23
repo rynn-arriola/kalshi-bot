@@ -14,8 +14,24 @@ metadata remains queued, and admission retries through its existing one-second
 backoff. The reservation cannot authorize a scope change, expires after five
 seconds, and is canceled on successful rebind or stop. All existing account,
 inventory, source, timing, capacity and ownership proofs remain in force. The
-full 1,453-test suite passes with one expected skip. Live admission expansion is
-not yet verified; nine old resting orders must first be reconciled.
+full suite ran 1,453 tests: 1,452 passed and one expected skip.
+
+VERIFIED OPERATIONAL FOLLOW-UP: D-085 approved the exact pre-transport cancel
+attempt retained at 23:34:25 UTC. With parent/child/account ownership held and
+processes stopped, a SQLite backup and transactional audit preserved the original
+rows before UNKNOWN became NOT_SENT and the matching authorization ABORTED. The
+retained CommandDenied stack points to the pre-transport proof-change branch;
+this is not permission to retry other UNKNOWN commands. The backup, one-off
+script and ledger audit remain ignored under `data/trader/`.
+
+Recovery generation 25 canceled the two remaining orders and terminated
+STOPPED_FLAT at 20:17:22 Eastern with no positions or holds. The normal run
+started at 20:17:44; at 20:23:48 the fresh local status recorded 10 resting
+orders, zero positions and two completed admission rotations (previously zero).
+The catalog contained 5,024 current rewarded markets and candidate reviews
+covered 1,024; neither count establishes current entry eligibility. Continued
+expansion beyond six occupied markets and actual reward profitability are not
+yet verified. No filter, loss/capital limit or accounting baseline was changed.
 
 ## 123. First live opening retained exact personal cash but could not attribute it — 2026-09-22
 

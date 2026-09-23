@@ -1,6 +1,6 @@
 # Current status
 
-## Live market admission starvation fixed offline; recovery restart pending — 2026-09-22
+## Live recovery completed; admission rotation observed — 2026-09-22
 
 The first live quoting generation reached 12 resting orders across six markets,
 not because only six markets passed the reviewed reward gates, but because market
@@ -13,15 +13,23 @@ The scheduler now supports one exact, five-second admission reservation. Existin
 metadata work drains, no new worker starts during the reservation, and the same
 fresh account, inventory, timing, capacity and candidate proofs still precede a
 scope commit. Abandoned reservations expire and ordinary per-shard safety
-deferrals remain independent. The full offline suite passes: 1,453 tests in
-223.737 seconds, with one expected Windows privilege skip.
+deferrals remain independent. The full offline suite ran 1,453 tests in
+223.737 seconds: 1,452 passed and one expected Windows privilege skip.
 
-The prior recovery-only child was entry-disabled and had zero positions. It
-canceled three orders, then exhausted accounting recovery with nine resting
-orders remaining. Graceful stop correctly timed out without replacement; the
-operator-authorized exact child PID was terminated. The supervisor is stopped
-at `attention_required` with no child. Publication and a controlled recovery
-restart are required before normal quoting can verify the admission fix live.
+The earlier recovery generations reduced the prior orders to two, then one
+pre-transport cancel refusal remained UNKNOWN. D-085 authorized an exact,
+backed-up, transactional correction to NOT_SENT with its authorization ABORTED.
+Generation 25 then canceled the final two orders and exited `STOPPED_FLAT` at
+20:17:22 Eastern, with current account proof, zero positions and no holds.
+The same ledger, opening baseline, risk counters and limits were preserved.
+
+The normal supervised run started at 20:17:44 Eastern (host PID 44608, child
+46576). At 20:23:48 its local saved status was RUNNING/healthy, with 10 resting
+entries, no positions, no accounting blockers and two completed admission
+rotations. Account-current/no-risk-blocker evidence was also observed at
+20:21:00. These are timestamped observations, not promises
+of continuing liveness. Broader order occupancy and profitability remain
+unverified. See FINDINGS section 124 for retained operational evidence.
 
 ## First live opening failed closed; exact recovery correction verified — 2026-09-22
 

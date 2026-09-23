@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-085 — Reconcile the single pre-transport cancel refusal
+
+- **Status:** ACCEPTED one-time operational correction, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Sure,” approving reclassification of the
+  specific cancellation discussed in the preceding session and recovery/restart.
+- **Scope:** With the production process stopped and account ownership held,
+  preserve a backup and transactional audit of the one cancel attempt recorded
+  at 2026-09-22 23:34:25 UTC. Its retained execution diagnostic points to the
+  pre-transport `proof_changed_before_submission` branch. Change that attempt
+  from UNKNOWN to NOT_SENT and its exact authorization to ABORTED, allowing
+  the existing bounded reauthorization path to obtain fresh cancellation proof.
+  Reconcile remaining orders through the supervised recovery path, then resume
+  the previously authorized normal bot only after verified flat recovery.
+- **Boundary:** No general UNKNOWN retry policy, loss/accounting reset, deletion
+  of history, size/capital/filter change or manual venue cancellation. Keep
+  original rows and evidence in the ignored local audit and ledger audit entry.
+
 ### D-084 — Attribute exact personal opening cash and resume initialization
 
 - **Status:** ACCEPTED live-opening correction, 2026-09-22.

@@ -23,9 +23,11 @@ when a non-metadata safety proof defers.
 
 **Verification.** New tests cover drain-without-refill, abandoned-reservation
 expiry and admission retry after drain. Focused scheduler/admission and composed
-live-runtime suites pass. The complete suite runs 1,453 tests successfully with
-one expected Windows privilege skip. Live expansion remains an operational
-acceptance step, not inferred from offline tests.
+live-runtime suites pass. The complete suite ran 1,453 tests: 1,452 passed and
+one expected Windows privilege skip. Following D-085's exact operational
+correction and verified flat recovery, the normal live run completed two scope
+rotations. Wider order occupancy is not inferred from that result; current
+observations and the one-time correction are recorded in FINDINGS section 124.
 
 ## 2026-09-22 — first live opening attribution and interrupted resume
 

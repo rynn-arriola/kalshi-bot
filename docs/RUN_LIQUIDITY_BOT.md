@@ -7,6 +7,15 @@ task, startup entry, model switch or worker is installed.
 
 ## Current state
 
+Current operational evidence is owned by [STATUS](../STATUS.md), not the dated
+prelaunch checks below. On 2026-09-22 the operator-authorized live run placed
+orders; D-085 recovery later reached STOPPED_FLAT, and an authorized normal
+restart completed a live admission rotation. Recheck current local status and
+process identity before any operation. This does not grant standing launch
+authority or establish profitability, fill/exit acceptance or reboot recovery.
+
+## Historical prelaunch verification
+
 The seven [end-to-end supervisor findings](REVIEW_D081_END_TO_END.md) are repaired
 and verified offline. The commands below remain an operation reference, not live
 acceptance evidence or independent authority to trade. First supervised live
@@ -115,8 +124,9 @@ end and the existing event/market exit deadline; exact reducing IOC has no expir
 
 ## Commands
 
-Commands below are for the human operator. The coding assistant must not invoke
-the trading or order-canceling commands.
+Commands below require explicit operator authorization. A coding assistant may
+carry out the exact approved operation; documentation or a successful software
+test is not independent permission to trade, cancel, stop or restart.
 
 ```powershell
 # First live run only: explicit approval to establish a fresh flat opening.

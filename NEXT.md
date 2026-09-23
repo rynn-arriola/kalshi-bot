@@ -1,26 +1,25 @@
 # Active work queue
 
-## Immediate live recovery and admission acceptance
+## Live observation after recovered restart
 
-1. Publish the verified cooperative metadata/admission handoff.
-2. Start one supervised recovery-only generation and reconcile the nine prior
-   resting orders to verified flatness; do not enable entries during recovery.
-3. Start the normal supervised generation only after the recovery fence permits
-   it. Verify admission completes at least one rotation and that the bot selects
-   the best currently eligible markets up to the unchanged 30-order ceiling.
-4. If recovery or admission remains blocked, preserve the exact status/log
-   evidence and stop; do not bypass account, timing, reward or risk gates.
+The handoff fix is published as `238df32`. D-085 recovery reached verified flatness,
+and the authorized normal run has completed two admission rotations.
+
+1. Observe continued discovery/ranking and actual occupancy against the unchanged
+   30-order ceiling. A reviewed candidate count is not a tradable-market count.
+2. Collect actual order duration, fills/fees and estimated versus paid rewards;
+   do not label projections or zero current inventory as profitability evidence.
+3. Preserve exact evidence for any new blocker; do not bypass account, timing,
+   reward or risk gates or introduce optional hardening into this live trial.
 
 ## First supervised opening recovery
 
-The first authorized launch failed closed before any order because the retained
-personal deposit/internal-transfer evidence was not attributable and a partial
+Completed history: the first authorized launch failed closed before any order
+because personal deposit/internal-transfer evidence was not attributable and a partial
 opening checkpoint could not resume. D-084 implements exact completed
-pre-boundary attribution plus same-checkpoint resume. No process is currently
-trading. The 1,444-test offline suite passes with one expected Windows privilege
-skip. Review/publish the correction, then re-arm supervised initialization
-against the same ledger and continue checklist item 7. Never delete or replace
-`data/trader/account.db`.
+pre-boundary attribution plus same-checkpoint resume. The later live opening and
+D-085 recovery are verified in STATUS.md; this is no longer a pending opening
+task. Never delete or replace `data/trader/account.db`.
 
 ## Current-path review findings repaired
 

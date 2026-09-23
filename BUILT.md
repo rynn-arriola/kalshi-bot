@@ -6,9 +6,11 @@
 `admission.py` before subscription rotation. It prevents continuous two-worker
 metadata refill from starving admission, without weakening the existing reward,
 account, inventory, source, capacity or timing gates. Reservations expire and
-have no order authority. Three regressions cover drain, expiry and retry; all
-1,453 repository tests pass with one expected Windows privilege skip. Production
-acceptance remains pending after reconciliation of nine prior resting orders.
+have no order authority. Three regressions cover drain, expiry and retry;
+1,453 repository tests ran, with 1,452 passed and one expected Windows privilege
+skip. D-085 recovery reached STOPPED_FLAT and the normal supervised run completed
+two live admission rotations. Wider occupancy remains a separate observation;
+see STATUS.md and FINDINGS section 124.
 
 ## Current-path review repairs — 2026-09-22
 
