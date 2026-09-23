@@ -621,6 +621,7 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
                 self.assertIsNone(runtime.admission)
                 self.assertTrue(runtime.broad_discovery)
+                self.assertEqual(runtime.metadata_scheduler.concurrency, 4)
                 self.assertIsNotNone(runtime.market_inputs.bulk)
                 self.assertEqual(set(runtime.engine.market_shard), {'A','B'} if discover else {'A'})
                 task = asyncio.create_task(runtime.run())
@@ -644,6 +645,7 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                     while sum(r['phase'] == 'ACK' for r in await writer.mutations()) != 2:
                         if task.done(): task.result()
                         await asyncio.sleep(.01)
+                self.assertTrue(runtime._metadata_priority('B' if discover else 'A'))
                 self.assertLessEqual({r['phase'] for r in await writer.mutations()}, {'ACK', 'NOT_SENT'})
                 self.assertFalse(await verified_flat(runtime))
             finally:

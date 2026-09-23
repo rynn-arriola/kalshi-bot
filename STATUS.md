@@ -1,5 +1,30 @@
 # Current status
 
+## D-104 repaired and verified; restart pending publication — 2026-09-23
+
+Generation 72 proved that four public-book shards were not the remaining market
+coverage bottleneck: all 1,024 reviewed books received reasoned evaluations and
+the runtime reached 30 resting orders across 15 markets. The shared metadata
+scheduler still refreshed the entire 1,024-market discovery set with two equal-
+priority workers, so incumbent maintenance metadata could cycle through source
+loss even while its orders remained live.
+
+Broad discovery now uses four bounded metadata workers and always schedules due
+owned/maintenance markets before optional candidates. Discovery remains bounded
+and one account/mutation owner is unchanged. The same live run stopped flat with
+zero orders and positions, but an in-flight parent `PULSE` reached the child
+after its stop latch and was incorrectly classified as revoked authority. A
+stop-latched child now accepts only liveness/cleanup messages (`PULSE`,
+`STOP_HINT`, exact `FENCE_ACK`); `ADMIT` and trading authority remain rejected.
+
+Focused verification passes 120 tests, the exact composition suite passes three
+tests, and the complete suite passes **1,630 tests** with one expected skip.
+`compileall` and `git diff --check` pass. The bot is currently stopped and the
+saved runtime is `STOPPED_FLAT` with zero resting entries and zero positions;
+the old supervisor record remains `attention_required/unknown_failure` because
+it records the pre-fix shutdown. Publication and the already authorized normal
+restart remain to be completed.
+
 ## D-103 repaired and verified offline; stopped, not restarted — 2026-09-23
 
 The exit incident, recovery starvation and initial-ranking priority defect are

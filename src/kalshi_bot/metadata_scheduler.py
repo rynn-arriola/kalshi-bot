@@ -13,10 +13,14 @@ from .quota import QuotaUnavailable
 class MetadataScheduler:
     REBIND_HOLD = 5
 
-    def __init__(self, service, *, defer=lambda: False, concurrency=2, attempts=3,
-                 timeout=30, minimum_interval=.05, diagnostics=NO_LOG):
+    def __init__(self, service, *, defer=lambda: False, priority=lambda ticker: False,
+                 concurrency=2, attempts=3, timeout=30, minimum_interval=.05,
+                 diagnostics=NO_LOG):
         self.service, self.defer, self.diagnostics = service, defer, diagnostics
-        self.concurrency = integer(concurrency, 1, 2)
+        if not callable(priority):
+            raise InvalidData('metadata priority must be callable')
+        self.priority = priority
+        self.concurrency = integer(concurrency, 1, 4)
         self.attempt_limit = integer(attempts, 1, 8)
         for value in (timeout, minimum_interval):
             if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
@@ -233,7 +237,11 @@ class MetadataScheduler:
         if (not self.stopping and self.service.connected and quota_ready and not self.defer()
                 and self.rebind_target is None):
             while self.ready and len(self.active) < self.concurrency:
-                ticker, _ = self.ready.popitem(last=False)
+                ticker = next((key for key in self.ready if self.priority(key)), None)
+                if ticker is None:
+                    ticker, _ = self.ready.popitem(last=False)
+                else:
+                    self.ready.pop(ticker)
                 self.not_before[ticker] = now+self.minimum_interval
                 task = asyncio.create_task(self._refresh(ticker), name='kalshi-metadata-refresh')
                 task.add_done_callback(lambda _: self.wake.set())
@@ -282,6 +290,8 @@ class MetadataScheduler:
     def status(self):
         return dict(running=self.running, pending=len(self.due)+len(self.ready),
             active=len(self.active), heap=len(self.heap), exhausted=len(self.exhausted),
+            priority_ready=sum(bool(self.priority(ticker)) for ticker in self.ready),
+            priority_active=sum(bool(self.priority(ticker)) for ticker in self.active),
             started=self.started, completed=self.completed, high_water=self.high_water,
             rebind_reserved=self.rebind_target is not None,
             live_authority=False)

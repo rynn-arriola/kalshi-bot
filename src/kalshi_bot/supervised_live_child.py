@@ -214,11 +214,13 @@ def _admission_revoked(args, message, state, native, *, stop_signaled,
         or native.stage != "bound"
         or parent_signaled)
     authority_revoked = state.stop_latched or not state.desired_armed or stop_signaled
-    # A stopped child retains no trading authority, but it must still receive
-    # the exact terminal recovery-fence acknowledgement so it can report
-    # verified-flat cleanup instead of a false shutdown timeout.
+    # A stopped child retains no trading authority. It must still accept
+    # liveness-only pulses and the exact terminal recovery-fence acknowledgement
+    # so an in-flight parent pulse cannot turn verified-flat cleanup into a
+    # false shutdown failure.
     return (binding_revoked or
-        (message.kind not in {MessageKind.STOP_HINT, MessageKind.FENCE_ACK}
+        (message.kind not in {MessageKind.PULSE, MessageKind.STOP_HINT,
+                              MessageKind.FENCE_ACK}
          and authority_revoked))
 
 

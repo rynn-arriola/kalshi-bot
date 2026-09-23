@@ -37,13 +37,16 @@ class TerminalFenceAdmissionTests(unittest.TestCase):
                     stage='bound')
         return args, state, native
 
-    def test_terminal_fence_ack_survives_stop_latch_but_no_other_authority(self):
+    def test_cleanup_messages_survive_stop_latch_but_no_trading_authority(self):
         args, state, native = self.values()
         fence_ack = NS(kind=MessageKind.FENCE_ACK)
         self.assertFalse(child._admission_revoked(args, fence_ack, state, native,
             stop_signaled=True, parent_signaled=False))
-        self.assertTrue(child._admission_revoked(args,
+        self.assertFalse(child._admission_revoked(args,
             NS(kind=MessageKind.PULSE), state, native,
+            stop_signaled=True, parent_signaled=False))
+        self.assertTrue(child._admission_revoked(args,
+            NS(kind=MessageKind.ADMIT), state, native,
             stop_signaled=True, parent_signaled=False))
 
     def test_terminal_fence_ack_cannot_cross_identity_or_dead_parent(self):

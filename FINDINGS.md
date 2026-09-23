@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 158. Four book shards cover all markets; metadata priority was separate — 2026-09-23
+
+VERIFIED LIVE in generation 72: all four book readers plus account and lifecycle
+subscribed, initial ranking reached 1,024/1,024 reasoned markets, and 30 orders
+rested across 15 markets with no reported position. A public-only audit found
+all 15 selected pairs still met their reward target; 13 exactly matched the
+later sequential reference and the other two still qualified. This proves
+transport/ranking coverage for the run, not paid reward or profitability.
+
+The maintenance source remained intermittently unknown because its separate
+metadata scheduler had two workers and equal FIFO treatment for all 1,024
+candidates. This, not another WebSocket shortage, was the demonstrated owner-
+freshness bottleneck. The controlled stop reached `STOPPED_FLAT`, zero entries
+and zero positions, but an in-flight parent pulse after the stop latch prevented
+the terminal fence and produced a false supervisor `unknown_failure`. D-104
+repairs both mechanisms without expanding trading authority.
+
 ## 157. Initial books are fast; 512-market freshness fails on two shards — 2026-09-23
 
 VERIFIED READ-ONLY: the production transport/parser received all initial books

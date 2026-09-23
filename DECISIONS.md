@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-104 — Prioritize owned metadata and repair clean supervisor shutdown
+
+- **Status:** ACCEPTED implementation and controlled restart, 2026-09-23.
+- **Decision owner:** Operator directed completion of the four-shard fixes and
+  restart after verification, then explicitly accepted repair of the diagnosed
+  metadata and shutdown defects.
+- **Scope:** Keep current owned/maintenance markets ahead of optional discovery
+  in the shared metadata scheduler, use four bounded metadata reads only in
+  broad discovery, and permit liveness-only parent pulses during a latched stop
+  so verified-flat cleanup can finish. Review, test, publish, then restart with
+  the preserved ledger and existing limits.
+- **Boundary:** A stop-latched child receives no admission or mutation authority;
+  identity/dead-parent checks remain mandatory. Do not change strategy, reward
+  thresholds, quantity, capital, loss limits or exit timing.
+
 ### D-103 — Repair exits and require priority-safe broad ranking
 
 - **Status:** ACCEPTED implementation; restart not authorized, 2026-09-23.

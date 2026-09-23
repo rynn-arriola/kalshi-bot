@@ -1,5 +1,15 @@
 # What exists
 
+## Active-owner metadata priority and clean stop pulses — 2026-09-23
+
+The shared metadata scheduler accepts a pure owner-priority predicate and up to
+four bounded workers. Broad discovery uses four; narrow/recovery composition
+retains two. Due markets with inventory, owned orders or maintenance bindings
+run before optional discovery candidates, with priority backlog/active counts in
+status. A stop-latched supervised child accepts parent liveness pulses and exact
+cleanup messages without restoring admission or mutation authority. Build and
+live state belong in `STATUS.md`; defect details are in `BUGFIXES.md`.
+
 ## D-103 exit/coverage/priority repair — 2026-09-23
 
 [Implementation and capacity evidence](docs/BUILD_EXIT_COVERAGE_PRIORITY.md):

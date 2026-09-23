@@ -54,3 +54,15 @@ one expected skip. Publication evidence belongs in `STATUS.md`.
 
 Reviewed implementation commit `4f5f902` was pushed to `origin/master` with
 local/remote parity before restart preflight.
+
+## D-104 live follow-up
+
+Generation 72 subsequently verified four subscribed book readers and complete
+1,024/1,024 reasoned ranking before placing 30 entries across 15 markets. It
+also separated two follow-up defects from book capacity: incumbent metadata was
+starved by the two-worker equal-priority metadata queue, and an in-flight parent
+heartbeat after a verified-flat stop latch caused a false supervisor failure.
+D-104 uses four bounded metadata workers in broad mode, prioritizes due owned
+markets, and permits only liveness/cleanup control messages after stop. Complete
+verification passes 1,630 tests with one expected skip; deployment evidence
+belongs in `STATUS.md`.

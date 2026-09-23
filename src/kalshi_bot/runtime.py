@@ -151,8 +151,18 @@ class RecoveryRuntime:
         if self.quota is not None:
             self.quota.listen(self._quota_transition)
         self.metadata_scheduler = (MetadataScheduler(market_inputs, diagnostics=diagnostics,
+            concurrency=4 if broad_discovery else 2,
+            priority=self._metadata_priority,
             defer=lambda: bool(self.engine.private or self.account._processing or
                                self.recovery_state == 'recovering')) if market_inputs is not None else None)
+
+    def _metadata_priority(self, ticker):
+        """Keep owned markets fresh ahead of optional discovery candidates."""
+        plan = self.management._plans.get(ticker)
+        return bool((plan is not None
+                     and (plan.inventory.position or plan.inventory.orders))
+                    or (self.maintenance is not None
+                        and ticker in self.maintenance.bindings))
 
     def _quota_transition(self):
         if self.dispatch_supervisor is not None:

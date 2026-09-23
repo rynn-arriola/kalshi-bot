@@ -1,5 +1,19 @@
 # Active work queue
 
+## D-104 publish and controlled restart
+
+1. Review the six-file owner-priority/shutdown repair, update canonical records,
+   commit, push and verify local/remote parity.
+2. Update the ignored deployed-commit marker without resetting the production
+   ledger, then use the supported normal launcher under the operator's existing
+   restart authority.
+3. Verify one protected parent/child, four subscribed book readers, current
+   account authority, complete ranking, up to 30 resting entries, no unexpected
+   position, metadata high-water four and recurring current incumbent metadata.
+4. Inspect the new generation's warnings/errors and public-only reference/market
+   quality evidence. Do not stop a healthy run solely to manufacture another
+   shutdown test; the next necessary stop will provide live confirmation.
+
 ## D-103 prepared; restart remains a separate decision
 
 1. D-103 review, complete verification, commit and push are complete at

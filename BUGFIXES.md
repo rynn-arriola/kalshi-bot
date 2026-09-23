@@ -1,5 +1,26 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — owned metadata starvation and false clean-stop failure
+
+**Mechanisms:** Four book shards delivered and evaluated all 1,024 markets, but
+the separate metadata scheduler gave incumbent order markets no priority over
+the full optional discovery set and used only two broad workers. Current owner
+metadata could therefore expire before its next turn. During the subsequent
+verified-flat stop, an already in-flight parent `PULSE` arrived after the child
+latched stop; the child treated it as revoked authority and exited before
+publishing its terminal fence, so the supervisor recorded `unknown_failure`.
+
+**Fix:** Broad discovery uses four bounded metadata workers. Due tickers with
+inventory, owned orders or maintenance bindings are selected before FIFO
+discovery work. Stop-latched children accept liveness-only `PULSE`, `STOP_HINT`
+and exact `FENCE_ACK` messages while still rejecting `ADMIT` and all trading
+authority; parent identity/death checks are unchanged.
+
+**Verification:** Priority scheduling, broad-runtime construction, active-owner
+classification and stop-latched message regressions pass. The affected 120-test
+set and exact three-test composition set pass; the complete suite passes 1,630
+tests with one expected skip. Live restart evidence belongs in `STATUS.md`.
+
 ## 2026-09-23 — invalid passive reducer, stranded due IOC and partial fallback
 
 **Mechanisms:** Kalshi rejected passive GTC creates carrying `reduce_only=true`;

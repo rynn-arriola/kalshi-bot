@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-104 separates book transport scale from metadata scheduling. Broad discovery
+uses four bounded shared metadata workers, with due inventory/order/maintenance
+owners ahead of optional candidates; narrow and recovery modes retain two. This
+does not add per-market loops or writers. During shutdown, liveness-only parent
+messages may complete the exact terminal fence after the stop latch, but no
+admission or mutation authority survives it.
+
 D-103 [repairs exit/coverage/priority behavior](BUILD_EXIT_COVERAGE_PRIORITY.md).
 Normal broad discovery uses four measured deterministic book shards. Initial
 entry permission requires complete reasoned coverage or enough current $2+
