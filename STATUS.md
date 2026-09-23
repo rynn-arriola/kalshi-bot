@@ -1,5 +1,24 @@
 # Current status
 
+## One-sided incumbent release repaired offline — 2026-09-23
+
+Generation 92 exposed one 10-contract entry orphan that remained for more than
+30 minutes after its opposite side had a confirmed cancel ACK. The market stayed
+fully price-weighted on the surviving side, but a fresh replacement pair no
+longer cleared the $1 projected-reward gate. Maintenance accumulated more than
+its 90-second verified dwell and then had no transition because the actual row
+had no blocker and the target was uneconomic.
+
+Source now withdraws that exact orphan without re-entry after the existing
+90-second fresh-evidence dwell, releasing the capacity to ordinary ranked
+selection. A still-qualifying incomplete pair retains the existing 30-second
+same-program repair. Exact account, lifecycle, source-lease and cancel proof are
+unchanged. The new regression failed against the old branch at 92 verified
+seconds; both paths now pass. Focused maintenance, dispatch and live-runtime
+verification passes 140 tests. The complete suite passes **1,647 tests** with
+one expected Windows privilege skip; `git diff --check` passes. Generation 92
+still runs the previous source until the authorized supported restart completes.
+
 ## Reward telemetry continuity and retention repair verified offline — 2026-09-23
 
 The two defects identified by the generation-92 audit are repaired in source

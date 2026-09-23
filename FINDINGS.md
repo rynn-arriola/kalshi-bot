@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 165. An uneconomic orphan had no maintenance transition — 2026-09-23
+
+VERIFIED from generation-92 ledger/status evidence and reproduced synthetically.
+One side of `KXROGUEPOS-26OCT03-T67` received a confirmed cancel ACK while its
+10-contract bid remained resting. The survivor retained full price weight, but
+a fresh two-sided target no longer cleared the $1 projected-reward gate. After
+more than 90 seconds of fresh joined evidence, `QuoteMaintenance.refresh` could
+neither select `restore_reference_pair` (target false) nor
+`persistently_unscoring` (actual blockers empty), so the slot could remain stuck.
+
+The corrected transition cancels an incomplete incumbent without re-entry after
+the existing 90-second dwell when the current target is below minimum. It does
+not restore an uneconomic pair or replace a qualifying owner for rank. This is
+verified source behavior; live deployment evidence remains in `STATUS.md`.
+
 ## 164. Account refresh was deleting safe reward interpolation endpoints — 2026-09-23
 
 VERIFIED SYNTHETICALLY after the generation-92 audit. The three-second account

@@ -339,6 +339,34 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.m.cycle.reenter)
         self.assertEqual(self.m.cycle.reason, 'persistently_unscoring')
 
+    async def test_incomplete_qualifying_pair_restores_after_reprice_dwell(self):
+        removed = self.orders.pop()
+        await self.f.writer.order(replace(removed, remaining=D(0), status='canceled',
+                                          version_us=2), self.f.now)
+        for _ in range(17):
+            await self.sample()
+        self.assertIsNotNone(self.m.cycle, self.m.status())
+        self.assertTrue(self.m.cycle.reenter)
+        self.assertEqual(self.m.cycle.reason, 'restore_reference_pair')
+
+    async def test_incomplete_pair_below_minimum_withdraws_orphan_after_dwell(self):
+        low = replace(self.p, pool_centicents=1000000)
+        self.s.set_programs('A', (low,), observed_at=self.f.now,
+                            valid_until=self.f.now+timedelta(minutes=30))
+        self.m.bind(low)
+        orphan = self.orders[0]
+        removed = self.orders.pop()
+        await self.f.writer.order(replace(removed, remaining=D(0), status='canceled',
+                                          version_us=2), self.f.now)
+        for _ in range(47):
+            await self.sample()
+        self.assertIsNotNone(self.m.cycle, self.m.status())
+        self.assertFalse(self.m.cycle.reenter)
+        self.assertEqual(self.m.cycle.reason, 'incomplete_pair_below_minimum')
+        candidate = await self.f.source.refresh('A', QUOTE_CANCEL)
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.request['order_id'], orphan.order_id)
+
     async def test_dispatch_prioritizes_existing_exits_over_quote_maintenance(self):
         await self.drift()
         d = self.f.dispatcher

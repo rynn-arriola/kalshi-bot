@@ -1,5 +1,16 @@
 # What exists
 
+## Bounded release of uneconomic one-sided incumbents — 2026-09-23
+
+Incumbent maintenance now distinguishes a qualifying incomplete pair from an
+uneconomic one. The former keeps the 30-second exact same-program repair; the
+latter withdraws its surviving owned entry after 90 seconds of fresh joined
+evidence and does not re-enter, allowing ordinary ranking to refill capacity.
+Account/source leases, terminal/fill handling, one-cycle serialization and the
+existing mutation writer remain unchanged. Two regressions cover both branches;
+the complete suite passes 1,647 tests with one expected Windows privilege skip.
+Deployment state belongs in `STATUS.md`.
+
 ## Bounded reward continuity and production diagnostic retention — 2026-09-23
 
 [Implementation and verification](docs/BUILD_REWARD_TELEMETRY_CONTINUITY.md)

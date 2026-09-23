@@ -1,5 +1,15 @@
 # Active work queue
 
+## After one-sided incumbent repair
+
+1. Publish the reviewed repair, then use the authorized supported stop/restart
+   path; verify flat terminal shutdown before starting the new generation.
+2. Verify the new generation reports the 96 MiB child-log bound, current account
+   evidence, all six readers, healthy dispatch, and no persistent uneconomic
+   orphan after its 90-second evidence dwell.
+3. Continue measuring actual reward, trading loss and fees. Do not infer payout
+   or profitability from projected reward or maintenance status.
+
 ## After reward telemetry repair
 
 1. Deployment/restart is a separate operator decision. Generation 92 still runs

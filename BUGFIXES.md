@@ -1,5 +1,24 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — one-sided full-weight incumbent could retain a slot forever
+
+**Mechanism:** An acknowledged cancellation left one owned entry resting. Its
+surviving quote still had full price weight, while a fresh replacement pair was
+below the $1 projected-reward minimum. After the 90-second evidence dwell,
+maintenance started a cycle only for a qualifying target or an actual-row
+blocker; this exact combination had neither and therefore never transitioned.
+
+**Fix:** A fresh incomplete pair whose replacement target is below minimum now
+starts an exact non-reentry maintenance cycle after the existing 90-second
+dwell. The ordinary ranked selector may use the released capacity afterward.
+Qualifying incomplete pairs still use the 30-second same-program repair.
+
+**Verification:** The regression fails on the prior source with 92 seconds of
+verified dwell and no cycle. Both incomplete-pair branches pass after repair.
+Focused maintenance, dispatch and live-runtime suites pass 140 tests; the full
+suite passes 1,647 tests with one expected Windows privilege skip. No live
+process was changed during offline verification.
+
 ## 2026-09-23 — normal account refresh erased reward coverage and logs rotated too quickly
 
 **Mechanisms:** Every short account reconciliation temporarily removed the

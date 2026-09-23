@@ -295,6 +295,13 @@ class QuoteMaintenance:
         if target_ok:
             self._start(plan, program, 'restore_reference_pair', True,
                         evidence_valid_until=until, evidence_identity=identity)
+        elif not complete:
+            # A lone surviving entry cannot earn the intended two-sided score.
+            # If a fresh replacement pair no longer clears the minimum reward
+            # gate, withdraw the orphan after the conservative unscoring dwell
+            # and let ordinary ranked selection use the released capacity.
+            self._start(plan, program, 'incomplete_pair_below_minimum', False,
+                        evidence_valid_until=until, evidence_identity=identity)
         elif actual.blockers:
             self._start(plan, program, 'persistently_unscoring', False,
                         evidence_valid_until=until, evidence_identity=identity)
