@@ -1,5 +1,16 @@
 # Active work queue
 
+## Findings from generation 92 flow audit
+
+1. Reproduce the reward-source invalidation sequence and improve measured
+   observation coverage without weakening order or account freshness checks.
+   The 4.7% observed-time sample is insufficient for dependable earnings tracking.
+2. Reduce repetitive diagnostic volume or extend bounded retention: the present
+   child log window covers only about 3.4 minutes of operation.
+3. Continue checking natural exits and actual venue payout; preserve current
+   strategy and limits. See [finding 163](FINDINGS.md) for verified evidence and
+   untested failure paths. No implementation or restart was part of this audit.
+
 ## After generation 92 restart
 
 1. Leave the current process under its supervisor and monitor natural fills,

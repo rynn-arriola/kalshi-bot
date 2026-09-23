@@ -1,5 +1,20 @@
 # Current status
 
+## Generation 92 flow audit — 2026-09-23, approximately 18:36 ET
+
+The bot remains live with 30 resting entry orders and no open inventory at the
+latest audit. The oil position exited automatically; its net result was
+-$0.7744 including fees. All active entries matched their admission evidence
+(28 priority, two fallback). Account reconciliation, feeds, execution and
+observed repricing are operational; no current risk/accounting blocker was
+reported. This supersedes the open-position snapshot below.
+
+The audit found poor reward telemetry coverage (about 4.7% over a measured
+24.6-second interval) and only about 3.4 minutes of retained child logs.
+Consequently, neither continuous reward qualification nor profitability is
+established. See [finding 163](FINDINGS.md). This was a read-only live audit;
+no restart, code/configuration change or induced failure test was performed.
+
 ## Generation 92 live after exact account reconciliation — 2026-09-23
 
 The explicit operator close is reconciled and the venue/local account are flat

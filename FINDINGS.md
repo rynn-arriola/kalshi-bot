@@ -1,5 +1,47 @@
 # Findings — kalshi-bot
 
+## 163. Live flow audit: executions work; reward observation coverage is poor — 2026-09-23
+
+MEASURED on generation 92, source `9fad565`, approximately 18:34–18:36 ET.
+Read-only process/status, SQLite `mode=ro` and retained structured logs were
+used; no orders, runtime settings or processes were changed.
+
+- Ranking completed 1,024/1,024. All 30 active entry orders joined to admission
+  evidence: 28 priority and two fallback, across 15 markets. No active intent
+  lacked resting order evidence. There were no active reducers or positions at
+  the final ledger check, no pending fills or accounting holds, and $128 exposure.
+- The oil episode sold 10 YES-equivalent at $0.47, maintained exact passive
+  reducers, then canceled the reducer and bought 10 at $0.53 using reduce-only
+  IOC at 22:03:41 UTC, about 15 minutes after first durable fill receipt.
+  Gross loss was $0.60 plus $0.1744 fee, net -$0.7744. This is the only completed
+  fill episode since generation 92 started; it is not profitability evidence.
+- This run recorded 58 acknowledged creates, 26 acknowledged cancels and 15
+  proved-unsent creates. No new UNKNOWN mutation remained. Repricing/re-entry
+  occurred on multiple incumbents. Four book readers plus account/lifecycle
+  remained subscribed without reconnect rounds or book failures; quota reported
+  no throttles, and the live log sink reported no dropped records.
+- A 24.6-second status window (22:35:26–22:35:51 UTC) retained 30 entry orders.
+  Across 15 tracked markets only about 4.7% of aggregate elapsed market time
+  became observed/qualifying time; the rest was unknown. This measures local
+  telemetry coverage, not venue non-qualification or unpaid rewards. Fresh
+  maintenance samples did show all 15 pairs at full price weight during the
+  window, but historical maintenance samples cannot prove continuous coverage.
+- Source tracing shows periodic account refresh starts once its report reaches
+  three seconds; reward reflection is bound to exact account report/revision
+  and at most five seconds. Interrupted sample continuity is booked as unknown.
+  This explains a recurring source-loss mechanism; isolating the contribution
+  of each invalidation needs a focused reproduction before changing behavior.
+- At audit time the three rotating child log files contained 1,795 records
+  covering only about 204 seconds (22:31:28–22:34:52 UTC), with no warnings or
+  errors in that retained window. The durable financial ledger covers the whole
+  run, but these logs cannot rule out earlier transient errors.
+
+The earlier statement that paid rewards were the only remaining uncertainty
+was too strong. Improve reward-source continuity and diagnostic retention before
+claiming reliable earnings measurement. Crash recovery, hard stop triggering,
+partial fills and disconnect handling were not deliberately induced in this
+live audit.
+
 ## 162. Restart latency was ranking work, not a hung process — 2026-09-23
 
 VERIFIED LIVE in generation 92: the supervisor became healthy, all four book
