@@ -370,6 +370,8 @@ class InventoryDispatchSource:
                 and (proof.maintenance_cycle is None
                      or (self.runtime.maintenance is not None
                          and self.runtime.maintenance.cycle is proof.maintenance_cycle
+                         and self.runtime.maintenance._cycle_current(
+                             proof.plan, proof.maintenance_cycle)
                          and not proof.plan.inventory.position))
                 and self._plan_current(proof.plan, proof.report_observed_at, sending=True,
                                        require_book=kind != 'cancel')

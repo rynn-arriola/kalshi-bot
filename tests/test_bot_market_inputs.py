@@ -11,6 +11,7 @@ from kalshi_bot.market_inputs import (ExitInputService, FeeProfile,
     parse_market, parse_event, parse_series, rules_digest, taker_bound,
     tick_bands, timestamp, fee_changes)
 from kalshi_bot.rest import PageSet, ReadResult, RestReads, TokenBudget, WireResponse, request_path
+from kalshi_bot.quota import QuotaUnavailable
 from kalshi_bot.values import InvalidData
 from test_bot_engine import NOW
 
@@ -403,6 +404,21 @@ class InputTests(unittest.IsolatedAsyncioTestCase):
         self.reads.markets['A']['price_ranges']=[]
         with self.assertRaises(InvalidData): await self.service.refresh('A')
         self.assertNotIn('A',self.published)
+
+    async def test_quota_deferral_is_not_logged_as_metadata_failure(self):
+        events=[]
+        class Log:
+            def emit(self,name,**fields): events.append(name)
+        self.service.diagnostics=Log()
+        async def unavailable(name):
+            raise QuotaUnavailable()
+        self.reads.before=unavailable
+        with self.assertRaises(QuotaUnavailable):
+            await self.service.refresh('A')
+        await asyncio.sleep(0)
+        self.assertIn('exit_inputs_deferred',events)
+        self.assertNotIn('exit_inputs_failed',events)
+        self.assertNotIn('metadata_dependency_failed',events)
 
     async def test_review_revocation_during_milestone_read_wins(self):
         async def revoke(name):

@@ -10,6 +10,29 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-100 — Repair live maintenance timing and rejected-reducer churn
+
+- **Status:** ACCEPTED implementation and pre-restart review, 2026-09-23.
+- **Decision owner:** Operator: “add the fix but do not restart yet,” followed by
+  a request to review the change, inspect current live logs and fix unusual
+  behavior before restart.
+- **Scope:** Preserve verified reference-drift evidence through brief ordinary
+  source gaps without counting unknown time; reset on a changed owner/program/
+  account generation or a gap over 15 seconds; require a fresh exact lease at
+  cancellation send. Wake reward reflection after successful account recovery.
+  Treat scalar create HTTP 400 as no-order proof, retain only a bounded error
+  code, and durably back off consecutive identical reducers 10/20/40/60 seconds.
+  Changed price, quantity or IOC mode may proceed immediately. Suppress empty
+  broad-discovery inventory-plan logs while retaining material/final transitions.
+  The required log review also authorizes repair of the observed 4,096-receipt
+  writer crash: atomically archive the exact old audit rows before retaining a
+  fresh hot receipt, never use archived evidence as current account authority,
+  and classify overtaken metadata publications/quota deferrals as retry/defer
+  states rather than failed market attempts.
+- **Boundary:** No risk, quote-size, loss, market-selection or exit-deadline
+  change. Unknown writes remain non-retrying. Build, test, review, publish only;
+  do not deploy, stop or restart generation 63 under this decision.
+
 ### D-099 — Emergency force cancellation, shutdown repair and controlled restart
 
 - **Status:** ACCEPTED operation and implementation, 2026-09-23.

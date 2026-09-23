@@ -6,12 +6,15 @@ authorize entries, restore a private generation, or move an accounting boundary.
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+import zlib
 
 from .orders import timestamp_us
 from .values import InvalidData, identity, integer, utc
 
 
 MAX_RECEIPTS = 4096
+MAX_ARCHIVES = 4096
+MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,12 @@ class EnumerationCoverage:
     receipt_ids: tuple[str, ...]
     omission_receipts: int
     latest_observed_us: int | None
+    archived_receipts: int = 0
+    archive_count: int = 0
+
+    @property
+    def receipt_count(self):
+        return len(self.receipt_ids) + self.archived_receipts
 
     @property
     def blockers(self):
@@ -85,6 +94,8 @@ class EnumerationCoverage:
             blockers.append('history_enumeration_gaps')
         if self.omission_receipts:
             blockers.append('previously_observed_fills_omitted')
+        if self.archived_receipts:
+            blockers.append('history_receipts_archived')
         return tuple(blockers)
 
     @property
@@ -137,10 +148,57 @@ def complete_enumeration(ledger, evidence, *, receipt_id, writer_epoch, read_sta
                 raise InvalidData('immutable enumeration receipt conflict')
             return receipt
         if ledger.connection.execute('SELECT COUNT(*) FROM history_enumerations').fetchone()[0] >= MAX_RECEIPTS:
-            raise InvalidData('history receipt capacity reached; explicit archival required')
+            _archive_active_receipts(ledger)
         ledger.connection.execute('INSERT INTO history_enumerations VALUES (?,?,?,?,?,?)',
             (receipt_id, evidence.subaccount, evidence.start_us, evidence.end_us, receipt.eligible_end_us, encoded))
     return receipt
+
+
+def _archive_active_receipts(ledger):
+    """Atomically move the bounded hot receipt set into an exact audit blob.
+
+    Archived receipts remain immutable audit evidence but are deliberately not
+    current account authority. The newly completed receipt becomes the only hot
+    evidence after this transaction commits.
+    """
+    rows = ledger.connection.execute(
+        'SELECT id,subaccount,start_us,end_us,eligible_end_us,payload '
+        'FROM history_enumerations ORDER BY rowid LIMIT ?', (MAX_RECEIPTS+1,)).fetchall()
+    if not rows or len(rows) > MAX_RECEIPTS:
+        raise InvalidData('invalid history receipt archive scope')
+    if ledger.connection.execute(
+            'SELECT COUNT(*) FROM history_enumeration_archives').fetchone()[0] >= MAX_ARCHIVES:
+        raise InvalidData('history archive capacity reached; external archival required')
+    exact, observations, scopes = [], [], {}
+    for row in rows:
+        receipt = EnumerationReceipt(**json.loads(row['payload']))
+        if (receipt.receipt_id, receipt.subaccount, receipt.start_us, receipt.end_us,
+                receipt.eligible_end_us) != (row['id'], row['subaccount'], row['start_us'],
+                                             row['end_us'], row['eligible_end_us']):
+            raise InvalidData('history receipt index conflicts with immutable data')
+        exact.append([row['id'], row['subaccount'], row['start_us'], row['end_us'],
+                      row['eligible_end_us'], row['payload']])
+        observations.append(receipt.observed_us)
+        key = str(receipt.subaccount)
+        summary = scopes.setdefault(key, {'count': 0, 'start_us': receipt.start_us,
+                                           'end_us': receipt.end_us})
+        summary['count'] += 1
+        summary['start_us'] = min(summary['start_us'], receipt.start_us)
+        summary['end_us'] = max(summary['end_us'], receipt.end_us)
+    encoded = json.dumps({'version': 1, 'receipts': exact},
+                         sort_keys=True, separators=(',', ':')).encode('utf-8')
+    if len(encoded) > MAX_ARCHIVE_BYTES:
+        raise InvalidData('history archive exceeds byte capacity')
+    archive_id = sha256(b'kalshi-history-archive-v1\0' + encoded).hexdigest()
+    compressed = zlib.compress(encoded, level=9)
+    if len(compressed) > MAX_ARCHIVE_BYTES:
+        raise InvalidData('compressed history archive exceeds byte capacity')
+    ledger.connection.execute('INSERT INTO history_enumeration_archives VALUES (?,?,?,?,?,?)',
+        (archive_id, len(rows), min(observations), max(observations),
+         json.dumps(scopes, sort_keys=True, separators=(',', ':')), compressed))
+    ledger.connection.execute('DELETE FROM history_enumerations')
+    if ledger.connection.execute('SELECT COUNT(*) FROM history_enumerations').fetchone()[0]:
+        raise InvalidData('history receipt archival did not clear hot set')
 
 
 def enumeration_coverage(ledger, *, subaccount, start_us, end_us):
@@ -175,5 +233,25 @@ def enumeration_coverage(ledger, *, subaccount, start_us, end_us):
         cursor = right
     if cursor < end_us:
         gaps.append((cursor, end_us))
+    archived, archive_count = 0, 0
+    archives = ledger.connection.execute(
+        'SELECT scope_summary FROM history_enumeration_archives LIMIT ?', (MAX_ARCHIVES+1,)).fetchall()
+    if len(archives) > MAX_ARCHIVES:
+        raise InvalidData('history archive inspection exceeds capacity')
+    for archive in archives:
+        try:
+            scopes = json.loads(archive['scope_summary'])
+            summary = scopes.get(str(subaccount))
+            if summary is None:
+                continue
+            count, left, right = summary['count'], summary['start_us'], summary['end_us']
+            integer(count, 0, MAX_RECEIPTS)
+            integer(left, 0, 2**63-1)
+            integer(right, left+1, 2**63-1)
+        except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            raise InvalidData('invalid history archive scope summary') from None
+        if count and left < end_us and right > start_us:
+            archived += count
+            archive_count += 1
     return EnumerationCoverage(subaccount, start_us, end_us, tuple(spans), tuple(gaps),
-                               tuple(receipts), omissions, latest)
+                               tuple(receipts), omissions, latest, archived, archive_count)

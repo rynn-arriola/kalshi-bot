@@ -57,16 +57,14 @@ Existing maintenance suite: **21 tests passed**, 11.294 seconds. Existing tests
 verify regular observations and deliberate reset behavior, not progress under
 ordinary repeated gaps. No fix is claimed.
 
-## Recommended next change (not implemented)
+## Implemented follow-up (not deployed)
 
-Coordinate reflection with a newly reconciled account report and prioritize
-maintenance for owned markets. Keep a bounded record of verified drift across
-short evidence gaps without counting unknown time as verified drift; reset on
-qualifying recovery, changed orders/program/generation, fills or a long gap.
-Require fresh complete evidence again at decision and dispatch. Add regressions
-for live-like reflection/account timing, bounded gaps, fills and genuine recovery.
-Do not simply lengthen source freshness or act on an old book. The proposed dwell
-semantics would revise the current D-098 contract and need an accepted decision.
+D-100 accepts and implements the recommendation in isolated source. Verified
+coverage survives gaps up to 15 seconds without counting unknown time; changed
+orders/program/account generation or a longer gap reset it. Decision and send
+retain exact fresh leases, and successful account recovery requests coalesced
+reflection. [Build/review evidence](BUILD_LIVE_MAINTENANCE_RELIABILITY.md).
+Production generation 63 still runs the old five-second-reset source.
 
 Local ignored evidence: `data/maintenance-dwell-live-observation.json` and
 `data/maintenance-dwell-reproduction.json` in the isolated checkout.

@@ -163,6 +163,24 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.f.runtime.stop()
         await task
 
+    async def test_create_400_does_not_retry_identical_reducer(self):
+        task = await self.start(runtime=True)
+        calls = []
+        async def fail(kind, request):
+            calls.append((kind, dict(request)))
+            raise MutationHTTPFailure(400, 'invalid_order')
+        self.f.dispatcher.executor.invoke.invoke = fail
+        self.request()
+        await until(lambda: self.service.last_outcome is not None
+                    and self.service.last_outcome['state'] == 'REJECTED')
+        await asyncio.sleep(.05)
+        self.assertEqual(len(calls), 1)
+        rows = await self.f.writer.mutations()
+        self.assertEqual([row['phase'] for row in rows].count('REJECTED'), 1)
+        self.assertIn('invalid_order', rows[-1]['response'])
+        self.f.runtime.stop()
+        await task
+
     async def test_late_failure_during_stop_is_not_reported_healthy(self):
         task = await self.start(runtime=True)
         entered = asyncio.Event()

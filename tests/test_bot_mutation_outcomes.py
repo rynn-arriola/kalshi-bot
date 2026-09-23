@@ -276,6 +276,13 @@ class OwnerContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(MutationHTTPFailure(429)), 'mutation_http_failure')
         with self.assertRaises(AttributeError):
             MutationHTTPFailure(429).status = 200
+        for code in ('', 'has space', 'x'*101, '\u2603'):
+            with self.assertRaises(InvalidData):
+                MutationHTTPFailure(400, code)
+        failure = MutationHTTPFailure(400, 'invalid_order')
+        self.assertEqual(failure.error_code, 'invalid_order')
+        with self.assertRaises(AttributeError):
+            failure.error_code = 'changed'
 
     def test_explicit_fixture_and_bounded_pause(self):
         for flag in (False, None, 1):

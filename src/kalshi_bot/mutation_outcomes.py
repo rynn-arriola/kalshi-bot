@@ -20,6 +20,7 @@ class MutationNotice:
     exchange_index: int
     outcome: str
     http_status: int | None = None
+    error_code: str | None = None
 
 
 class MutationOutcomeOwner:
@@ -76,7 +77,8 @@ class MutationOutcomeOwner:
                            else 'rate_limited' if status == 429 else 'http_failure' if status is not None
                            else 'interrupted' if isinstance(exc, asyncio.CancelledError)
                            else 'uncertain')
-                notice = MutationNotice(*scope, outcome, status)
+                code = exc.error_code if type(exc) is MutationHTTPFailure else None
+                notice = MutationNotice(*scope, outcome, status, code)
                 try:
                     if status == 429:
                         self.budget.pause_429(shard=scope[4], seconds=self.pause_seconds,
@@ -119,8 +121,9 @@ class MutationOutcomeOwner:
                         self.budget.pause_429(shard=0, seconds=self.pause_seconds,
                                               now=self.clock_pair())
                 finally:
+                    code = exc.error_code if type(exc) is MutationHTTPFailure else None
                     for scope in scopes:
-                        self._notify(MutationNotice(*scope, outcome, status))
+                        self._notify(MutationNotice(*scope, outcome, status, code))
                 raise
             for scope, row in zip(scopes, outcomes):
                 self._notify(MutationNotice(*scope, row['state']))

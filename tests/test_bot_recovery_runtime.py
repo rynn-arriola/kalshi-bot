@@ -488,6 +488,19 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(self.runtime.recovery_state, 'blocked_retry_exhausted')
         self.assertEqual(self.delays, [])
 
+    async def test_successful_recovery_wakes_reward_reflection(self):
+        await self.connected()
+        calls = []
+        self.runtime.rewards = type('Rewards', (), {
+            'request_reflection': lambda _self: calls.append('reflection')})()
+        self.runtime.recover_once = lambda: asyncio.sleep(0, result=True)
+        self.runtime.request_recovery()
+        task = asyncio.create_task(self.runtime._recover())
+        self.tasks.append(task)
+        await self.eventually(
+            lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        self.assertEqual(calls, ['reflection'])
+
     async def test_coalesces_many_recovery_requests(self):
         await self.connected()
         for _ in range(1000):

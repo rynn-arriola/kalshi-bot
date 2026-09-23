@@ -16,6 +16,7 @@ import time
 from .adapters import PriceBand
 from .exits import ExitTerms
 from .observability import NO_LOG
+from .quota import QuotaUnavailable
 from .values import InvalidData, decimal, identity, integer, utc
 
 
@@ -24,6 +25,10 @@ SCHEDULED_RELEASE_CONDITION = (
 SCHEDULED_RELEASE_TYPES = frozenset({
     'company_report', 'one_off_milestone', 'truflation'})
 SCHEDULED_RELEASE_REVIEW = 'automatic-scheduled-release-v1'
+
+
+class InputRefreshSuperseded(InvalidData):
+    """A coherent input read was overtaken before publication; retryable, not failed."""
 
 
 def timestamp(value):
@@ -495,7 +500,7 @@ class ExitInputService:
                     self.pending_scopes.pop(target,None)
                 if not t.cancelled():
                     error = t.exception()
-                    if error is not None:
+                    if error is not None and not isinstance(error, QuotaUnavailable):
                         self.diagnostics.emit('metadata_dependency_failed', error=error)
             task.add_done_callback(done)
         # asyncio.wait leaves the shared task alive on caller cancellation without
@@ -631,7 +636,7 @@ class ExitInputService:
                     or self.reviews.get(ticker) is not review or self.fee_profile is not profile
                     or utc(self.now())>=expires
                     or any(self.values.get((name,key)) is not item or not self._fresh(item) for name,key,item in inputs)):
-                raise InvalidData('input evidence changed before publication')
+                raise InputRefreshSuperseded('input evidence changed before publication')
             terms = ExitTerms(ticker,m.bands,min(v.observed for _,_,v in inputs),expires,m.closes,
                               event_risk_at=risk_at,taker_fee_per_contract_bound=bound,
                               active=m.active and m.opens<=utc(self.now())<m.closes)
@@ -643,7 +648,11 @@ class ExitInputService:
             return result
         except BaseException as exc:
             self._clear_terms(ticker)
-            if not isinstance(exc,asyncio.CancelledError):
+            if isinstance(exc, QuotaUnavailable):
+                self.diagnostics.emit('exit_inputs_deferred',market=ticker,generation=generation)
+            elif isinstance(exc, InputRefreshSuperseded):
+                self.diagnostics.emit('exit_inputs_superseded',market=ticker,generation=generation)
+            elif not isinstance(exc,asyncio.CancelledError):
                 self.diagnostics.emit('exit_inputs_failed',market=ticker,error=exc,generation=generation)
             raise
         finally:

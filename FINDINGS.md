@@ -1,5 +1,39 @@
 # Findings — kalshi-bot
 
+## 153. Per-recovery immutable receipts exhausted their hot table — 2026-09-23
+
+VERIFIED read-only: production `history_enumerations` contained exactly 4,096
+rows, all subaccount 0, all omission-free, all sharing one start and successively
+later ends. Their payloads totaled 1,836,852 bytes and their coverage union was
+one interval. The next `history_complete` raised the documented capacity error,
+failed the writer and caused the supervisor's automatic recovery-only child.
+This was deterministic growth, not storage latency or an API outage.
+
+Polymarket executable code keeps durable fills as long-term truth and uses
+bounded recent venue history as positive recovery evidence rather than writing a
+per-poll permanent receipt. D-100 adapts that principle without discarding
+Kalshi's stronger exact receipts: old rows are transactionally archived, while
+only fresh hot evidence can participate in current continuity. The replacement
+child's 48 line-634 errors were overtaken metadata publications; four additional
+dependency errors were quota deferrals. Both classifications are repaired.
+
+## 152. One live reducer produced 79 deterministic rejects before IOC — 2026-09-23
+
+VERIFIED read-only from generation 63 ledger/status: a +10 YES-equivalent TRUEV
+position filled at 13:51:45 UTC. Its passive reducer was rejected 39 times at
+40c, 22 at 39c, once at 38c and 17 times at 37c through 14:05:03; attempts were
+often about two seconds apart. One reduce-only IOC acknowledged at 14:07:38 and
+the current account report is flat. No UNKNOWN mutation remains. The old scalar
+transport retained status 400 but discarded the error body, so the exact venue
+reason is unknowable after the fact.
+
+The current log rotation retained 1,895 rows spanning only 9.99 seconds: 1,815
+were inventory-plan changes across empty broad-discovery markets and 73 were
+metadata publications; no retained WARNING/ERROR appeared. D-100 adds bounded
+error-code evidence, a durable 10/20/40/60-second identical reducer circuit and
+material-only plan logs. This reduces duplicate writes/log loss; it does not
+prove the venue's original rejection reason or change the hard-exit deadline.
+
 ## 151. Maintenance dwell can starve under normal evidence gaps — 2026-09-23
 
 [Read-only investigation](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md):
@@ -10,7 +44,8 @@ five seconds reset the 30-second repricing dwell. Unchanged real-owner fixtures
 reproduce no repricing after 180 seconds of consistently bad fresh samples six
 seconds apart; two/four-second samples do start it. All 21 existing tests pass.
 Timing starvation is verified synthetically and strongly supported live; exact
-internal live resets are not observable. Proposed correction is not implemented.
+internal live resets are not observable. D-100 implements evidence-covered
+accumulation and fresh send leases in isolation; production remains unchanged.
 
 ## 150. Recovery-only fencing and normal restart succeed after D-099 — 2026-09-23
 

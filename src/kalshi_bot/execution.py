@@ -14,6 +14,9 @@ from .command_types import (CancelEvidence, CommandDenied, MutationHTTPFailure,
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 from .observability import NO_LOG
 
+REJECTED_REDUCTION_RETRY_BASE_SECONDS = 10
+REJECTED_REDUCTION_RETRY_MAX_SECONDS = 60
+
 
 def validate_request(kind, request):
     if kind not in {'create', 'cancel'} or not isinstance(request, dict):
@@ -374,6 +377,33 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
         blockers.append('capacity_episode_changed')
     if position != evidence.position or route != evidence.exchange_index:
         blockers.append('reduction_evidence_state_changed')
+    if active is not None:
+        prior = ledger.connection.execute(
+            "SELECT m.phase,m.created_at FROM mutation_attempts m "
+            "JOIN command_authorizations a ON a.mutation_id=m.id "
+            "WHERE a.episode_id=? AND m.kind='create' "
+            "AND m.phase IN ('ACK','REJECTED') "
+            "AND json_extract(m.request,'$.reduce_only')=1 "
+            "AND json_remove(m.request,'$.client_order_id')="
+            "json_remove(?,'$.client_order_id') ORDER BY m.created_at DESC LIMIT 5",
+            (active, encoded)).fetchall()
+        consecutive = 0
+        for row in prior:
+            if row['phase'] != 'REJECTED':
+                break
+            consecutive += 1
+        if consecutive:
+            # A scalar HTTP 400 is exact proof that this create made no order.
+            # A new client id does not make the same rejected reducer valid.
+            # Follow the Poly reducer principle (a separate short safety
+            # circuit, never permanent entry-style denial), but increase the
+            # durable delay for repeated identical Kalshi 400s.
+            rejected_at = utc(datetime.fromisoformat(prior[0]['created_at']))
+            delay = min(REJECTED_REDUCTION_RETRY_MAX_SECONDS,
+                        REJECTED_REDUCTION_RETRY_BASE_SECONDS*(2**(consecutive-1)))
+            age = utc(now)-rejected_at
+            if age < timedelta(seconds=delay):
+                blockers.append('identical_reduction_rejection_cooldown')
     active_reducer = ledger.connection.execute(
         "SELECT 1 FROM intents WHERE state IN "
         "('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED') "
@@ -610,8 +640,13 @@ def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
         response = json.dumps(acknowledgement(receipt.kind, receipt.request, document),
                               sort_keys=True)
     elif operation == 'rejected':
-        if receipt.kind != 'create' or document != {'state':'rejected', 'status':400}:
+        if (receipt.kind != 'create' or not isinstance(document, dict)
+                or set(document)-{'state', 'status', 'error_code'}
+                or document.get('state') != 'rejected' or document.get('status') != 400):
             raise InvalidData('unsupported deterministic mutation rejection')
+        code = document.get('error_code')
+        if code is not None:
+            MutationHTTPFailure(400, code)
         response = json.dumps(document, sort_keys=True, separators=(',', ':'))
     phase = {'unknown':'UNKNOWN', 'ack':'ACK', 'rejected':'REJECTED'}[operation]
     ledger.connection.execute('UPDATE mutation_attempts SET phase=?,response=? WHERE id=?',
@@ -836,9 +871,12 @@ class InjectedExecutor:
                             and receipt.kind == 'create')
                 if not finalized:
                     try:
+                        rejection = {'state':'rejected', 'status':400}
+                        if rejected and exc.error_code is not None:
+                            rejection['error_code'] = exc.error_code
                         await self._retain(
                             self.writer.record_outcome('rejected' if rejected else 'unknown',
-                                receipt, {'state':'rejected', 'status':400} if rejected else {},
+                                receipt, rejection if rejected else {},
                                 self.now()))
                         finalized = True
                     except BaseException as outcome_exc:
@@ -846,7 +884,7 @@ class InjectedExecutor:
                 if rejected and persistence_error is None:
                     self.failed = False
                     self.diagnostics.emit('mutation_rejected', operation=receipt.authorization_id,
-                                          http_status=400)
+                                          http_status=400, venue_code=exc.error_code)
                     self.diagnostics.ensure_healthy()
                     return AttemptResult(receipt.authorization_id, 'REJECTED', None)
                 if self.failed:

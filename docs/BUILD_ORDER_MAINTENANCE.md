@@ -41,8 +41,10 @@ scanner, process or venue client. Only normal composition attaches it.
   missing fees or changed terms is not zero reward.
 - Reuse scoring and 70% checks for actual/proposed quotes. Remove proven own
   quotes exactly once; exclude our opposite order from executable exit depth.
-- Require 30 seconds of repeatedly current drift before repricing and a
-  30-second post-cycle cooldown. A >5-second evidence gap or recovered qualifying
+- Require 30 seconds of explicitly verified drift before repricing and a
+  30-second post-cycle cooldown. D-100 preserves accumulated verified coverage
+  through gaps up to 15 seconds without counting unknown time; changed exact
+  ownership/program/account generation, a longer gap or a recovered qualifying
   sample resets the dwell. Definite unscoring/depth/value failure without a
   valid repair requires 90 seconds before withdrawal. Unsupported evidence
   never becomes economic failure; known earning deadlines do not wait.

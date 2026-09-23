@@ -5,6 +5,7 @@ through the ordinary selector/writer. Recovery-only startup never resumes this
 ephemeral policy; the existing supervisor drains durable orders first.
 """
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from .selection import MarketSelector
@@ -18,9 +19,23 @@ class MaintenanceCycle:
     order_ids: tuple[str, ...]
     reason: str
     reenter: bool
+    evidence_valid_until: datetime | None = None
+    evidence_identity: tuple | None = None
+
+
+@dataclass(frozen=True)
+class DriftEvidence:
+    identity: tuple
+    verified_seconds: float
+    observed_at: float
+    valid_until: float
 
 
 class QuoteMaintenance:
+    REPRICE_DWELL_SECONDS = 30
+    UNSCORING_DWELL_SECONDS = 90
+    MAX_EVIDENCE_GAP_SECONDS = 15
+
     def __init__(self, runtime):
         self.runtime = runtime
         self.bindings = {}
@@ -70,7 +85,42 @@ class QuoteMaintenance:
         self._cooldown[ticker] = self.runtime.clock()+30
         self.runtime._entry_dirty = True
 
-    def _start(self, plan, program, reason, reenter):
+    def _identity(self, plan, program):
+        return (program, self.runtime.writer.epoch, self.runtime.account.generation,
+                tuple(sorted((row.order.order_id, row.order.side, row.order.yes_price,
+                              row.order.remaining, row.order.exchange_index)
+                             for row in plan.inventory.orders)))
+
+    def _observe_drift(self, ticker, identity, mono, valid_for):
+        """Accumulate only time covered by prior fresh evidence.
+
+        Brief source-join gaps remain unknown rather than erasing established
+        evidence. A long gap or any ownership/generation change starts over.
+        """
+        previous = self._dwell.get(ticker)
+        verified = 0.0
+        if (isinstance(previous, DriftEvidence) and previous.identity == identity
+                and 0 <= mono-previous.observed_at <= self.MAX_EVIDENCE_GAP_SECONDS):
+            verified = previous.verified_seconds + max(
+                0.0, min(mono, previous.valid_until)-previous.observed_at)
+        current = DriftEvidence(identity, verified, mono, mono+max(0.0, valid_for))
+        self._dwell[ticker] = current
+        return current
+
+    def _cycle_identity_current(self, plan, cycle):
+        current = self._identity(plan, cycle.program)
+        expected = cycle.evidence_identity
+        return (isinstance(expected, tuple) and len(expected) == 4
+                and current[:3] == expected[:3]
+                and set(current[3]).issubset(set(expected[3])))
+
+    def _cycle_current(self, plan, cycle):
+        return (cycle.evidence_valid_until is None
+                or (utc(self.runtime.now()) < cycle.evidence_valid_until
+                    and self._cycle_identity_current(plan, cycle)))
+
+    def _start(self, plan, program, reason, reenter, *, evidence_valid_until=None,
+               evidence_identity=None):
         r = self.runtime
         if self.cycle is not None or r.entry_pause_active:
             return
@@ -83,8 +133,10 @@ class QuoteMaintenance:
         if service is not None and service.dispatcher.status().active is not None:
             return  # No new maintenance episode during an in-flight mutation.
         ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
-        self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter)
-        self._dwell.pop(plan.ticker, None)
+        self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter,
+                                      evidence_valid_until, evidence_identity)
+        if evidence_valid_until is None:
+            self._dwell.pop(plan.ticker, None)
         self.samples[plan.ticker]['action'] = reason
 
     def refresh(self, ticker):
@@ -116,7 +168,21 @@ class QuoteMaintenance:
             if orders:
                 if not set(c.order_ids) & {o.order.order_id for o in orders}:
                     self._finish(ticker)  # Acknowledged replacement, not cancel ACK.
-                return
+                    return
+                if self._cycle_current(plan, c):
+                    return
+                # A stale scoring decision cannot authorize cancellation. Keep
+                # accumulated verified coverage and require a fresh observation
+                # to recreate the cycle and dispatch proof.
+                previous = self._dwell.get(ticker)
+                if (isinstance(previous, DriftEvidence)
+                        and self._cycle_identity_current(plan, c)):
+                    mono = r.clock()
+                    self._dwell[ticker] = DriftEvidence(
+                        self._identity(plan, program), previous.verified_seconds,
+                        mono, mono)
+                self.cycle = None
+                return self.refresh(ticker)
             if not c.reenter or now >= c.program.end:
                 self._finish(ticker)
                 self.bindings.pop(ticker, None)
@@ -213,25 +279,30 @@ class QuoteMaintenance:
         if not drift:
             self._dwell.pop(ticker, None)
             return
-        # Thirty seconds of repeatedly current drift before repricing; ninety
-        # before withdrawing a persistently unscoring, unrepairable pair.
-        # A >5s evidence gap resets the dwell, never counts as bad economics.
+        # Count only intervals covered by fresh observations. Brief unknown gaps
+        # do not count and do not erase prior evidence; long gaps and identity
+        # changes reset it. This avoids starvation at the normal account/
+        # reflection cadence without treating missing evidence as bad economics.
         mono = r.clock()
-        since, last = self._dwell.get(ticker, (mono, mono))
-        if not 0 <= mono-last <= 5:
-            since = mono
-        self._dwell[ticker] = (since, mono)
-        delay = 30 if target_ok else 90
-        if mono-since < delay or mono < self._cooldown.get(ticker, 0):
+        identity = self._identity(plan, program)
+        evidence = self._observe_drift(
+            ticker, identity, mono, (until-now).total_seconds())
+        self.samples[ticker]['dwell_verified_seconds'] = evidence.verified_seconds
+        self.samples[ticker]['dwell_gap_limit_seconds'] = self.MAX_EVIDENCE_GAP_SECONDS
+        delay = self.REPRICE_DWELL_SECONDS if target_ok else self.UNSCORING_DWELL_SECONDS
+        if evidence.verified_seconds < delay or mono < self._cooldown.get(ticker, 0):
             return
         if target_ok:
-            self._start(plan, program, 'restore_reference_pair', True)
+            self._start(plan, program, 'restore_reference_pair', True,
+                        evidence_valid_until=until, evidence_identity=identity)
         elif actual.blockers:
-            self._start(plan, program, 'persistently_unscoring', False)
+            self._start(plan, program, 'persistently_unscoring', False,
+                        evidence_valid_until=until, evidence_identity=identity)
 
     def cancel_target(self, plan):
         c = self.cycle
-        if c is None or c.ticker != plan.ticker or plan.inventory.position:
+        if (c is None or plan is None or c.ticker != plan.ticker or plan.inventory.position
+                or not self._cycle_current(plan, c)):
             return None
         for row in plan.inventory.orders:
             if (row.order.order_id in c.order_ids and row.owned and not row.reducing
@@ -248,6 +319,8 @@ class QuoteMaintenance:
         return dict(cycle=None if c is None else dict(ticker=c.ticker,
             program_id=c.program.program_id, reason=c.reason, reenter=c.reenter),
             markets={t:self.samples[t] for t in sorted(current)[:30] if t in self.samples},
-            historical_samples=True, reprice_dwell_seconds=30,
-            unscoring_dwell_seconds=90, cooldown_seconds=30,
+            historical_samples=True, reprice_dwell_seconds=self.REPRICE_DWELL_SECONDS,
+            unscoring_dwell_seconds=self.UNSCORING_DWELL_SECONDS,
+            evidence_gap_limit_seconds=self.MAX_EVIDENCE_GAP_SECONDS,
+            cooldown_seconds=30,
             replaces_for_better_rank=False, estimate_only=True)

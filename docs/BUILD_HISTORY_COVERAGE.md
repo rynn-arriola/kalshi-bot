@@ -18,8 +18,8 @@ future time or infer an atomic snapshot. Union eligible intervals only within
 the requested subaccount; report exact gaps. Restart reads inspect historical
 receipts and never restore current stream/account authority.
 
-Existing 10,000-row staging cap remains. New receipts cap at 4,096, no silent
-eviction. All SQLite work/hashing stays on the existing writer. No new threads,
+Existing 10,000-row staging cap remains. Hot receipts cap at 4,096, with no
+silent eviction. All SQLite work/hashing stays on the existing writer. No new threads,
 polling, network calls or per-book scans. Control-plane inspection is explicit.
 
 Planned tests: interruption, cancellation, conflict/rollback, empty reads, gaps,
@@ -78,7 +78,14 @@ final submission may leave the valid committed receipt, consistent with existing
 accepted-writer-command durability. Read generation loss invalidates the current
 report even when its historical receipt was safely recorded. Repeat same-ID
 commit is idempotent only for identical content; normal new readings append new
-IDs. Capacity exhaustion fails closed without deleting evidence.
+IDs. The original build made capacity exhaustion fail closed without deleting
+evidence. D-100 later observed that deterministic limit in production and adds
+transactional exact archival: all hot rows are validated and preserved in one
+content-addressed compressed archive before they are removed, and the new
+current receipt commits in the same transaction. Any failure rolls back. An
+archive is historical audit evidence and explicitly cannot restore current
+account/trading authority. See
+[live maintenance reliability](BUILD_LIVE_MAINTENANCE_RELIABILITY.md).
 
 `LedgerWriter.history_coverage(subaccount=..., start=..., end=...)` and runtime
 `inspect_history_coverage(start=..., end=...)` are explicit local control-plane

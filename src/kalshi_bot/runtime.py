@@ -990,6 +990,8 @@ class RecoveryRuntime:
                     return
                 if repaired and not self.recovery_requested.is_set():
                     self.recovery_state = "repaired_entries_blocked"
+                    if self.rewards is not None:
+                        self.rewards.request_reflection()
                     for ticker in self.engine.market_shard:
                         self.engine.dirty.mark(ticker)
                     self.engine.wake.set()
@@ -1270,7 +1272,10 @@ class RecoveryRuntime:
                 eligible_end_us=receipt.eligible_end_us, rows=receipt.row_count,
                 omitted_rows=receipt.omitted_rows, complete_account_proof=False) if receipt else None),
             durable_history_inspection=(dict(interval_us=[inspection.start_us, inspection.end_us],
-                gap_count=len(inspection.gaps), receipt_count=len(inspection.receipt_ids),
+                gap_count=len(inspection.gaps), receipt_count=inspection.receipt_count,
+                active_receipt_count=len(inspection.receipt_ids),
+                archived_receipt_count=inspection.archived_receipts,
+                archive_count=inspection.archive_count,
                 omission_receipts=inspection.omission_receipts, historical_only=True,
                 complete_account_proof=False) if inspection else None),
             continuity=dict(local_evidence_consistent=continuity.local_evidence_consistent,

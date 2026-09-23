@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS history_enumerations (
   id TEXT PRIMARY KEY, subaccount INTEGER NOT NULL, start_us INTEGER NOT NULL,
   end_us INTEGER NOT NULL, eligible_end_us INTEGER NOT NULL, payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS history_scope_interval ON history_enumerations(subaccount,start_us,end_us);
+CREATE TABLE IF NOT EXISTS history_enumeration_archives (
+  id TEXT PRIMARY KEY, receipt_count INTEGER NOT NULL, first_observed_us INTEGER NOT NULL,
+  last_observed_us INTEGER NOT NULL, scope_summary TEXT NOT NULL, payload BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS private_epochs (
   id TEXT PRIMARY KEY, subaccount INTEGER NOT NULL, writer_epoch TEXT NOT NULL,
   generation INTEGER NOT NULL, opened_at TEXT NOT NULL, closed_at TEXT,

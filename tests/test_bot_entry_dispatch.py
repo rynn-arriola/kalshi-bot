@@ -1,5 +1,6 @@
 """Two-leg entry dispatch and bounded V2 transport; synthetic I/O only."""
 import json
+from io import BytesIO
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
@@ -8,6 +9,8 @@ from decimal import Decimal as D
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -20,7 +23,8 @@ from kalshi_bot.dispatch import (ENTRY_PAIR, EntryPairCandidate,
 from kalshi_bot.execution import InjectedExecutor
 from kalshi_bot.mutation_outcomes import MutationOutcomeOwner
 from kalshi_bot.mutation_outcomes import MutationHTTPFailure
-from kalshi_bot.mutation_transport import MutationActivation, OrderMutationTransport
+from kalshi_bot.mutation_transport import (MutationActivation,
+                                           OrderMutationTransport, mutation_wire)
 from kalshi_bot.dispatch_sources import InventoryDispatchSource
 from kalshi_bot.rest import WireResponse
 from kalshi_bot.runtime import RecoveryRuntime
@@ -278,6 +282,31 @@ class MutationTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('/order%2Fa?', calls[0][0])
         self.assertEqual(calls[0][1], 'DELETE')
         self.assertEqual(calls[0][3], b'')
+
+    async def test_http_error_retains_only_bounded_venue_code(self):
+        transport, _ = self.transport(WireResponse(
+            400, json.dumps({'code': 'invalid_order',
+                             'message': 'sensitive venue text'}).encode()))
+        with self.assertRaises(MutationHTTPFailure) as caught:
+            await transport('create', pair()[0])
+        self.assertEqual((caught.exception.status, caught.exception.error_code),
+                         (400, 'invalid_order'))
+        self.assertNotIn('sensitive', repr(caught.exception))
+
+        transport, _ = self.transport(WireResponse(
+            400, json.dumps({'code': 'not a safe code'}).encode()))
+        with self.assertRaises(MutationHTTPFailure) as caught:
+            await transport('create', pair()[0])
+        self.assertIsNone(caught.exception.error_code)
+
+    def test_mutation_wire_reads_bounded_http_error_body(self):
+        failure = HTTPError('https://fixture.invalid', 400, 'bad', {},
+                            BytesIO(b'{"code":"invalid_order"}'))
+        opener = SimpleNamespace(open=lambda *_args, **_kwargs: (_ for _ in ()).throw(failure))
+        with patch('kalshi_bot.mutation_transport.build_opener', return_value=opener):
+            response = mutation_wire('https://fixture.invalid', 'POST', {}, b'{}', 1024, 1)
+        self.assertEqual((response.status, response.body),
+                         (400, b'{"code":"invalid_order"}'))
 
 
 class EntrySourceTests(unittest.IsolatedAsyncioTestCase):

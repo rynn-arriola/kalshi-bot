@@ -1,13 +1,17 @@
 # Active work queue
 
-## Investigated priority: maintenance timing — 2026-09-23
+## D-100 pre-restart bundle — 2026-09-23
 
-Review the [evidence-gap diagnosis and proposed correction](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md).
-Coordinate account/reflection observations and revise bounded drift confirmation
-so ordinary gaps cannot postpone correction indefinitely. Preserve fresh
-decision/dispatch proofs and ownership/terminal-fill handling. This is a proposed
-change to D-098's five-second-reset contract, not implemented or authorized by
-the read-only investigation. Add realistic timing regressions when approved.
+Finish final suite/documentation/publication for the reviewed
+[maintenance reliability repair](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md).
+Generation 63 remains on old source in recovery-only `DRAINING` after the
+4,096-receipt writer failure. Its local zero-order/zero-position snapshot is not
+current account proof. Do not update files beneath it. After publication and
+explicit restart authority, use the normal controlled stop/drain, verify current
+venue flat/order-free state, deploy the reviewed commit, restart once and verify
+history archival/recovery, repricing cadence, rejection backoff/error codes,
+reflection joins and reduced log volume. Do not induce a fill, rejection or
+source outage for acceptance.
 
 ## After D-099 live acceptance — 2026-09-23
 

@@ -3,11 +3,13 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
 import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
 from unittest.mock import patch
+import zlib
 
 from kalshi_bot.account import AccountCoordinator
 from kalshi_bot.history_coverage import complete_enumeration, enumeration_coverage
@@ -158,12 +160,65 @@ class ReceiptTests(unittest.TestCase):
         self.complete()
         self.assertEqual(self.inspect().intervals, ())
 
-    def test_capacity_fails_without_eviction(self):
+    def test_capacity_archives_exact_old_receipt_and_keeps_new_hot(self):
         with patch('kalshi_bot.history_coverage.MAX_RECEIPTS', 1):
+            self.complete()
+            self.complete(key='r2')
+            result = self.inspect()
+            self.assertEqual(result.receipt_ids, ('r2',))
+            self.assertEqual((result.archived_receipts, result.archive_count), (1, 1))
+            self.assertIn('history_receipts_archived', result.blockers)
+            archive = self.db.connection.execute(
+                'SELECT receipt_count,scope_summary,payload FROM history_enumeration_archives').fetchone()
+            summary = json.loads(archive['scope_summary'])
+            self.assertEqual(archive['receipt_count'], 1)
+            self.assertEqual(summary['0']['count'], 1)
+            exact = json.loads(zlib.decompress(archive['payload']))
+            self.assertEqual(exact['version'], 1)
+            self.assertEqual(exact['receipts'][0][0], 'r1')
+
+    def test_archive_insert_failure_rolls_back_without_losing_hot_receipt(self):
+        with patch('kalshi_bot.history_coverage.MAX_RECEIPTS', 1):
+            self.complete()
+            self.db.connection.execute(
+                "CREATE TRIGGER reject_archive BEFORE INSERT ON history_enumeration_archives "
+                "BEGIN SELECT RAISE(ABORT, 'injected'); END")
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.complete(key='r2')
+            self.assertEqual(self.inspect().receipt_ids, ('r1',))
+            self.assertEqual(self.db.connection.execute(
+                'SELECT COUNT(*) FROM history_enumeration_archives').fetchone()[0], 0)
+
+    def test_archive_scope_summary_does_not_block_other_subaccount(self):
+        with patch('kalshi_bot.history_coverage.MAX_RECEIPTS', 1):
+            self.complete(evidence(scope=1))
+            self.complete(key='r2')
+            self.assertEqual(self.inspect().archived_receipts, 0)
+            self.assertEqual(self.inspect(scope=1).archived_receipts, 1)
+            self.assertEqual(self.inspect(10,20,scope=1).archived_receipts, 0)
+
+    def test_archive_capacity_fails_before_deleting_hot_receipt(self):
+        with (patch('kalshi_bot.history_coverage.MAX_RECEIPTS', 1),
+              patch('kalshi_bot.history_coverage.MAX_ARCHIVES', 0)):
             self.complete()
             with self.assertRaises(InvalidData):
                 self.complete(key='r2')
             self.assertEqual(self.inspect().receipt_ids, ('r1',))
+
+    def test_existing_schema_five_ledger_adds_archive_table(self):
+        with TemporaryDirectory() as folder:
+            path = Path(folder)/'existing.db'
+            ledger = Ledger(path)
+            ledger.connection.execute('DROP TABLE history_enumeration_archives')
+            ledger.connection.commit()
+            ledger.close()
+            reopened = Ledger(path)
+            try:
+                tables = {row[0] for row in reopened.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                self.assertIn('history_enumeration_archives', tables)
+            finally:
+                reopened.close()
 
     def test_invalid_metadata_rolls_back(self):
         for changes in ({'observed_at': NOW-timedelta(seconds=1)}, {'generation': None},

@@ -1,15 +1,37 @@
 # Current status
 
-## Known maintenance limitation found after restart — 2026-09-23
+## D-100 reliability bundle prepared; generation 63 recovery-blocked — 2026-09-23
 
-Generation 63 remains healthy with 30 orders and no reported positions during
-the 13:36:13–13:37:42 UTC read-only check, but Oregon harvest's non-scoring bid
-has not triggered maintenance. [Investigation](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md)
-reproduces a dwell-timer starvation mechanism: evidence gaps over five seconds
-repeatedly reset the required 30-second confirmation. Existing 21 tests pass;
-live timing supports the diagnosis, but internal reset state is not exposed.
-No fix, order action or restart occurred. Earlier restart acceptance does not
-establish reliable repricing under these live evidence gaps.
+[Implementation and review](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md) repair
+the reproduced maintenance dwell starvation, stale maintenance-send lease,
+account/reflection phase mismatch, deterministic reducer retry storm, empty-
+market diagnostic flood and the later history-receipt capacity crash. Poly
+executable code was used as a reference for bounded recent history and separate
+risk-reducing rejection handling; Kalshi retains its exact receipt audit trail
+in an atomic compressed archive and uses durable consecutive 10/20/40/60-second
+reducer backoff. No risk, selection, size, loss or exit deadline changed.
+
+Production still runs old source `ad96429`; this repair is not deployed and no
+assistant restart occurred. The original child PID 42520 failed at 14:25:20 UTC
+when `history_enumerations` reached exactly 4,096 rows. Supervisor generation 63
+automatically replaced it with recovery-only child PID 28176. That child
+acknowledged 30 cancellation mutations, but recovery exhausted and its current
+account proof is absent. At 14:46:23 UTC status was `RUNNING_UNVERIFIED` /
+`DRAINING`, with zero locally reported orders/positions and zero exposure.
+Those zeroes are historical local observations, **not verified venue flatness**.
+
+Read-only ledger evidence contains 79 repeated passive TRUEV HTTP-400 rejects:
+39 at 40c, 22 at 39c, one at 38c and 17 at 37c, plus one earlier unrelated
+rejection. No mutation remains UNKNOWN and current retained logs contain no
+WARNING/ERROR event. The three rotating logs cover only about ten seconds
+because 1,815 of 1,895 records were empty-market `inventory_plan_changed`
+events across broad discovery; D-100 suppresses that noise. The replacement
+child logged 48 expected publication races and four quota deferrals as ERROR;
+these now retry/defer without spending market failure attempts or claiming a
+failed dependency. Its readers, engine, dispatcher and logging remain alive,
+but recovery is blocked until a reviewed deployment/restart. Final verification:
+**1,610 tests passed, one expected Windows privilege skip**, 267.084 seconds.
+Publication and remote parity remain pending below.
 
 ## D-099 deployed and live restart accepted — 2026-09-23
 

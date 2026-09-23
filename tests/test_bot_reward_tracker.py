@@ -567,6 +567,19 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.rewards._reflection)
         self.assertFalse(self.rewards.running)
 
+    async def test_reconciled_account_can_request_immediate_reflection(self):
+        await self.owned()
+        self.r.reads = QueueReads([
+            dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        task = asyncio.create_task(self.rewards.run())
+        await until(lambda:self.rewards.reflection_completed == 1)
+        self.rewards.request_reflection()
+        await until(lambda:self.rewards.reflection_completed == 2)
+        self.assertEqual(len(self.r.reads.calls),2)
+        self.rewards.stop()
+        await task
+
 
 class RewardRestContractTests(unittest.TestCase):
     def test_queue_positions_is_narrow_authenticated_reflection_fallback(self):

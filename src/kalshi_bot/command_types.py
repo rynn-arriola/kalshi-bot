@@ -8,14 +8,25 @@ from .values import InvalidData, decimal, identity, integer, utc
 
 
 class MutationHTTPFailure(InvalidData):
-    """Numeric mutation failure only; never retains a raw venue response."""
-    def __init__(self, status):
+    """Bounded mutation failure; never retains a raw venue response."""
+    def __init__(self, status, error_code=None):
         self._status = integer(status, 300, 599)
+        if error_code is not None:
+            identity(error_code)
+            if (len(error_code) > 100 or not error_code.isascii()
+                    or any(not (character.isalnum() or character in '._-')
+                           for character in error_code)):
+                raise InvalidData('invalid mutation error code')
+        self._error_code = error_code
         super().__init__('mutation_http_failure')
 
     @property
     def status(self):
         return self._status
+
+    @property
+    def error_code(self):
+        return self._error_code
 
 
 @dataclass(frozen=True)

@@ -56,6 +56,8 @@ EVENTS = {
     'incentives_failed': ('ERROR', 'selection'),
     'cli_failed': ('ERROR', 'cli'), 'preflight_blocked': ('WARNING', 'cli'),
     'exit_inputs_published': ('INFO','metadata'), 'exit_inputs_failed': ('ERROR','metadata'),
+    'exit_inputs_superseded': ('INFO', 'metadata'),
+    'exit_inputs_deferred': ('INFO', 'metadata'),
     'history_enumerated': ('INFO', 'recovery'),
     'history_omission': ('WARNING', 'recovery'),
     'metadata_retry': ('WARNING', 'metadata'), 'metadata_exhausted': ('ERROR', 'metadata'),
@@ -72,6 +74,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
                      'market_rows', 'milestone_rows'))
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
+SAFE_CODES = frozenset(('venue_code',))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1')),
          'command': frozenset(('close', 'fill', 'stage_fill', 'pending_fills', 'apply_pending', 'observe',
             'market_inventory', 'portfolio', 'reserve_entry', 'inventory', 'reconcile_snapshot', 'order',
@@ -93,7 +96,7 @@ BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit
     exit_book_unavailable exit_journal_unknown event_risk_time_unknown exit_fee_bound_unknown
     ioc_attempt_limit ioc_retry_window ordinary_exit_depth_or_loss forced_exit_insufficient_depth
     timing_review_missing timing_review_conflict milestone_binding_conflict fee_profile_missing
-    fee_model_unsupported'''.split())
+    fee_model_unsupported identical_reduction_rejection_cooldown'''.split())
 
 
 def safe_error(exc):
@@ -226,6 +229,12 @@ class Diagnostics:
                 value = fields.get(key)
                 if type(value) is str and len(value) <= 2048:
                     context[key+'_ref'] = hmac.new(self._salt, value.encode(), hashlib.sha256).hexdigest()[:24]
+            for key in SAFE_CODES:
+                value = fields.get(key)
+                if (type(value) is str and len(value) <= 100 and value.isascii()
+                        and all(character.isalnum() or character in '._-'
+                                for character in value)):
+                    context[key] = value
             blockers = fields.get('blockers')
             if type(blockers) in (tuple, list) and len(blockers) <= 64:
                 context['blockers'] = [b for b in blockers if type(b) is str and b in BLOCKERS]

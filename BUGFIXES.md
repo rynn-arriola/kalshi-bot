@@ -1,5 +1,51 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — history receipt capacity killed the writer
+
+**Mechanism:** Recovery appended one immutable enumeration receipt about every
+few seconds. All 4,096 live receipts covered the same growing interval; reaching
+the fixed hot-row cap raised inside `history_complete`, permanently failed the
+serial writer and triggered a recovery-only supervisor replacement. The
+replacement drained locally known entries but could not establish current
+account proof. Metadata publication races and quota holds were also double-
+reported as ERROR even though their scheduler paths were retry/defer states.
+
+**Fix:** At the hot cap, validate and compress every exact receipt into one
+content-addressed append-only archive row, then delete the hot rows and insert
+the new current receipt in the same SQLite transaction. Archived rows remain
+audit evidence and an explicit continuity blocker, never current account
+authority. Overtaken metadata reads retry without consuming failure budget;
+quota holds defer without dependency-failure logs.
+
+**Verification:** Rollback injection preserves all hot rows when archival fails;
+scope/time tests prevent unrelated archives from blocking; an existing schema-5
+ledger adds the archive table safely. A disposable 4,097-receipt run left one
+hot receipt, preserved 4,096 exact receipts in one 88,318-byte archive and had no
+coverage gap. No production ledger was modified or copied.
+
+## 2026-09-23 — maintenance starvation, reducer rejection storm and log flood
+
+**Mechanisms:** A valid reference-drift sample arriving just over five seconds
+after the prior sample erased the 30-second dwell, so normal account/reflection
+cadence could postpone repricing forever. One passive inventory reducer then
+received deterministic HTTP 400 responses 79 times across four prices because
+each fresh client ID bypassed prior rejection evidence. Broad discovery also
+logged completeness changes for hundreds of empty markets, rotating three log
+files through roughly ten seconds of history.
+
+**Fix:** Count only explicitly fresh evidence coverage across gaps up to 15
+seconds and bind cancellation to an exact current owner/program/account lease.
+Successful account recovery wakes coalesced reflection. Persist consecutive
+identical reducer rejection backoff at 10/20/40/60 seconds; material order-term
+changes remain immediately eligible. Capture only a validated venue error code,
+never raw error text. Log inventory-plan changes only for material markets and
+one final transition after they become empty.
+
+**Verification:** Live-like 6-second cadence, long gap, ownership/lease race,
+restart-durable rejection, exponential delay, error-body bounds and 1,024-style
+empty-market logging regressions pass. Deliberate reversals failed the relevant
+tests. Full-suite and publication evidence are recorded in STATUS.
+
 ## 2026-09-23 — paused drain serialized on recovery and terminal fence was rejected
 
 **Mechanisms:** Every stopped-session entry-cancel outcome revoked continuity and

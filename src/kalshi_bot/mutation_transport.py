@@ -36,8 +36,18 @@ def mutation_wire(url, method, headers, body, max_bytes, timeout):
         response = opener.open(request, timeout=min(5, timeout))
     except HTTPError as exc:
         status = exc.code
-        exc.close()
-        return WireResponse(status, b'')
+        with exc:
+            payload = bytearray()
+            while True:
+                if time.monotonic() > deadline:
+                    raise InvalidData('mutation response deadline exhausted')
+                reader = getattr(exc, 'read1', exc.read)
+                part = reader(min(65536, max_bytes+1-len(payload)))
+                payload.extend(part)
+                if len(payload) > max_bytes:
+                    raise InvalidData('mutation response byte limit exceeded')
+                if not part:
+                    return WireResponse(status, bytes(payload))
     with response:
         payload = bytearray()
         while True:
@@ -149,7 +159,18 @@ class OrderMutationTransport:
         if not isinstance(response, WireResponse):
             raise InvalidData('invalid mutation wire response')
         if response.status != success:
-            raise MutationHTTPFailure(response.status)
+            code = None
+            if response.body:
+                try:
+                    candidate = decode(response.body).get('code')
+                    if (isinstance(candidate, str) and len(candidate) <= 100
+                            and candidate.isascii()
+                            and all(character.isalnum() or character in '._-'
+                                    for character in candidate)):
+                        code = candidate
+                except InvalidData:
+                    pass
+            raise MutationHTTPFailure(response.status, code)
         if not response.body:
             raise InvalidData('mutation success response missing')
         return decode(response.body)

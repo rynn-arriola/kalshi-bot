@@ -5,6 +5,7 @@ import heapq
 import math
 
 from .observability import NO_LOG
+from .market_inputs import InputRefreshSuperseded
 from .values import InvalidData, integer, utc
 from .quota import QuotaUnavailable
 
@@ -170,6 +171,13 @@ class MetadataScheduler:
                 # Infrastructure hold is not a market retry. Keep earlier counts.
                 if self.service.connected and not self.stopping:
                     self.ready[ticker] = None
+                continue
+            except InputRefreshSuperseded:
+                # Lifecycle/review evidence legitimately won the race. The
+                # service revoked the stale output; retry without consuming a
+                # market failure attempt or installing exponential backoff.
+                if generation == self.service.generation and self.service.connected:
+                    self.request(ticker)
                 continue
             except (InvalidData, TimeoutError, OSError) as exc:
                 if generation != self.service.generation or not self.service.connected:

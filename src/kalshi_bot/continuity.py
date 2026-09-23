@@ -147,6 +147,8 @@ def assess_continuity(*, subaccount, generation, writer_epoch, writer_revision,
                 blockers.append('history_enumeration_gaps')
             if coverage.omission_receipts:
                 blockers.append('previously_observed_fills_omitted')
+            if coverage.archived_receipts:
+                blockers.append('history_receipts_archived')
             receipt_ids = coverage.receipt_ids
     if epoch is None:
         span_state, epoch_id = 'unobserved', None

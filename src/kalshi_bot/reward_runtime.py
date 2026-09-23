@@ -41,6 +41,7 @@ class RuntimeRewards:
         self.started = self.used = self.running = self.stopping = self.failed = False
         self.task = None
         self.wake = asyncio.Event()
+        self.reflection_requested = False
         self.reflection_attempts = self.reflection_completed = self.reflection_failures = 0
         self.checkpoint_saves = self.checkpoint_failures = 0
         self.last_reflection_at = self.last_checkpoint_at = None
@@ -345,6 +346,13 @@ class RuntimeRewards:
         self._invalidate_all()
         self.wake.set()
 
+    def request_reflection(self):
+        """Align the next queue join with a newly reconciled account report."""
+        if (self.runtime.reads is not None and self.started
+                and not self.stopping and not self.failed):
+            self.reflection_requested = True
+            self.wake.set()
+
     async def close(self):
         self.stop()
         task = self.task
@@ -371,7 +379,9 @@ class RuntimeRewards:
             while not self.stopping:
                 self.wake.clear()
                 now = self.runtime.clock()
-                if self.runtime.reads is not None and now >= next_reflection:
+                if (self.runtime.reads is not None
+                        and (now >= next_reflection or self.reflection_requested)):
+                    self.reflection_requested = False
                     await self._reflect()
                     next_reflection = self.runtime.clock()+self.reflection_interval
                 if self.checkpoint is not None and self.runtime.clock() >= next_checkpoint:
@@ -404,6 +414,7 @@ class RuntimeRewards:
                     reflection_attempts=self.reflection_attempts,
                     reflection_completed=self.reflection_completed,
                     reflection_failures=self.reflection_failures,
+                    reflection_requested=self.reflection_requested,
                     checkpoint_configured=self.checkpoint is not None,
                     checkpoint_saves=self.checkpoint_saves,
                     checkpoint_failures=self.checkpoint_failures,

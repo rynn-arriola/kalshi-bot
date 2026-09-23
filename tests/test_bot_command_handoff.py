@@ -564,6 +564,64 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
             now=replacement_now)
         self.assertTrue(replacement.reserved, replacement.blockers)
 
+    async def test_identical_rejected_reducer_has_durable_bounded_cooldown(self):
+        await self.funded_position()
+        first_request = self.reducer('rejected-one')
+        first_evidence, first_now = await self.reduction_proof(first_request)
+        first = await self.writer.prepare_reduction('rejected-one', first_request,
+            evidence=first_evidence, now=first_now)
+        self.assertTrue(first.reserved, first.blockers)
+        self.assertTrue((await self.writer.begin_send(first.receipt)).dispatch_allowed)
+        await self.writer.record_outcome('rejected', first.receipt,
+            {'state': 'rejected', 'status': 400, 'error_code': 'invalid_order'}, NOW)
+
+        # The suppression is ledger evidence, not process memory.
+        await self.writer.close()
+        self.writer = await LedgerWriter(self.path).start()
+
+        identical = self.reducer('rejected-two')
+        identical_evidence, identical_now = await self.reduction_proof(identical)
+        denied = await self.writer.prepare_reduction('rejected-two', identical,
+            evidence=identical_evidence, now=identical_now)
+        self.assertEqual(denied.blockers,
+                         ('identical_reduction_rejection_cooldown',))
+        self.assertIsNone(denied.receipt)
+
+        changed = self.reducer('changed-price', price='0.59')
+        changed_evidence, changed_now = await self.reduction_proof(changed)
+        allowed = await self.writer.prepare_reduction('changed-price', changed,
+            evidence=changed_evidence, now=changed_now)
+        self.assertTrue(allowed.reserved, allowed.blockers)
+
+        # An unchanged command is eligible after the first 10-second delay.
+        await self.writer.abort_prepared(allowed.receipt)
+        later = NOW+timedelta(seconds=11)
+        retried = self.reducer('rejected-three')
+        retried_evidence, retried_now = await self.reduction_proof(retried, now=later)
+        retry = await self.writer.prepare_reduction('rejected-three', retried,
+            evidence=retried_evidence, now=retried_now)
+        self.assertTrue(retry.reserved, retry.blockers)
+        self.assertTrue((await self.writer.begin_send(retry.receipt)).dispatch_allowed)
+        await self.writer.record_outcome('rejected', retry.receipt,
+            {'state': 'rejected', 'status': 400}, later)
+
+        # A second consecutive identical rejection doubles the durable delay.
+        too_soon = NOW+timedelta(seconds=26)
+        third = self.reducer('rejected-four')
+        third_evidence, third_now = await self.reduction_proof(third, now=too_soon)
+        denied_again = await self.writer.prepare_reduction('rejected-four', third,
+            evidence=third_evidence, now=third_now)
+        self.assertEqual(denied_again.blockers,
+                         ('identical_reduction_rejection_cooldown',))
+
+        after_backoff = NOW+timedelta(seconds=32)
+        fourth = self.reducer('rejected-five')
+        fourth_evidence, fourth_now = await self.reduction_proof(
+            fourth, now=after_backoff)
+        allowed_again = await self.writer.prepare_reduction('rejected-five', fourth,
+            evidence=fourth_evidence, now=fourth_now)
+        self.assertTrue(allowed_again.reserved, allowed_again.blockers)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -221,6 +221,16 @@ class LoggingTests(unittest.TestCase):
         self.assertEqual(data['context']['endpoint'], '/markets/{ticker}')
         self.assertNotIn(SECRET, json.dumps(data))
 
+    def test_bounded_venue_error_code_is_readable_but_text_is_discarded(self):
+        log = self.start()
+        log.emit('mutation_rejected', http_status=400,
+                 venue_code='invalid_order', message=SECRET)
+        log.close()
+        data = next(r for r in rows(self.directory)
+                    if r['event'] == 'mutation_rejected')
+        self.assertEqual(data['context']['venue_code'], 'invalid_order')
+        self.assertNotIn(SECRET, json.dumps(data))
+
     def test_startup_permission_failure_is_visible(self):
         self.log = Diagnostics(self.directory)
         with patch('kalshi_bot.observability.StrictRotatingHandler', side_effect=PermissionError(SECRET)):

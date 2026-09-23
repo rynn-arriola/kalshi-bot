@@ -135,6 +135,28 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidData):
             InventoryDispatchSource(object(), offline_fixture=True)
 
+    async def test_empty_discovered_market_does_not_flood_inventory_logs(self):
+        events = []
+        self.runtime.diagnostics = type('Log', (), {
+            'emit': lambda _self, event, **fields: events.append((event, fields)) or True,
+            'ensure_healthy': lambda _self: None})()
+        await self.report('0')
+        await self.runtime.management.refresh('B')
+        await self.runtime.management.refresh('B')
+        self.assertFalse([event for event, _ in events
+                          if event == 'inventory_plan_changed'])
+
+        # A formerly material market emits one final state and is then removed
+        # from the deduplication map instead of repeating on every refresh.
+        self.runtime.management._logged_states['B'] = ('passive', ())
+        await self.runtime.management.refresh('B')
+        count = len([event for event, _ in events
+                     if event == 'inventory_plan_changed'])
+        await self.runtime.management.refresh('B')
+        self.assertEqual(len([event for event, _ in events
+                              if event == 'inventory_plan_changed']), count)
+        self.assertNotIn('B', self.runtime.management._logged_states)
+
     async def test_passive_yes_exact_quantity_price_route_durable_handoff(self):
         await self.ready(filled='4', route=1)
         result = await self.run_priority()

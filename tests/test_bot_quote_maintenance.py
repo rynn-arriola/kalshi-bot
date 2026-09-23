@@ -94,11 +94,63 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.m.cycle)
         await self.sample(10, drift=True, reflection=False)
         self.assertIsNone(self.m.cycle)
-        for _ in range(10):
+        for _ in range(3):
             await self.sample(drift=True)
         self.assertIsNone(self.m.cycle)
         await self.sample()
         self.assertNotIn('A', self.m._dwell)
+
+    async def test_live_cadence_gaps_accumulate_only_verified_coverage(self):
+        # Each six-second cadence has five seconds of explicit source validity.
+        # The one-second unknown portion is not counted, but does not erase the
+        # prior verified evidence as the old five-second reset did.
+        for _ in range(6):
+            await self.sample(6, drift=True)
+        self.assertIsNone(self.m.cycle)
+        self.assertEqual(self.m._dwell['A'].verified_seconds, 25)
+        await self.sample(6, drift=True)
+        self.assertIsNotNone(self.m.cycle)
+        self.assertEqual(self.m.cycle.reason, 'restore_reference_pair')
+
+    async def test_long_evidence_gap_resets_verified_coverage(self):
+        for _ in range(5):
+            await self.sample(6, drift=True)
+        self.assertEqual(self.m._dwell['A'].verified_seconds, 20)
+        await self.sample(16, drift=True)
+        self.assertIsNone(self.m.cycle)
+        self.assertEqual(self.m._dwell['A'].verified_seconds, 0)
+
+    async def test_stale_cycle_cannot_authorize_cancel_send(self):
+        await self.drift()
+        plan = self.r.management.current('A')
+        self.m.cycle = replace(self.m.cycle,
+            evidence_valid_until=self.f.now+timedelta(seconds=1))
+        candidate = await self.f.source.refresh('A', QUOTE_CANCEL)
+        self.assertIsNotNone(candidate)
+        self.f.now += timedelta(seconds=2)
+        self.f.mono += 2
+        self.assertFalse(self.f.source.validate_proof('cancel', candidate.request))
+        self.assertIsNone(self.m.cancel_target(plan))
+
+    async def test_terminal_original_leg_keeps_remaining_cycle_identity(self):
+        await self.drift()
+        plan = self.r.management.current('A')
+        one = replace(plan, inventory=replace(plan.inventory,
+            orders=plan.inventory.orders[:1]))
+        self.assertTrue(self.m._cycle_current(one, self.m.cycle))
+        changed = replace(one.inventory.orders[0], order=replace(
+            one.inventory.orders[0].order, remaining=D(9)))
+        changed_plan = replace(plan, inventory=replace(plan.inventory,
+            orders=(changed,)))
+        self.assertFalse(self.m._cycle_current(changed_plan, self.m.cycle))
+
+    async def test_expired_cycle_rearms_only_from_fresh_drift(self):
+        await self.drift()
+        old = self.m.cycle
+        await self.sample(6, drift=True)
+        self.assertIsNotNone(self.m.cycle)
+        self.assertIsNot(self.m.cycle, old)
+        self.assertGreater(self.m.cycle.evidence_valid_until, self.f.now)
 
     async def test_drift_reserves_same_program_not_better_spare(self):
         await self.drift()
@@ -151,7 +203,11 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         prepared = await self.f.writer.prepare_cancel(attempt_id=candidate.attempt_id,
             request=candidate.request, evidence=candidate.evidence, now=self.f.now)
         self.assertTrue(self.f.source.validate_proof('cancel', candidate.request))
-        self.m.cycle = None
+        # Preserve every other source object and expire only the maintenance
+        # lease. The synchronous send fence must check this exact lease rather
+        # than relying on broader plan freshness to fail coincidentally.
+        object.__setattr__(self.m.cycle, 'evidence_valid_until',
+                           self.f.now-timedelta(microseconds=1))
         self.assertFalse(self.f.source.validate_proof('cancel', candidate.request))
         await self.f.writer.abort_prepared(prepared.receipt)
 

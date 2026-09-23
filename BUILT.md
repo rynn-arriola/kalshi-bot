@@ -1,5 +1,21 @@
 # What exists
 
+## Bounded exact history-receipt archival — 2026-09-23
+
+When the 4,096-row hot enumeration set fills, the serial ledger owner now moves
+the validated exact rows into one content-addressed compressed archive and
+inserts the fresh current receipt atomically. Archive counts are scope/time aware
+for inspection and archived evidence cannot authorize trading. Expected metadata
+publication races and quota holds have distinct non-error outcomes. Build and
+live incident evidence: [D-100](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md).
+
+## D-100 live maintenance reliability repairs — 2026-09-23
+
+[Implementation](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md): evidence-covered
+drift accumulation, exact maintenance dispatch leases, post-recovery reflection,
+durable exponential identical-reducer rejection backoff, bounded venue error
+codes and material-only inventory-plan diagnostics. No live deployment/restart.
+
 ## Rapid paused-entry drain and terminal shutdown fence — 2026-09-23
 
 The sole dispatcher can cancel exact durable owned entry orders consecutively

@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from kalshi_bot.market_inputs import ExitInputService, FeeProfile
+from kalshi_bot.market_inputs import ExitInputService, FeeProfile, InputRefreshSuperseded
 from kalshi_bot.metadata_scheduler import MetadataScheduler
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.values import InvalidData
@@ -208,6 +208,34 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         await self.drain()
         self.assertEqual(self.scheduler.started, started+1) # B only
         self.assertIn('A', self.scheduler.exhausted)
+
+    async def test_superseded_publication_retries_without_spending_failure_budget(self):
+        events=[]
+        class Log:
+            def emit(self, name, **fields): events.append(name)
+        self.service.diagnostics=Log()
+        original=self.service.refresh
+        overtaken=False
+        async def refresh(ticker):
+            nonlocal overtaken
+            if ticker=='A' and not overtaken:
+                overtaken=True
+                self.service.diagnostics.emit('exit_inputs_superseded',market=ticker,generation=1)
+                raise InputRefreshSuperseded('injected publication race')
+            return await original(ticker)
+        self.service.refresh=refresh
+        self.connect()
+        for _ in range(50):
+            self.scheduler.step()
+            await asyncio.sleep(.001)
+            if overtaken and not self.scheduler.active:
+                break
+        self.advance(.1)
+        await self.drain(2)
+        self.assertEqual(set(self.published), {'A','B'})
+        self.assertFalse(self.scheduler.failures)
+        self.assertFalse(self.scheduler.exhausted)
+        self.assertEqual(events.count('exit_inputs_superseded'), 1)
 
     async def test_explicit_retry_keeps_cooldown_and_missing_review_unapproved(self):
         self.reads.markets['A'].pop('price_ranges')

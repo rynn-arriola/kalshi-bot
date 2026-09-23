@@ -196,9 +196,21 @@ class InventoryManager:
                              inventory, passive, tuple(dict.fromkeys(blockers)), exit=exit_plan, terms=terms)
         self._plans[ticker] = result
         state = (exit_plan.mode, result.blockers)
-        if self._logged_states.get(ticker) != state:
+        previous = self._logged_states.get(ticker)
+        journal = inventory.exit_journal
+        material = bool(inventory.position or inventory.orders or (journal is not None and
+                        (journal.unresolved_ioc or journal.cancel_ids)))
+        # Broad discovery refreshes hundreds of empty markets. Account-scope
+        # completeness can toggle their advisory blockers in bulk, but those
+        # empty plans have no inventory action to diagnose. Retain logs only
+        # for material markets and one final transition after they become empty.
+        should_log = material or previous is not None
+        if should_log and previous != state:
             runtime.diagnostics.emit('inventory_plan_changed', market=ticker, mode=exit_plan.mode,
                                      blocker_count=len(result.blockers), blockers=result.blockers,
                                      generation=generation, revision=inventory.writer_revision)
+        if material:
             self._logged_states[ticker] = state
+        else:
+            self._logged_states.pop(ticker, None)
         return result
