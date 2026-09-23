@@ -1,12 +1,23 @@
 # What exists
 
+## D-087 lifecycle reconnect — 2026-09-22
+
+[Lifecycle recovery](docs/BUILD_LIFECYCLE_RECONNECT.md) retains three attempts
+per round and adds capped continuing waits for this advisory stream only. It
+preserves disconnect revocation/generation fences and exposes bounded status.
+The focused 161-test set passes. The final complete suite passes: 1,478 run,
+1,477 passed, one expected Windows privilege skip. Active deployment remains
+pending.
+
 ## Explicit predeployment source probe — 2026-09-22
 
 `scripts/probe_reward_sources.py` compares same-feed book freshness with/without
-refresh timestamps, using public catalog reads and two public-book WS streams.
-No trader/account REST/ledger is constructed. Four synthetic probe tests plus
-15 book-refresh tests pass; [live measurement](docs/VERIFY_REWARD_SOURCE_LIVE.md)
-confirms 128 sampled books stay fresh. Economic eligibility remains unverified.
+refresh timestamps and independently verifies Reference Prices against raw
+`use_yes_price=true` ladders. It uses public catalog reads and two public-book WS
+streams; no trader/account REST/ledger is constructed. Five synthetic probe
+tests plus book/reference regressions pass; [live measurement](docs/VERIFY_REWARD_SOURCE_LIVE.md)
+confirms 128 sampled books stay fresh with zero reference mismatches. Economic
+eligibility remains unverified.
 
 ## D-086 reward-source repair — 2026-09-22
 

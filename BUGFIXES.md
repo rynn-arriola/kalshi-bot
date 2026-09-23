@@ -6,6 +6,23 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — lifecycle reader could not recover after three startup failures
+
+**Symptom.** The live child continued with books/account connected but lifecycle
+permanently `retry_exhausted`, preventing that source from recovering in-process.
+
+**Mechanism.** The shared connection owner returned normally after one finite
+attempt round. That is intentional for financial/sequence readers but left the
+advisory lifecycle reader with no later owner.
+
+**Fix.** D-087 adds lifecycle-only capped retry rounds, monotonic generations,
+explicit `retry_wait` status and structured diagnostics. Existing disconnect
+revocation and all account/book exhaustion contracts remain.
+
+**Verification.** Fourth-attempt recovery after 1/2/30-second synthetic delays;
+161 focused tests pass. Exact original live transport cause is unavailable due
+to log rotation, so no unsupported cause is claimed. [Report](docs/BUILD_LIFECYCLE_RECONNECT.md).
+
 ## 2026-09-22 — avoid unnecessary catalog pages and refresh quiet books
 
 **Symptom.** Reward discovery exhausted on timeouts; otherwise qualifying quiet

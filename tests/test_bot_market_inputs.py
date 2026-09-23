@@ -452,6 +452,51 @@ class InputTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.gather(task,return_exceptions=True)
                     await service.close()
 
+    async def test_lifecycle_exhaustion_waits_then_recovers_without_resetting_generation(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from kalshi_bot.writer import LedgerWriter
+        from kalshi_bot.runtime import RecoveryRuntime
+        async def noop(*_): pass
+        service=ExitInputService(self.reads,('A',),now=lambda:self.now,clock=lambda:self.mono,ttl=30,
+            timing_reviews=(self.service.reviews['A'],),fee_profile=self.service.fee_profile)
+        attempts, delays = 0, []
+        hold = asyncio.Event()
+        class Flaky:
+            async def run(inner, consume):
+                nonlocal attempts
+                attempts += 1
+                if attempts <= 3:
+                    raise OSError('fixture transient')
+                await consume('lifecycle',dict(type='subscribed',id=1,
+                    msg=dict(channel='market_lifecycle_v2',sid=attempts)))
+                await hold.wait()
+        async def sleep(delay):
+            delays.append(delay)
+            self.mono += delay
+        with TemporaryDirectory() as folder:
+            async with LedgerWriter(Path(folder)/'test.db') as writer:
+                runtime=RecoveryRuntime(writer,self.reads,lambda spec:Flaky(),tickers=('A',),subaccount=0,
+                    history_start=NOW-timedelta(hours=1),now=lambda:self.now,evaluate=noop,
+                    deadline_handler=noop,lifecycle_handler=noop,clock=lambda:self.mono,
+                    sleep=sleep,jitter=lambda:1,market_inputs=service)
+                spec=next(s for s in runtime.specs if s.name=='lifecycle')
+                task=asyncio.create_task(runtime._connection(spec))
+                try:
+                    async with asyncio.timeout(2):
+                        while not service.connected: await asyncio.sleep(.001)
+                    self.assertEqual(attempts,4)
+                    self.assertEqual(runtime.connection_attempts['lifecycle'],4)
+                    self.assertEqual(runtime.reader_retry_rounds['lifecycle'],1)
+                    self.assertEqual(runtime.reader_states['lifecycle'],'subscribed')
+                    self.assertEqual(tuple(delays),(1,2,30))
+                    self.assertEqual(service.generation,4)
+                    self.assertEqual(runtime.reader_failures['lifecycle'],3)
+                finally:
+                    hold.set(); runtime.stop(); task.cancel()
+                    await asyncio.gather(task,return_exceptions=True)
+                    await service.close()
+
 
 class PaginationTests(unittest.IsolatedAsyncioTestCase):
     async def test_event_fee_cursor_required(self):

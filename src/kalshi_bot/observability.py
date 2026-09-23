@@ -33,6 +33,7 @@ EVENTS = {
     'runtime_failed': ('ERROR', 'runtime'), 'runtime_cancelled': ('INFO', 'runtime'),
     'reader_connecting': ('INFO', 'stream'), 'reader_subscribed': ('INFO', 'stream'),
     'reader_failed': ('WARNING', 'stream'), 'reader_exhausted': ('ERROR', 'stream'),
+    'reader_retry_wait': ('WARNING', 'stream'),
     'recovery_started': ('INFO', 'recovery'), 'recovery_failed': ('WARNING', 'recovery'),
     'recovery_incomplete': ('WARNING', 'recovery'), 'recovery_repaired': ('INFO', 'recovery'),
     'recovery_exhausted': ('ERROR', 'recovery'),

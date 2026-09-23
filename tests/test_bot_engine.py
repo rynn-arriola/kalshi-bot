@@ -65,6 +65,21 @@ def ack(**kw):
 
 
 class QuoteTests(unittest.TestCase):
+    def test_unified_yes_price_wire_produces_reference_quotes(self):
+        feed = BookConnection(("A",))
+        generation = feed.reconnect()
+        feed.apply({"type": "orderbook_snapshot", "sid": 1, "seq": 1, "msg": {
+            "market_ticker": "A",
+            "yes_dollars_fp": [[".50", "100"], [".49", "100"], [".48", "1000"]],
+            "no_dollars_fp": [[".60", "100"], [".61", "100"], [".62", "1000"]],
+        }}, generation=generation)
+        plan = reference_plan(feed.books["A"], program(), BANDS,
+                              now=NOW, market_open=True)
+        self.assertEqual([(q.side, q.yes_price) for q in plan.quotes],
+                         [("bid", D(".49")), ("ask", D(".61"))])
+        self.assertEqual((plan.bid.reference, plan.ask.reference),
+                         (D(".49"), D(".61")))
+
     def test_reference_is_target_fifth_not_best_bid(self):
         p = reference_plan(book(), program(), BANDS, now=NOW, market_open=True)
         self.assertEqual([(q.side, q.yes_price, q.quantity) for q in p.quotes],

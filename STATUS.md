@@ -1,5 +1,29 @@
 # Current status
 
+## D-087 lifecycle recovery and reference audit complete; deployment pending — 2026-09-22
+
+The exact old lifecycle transport error is unavailable after bounded-log
+rotation. A standalone read-only subscription now succeeds, proving the current
+channel/entitlement. [D-087](docs/BUILD_LIFECYCLE_RECONNECT.md) repairs the actual
+recoverability defect: only lifecycle continues after three-attempt rounds, on
+capped backoff with source revocation and monotonic generations. Account/book
+semantics remain unchanged. The focused lifecycle/runtime/source set passes 161
+tests. The final complete suite passes: **1,478 run, 1,477 passed, one expected
+Windows privilege skip**.
+
+The requested [reference-price audit](docs/VERIFY_REWARD_SOURCE_LIVE.md) also
+passed. The book subscription explicitly requests `use_yes_price=true`, so NO
+levels already arrive in YES-price coordinates. A fresh read-only run checked
+128 rewarded books/programs with zero ladder/reference mismatches; 246 sides had
+enough one-fifth depth. The scorer therefore places its initial hypothetical
+quotes at the current reference levels when both sides satisfy the full-depth
+gate. This is not a reward, fill or economic-profit guarantee.
+
+The active PID 46576 is unchanged at the time of diagnosis: 14 resting entries,
+zero positions, lifecycle/catalog exhausted. No process, order, ledger, hold or
+configuration was modified. Publication and then controlled deployment/restart
+are still pending.
+
 ## Read-only live source comparison passed before deployment — 2026-09-22
 
 At 21:19 Eastern, the [30-second source probe](docs/VERIFY_REWARD_SOURCE_LIVE.md)

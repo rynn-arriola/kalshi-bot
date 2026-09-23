@@ -63,3 +63,41 @@ resting entries and no positions. Catalog exhaustion remained held and the
 lifecycle stream independently reported `retry_exhausted`. No hold was cleared,
 process restarted or venue order changed by the probe. That lifecycle failure
 needs separate diagnosis; the source test does not establish full bot readiness.
+
+## Reference-price follow-up — 21:45 Eastern
+
+The follow-up audit first checked the current official liquidity rule and
+order-direction guide. The rule defines each side's Reference Price as the first
+level where cumulative size reaches one fifth of Target Size. This runtime's
+book subscription explicitly sends `use_yes_price=true`, so Kalshi reports its
+NO-side book levels on the common YES-price scale. Those values are already YES
+asks and must not be complemented again.
+
+A second 30.140-second read-only run independently walked the raw unified wire
+ladders and compared them with the production reference helper:
+
+| Check | Result |
+|---|---:|
+| Complete catalog | 4,998 programs / 5 pages |
+| Active supported reward markets | 4,992 |
+| Sampled current rewarded books | 128 |
+| Unified NO-ladder checks | 128 / 128 matched |
+| Program/reference comparisons | 128 / 128 matched |
+| Sides reaching one-fifth depth | 246 |
+| Initial / correlated refresh snapshots | 128 / 1,139 |
+| Final baseline / refreshed fresh books | 2 / 128 |
+| Private REST / order mutations | 0 / 0 |
+
+The integrated regression starts from a real WebSocket-shaped snapshot and
+proves the generated initial quote levels equal the independently expected bid
+and ask references. Local Gemini and Polymarket implementations were also
+inspected: both use a common YES/LONG economic frame and complement the opposite
+outcome at their venue boundary. That comparison is supporting consistency only;
+Kalshi's official `use_yes_price` contract and observed wire data are the
+authority.
+
+Local ignored evidence:
+`data/source-probe/113659f8407341c6a1ceb40ecf4bbfbe/result.json`.
+The run did not assess fees, account state, retained-value eligibility, projected
+payout, available slots, fills or profitability. Reference correctness alone
+does not guarantee a quote will pass every gate or earn at least one dollar.

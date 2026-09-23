@@ -1,5 +1,15 @@
 # Active work queue
 
+## Current: publish D-087 and reference-price verification
+
+1. Complete the exact staged-diff/security review and publish the isolated branch.
+   The final complete suite passes: 1,478 run, 1,477 passed, one expected skip.
+2. Obtain explicit controlled deployment/restart
+   authority; preserve the same ledger, limits and source-fingerprint procedure.
+3. Postdeployment acceptance must prove lifecycle subscribed, complete current
+   catalog, broad fresh books and normal reference/economic gates before judging
+   order breadth. Do not infer profitability from source/reference correctness.
+
 ## Priority: repair observed selection-source failures
 
 Diagnosis is recorded in FINDINGS section 125. D-086 implements items 1 and 2

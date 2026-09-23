@@ -1,5 +1,9 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-087 [restores advisory lifecycle connectivity](BUILD_LIFECYCLE_RECONNECT.md)
+after bounded attempt rounds. Disconnect still revokes all lifecycle-derived
+authority; account/book exhaustion semantics and metadata retry holds are unchanged.
+
 D-086 [repairs reward sources](BUILD_REWARD_SOURCE_REFRESH.md): one shared
 1,000-row incentive query and a connection-owned, bounded quiet-book snapshot
 controller. Responses retain normal generation/sequence/depth validation and

@@ -1,5 +1,37 @@
 # Findings — kalshi-bot
 
+## 130. Reference-price path matches unified YES-price wire mode — 2026-09-22
+
+VERIFIED OFFICIAL/CODE: book subscriptions explicitly set
+`use_yes_price=true`. Kalshi therefore reports NO-side snapshot/delta levels in
+YES-leg coordinates; the internal ask ladder must use those prices directly and
+must not complement them again. The scorer walks YES bids downward and unified
+YES asks upward until cumulative depth first reaches one fifth of Target Size,
+then proposes the two reference levels. This matches Kalshi's current liquidity
+rule and order-direction guide.
+
+MEASURED LIVE/READ-ONLY at 21:45 Eastern: 128 current rewarded seed books
+produced 128 unified-ladder checks and 128 program/reference comparisons; 246
+sides reached one-fifth depth, with zero mismatches. Requested refreshes kept all
+128 books fresh in every steady sample. No private REST or order mutation ran.
+Gemini and Polymarket code independently use the same common YES/LONG economic
+frame, but Kalshi's official mode plus live wire evidence—not cross-venue analogy
+—is the authority. [Evidence](docs/VERIFY_REWARD_SOURCE_LIVE.md).
+
+## 129. Lifecycle channel works; finite retry permanently retired it — 2026-09-22
+
+VERIFIED LIVE/READ-ONLY: production PID 46576 reported `lifecycle=retry_exhausted`
+after three attempts while other readers stayed connected. The old error detail
+had rotated out, so its exact cause is UNKNOWN. A separate bounded lifecycle-only
+subscription acknowledged the current `market_lifecycle_v2` channel and joined
+cleanly, with no account endpoint, ledger or order access.
+
+VERIFIED CODE/SYNTHETIC: all readers previously returned permanently after one
+three-attempt round. D-087 continues only the advisory lifecycle source on capped
+retry waits while revoking terms and increasing generations. A three-failure/
+fourth-success regression and 160 existing focused checks pass. The active
+process is unchanged; [implementation](docs/BUILD_LIFECYCLE_RECONNECT.md).
+
 ## 128. Live snapshot refresh keeps 128 sampled rewarded books fresh — 2026-09-22
 
 MEASURED: [read-only source probe](docs/VERIFY_REWARD_SOURCE_LIVE.md), 21:19

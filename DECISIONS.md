@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-087 — Recover the lifecycle stream after bounded retry rounds
+
+- **Status:** ACCEPTED implementation, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Ok check it then fix it,” after the unchanged
+  live process reported permanent lifecycle retry exhaustion.
+- **Scope:** Keep account/book retry exhaustion unchanged. For the advisory
+  lifecycle reader only, revoke source terms after failure, retain three attempts
+  per round, then retry on a capped 30/60/120/240/300-second backoff until stop.
+  Preserve monotonically increasing stream generations and bounded diagnostics.
+- **Boundary:** A retry/ACK never makes stale metadata current, resets no metadata
+  retry hold and grants no trading authority. Deployment/restart remains separate.
+
 ### D-086 — Repair reward catalog and quiet-book sources
 
 - **Status:** ACCEPTED implementation, 2026-09-22 Eastern.

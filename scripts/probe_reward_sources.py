@@ -7,6 +7,7 @@ import argparse
 import asyncio
 from collections import Counter
 from datetime import datetime, timezone
+from decimal import Decimal
 import json
 from pathlib import Path
 import time
@@ -15,7 +16,7 @@ from uuid import uuid4
 from kalshi_bot.books import BookConnection
 from kalshi_bot.incentive_discovery import QUERY
 from kalshi_bot.observability import safe_error
-from kalshi_bot.quoting import parse_program
+from kalshi_bot.quoting import _reference, parse_program
 from kalshi_bot.rest import RestReads, TokenBudget, get_wire
 from kalshi_bot.startup import load_signer, save_result
 from kalshi_bot.transport import WebSocketReaders, topology
@@ -23,10 +24,23 @@ from kalshi_bot.values import InvalidData, integer
 from kalshi_bot.windows import WindowsLease
 
 
+def wire_reference(rows, target, *, bid):
+    """Independent venue-side reference calculation for probe comparison."""
+    cumulative = Decimal(0)
+    for raw_price, raw_quantity in sorted(
+            ((Decimal(row[0]), Decimal(row[1])) for row in rows), reverse=bid):
+        cumulative += raw_quantity
+        if cumulative >= target/5:
+            return raw_price
+    return None
+
+
 class Comparison:
-    def __init__(self, specs):
+    def __init__(self, specs, programs=None):
         self.feeds = {s.name: BookConnection(s.tickers) for s in specs}
         self.generations = {name: feed.reconnect() for name, feed in self.feeds.items()}
+        self.programs = programs or {}
+        self.reference_checked = set()
         self.baseline, self.refreshed = {}, {}
         self.counts = Counter()
         self.wire_bytes = 0
@@ -43,6 +57,9 @@ class Comparison:
         ticker = self.feeds[name].apply(event, generation=self.generations[name])
         if ticker is None:
             return
+        if kind == 'orderbook_snapshot' and ticker not in self.reference_checked:
+            self._check_reference(ticker, event['msg'], self.feeds[name].books[ticker])
+            self.reference_checked.add(ticker)
         received = event['_received_mono']
         initial = ticker not in self.refreshed
         if initial or kind == 'orderbook_delta':
@@ -51,6 +68,29 @@ class Comparison:
         self.counts['initial_snapshots' if initial else kind] += 1
         if kind == 'orderbook_snapshot' and 'id' in event:
             self.counts['correlated_refresh_snapshots'] += 1
+
+    def _check_reference(self, ticker, message, book):
+        programs = self.programs.get(ticker, ())
+        if not programs:
+            return
+        raw_yes = message.get('yes_dollars_fp', [])
+        raw_no = message.get('no_dollars_fp', [])
+        expected_asks = {Decimal(p): Decimal(q) for p, q in raw_no}
+        self.counts['unified_no_ladder_checks'] += 1
+        if book.asks.levels != expected_asks:
+            self.counts['unified_no_ladder_mismatches'] += 1
+            raise InvalidData('use_yes_price NO ladder changed price coordinates')
+        for program in programs:
+            expected_bid = wire_reference(raw_yes, program.target, bid=True)
+            expected_ask = wire_reference(raw_no, program.target, bid=False)
+            actual_bid = _reference(book.bids.levels, program.target, 'bid')
+            actual_ask = _reference(book.asks.levels, program.target, 'ask')
+            self.counts['reference_program_snapshots'] += 1
+            self.counts['reference_sides_with_depth'] += sum(
+                value is not None for value in (expected_bid, expected_ask))
+            if (actual_bid, actual_ask) != (expected_bid, expected_ask):
+                self.counts['reference_mismatches'] += 1
+                raise InvalidData('reference calculation differs from venue-side rule')
 
     def sample(self, now):
         valid = {t for f in self.feeds.values() if not f.failed
@@ -84,7 +124,7 @@ async def probe(args):
             pages = await reads.collect('incentives', reason='incentives',
                 max_pages=10, max_rows=10000, byte_limit=8388608,
                 coalesce_scope=object(), **dict(QUERY))
-        active, ids = set(), set()
+        active_programs, ids = {}, set()
         for row in pages.rows:
             if row['id'] in ids:
                 raise InvalidData('duplicate catalog program')
@@ -96,7 +136,8 @@ async def probe(args):
             except InvalidData:
                 continue
             if not program.paid_out and program.start <= started < program.end:
-                active.add(program.ticker)
+                active_programs.setdefault(program.ticker, []).append(program)
+        active = set(active_programs)
         result['catalog'] = dict(rows=len(pages.rows), pages=pages.pages,
             wire_bytes=pages.wire_bytes, elapsed_seconds=round(time.monotonic()-before,3),
             active_supported_markets=len(active), complete=pages.exhausted,
@@ -121,7 +162,8 @@ async def probe(args):
     signer = load_signer(args.source_root/'kalshi-bot.txt',
                          args.source_root/'Kalshi-Bot2.txt')
     specs = tuple(s for s in topology(tickers) if s.channels == ('orderbook_delta',))
-    comparison = Comparison(specs)
+    selected_programs = {ticker: tuple(active_programs[ticker]) for ticker in tickers}
+    comparison = Comparison(specs, selected_programs)
     readers = [WebSocketReaders(signer, (spec,)) for spec in specs]
     tasks = [asyncio.create_task(r.run(comparison.consume)) for r in readers]
     samples = []
@@ -137,6 +179,9 @@ async def probe(args):
                                 **comparison.sample(time.monotonic())))
         result['state'] = ('OBSERVED' if len(comparison.refreshed) == len(tickers)
                            and comparison.counts['correlated_refresh_snapshots'] > 0
+                           and comparison.counts['reference_program_snapshots'] > 0
+                           and comparison.counts['reference_mismatches'] == 0
+                           and comparison.counts['unified_no_ladder_mismatches'] == 0
                            else 'BLOCKED')
     except Exception as exc:
         result['errors'] = safe_error(exc)
@@ -149,7 +194,10 @@ async def probe(args):
             result.update(state='FAILED', errors=safe_error(failed))
     result.update(readers_joined=all(t.done() for t in tasks),
         seconds=round(time.monotonic()-before,3), counts=dict(comparison.counts),
-        normalized_bytes=comparison.wire_bytes, samples=samples)
+        normalized_bytes=comparison.wire_bytes, samples=samples,
+        reference_logic_verified=(comparison.counts['reference_program_snapshots'] > 0
+            and comparison.counts['reference_mismatches'] == 0
+            and comparison.counts['unified_no_ladder_mismatches'] == 0))
     steady = [s for s in samples if s['elapsed_seconds'] >= 6]
     if steady:
         result['comparison'] = dict(
