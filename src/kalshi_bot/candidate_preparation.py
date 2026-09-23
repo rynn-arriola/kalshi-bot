@@ -4,6 +4,7 @@ This owner creates rules/milestone bindings only. It does not subscribe, rank a
 book, authorize an order, read an account, or claim that a reward will be paid.
 The live metadata and selection owners still revalidate every admitted market.
 """
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
@@ -139,11 +140,32 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
         raise InvalidData('no current supported liquidity programs')
 
     # Fetch only rewarded tickers, not Kalshi's entire open-market universe.
-    markets = {}
+    # Market chunks and the independent milestone census overlap, while each
+    # market batch remains bounded to four requests.  This is public startup
+    # work; it never changes the single account/read or mutation owners.
     ranked_tickers = tuple(t for t, _ in sorted(scores.items(), key=lambda row:(-row[1], row[0])))
-    for chunk in _chunks(ranked_tickers):
-        result = await reads.read('markets', reason='candidate', tickers=','.join(chunk),
-                                  limit=1000, mve_filter='exclude')
+    chunks = tuple(_chunks(ranked_tickers))
+    async def market_pages():
+        results = []
+        for offset in range(0, len(chunks), 4):
+            results.extend(await asyncio.gather(*(reads.read('markets',
+                reason='candidate', tickers=','.join(chunk), limit=1000,
+                mve_filter='exclude') for chunk in chunks[offset:offset+4])))
+        return tuple(results)
+    market_task = asyncio.create_task(market_pages())
+    milestone_task = asyncio.create_task(reads.collect('milestones', reason='candidate',
+        minimum_start_date=now.isoformat(), limit=500, max_pages=100,
+        max_rows=10000, byte_limit=16777216, coalesce_scope=object()))
+    try:
+        market_results, milestones = await asyncio.gather(market_task, milestone_task)
+    except BaseException:
+        for task in (market_task, milestone_task):
+            task.cancel()
+        await asyncio.gather(market_task, milestone_task, return_exceptions=True)
+        raise
+
+    markets = {}
+    for chunk, result in zip(chunks, market_results, strict=True):
         rows = result.payload.get('markets')
         if not isinstance(rows, list) or len(rows) > len(chunk):
             raise InvalidData('invalid rewarded-market response scope')
@@ -156,9 +178,6 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
                 raise InvalidData('rewarded-market identity conflict')
             markets[ticker] = row
 
-    milestones = await reads.collect('milestones', reason='candidate',
-        minimum_start_date=now.isoformat(), limit=500, max_pages=100,
-        max_rows=10000, byte_limit=16777216, coalesce_scope=object())
     if (not isinstance(milestones, PageSet) or not milestones.exhausted
             or milestones.source != 'milestones'):
         raise InvalidData('incomplete future milestone enumeration')

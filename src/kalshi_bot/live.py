@@ -160,10 +160,12 @@ async def refresh_candidate_inputs(path, now, diagnostics):
         'valid_until':timestamp(raw['fee_profile']['valid_until'])}))
     if profile.valid_until <= now:
         raise InvalidData('launch fee profile expired')
-    # Public-only launch preparation is request-latency bound. This local
-    # scheduler still caps concurrency at RestReads' default two workers.
+    # Public-only launch preparation is request-latency bound.  Four workers is
+    # the reviewed RestReads ceiling and remains under this isolated 50/s
+    # public-only token budget.
     reads = RestReads(TokenBudget(rate=50, capacity=100, default_cost=1,
-        initial_tokens=100, clock=time.monotonic), diagnostics=diagnostics)
+        initial_tokens=100, clock=time.monotonic), concurrency=4,
+        diagnostics=diagnostics)
     try:
         prepared = await prepare_candidates(reads, now=now)
     finally:

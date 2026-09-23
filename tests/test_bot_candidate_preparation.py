@@ -1,9 +1,12 @@
 """Credential-free candidate preparation with synthetic public documents."""
+import asyncio
 from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal as D
 import unittest
+from unittest.mock import patch
 
+import kalshi_bot.candidate_preparation as candidate_preparation
 from kalshi_bot.candidate_preparation import INCENTIVE_QUERY, prepare_candidates
 from kalshi_bot.market_inputs import (SCHEDULED_RELEASE_CONDITION,
     SCHEDULED_RELEASE_REVIEW)
@@ -131,6 +134,35 @@ class CandidatePreparationTests(unittest.IsolatedAsyncioTestCase):
                       [milestone('E1','IMMINENT',hours=.05)])
         with self.assertRaisesRegex(InvalidData, 'no current reward market'):
             await prepare_candidates(reads, now=NOW)
+
+    async def test_market_batches_overlap_independent_milestone_census(self):
+        class ConcurrentReads(Reads):
+            def __init__(self, *args):
+                super().__init__(*args)
+                self.active = self.high_water = 0
+            async def _turn(self, call):
+                self.active += 1
+                self.high_water = max(self.high_water, self.active)
+                try:
+                    await asyncio.sleep(.01)
+                    return await call()
+                finally:
+                    self.active -= 1
+            async def collect(self, name, **params):
+                return await self._turn(lambda:super(ConcurrentReads,self).collect(
+                    name, **params))
+            async def read(self, name, **params):
+                return await self._turn(lambda:super(ConcurrentReads,self).read(
+                    name, **params))
+        rows = [{**market(ticker),'event_ticker':'E'+ticker} for ticker in ('A','B')]
+        reads = ConcurrentReads([program('A','pa'),program('B','pb')], rows,
+            [milestone('EA','MA'),milestone('EB','MB')])
+        with patch.object(candidate_preparation,'_chunks',
+                          return_value=(('A',),('B',))):
+            result = await prepare_candidates(reads, now=NOW)
+        self.assertEqual(len(result.reviews),2)
+        self.assertGreaterEqual(reads.high_water,2)
+        self.assertLessEqual(reads.high_water,3)
 
 
 if __name__ == '__main__':
