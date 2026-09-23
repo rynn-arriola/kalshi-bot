@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 145. D-097 survives standard status reads during live refill — 2026-09-23
+
+VERIFIED LIVE: generation 49 restarted the preserved ledger on runtime
+`fdda4cd9036a43cf90a4cf6c33e65d60`, child PID 29288. The initial checkpoint
+released after 120 seconds with 801/1,024 historically evaluated. Standard status
+commands were invoked repeatedly while paired entries increased from 22 to 30.
+At 10:43:46 UTC the same child/run remained healthy with 30 orders, no reported
+position, $127.60 exposure, all four readers subscribed and no engine, dispatch
+or logging failure. A further 30-second observation retained the same identity.
+No WARNING/ERROR event appeared from launch through acceptance.
+
+This is operational acceptance of the observed transient status-contention fix,
+not a proof against every external file-lock duration or permanent storage error.
+Permanent publication failure still propagates and must remain fail-closed.
+
 ## 144. Status publication recurred after delete-sharing monitoring — 2026-09-23
 
 VERIFIED: normal child failure at 06:09:22 UTC and recovery-child failure at

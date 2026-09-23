@@ -1,6 +1,25 @@
 # Current status
 
-## Current: status-publication repair verified offline; bot stopped flat — 2026-09-23
+## Current: D-097 live restart accepted and running — 2026-09-23
+
+Under the operator's explicit restart instruction, the preserved production
+ledger was restarted without initialization. Supervisor generation 49 is healthy
+with protected parent/child presence; parent PID 22988, child PID 29288, runtime
+`fdda4cd9036a43cf90a4cf6c33e65d60`. At **10:43:46 UTC**, the same child held
+**30 resting orders across 15 markets**, no reported positions and **$127.60
+reserved exposure**. Account entry authority was current, all four readers were
+subscribed, and engine/dispatch/logging reported no failure or dropped logs.
+
+The initial ranking checkpoint placed no orders while waiting and released at
+its 120-second bound as `timeout_partial` with **801/1,024 evaluated**. Repeated
+invocations of the standard supervisor status command overlapped publication as
+orders grew from 22 to 30. The same run/PID remained healthy through a further
+30-second observation, and no WARNING/ERROR event was recorded from launch
+through the acceptance check. This verifies the previously failing status path
+under current live operation; it does not guarantee future OS/storage behavior,
+fills, payout, profitability or globally optimal market selection.
+
+## D-097 implementation and offline verification
 
 D-097 repairs the recurring Windows `status.json` publication failure. Repository
 status readers now explicitly allow delete/rename sharing. Atomic writers use a
@@ -13,11 +32,9 @@ status. The complete suite passes: **1,557 tests, one expected Windows symlink-
 privilege skip**, 249.309s. Focused live-runtime, host-continuity and production-
 supervisor suites also pass.
 
-The code fix is verified but has **not been live-restarted**. Current account and
-process state remains the prior verified STOPPED_FLAT checkpoint: zero orders,
-no positions, zero exposure, supervisor disarmed and no protected parent/child.
-Another explicit controlled restart and live observation are required to verify
-the repair under sustained operation.
+The code fix was subsequently live-restarted and accepted at the timestamped
+checkpoint above. The historical stopped-flat state below remains recovery
+evidence, not current process state.
 
 ## Historical failure evidence before D-097
 

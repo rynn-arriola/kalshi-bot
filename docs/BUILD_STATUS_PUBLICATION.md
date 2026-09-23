@@ -32,5 +32,13 @@ supervisor suites pass. The complete suite runs 1,557 tests with one expected
 Windows symlink-privilege skip.
 
 The exact external handle involved in the historical live failures was not
-identified. The repair covers the demonstrated Windows contention class; only a
-separately authorized sustained live restart can establish operational acceptance.
+identified. The repair covers the demonstrated Windows contention class; the
+subsequent authorized restart provides the bounded operational acceptance below.
+
+## Live acceptance
+
+The operator-authorized restart on 2026-09-23 reached 30 resting orders while the
+standard status command was repeatedly invoked during refill. The same runtime
+and child remained healthy through an additional observation window, with no
+status-publication, engine, dispatch or logging failure. Exact timestamped state
+and limitations are recorded in [STATUS](../STATUS.md).
