@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-105 — Revalidate remembered $2 candidates before $1 fallback
+
+- **Status:** ACCEPTED implementation; not deployed, 2026-09-23.
+- **Decision owner:** Operator: “Ok do it,” after review of the priority-admission
+  investigation and recommendation.
+- **Scope:** Retain bounded advisory memory of previously current $2 candidates,
+  prioritize their metadata refresh in batches up to twice available pair slots,
+  and defer $1 fallback until that batch is freshly resolved. Make early $2
+  capacity release reachable from the actual runtime loop, continue full
+  coverage afterward, and expose bounded selection evidence in status.
+- **Boundary:** Advisory memory never authorizes an order. Every pair still needs
+  current book, program, metadata, account, risk and dispatch proof. Keep current
+  qualifying owners, four book shards, REST concurrency, limits and exit policy
+  unchanged. No deployment, restart, cancel or live order action is included.
+
 ### D-104 — Prioritize owned metadata and repair clean supervisor shutdown
 
 - **Status:** ACCEPTED, published, deployed and live-observed, 2026-09-23.

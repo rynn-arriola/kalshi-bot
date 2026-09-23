@@ -1,9 +1,11 @@
 """Opt-in offline selection on existing runtime observations; no venue I/O."""
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from .config import BotConfig
 from .quoting import Program
+from .ranking import seconds
 from .selection import MarketSelector, SelectionReport
 from .values import InvalidData, decimal, identity, utc
 
@@ -24,6 +26,23 @@ class SelectionDispatchProof:
     valid_until: datetime
 
 
+@dataclass(frozen=True)
+class PriorityCandidateHint:
+    """Bounded discovery memory; schedules refresh but never authorizes entry."""
+    ticker: str
+    program_id: str
+    observed_at: datetime
+    earning_until: datetime
+    gross_hourly_usd: Decimal
+    source_versions: tuple
+
+    def projected_remaining(self, now):
+        now = utc(now)
+        if now >= self.earning_until:
+            return decimal(0)
+        return self.gross_hourly_usd*seconds(self.earning_until-now)/decimal(3600)
+
+
 class RuntimeSelection:
     def __init__(self, runtime, *, offline_fixture=False, initial_timeout=120):
         from .runtime import RecoveryRuntime
@@ -42,6 +61,9 @@ class RuntimeSelection:
         self._last_additions = ()
         self.candidate_inputs = None  # Explicit live composition only.
         self.last_proposal = None  # Bounded historical diagnostics, not authority.
+        self._priority_hints = {}  # Advisory only; current proofs still authorize.
+        self._priority_refresh = set()
+        self._dispatch_selection_evidence = {}
         from .initial_ranking import InitialRankingCheckpoint
         self.initial_ranking = (InitialRankingCheckpoint(runtime.engine.market_shard,
             clock=runtime.clock, timeout=initial_timeout) if runtime.broad_discovery else None)
@@ -52,7 +74,7 @@ class RuntimeSelection:
 
     def _initial_progress(self, ticker=None):
         gate = self.initial_ranking
-        if gate is None or gate.reason is not None:
+        if gate is None or gate.reason == 'coverage_complete':
             return
         r = self.runtime
         catalog = r.incentives.current() if r.incentives is not None else None
@@ -69,7 +91,73 @@ class RuntimeSelection:
         self._initial_progress()
         return self.initial_ranking.ready()
 
+    def _source_versions(self, ticker):
+        r = self.runtime
+        catalog = r.incentives.current() if r.incentives is not None else None
+        shard = r.engine.shards[r.engine.market_shard[ticker]]
+        return (shard.generation,
+                getattr(r.market_inputs, 'generation', None),
+                getattr(catalog, 'generation', None),
+                r.account.generation, r.writer.epoch, r.writer.revision)
+
+    def _priority_candidate(self, rows, now):
+        threshold = BotConfig().priority_projected_reward_usd
+        candidates = []
+        for row in rows:
+            end = row.earning_until or row.program_end
+            if (row.blockers or row.gross_hourly_usd is None
+                    or row.gross_hourly_usd <= 0 or now >= end):
+                continue
+            remaining = row.gross_hourly_usd*seconds(end-now)/decimal(3600)
+            if remaining >= threshold:
+                candidates.append((remaining, row))
+        return max(candidates, default=(None, None), key=lambda item:item[0])[1]
+
+    def _current_priority(self, ticker, now):
+        if not self.current(ticker):
+            return False
+        rows = tuple(row for row in self.selector.board.markets.get(ticker, ())
+                     if row.observed_at <= now < row.valid_until)
+        return self._priority_candidate(rows, now) is not None
+
+    def _remember_priority(self, ticker):
+        now = utc(self.runtime.now())
+        row = self._priority_candidate(self.selector.board.markets.get(ticker, ()), now)
+        if row is None:
+            return
+        hint = PriorityCandidateHint(ticker, row.program_id, row.observed_at,
+            row.earning_until or row.program_end, row.gross_hourly_usd,
+            self._source_versions(ticker))
+        prior = self._priority_hints.get(ticker)
+        if prior is None or hint.observed_at >= prior.observed_at:
+            self._priority_hints[ticker] = hint
+
+    def _forget_priority(self, ticker):
+        self._priority_hints.pop(ticker, None)
+        self._priority_refresh.discard(ticker)
+
+    def _resolve_priority(self, ticker, observation, *, transient=False):
+        """Supersede a hint only with a complete newer market evaluation."""
+        rows = self.selector.board.markets.get(ticker, ())
+        row = self._priority_candidate(rows, utc(self.runtime.now()))
+        if row is not None:
+            self._priority_hints[ticker] = PriorityCandidateHint(
+                ticker, row.program_id, row.observed_at,
+                row.earning_until or row.program_end, row.gross_hourly_usd,
+                self._source_versions(ticker))
+            self._priority_refresh.discard(ticker)
+            return
+        old = self._priority_hints.get(ticker)
+        program_ids = {program.program_id for program in observation.programs}
+        if not transient or old is None or old.program_id not in program_ids:
+            self._forget_priority(ticker)
+
+    def priority_refresh_pending(self, ticker):
+        """Pure scheduler priority predicate; it grants no source authority."""
+        return ticker in self._priority_refresh
+
     def invalidate(self, ticker):
+        self._remember_priority(ticker)
         self.selector.invalidate(ticker)
         self._proofs.pop(ticker, None)
 
@@ -164,6 +252,12 @@ class RuntimeSelection:
             addition_samples=[dict(ticker=row.ticker,
                 projected_remaining_usd=str(row.gross_remaining_usd))
                 for row in result.additions[:8]],
+            priority_revalidation_pending=len(self._priority_refresh),
+            priority_revalidation_samples=sorted(self._priority_refresh)[:8],
+            fallback_reason=('priority_candidates_resolved' if any(
+                row.gross_remaining_usd is not None
+                and row.gross_remaining_usd < BotConfig().priority_projected_reward_usd
+                for row in result.additions) else None),
             exclusion_counts=counts, exclusion_samples=list(result.exclusions[:8]),
             historical_only=True)
         return result
@@ -201,7 +295,24 @@ class RuntimeSelection:
         if len(programs) != 1:
             return None
         proof = SelectionDispatchProof(ticker, programs[0], observation, source, valid_until)
-        return proof if self.dispatch_proof_current(proof) else None
+        if not self.dispatch_proof_current(proof):
+            return None
+        row = next((row for row in self.selector.board.ranked_programs(
+            now=self.runtime.now(), by='selection')
+            if row.ticker == ticker and row.program_id == program_id), None)
+        if row is not None:
+            threshold = BotConfig().priority_projected_reward_usd
+            self._dispatch_selection_evidence[ticker] = dict(
+                ticker=ticker, program_id=program_id,
+                prepared_at=utc(self.runtime.now()).isoformat(),
+                projected_remaining_usd=(None if row.gross_remaining_usd is None
+                                         else str(row.gross_remaining_usd)),
+                tier=('priority' if row.gross_remaining_usd is not None
+                      and row.gross_remaining_usd >= threshold else 'fallback'),
+                valid_until=valid_until.isoformat())
+            while len(self._dispatch_selection_evidence) > 64:
+                self._dispatch_selection_evidence.pop(next(iter(self._dispatch_selection_evidence)))
+        return proof
 
     def dispatch_proof_current(self, proof):
         """Synchronous send fence that tolerates only the writer's own prepare."""
@@ -233,6 +344,12 @@ class RuntimeSelection:
         if observation is None and r.incentives is not None and r.incentives.current() is not None:
             # A complete current catalog can rule out an unrewarded market
             # without waiting for a book/metadata combination it cannot use.
+            self._forget_priority(ticker)
+            self._initial_progress(ticker)
+            return
+        if (observation is not None and not observation.programs
+                and observation.observed_at <= now < observation.valid_until):
+            self._forget_priority(ticker)
             self._initial_progress(ticker)
             return
         plan = r.management.current(ticker)
@@ -263,6 +380,7 @@ class RuntimeSelection:
                 valid_until=until, position=plan.inventory.position, blockers=blockers)
         except InvalidData as exc:
             self.invalidate(ticker)
+            self._forget_priority(ticker)
             if ticker not in self._rejected:
                 r.diagnostics.emit('selection_inputs_rejected', market=ticker, error=exc)
                 r.diagnostics.ensure_healthy()
@@ -271,7 +389,49 @@ class RuntimeSelection:
             return  # One unsupported market must not stop inventory management.
         self._rejected.pop(ticker, None)
         self._proofs[ticker] = (plan, observation, report)
+        self._resolve_priority(ticker, observation, transient=bool(blockers))
         self._initial_progress(ticker)
+
+    def _clean_priority_memory(self, now):
+        threshold = BotConfig().priority_projected_reward_usd
+        for ticker, hint in tuple(self._priority_hints.items()):
+            if (ticker not in self.runtime.engine.market_shard
+                    or hint.projected_remaining(now) < threshold):
+                self._forget_priority(ticker)
+            elif self._current_priority(ticker, now):
+                self._priority_refresh.discard(ticker)
+
+    def _request_priority_revalidation(self, *, now, available_pairs, protected):
+        """Queue one bounded 2x-slot batch ahead of optional metadata work."""
+        self._clean_priority_memory(now)
+        protected = set(protected)
+        self._priority_refresh.intersection_update(self._priority_hints)
+        self._priority_refresh.difference_update(protected)
+        if not self._priority_refresh and available_pairs > 0:
+            candidates = [(hint.projected_remaining(now), ticker)
+                for ticker, hint in self._priority_hints.items()
+                if ticker not in protected and not self._current_priority(ticker, now)]
+            candidates.sort(key=lambda item:(-item[0], item[1]))
+            limit = min(30, 2*available_pairs)
+            self._priority_refresh.update(ticker for _, ticker in candidates[:limit])
+            scheduler = self.runtime.metadata_scheduler
+            if scheduler is not None:
+                for ticker in tuple(self._priority_refresh):
+                    scheduler.request(ticker)
+        return bool(self._priority_refresh)
+
+    def _priority_only(self, result, reason):
+        threshold = BotConfig().priority_projected_reward_usd
+        priority = tuple(row for row in result.additions
+            if row.gross_remaining_usd is not None
+            and row.gross_remaining_usd >= threshold)
+        deferred = tuple((row.ticker, (reason,)) for row in result.additions
+                         if row not in priority)
+        capital = sum((row.capital_usd+self.selector._fees[(row.ticker,row.program_id)]
+                       for row in priority), decimal(0))
+        return replace(result, additions=priority,
+                       exclusions=result.exclusions+deferred,
+                       estimated_capital=capital)
 
     async def propose(self, *, window, free_cash):
         """Read-only advisory batch; recheck all retained source proofs after await.
@@ -320,17 +480,14 @@ class RuntimeSelection:
             # Early release proves only the current $2 slate. Keep collecting
             # full coverage and never let a later source change turn that proof
             # into permission for a partially ranked $1 fallback.
-            config = BotConfig()
-            priority_rows = tuple(row for row in result.additions
-                if row.gross_remaining_usd is not None
-                and row.gross_remaining_usd >= config.priority_projected_reward_usd)
-            deferred = tuple((row.ticker, ('initial_priority_only',))
-                             for row in result.additions if row not in priority_rows)
-            capital = sum((row.capital_usd+self.selector._fees[(row.ticker,row.program_id)]
-                           for row in priority_rows), decimal(0))
-            result = replace(result, additions=priority_rows,
-                             exclusions=result.exclusions+deferred,
-                             estimated_capital=capital)
+            result = self._priority_only(result, 'initial_priority_only')
+        available_pairs = max(0, (window.cap-view.entry_count)//2)
+        if self._request_priority_revalidation(now=utc(r.now()),
+                available_pairs=available_pairs, protected=protected):
+            result = self._priority_only(result, 'priority_revalidation_pending')
+            if not result.additions:
+                result = replace(result, blockers=tuple(dict.fromkeys(
+                    result.blockers+('priority_revalidation_pending',))))
         if any(not self.current(row.ticker) or utc(r.now()) >= row.valid_until for row in result.additions):
             return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)))
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}
@@ -345,6 +502,17 @@ class RuntimeSelection:
                     cached_markets=len(self.selector.board.markets),
                     current_markets=sum(self.current(t) for t in tuple(self._proofs)),
                     rejected_markets=len(self._rejected),
+                    priority_candidate_memory=len(self._priority_hints),
+                    priority_candidate_samples=[dict(ticker=ticker,
+                        program_id=hint.program_id,
+                        projected_remaining_usd=str(hint.projected_remaining(self.runtime.now())),
+                        observed_at=hint.observed_at.isoformat(),
+                        source_versions=list(hint.source_versions))
+                        for ticker,hint in sorted(self._priority_hints.items())[:8]],
+                    priority_revalidation_pending=len(self._priority_refresh),
+                    priority_revalidation_samples=sorted(self._priority_refresh)[:8],
+                    dispatch_selection_evidence=list(
+                        self._dispatch_selection_evidence.values())[-8:],
                     last_proposal=self.last_proposal,
                     initial_ranking=(self.initial_ranking.status()
                                      if self.initial_ranking is not None else None),

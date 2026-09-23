@@ -43,6 +43,12 @@ class MetadataScheduler:
             self.quota.listen(self.wake.set)
         service.listen(self._signal)
 
+    def _priority_rank(self, ticker):
+        value = self.priority(ticker)
+        if type(value) is bool:
+            return int(value)
+        return integer(value, 0, 2)
+
     def _expire_rebind(self):
         if self.rebind_target is not None and self.service.clock() >= self.rebind_until:
             self.rebind_target = None
@@ -237,7 +243,11 @@ class MetadataScheduler:
         if (not self.stopping and self.service.connected and quota_ready and not self.defer()
                 and self.rebind_target is None):
             while self.ready and len(self.active) < self.concurrency:
-                ticker = next((key for key in self.ready if self.priority(key)), None)
+                ticker, rank = None, 0
+                for key in self.ready:
+                    candidate = self._priority_rank(key)
+                    if candidate > rank:
+                        ticker, rank = key, candidate
                 if ticker is None:
                     ticker, _ = self.ready.popitem(last=False)
                 else:
@@ -290,8 +300,8 @@ class MetadataScheduler:
     def status(self):
         return dict(running=self.running, pending=len(self.due)+len(self.ready),
             active=len(self.active), heap=len(self.heap), exhausted=len(self.exhausted),
-            priority_ready=sum(bool(self.priority(ticker)) for ticker in self.ready),
-            priority_active=sum(bool(self.priority(ticker)) for ticker in self.active),
+            priority_ready=sum(bool(self._priority_rank(ticker)) for ticker in self.ready),
+            priority_active=sum(bool(self._priority_rank(ticker)) for ticker in self.active),
             started=self.started, completed=self.completed, high_water=self.high_water,
             rebind_reserved=self.rebind_target is not None,
             live_authority=False)

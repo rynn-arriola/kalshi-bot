@@ -1,8 +1,9 @@
 # Priority admission investigation — 2026-09-23
 
-Status: investigation complete; recommendation only. No bot code, configuration,
-order, ledger or runtime operation changed. Kalshi source: `bef23eb`. Polymarket
-reference: `c4e8af20136e0b66b4f57e619c7e6eba0b6a7c42`, inspected read-only.
+Status: investigation complete; D-105 implementation prepared and not deployed.
+No configuration, order, ledger or runtime operation changed. Investigated Kalshi
+source: `bef23eb`. Polymarket reference:
+`c4e8af20136e0b66b4f57e619c7e6eba0b6a7c42`, inspected read-only.
 
 ## Verified mechanism
 
@@ -128,11 +129,11 @@ already use this event capability; a second scanner is unnecessary:
 - [Lifecycle](https://docs.kalshi.com/websockets/market-and-event-lifecycle)
 - [Incentives](https://docs.kalshi.com/api-reference/incentive-programs/get-incentives)
 
-## Verification before implementation can be accepted
+## D-105 implementation and verification
 
 Current selection/checkpoint/bulk-input suites: 79 tests passed in 5.055 seconds.
 The separate synthetic reproduction above passes without venue calls. No claim
-is made that a proposed repair or its latency has been tested.
+was made that the then-proposed repair or its latency had been tested.
 
 Required repair tests: early $2 expires before a late $1 arrives; private-account
 revocation between pairs; priority capacity through the actual runtime loop;
@@ -141,3 +142,12 @@ candidates in later batches; timeout/429 remaining pending; changed program or
 economics; restart revalidation; scarce cash/slots; incumbent retention; bounded
 memory/network work; safety priority. Measure selection-to-first-pair and
 selection-to-full-cap latency separately from initial book delivery.
+
+D-105 implements bounded advisory memory and a two-times-vacancy refresh batch,
+with owned metadata as a higher scheduler tier. Missing/exhausted evidence stays
+pending and no hint grants order authority. Regressions cover source invalidation,
+fresh downgrade/removal, later batches, actual runtime early release, continued
+coverage, event-driven wakeup, scheduler ordering and bounded dispatch-selection
+evidence. The complete offline suite passes 1,636 tests with one expected Windows
+privilege skip. Live latency and composition remain unverified until a separately
+authorized deployment/restart.

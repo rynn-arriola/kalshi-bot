@@ -1,5 +1,29 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — historical coverage forgot temporarily invalidated priority rows
+
+**Mechanism:** Startup coverage remembered only that a ticker had once been
+evaluated. Account or metadata revocation deleted its selector row, so a formerly
+eligible $2 candidate became invisible while a recovered $1 fallback could be
+admitted. The actual entry loop also returned before the proposal method that
+owned early priority-capacity release, and coverage stopped progressing after
+that release.
+
+**Fix:** Selection retains one bounded advisory priority hint per ticker and
+revalidates stale hints in batches of at most twice available pair slots (30 at
+the current cap). The metadata scheduler prioritizes that bounded batch after
+owned maintenance. Missing, exhausted or delayed evidence defers fallback;
+fresh changed economics, program removal or expiry retires the hint. The entry
+loop can now exercise early release and source events continue coverage without
+ledger polling. Hints never satisfy current entry or dispatch checks.
+
+**Verification:** Synthetic regressions cover account-wide row invalidation,
+fallback deferral, fresh downgrade, bounded later batches, scheduler priority,
+runtime early release, continued coverage, source-event wakeup and dispatch-tier
+evidence. The complete suite passes 1,636 tests with one expected Windows
+privilege skip; compile, whitespace and documentation checks are part of
+publication.
+
 ## 2026-09-23 — owned metadata starvation and false clean-stop failure
 
 **Mechanisms:** Four book shards delivered and evaluated all 1,024 markets, but

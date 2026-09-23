@@ -11,6 +11,7 @@ from kalshi_bot.account import normalize_snapshot
 from kalshi_bot.dispatch import ENTRY_PAIR, SAFETY_CANCEL
 from kalshi_bot.initial_ranking import InitialRankingCheckpoint
 from kalshi_bot.runtime import RecoveryRuntime
+from kalshi_bot.selection_runtime import PriorityCandidateHint
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_engine import NOW, program, snapshot
@@ -184,6 +185,11 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(D(1) <= result.additions[1].gross_remaining_usd < D(2))
         self.assertEqual(self.s.status()['initial_ranking']['state'], 'coverage_complete')
         self.assertEqual(self.s.status()['last_proposal']['priority_additions'],1)
+        priority = result.additions[0]
+        self.assertIsNotNone(self.s.capture_dispatch_proof(
+            priority.ticker,priority.program_id,priority.valid_until))
+        evidence = self.s.status()['dispatch_selection_evidence'][-1]
+        self.assertEqual((evidence['ticker'],evidence['tier']),('C','priority'))
         self.assertFalse(await self.writer.mutations())
 
     async def test_current_priority_candidate_fills_available_slot_before_full_coverage(self):
@@ -193,6 +199,75 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([row.ticker for row in result.additions],['A'])
         self.assertEqual(self.s.initial_ranking.status()['state'],'priority_capacity_met')
         self.assertEqual(self.s.initial_ranking.status()['missing_samples'],['C'])
+        await self.publish('C',pool=1)
+        self.assertTrue(self.s.initial_ranking_ready())
+        self.assertEqual(self.s.initial_ranking.status()['state'],'coverage_complete')
+        self.assertEqual(self.s.initial_ranking.status()['release_reason'],'priority_capacity_met')
+
+    async def test_invalidated_priority_is_revalidated_before_fallback(self):
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.assertEqual([row.ticker for row in (await self.proposal()).additions],['C','A'])
+        # Account-wide revocation removes every current selector row. A fallback
+        # may recover first, but the remembered priority candidate must not be lost.
+        self.s.invalidate('A')
+        self.s.invalidate('C')
+        await self.publish('A',pool=3000000)
+        result = await self.proposal()
+        self.assertFalse(result.additions)
+        self.assertIn('priority_revalidation_pending',result.blockers)
+        status = self.s.status()
+        self.assertEqual(status['priority_candidate_memory'],1)
+        self.assertEqual(status['priority_revalidation_samples'],['C'])
+        self.assertTrue(self.r._metadata_priority('C'))
+        self.assertFalse(self.r._metadata_priority('A'))
+        self.assertFalse(await self.writer.mutations())
+        await self.publish('C',pool=5000000)
+        self.assertEqual([row.ticker for row in (await self.proposal()).additions],['C','A'])
+
+    async def test_fresh_lower_reward_retires_priority_hint_and_allows_fallback(self):
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.s.invalidate('C')
+        self.assertIn('priority_revalidation_pending',(await self.proposal()).blockers)
+        await self.publish('C',pool=1)
+        result = await self.proposal()
+        self.assertEqual([row.ticker for row in result.additions],['A'])
+        self.assertEqual(self.s.status()['priority_candidate_memory'],0)
+        self.assertEqual(self.s.status()['last_proposal']['fallback_reason'],
+                         'priority_candidates_resolved')
+
+    async def test_actual_entry_turn_can_release_current_priority_capacity(self):
+        from types import SimpleNamespace as NS
+        self.window = replace(self.window,cap=2)
+        await self.publish('A',pool=5000000)
+        calls = []
+        dispatcher = NS(status=lambda:NS(active=None,queued=(),stopping=False,failed=False))
+        self.r.dispatch_supervisor = NS(dispatcher=dispatcher,
+                                        request=lambda *args:calls.append(args))
+        self.r.accounting_result = NS(released=True,window=self.window)
+        self.r._entry_dirty = True
+        with patch.object(RecoveryRuntime,'entry_allowed',property(lambda _:True)):
+            await self.r._ranked_entry_turn()
+        self.assertEqual(calls,[('A',ENTRY_PAIR)])
+        self.assertEqual(self.s.initial_ranking.status()['state'],'priority_capacity_met')
+
+    async def test_priority_refresh_uses_bounded_batches_and_advances(self):
+        shard = self.r.engine.market_shard['A']
+        tickers = [f'P{i:02d}' for i in range(40)]
+        for ticker in tickers:
+            self.r.engine.market_shard[ticker] = shard
+            self.s._priority_hints[ticker] = PriorityCandidateHint(
+                ticker, 'PROGRAM', self.now, self.now+timedelta(hours=1), D(3), ())
+        self.assertTrue(self.s._request_priority_revalidation(
+            now=self.now,available_pairs=15,protected=()))
+        first = set(self.s._priority_refresh)
+        self.assertEqual(len(first),30)
+        for ticker in first:
+            self.s._forget_priority(ticker)
+        self.assertTrue(self.s._request_priority_revalidation(
+            now=self.now,available_pairs=15,protected=()))
+        self.assertEqual(set(self.s._priority_refresh),set(tickers)-first)
 
     async def test_books_alone_do_not_complete_metadata_coverage(self):
         await self.publish('A')
@@ -261,14 +336,28 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         await self.publish('A')
         self.assertEqual(len((await self.proposal()).additions),2)
 
-    async def test_wait_keeps_entry_dirty_and_does_not_await_a_feed(self):
+    async def test_wait_consumes_dirty_until_a_new_source_event(self):
+        from types import SimpleNamespace as NS
         await self.publish('A')
         self.r._entry_dirty = True
-        self.r.dispatch_supervisor = AsyncMock()
-        await self.r._ranked_entry_turn()
-        self.assertTrue(self.r._entry_dirty)
-        self.r.dispatch_supervisor.request.assert_not_called()
+        calls = []
+        dispatcher = NS(status=lambda:NS(active=None,queued=(),stopping=False,failed=False))
+        self.r.dispatch_supervisor = NS(dispatcher=dispatcher,
+                                        request=lambda *args:calls.append(args))
+        self.r.accounting_result = NS(released=True,window=self.window)
+        with patch.object(RecoveryRuntime,'entry_allowed',property(lambda _:True)):
+            await self.r._ranked_entry_turn()
+        self.assertFalse(self.r._entry_dirty)
+        self.assertFalse(calls)
         self.assertFalse(self.r.stop_requested.is_set())
+
+    async def test_unrewarded_evaluation_rearms_entry_turn_for_coverage(self):
+        await self.publish('A')
+        self.r._entry_dirty = False
+        self.r.dispatch_supervisor = AsyncMock()
+        await self.publish('C',pool=1)
+        self.assertTrue(self.r._entry_dirty)
+        self.assertTrue(self.s.initial_ranking_ready())
 
     async def test_inventory_dispatch_is_independent_of_initial_checkpoint(self):
         from types import SimpleNamespace as NS

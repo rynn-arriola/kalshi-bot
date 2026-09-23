@@ -71,6 +71,15 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.status()['priority_active'], 1)
         await self.drain(2)
 
+    async def test_owner_rank_starts_before_candidate_rank(self):
+        self.scheduler.concurrency = 1
+        self.scheduler.priority = lambda ticker:1 if ticker == 'A' else 2
+        self.connect()
+        self.scheduler.step()
+        await asyncio.sleep(0)
+        self.assertEqual(set(self.scheduler.active), {'B'})
+        await self.drain(2)
+
     async def test_four_workers_are_supported_for_broad_discovery(self):
         self.scheduler.concurrency = 4
         self.assertEqual(self.scheduler.concurrency, 4)

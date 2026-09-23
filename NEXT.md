@@ -1,13 +1,12 @@
 # Active work queue
 
-## Proposed next: preserve and revalidate priority candidates
+## D-105 priority revalidation
 
-Review the [priority-admission recommendation](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md).
-If accepted, implement separate discovery memory, bounded priority refresh and
-an evidence-based fallback gate with actual entry-tier records. Include the
-real-runtime checkpoint integration regressions. Keep current incumbents and
-measure latency before changing REST concurrency. No implementation or restart
-is authorized by this investigation alone.
+Complete diff review and publication of the verified
+[priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md).
+Keep generation 76 and its current incumbents untouched. Deployment/restart
+remains a separate operator decision. If later deployed, measure priority-refresh
+latency and quota load before considering any REST-concurrency change.
 
 
 ## After D-104 live acceptance — generation 76 running

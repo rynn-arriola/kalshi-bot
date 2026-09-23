@@ -157,12 +157,15 @@ class RecoveryRuntime:
                                self.recovery_state == 'recovering')) if market_inputs is not None else None)
 
     def _metadata_priority(self, ticker):
-        """Keep owned markets fresh ahead of optional discovery candidates."""
+        """Owned safety first, then remembered priority, then discovery."""
         plan = self.management._plans.get(ticker)
-        return bool((plan is not None
-                     and (plan.inventory.position or plan.inventory.orders))
-                    or (self.maintenance is not None
-                        and ticker in self.maintenance.bindings))
+        if ((plan is not None and (plan.inventory.position or plan.inventory.orders))
+                or (self.maintenance is not None and ticker in self.maintenance.bindings)):
+            return 2
+        if (self.selection is not None
+                and self.selection.priority_refresh_pending(ticker)):
+            return 1
+        return 0
 
     def _quota_transition(self):
         if self.dispatch_supervisor is not None:
@@ -250,12 +253,12 @@ class RecoveryRuntime:
         self._request_inventory_dispatch(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)
-            if (self.dispatch_supervisor is not None
-                    and self.selection.current(ticker)):
+            if self.dispatch_supervisor is not None:
                 from .dispatch import ENTRY_PAIR
                 if self.broad_discovery:
+                    # Unrewarded evaluations also advance selection coverage.
                     self._entry_dirty = True
-                else:
+                elif self.selection.current(ticker):
                     self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
@@ -300,8 +303,7 @@ class RecoveryRuntime:
         The ordinary dispatch source still reproposes/revalidates before every
         reservation. Inventory priorities remain on their existing immediate path.
         """
-        if (self.selection is None or not self.selection.initial_ranking_ready()
-                or not self._entry_dirty
+        if (self.selection is None or not self._entry_dirty
                 or self.dispatch_supervisor is None or not self.entry_allowed):
             return
         state = self.dispatch_supervisor.dispatcher.status()
