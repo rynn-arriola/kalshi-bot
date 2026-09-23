@@ -78,15 +78,22 @@ class InventoryDispatchSource:
         self._generation += 1
         if (notice is not None and notice.kind == 'cancel'
                 and self.runtime.entry_pause_active and paused_cancel):
-            if notice.http_status is not None:
+            if notice.http_status is not None and notice.http_status != 404:
                 self.runtime.diagnostics.emit('mutation_failed',
                     http_status=notice.http_status, market=notice.ticker,
                     order=notice.subject_id)
                 self.runtime.diagnostics.ensure_healthy()
-            self._paused_cancel_notice = notice.ticker
+            self._paused_cancel_notice = (notice.ticker, notice.http_status)
             return
         if notice is None and self._paused_cancel_notice is not None:
-            ticker, self._paused_cancel_notice = self._paused_cancel_notice, None
+            (ticker, status), self._paused_cancel_notice = self._paused_cancel_notice, None
+            if status == 404:
+                # The cancel itself was definitively rejected, but 404 does not
+                # prove whether the original order filled or was canceled.
+                # Require fresh terminal/history evidence before another send.
+                self.runtime._revoke()
+                self.runtime.request_recovery()
+                return
             # The durable ACK/UNKNOWN now exists. Invalidate old recovery proof,
             # but let the exact cancel queue drain before the existing live
             # refresh owner starts a full REST pass.

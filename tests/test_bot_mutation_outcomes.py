@@ -89,6 +89,26 @@ class OutcomeTests(unittest.IsolatedAsyncioTestCase):
         await self.assert_unknown()
         self.assertEqual(self.owner.last.outcome, 'http_failure')
 
+    async def test_paused_cancel_404_is_rejected_and_requires_reconciliation(self):
+        from types import SimpleNamespace
+        await self.f.ready(filled='0', remaining='10')
+        self.f.runtime.live_session = SimpleNamespace(entries_paused=True)
+        async def missing(kind, req):
+            self.f.calls.append((kind, dict(req)))
+            raise MutationHTTPFailure(404, 'not_found')
+        self.owner.invoke = missing
+        result = await self.f.run_priority(SAFETY_CANCEL)
+        self.assertEqual(result.state, 'REJECTED')
+        mutation = (await self.f.writer.mutations())[-1]
+        self.assertEqual(mutation['phase'], 'REJECTED')
+        self.assertIn('"status":404', mutation['response'])
+        self.assertEqual((await self.f.writer.orders())[0].order.remaining, 10)
+        self.assertTrue(self.f.runtime.recovery_requested.is_set())
+        self.assertIsNone(self.f.runtime.account.current_report(self.f.now))
+        self.assertFalse(self.f.dispatcher.executor.failed)
+        self.assertFalse(self.f.dispatcher.status().queued)
+        self.assertEqual(self.owner.last.outcome, 'rejected')
+
     async def test_server_failure_is_unknown(self):
         await self.f.ready()
         await self.failure(MutationHTTPFailure(503))

@@ -649,13 +649,15 @@ def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
         response = json.dumps(acknowledgement(receipt.kind, receipt.request, document),
                               sort_keys=True)
     elif operation == 'rejected':
-        if (receipt.kind != 'create' or not isinstance(document, dict)
+        if (not isinstance(document, dict)
                 or set(document)-{'state', 'status', 'error_code'}
-                or document.get('state') != 'rejected' or document.get('status') != 400):
+                or document.get('state') != 'rejected'
+                or (receipt.kind, document.get('status'))
+                   not in {('create', 400), ('cancel', 404)}):
             raise InvalidData('unsupported deterministic mutation rejection')
         code = document.get('error_code')
         if code is not None:
-            MutationHTTPFailure(400, code)
+            MutationHTTPFailure(document['status'], code)
         response = json.dumps(document, sort_keys=True, separators=(',', ':'))
     phase = {'unknown':'UNKNOWN', 'ack':'ACK', 'rejected':'REJECTED'}[operation]
     ledger.connection.execute('UPDATE mutation_attempts SET phase=?,response=? WHERE id=?',
@@ -884,13 +886,16 @@ class InjectedExecutor:
                 ack = acknowledgement(receipt.kind, durable_request, reply)
             except BaseException as exc:
                 persistence_error = None
-                rejected = (type(exc) is MutationHTTPFailure and exc.status == 400
-                            and receipt.kind == 'create')
+                rejected = (type(exc) is MutationHTTPFailure
+                            and (receipt.kind, exc.status)
+                                in {('create', 400), ('cancel', 404)})
                 if not finalized:
                     try:
-                        rejection = {'state':'rejected', 'status':400}
-                        if rejected and exc.error_code is not None:
-                            rejection['error_code'] = exc.error_code
+                        rejection = {}
+                        if rejected:
+                            rejection = {'state':'rejected', 'status':exc.status}
+                            if exc.error_code is not None:
+                                rejection['error_code'] = exc.error_code
                         await self._retain(
                             self.writer.record_outcome('rejected' if rejected else 'unknown',
                                 receipt, rejection if rejected else {},
@@ -901,7 +906,7 @@ class InjectedExecutor:
                 if rejected and persistence_error is None:
                     self.failed = False
                     self.diagnostics.emit('mutation_rejected', operation=receipt.authorization_id,
-                                          http_status=400, venue_code=exc.error_code)
+                                          http_status=exc.status, venue_code=exc.error_code)
                     self.diagnostics.ensure_healthy()
                     return AttemptResult(receipt.authorization_id, 'REJECTED', None)
                 if self.failed:

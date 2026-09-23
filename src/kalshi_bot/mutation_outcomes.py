@@ -73,7 +73,8 @@ class MutationOutcomeOwner:
                 status = exc.status if type(exc) is MutationHTTPFailure else None
                 if status is not None:
                     integer(status, 300, 599)
-                outcome = ('rejected' if kind == 'create' and status == 400
+                outcome = ('rejected' if (kind, status)
+                                         in {('create', 400), ('cancel', 404)}
                            else 'rate_limited' if status == 429 else 'http_failure' if status is not None
                            else 'interrupted' if isinstance(exc, asyncio.CancelledError)
                            else 'uncertain')
