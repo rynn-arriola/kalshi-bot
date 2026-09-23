@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 137. Passing markets exist beyond seeds; discovery remains rate-limited by design — 2026-09-23
+
+MEASURED PUBLIC CENSUS: 1,013 current reviewed/rewarded markets examined in
+415.320 seconds; 156 pass current market gates, including 32 $2+ priorities.
+Only 15 passes (four priority) are in the 127 still-current saved seed markets;
+141 passes (28 priority) lie outside. Actual private account admission is not
+assessed. This does not establish the historical 28-order rejection cause.
+
+VERIFIED CODE: D-091 preserves 128 book slots, at most 16 additions per change
+and 30-second dwell. It fixes starvation, not fast universe-wide selection.
+The synthetic 56-rotation coverage result implies roughly 28 minutes of dwell
+for the additional 896 candidates, before source/ownership delays. These are
+software settings, not a verified Kalshi limit. [Method, counts and next recommendation](docs/VERIFY_MARKET_GATES_2026-09-23.md).
+
 ## 136. Actual-scope progress restores bounded exploration coverage — 2026-09-22
 
 VERIFIED SYNTHETIC: D-091 reaches all 1,024 candidates in 56 partial rotations

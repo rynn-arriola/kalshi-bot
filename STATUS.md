@@ -1,5 +1,19 @@
 # Current status
 
+## Read-only census: 156 passing markets; discovery speed still unresolved — 2026-09-23
+
+[Measured census](docs/VERIFY_MARKET_GATES_2026-09-23.md) examined 1,013 currently
+reviewed/rewarded markets in 6m55s: 156 passed market gates, including 32 $2+
+priority candidates. Of these, 141 passes (28 priority) were outside the saved
+initial seed. These are sequential observations with hypothetical empty-account
+capacity, not current account admission or guaranteed rewards. No orders or
+production state changed. Five new tests and 53 existing relevant tests pass.
+
+D-091 fixes skipped candidates, but 128 live subscriptions / 16 replacements /
+30-second dwell still constrain discovery. Faster decoupled discovery is a
+recommendation, not implemented or approved here. Bot remains stopped; account
+reconciliation and process-host continuity remain pre-restart work.
+
 ## D-091 coverage/refill repair verified offline; bot remains stopped — 2026-09-22
 
 [Coverage repair](docs/BUILD_DISCOVERY_COVERAGE.md) now advances exploration from

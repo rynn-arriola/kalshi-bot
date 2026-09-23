@@ -1,5 +1,14 @@
 # Active work queue
 
+## Priority: decide faster discovery after measured census — 2026-09-23
+
+[Census](docs/VERIFY_MARKET_GATES_2026-09-23.md) found 156 passing markets,
+141 outside the saved seed. D-091's coverage repair alone is not fast global
+selection. Present a bounded discovery/execution separation proposal and obtain
+the operator's decision before changing architecture. Measure coverage latency
+and account-path responsiveness; do not weaken reward gates or increase orders.
+Host continuity and manual-cancellation reconciliation below remain required.
+
 ## Market-coverage repair complete offline; remaining live acceptance
 
 The bot is stopped and the operator reports all orders manually canceled.

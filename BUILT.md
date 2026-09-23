@@ -1,5 +1,13 @@
 # What exists
 
+## Explicit public market-gate census — 2026-09-23
+
+`scripts/check_live_market_gates.py` checks current saved-reviewed reward markets
+with live WS books and actual fee/timing/economic gates, using hypothetical flat
+account capacity only. No private REST, ledger or orders. Five new synthetic
+tests and 53 existing relevant tests pass. [Measured result and limitations](docs/VERIFY_MARKET_GATES_2026-09-23.md):
+1,013 examined, 156 pass, 32 priority, 6m55s; not a live admission benchmark.
+
 ## D-091 admission-aware exploration — 2026-09-22
 
 [Coverage repair](docs/BUILD_DISCOVERY_COVERAGE.md) replaces proposal-driven
