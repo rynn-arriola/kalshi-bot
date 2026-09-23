@@ -127,6 +127,7 @@ class RecoveryRuntime:
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
+        self.maintenance = None  # Opt-in same-market policy, never a writer.
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -211,6 +212,21 @@ class RecoveryRuntime:
         self.admission = MarketAdmission(self,offline_fixture=offline_fixture)
         return self.admission
 
+    def attach_maintenance(self):
+        from .quote_maintenance import QuoteMaintenance
+        if self.used or self.maintenance is not None or self.rewards is None:
+            raise InvalidData('maintenance requires unused selected reward runtime')
+        self.maintenance = QuoteMaintenance(self)
+        return self.maintenance
+
+    def _request_quote_dispatch(self, ticker):
+        if self.maintenance is None or self.dispatch_supervisor is None or self.stop_requested.is_set():
+            return
+        plan = self.management.current(ticker, require_market=False)
+        if plan is not None and self.maintenance.cancel_target(plan) is not None:
+            from .dispatch import QUOTE_CANCEL
+            self.request_dispatch(ticker, QUOTE_CANCEL)
+
     def request_dispatch(self, ticker, priority):
         if self.dispatch_supervisor is None:
             raise InvalidData('offline dispatch not attached')
@@ -230,6 +246,9 @@ class RecoveryRuntime:
                     self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
+        if self.maintenance is not None:
+            self.maintenance.refresh(ticker)
+            self._request_quote_dispatch(ticker)
         await self._evaluate_callback(ticker, book, generation)
 
     async def _deadline(self, ticker):
@@ -239,6 +258,9 @@ class RecoveryRuntime:
             self.selection.refresh(ticker)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
+        if self.maintenance is not None:
+            self.maintenance.refresh(ticker)
+            self._request_quote_dispatch(ticker)
         await self._deadline_callback(ticker)
 
     async def _ranked_entry_turn(self):
@@ -295,13 +317,71 @@ class RecoveryRuntime:
                 and any(r.owned and not r.reducing and not r.order.terminal
                         for r in plan.inventory.orders)):
             self.request_dispatch(ticker, SAFETY_CANCEL)
-        elif (plan.exit.mode in {'flat', 'passive', 'cancel_before_ioc'}
+        elif ((overflow := self.entry_overflow_ids())
+              and overflow.intersection(r.order.order_id for r in plan.inventory.orders)):
+            self.request_dispatch(ticker, SAFETY_CANCEL)
+        elif (plan.exit.mode in {'flat', 'passive', 'passive_deferred', 'cancel_before_ioc'}
                 and plan.passive.cancel_ids):
             self.request_dispatch(ticker, SAFETY_CANCEL)
         elif plan.exit.mode == 'ioc':
             self.request_dispatch(ticker, DUE_IOC)
-        elif plan.exit.mode == 'passive':
+        elif plan.exit.mode in {'passive', 'passive_deferred'}:
             self.request_dispatch(ticker, PASSIVE_REDUCER)
+
+    def current_entry_orders(self):
+        """Bounded exact account/order join; no new read or guessed reducer flag."""
+        report = self.account.current_report(self.now())
+        if report is None or not report.positions_match or report.audit.blockers:
+            return None
+        rows = []
+        for row in report.snapshot.orders:
+            receipt = self.account.order_states.get(row.order_id)
+            if receipt is None or not receipt.owned:
+                return None
+            own = receipt.order
+            if (own.client_id, own.ticker, own.side, own.yes_price, own.remaining,
+                own.exchange_index, own.terminal) != (row.client_id, row.ticker,
+                row.book_side, row.yes_price, row.remaining, row.exchange_index, False):
+                return None
+            if not receipt.reducing:
+                rows.append(row)
+        return tuple(rows)
+
+    def entry_overflow_ids(self):
+        """Honor the existing ratcheted ceiling on resting entries, pairs first.
+
+        Position markets remain with inventory management. Stable admission order
+        breaks ties; this never imports Poly's risk numbers or reward estimates.
+        """
+        window = getattr(self.accounting_result, 'window', None)
+        now = utc(self.now())
+        if (window is None or not window.start <= now < window.end
+                or not timedelta(0) <= now-window.observed_at <= timedelta(seconds=5)):
+            return frozenset()
+        rows = self.current_entry_orders()
+        if rows is None or len(rows) <= window.cap:
+            return frozenset()
+        report = self.account.current_report(now)
+        positioned = {p.ticker for p in report.snapshot.positions if p.quantity}
+        kept = {o.order_id for o in rows if o.ticker in positioned}
+        remaining = max(0, window.cap-len(kept))
+        ranks = ({t:i for i,t in enumerate(self.maintenance.bindings)}
+                 if self.maintenance is not None else {})
+        ordered = sorted((o for o in rows if o.ticker not in positioned),
+                         key=lambda o: (ranks.get(o.ticker, 1024), o.ticker, o.book_side, o.order_id))
+        groups = {}
+        for row in ordered:
+            groups.setdefault(row.ticker, []).append(row)
+        for group in groups.values():
+            pair = [next((o for o in group if o.book_side == side), None) for side in ('bid','ask')]
+            if remaining >= 2 and all(pair):
+                kept.update(o.order_id for o in pair)
+                remaining -= 2
+        for row in ordered:
+            if remaining and row.order_id not in kept:
+                kept.add(row.order_id)
+                remaining -= 1
+        return frozenset(o.order_id for o in ordered if o.order_id not in kept)
 
     async def risk_view(self):
         return await self.writer.portfolio(subaccount=self.account.subaccount, now=self.now())
@@ -1159,6 +1239,7 @@ class RecoveryRuntime:
             selection=self.selection.status() if self.selection is not None else None,
             incentives=self.incentives.status() if self.incentives is not None else None,
             rewards=self.rewards.status() if self.rewards is not None else None,
+            maintenance=self.maintenance.status() if self.maintenance is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

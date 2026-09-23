@@ -75,7 +75,7 @@ class MarketSelector:
                 ctx.prec = 40
                 for q in row.quotes:
                     ok, _, pnl = cross(book, q.quantity if q.side == 'bid' else -q.quantity,
-                                       q.yes_price, terms.bands, fee, Decimal(1))
+                                       q.yes_price, terms.bands, fee, Decimal(1), excluded=reflected)
                     complete &= ok
                     losses.append(max(Decimal(0), -pnl))
                     stake = q.quantity*(q.yes_price if q.side == 'bid' else 1-q.yes_price)
@@ -98,13 +98,20 @@ class MarketSelector:
         self.board.markets[book.ticker] = tuple(rows)
 
     def propose(self, *, view, window, free_cash, account_known, now, protected=(),
-                current=lambda ticker: False):
+                current=lambda ticker: False, continuations=None, entry_allowed=lambda t,p: True):
         """Greedy two-slot additions, not reservations; source check defaults closed.
 
         Existing exposure/positions and explicit unresolved owners stay managed.
         All money must be revalidated by the writer at actual consumption.
         """
         now = utc(now)
+        continuations = {} if continuations is None else continuations
+        if type(continuations) is not dict or len(continuations) > 1:
+            raise InvalidData('one bounded same-program maintenance continuation required')
+        for ticker, (program_id, credit) in continuations.items():
+            identity(ticker); identity(program_id)
+            if decimal(credit) < 0:
+                raise InvalidData('negative estimated continuation reward')
         if not isinstance(view, PortfolioView) or not isinstance(window, WindowState):
             raise InvalidData('writer portfolio and risk-window observations required')
         if type(protected) is not tuple or len(protected) > self.board.capacity:
@@ -152,6 +159,8 @@ class MarketSelector:
         source_current = {}
         def entry_blockers(row):
             blocked = row.blockers
+            if not entry_allowed(row.ticker, row.program_id):
+                blocked += ('incumbent_maintenance_reserved',)
             if row.ticker in retained:
                 blocked += ('existing_owner_retained',)
             if row.ticker not in source_current:
@@ -172,7 +181,10 @@ class MarketSelector:
                 elif row.gross_hourly_usd is None or row.gross_hourly_usd <= 0:
                     blocked += ('no_projected_reward',)
                 elif (row.gross_remaining_usd is None
-                      or row.gross_remaining_usd < config.minimum_projected_reward_usd):
+                      or row.gross_remaining_usd + (continuations[row.ticker][1]
+                          if row.ticker in continuations
+                          and continuations[row.ticker][0] == row.program_id else Decimal(0))
+                      < config.minimum_projected_reward_usd):
                     blocked += ('projected_reward_below_minimum',)
             return blocked
 

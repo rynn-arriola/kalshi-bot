@@ -666,13 +666,14 @@ class LedgerWriter:
                        (self.epoch, self._revision)
                     or plan.observed_at > now or now-plan.observed_at > timedelta(seconds=5)
                     or not terms.observed_at <= now < terms.valid_until
-                    or inventory.blockers or exit_plan.blockers):
+                    or inventory.blockers
+                    or (exit_plan.blockers and not exit_plan.passive_allowed)):
                 return None
             quantity = count(request['count'])
             limit_price = price(request['price'])
             passive = request['time_in_force'] == 'good_till_canceled'
             action_matches = (
-                exit_plan.mode == 'passive'
+                exit_plan.passive_allowed
                 and exit_plan.passive.keep_id is None
                 and not exit_plan.passive.cancel_ids
                 and exit_plan.passive.reduce_side == request['side']

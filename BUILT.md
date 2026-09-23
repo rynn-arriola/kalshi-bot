@@ -1,5 +1,13 @@
 # What exists
 
+## D-098 incumbent maintenance and lifecycle repairs — 2026-09-23
+
+[Code audit/build](docs/BUILD_ORDER_MAINTENANCE.md): one same-program maintenance
+cycle, tracker progress in status, passive-deferred dispatch/writer repair,
+building-first cancellation and active loss-cap drainage. The new policy module
+reuses existing source owners and the sole dispatcher/writer. Verification and
+deployment state belong in STATUS.
+
 ## D-097 resilient atomic status publication — 2026-09-23
 
 [Implementation](docs/BUILD_STATUS_PUBLICATION.md): Windows delete-sharing status

@@ -162,6 +162,39 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(req['reduce_only'])
         self.assertNotIn('expiration_time', req)
 
+    async def test_deferred_early_exit_still_places_exact_passive_reducer(self):
+        await self.ready(filled='4')
+        self.now += timedelta(seconds=900)
+        self.mono += 900
+        await self.books()
+        await self.report('4')
+        # Stress has too little depth, but a real passive touch is available.
+        _, book = self.runtime.management._book('A')
+        book.bids.set(D('.4'), D(1))
+        self.assertEqual((await self.runtime.management.refresh('A')).exit.mode,
+                         'passive_deferred')
+        self.assertEqual((await self.run_priority()).state, 'ACK')
+        req = self.calls[0][1]
+        self.assertEqual((req['side'], D(req['count']), req['time_in_force']),
+                         ('ask', D(4), 'good_till_canceled'))
+        self.assertTrue(req['post_only'] and req['reduce_only'])
+
+    async def test_deferred_early_exit_still_cancels_building_partial_fill(self):
+        order = await self.ready(filled='4', remaining='6')
+        self.now += timedelta(seconds=900)
+        self.mono += 900
+        await self.books()
+        await self.report('4', (order,))
+        _, book = self.runtime.management._book('A')
+        book.bids.set(D('.4'), D(1))
+        self.assertEqual((await self.runtime.management.refresh('A')).exit.mode,
+                         'passive_deferred')
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        self.assertEqual(self.calls[0][1]['order_id'], order.order_id)
+        # ACK is not terminal/no-fill evidence, including on the deferred path.
+        await self.report('4', (order,))
+        self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
+
     async def test_owned_building_cancel_ack_never_unblocks_reducer(self):
         await self.ready(filled='4', remaining='6')
         self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')

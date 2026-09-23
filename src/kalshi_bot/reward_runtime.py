@@ -137,6 +137,24 @@ class RuntimeRewards:
                 and proof.account_revision == self.runtime.account.revision
                 and proof.signature == signature and now < proof.valid_until)
 
+    def reflected_quotes(self, ticker):
+        """Current operational reflection join, not atomic venue/payout proof."""
+        if self.blocker is not None or self.failed or self.stopping:
+            return None
+        source = self._sources(ticker)
+        if source is None:
+            return None
+        proof = self._reflection.get(ticker)
+        fixture = isinstance(proof, tuple) and all(a is b for a,b in zip(proof, source[:3]))
+        if fixture or self._production_known(ticker, source, self._signature(source[0]), utc(self.runtime.now())):
+            return self._orders(source[0])
+        return None
+
+    def reflection_valid_until(self, ticker):
+        proof = self._reflection.get(ticker)
+        return (proof.valid_until if isinstance(proof, ReflectionProof)
+                else utc(self.runtime.now())+timedelta(seconds=5))
+
     async def reflect_once(self):
         """Join one complete private snapshot to the all-resting queue endpoint.
 
@@ -203,6 +221,13 @@ class RuntimeRewards:
                 self.tracker.invalidate(ticker)
         for ticker in proofs:
             self.refresh(ticker)
+            if r.maintenance is not None:
+                r.maintenance.refresh(ticker)
+                r._request_quote_dispatch(ticker)
+            # Deep-book arithmetic is bounded but may be expensive. Service
+            # private ingress between owners; each following refresh rechecks
+            # its sources rather than trusting the pre-yield reflection join.
+            await asyncio.sleep(0)
         self.last_reflection_at = now
         return len(proofs)
 
@@ -387,4 +412,18 @@ class RuntimeRewards:
                     estimate_only=True, paid_rewards_verified=False,
                     production_reflection_available=(self.runtime.reads is not None
                         and self.started and not self.stopping and not self.failed),
-                    authorized=False)
+                    program_progress=self._progress_status(), authorized=False)
+
+    def _progress_status(self):
+        # Report only currently managed owners (30 orders, <=16 programs each).
+        # No filesystem/network work and no scan of archived reward history.
+        from dataclasses import asdict
+        result = []
+        for ticker, plan in self.runtime.management._plans.items():
+            if not plan.inventory.orders and not plan.inventory.position:
+                continue
+            for key in sorted(self.tracker._by_market.get(ticker, ())):
+                if len(result) >= 480:
+                    return result
+                result.append(asdict(self.progress(key)))
+        return result

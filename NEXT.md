@@ -1,5 +1,26 @@
 # Active work queue
 
+## D-098 next restart bundle
+
+0. Resolve the newly observed live recovery incident in STATUS: ambiguous send,
+   exhausted reconciliation and reported inventory. Establish exact order/fill
+   state and original failure evidence before any deployment/restart. No ledger
+   reset, blind resend or assumed flatness; live actions need operator authority.
+
+The [order-maintenance bundle](docs/BUILD_ORDER_MAINTENANCE.md) passed final
+verification/review (1,582 tests, one expected skip). Publication must preserve
+the unchanged live source; STATUS records the deliberate deployment lag.
+
+1. After incident resolution and separate restart approval, controlled stop/drain and verified disarm,
+   deploy the reviewed commit with the same ledger/limits and verify startup.
+   Do not update the active package beneath its recovery fingerprint.
+2. Observe actual reference status, same-market repricing, terminal/fill
+   reconciliation, cap drainage and reward progress. Synthetic tests prove
+   neither payout nor profitability.
+
+D-098 supersedes the earlier unapproved-repricing statement below; reward-
+chasing replacement remains prohibited. Older queues are dated context.
+
 ## After D-097 — running; observe live outcomes
 
 The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is published,

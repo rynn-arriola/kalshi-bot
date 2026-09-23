@@ -76,6 +76,12 @@ class ExitPlan:
     next_at: datetime | None = None
     authorized: bool = False
 
+    @property
+    def passive_allowed(self):
+        return ((self.mode == 'passive' and not self.blockers)
+                or (self.mode == 'passive_deferred'
+                    and self.blockers == ('ordinary_exit_depth_or_loss',)))
+
 
 def adjacent_tick(touch, side, bands):
     """One valid grid level toward the other side, including band boundaries."""
@@ -107,15 +113,22 @@ def passive_price(book, position, basis, bands):
     return touch
 
 
-def cross(book, position, basis, bands, fee_bound, haircut):
+def cross(book, position, basis, bands, fee_bound, haircut, *, excluded=()):
     """Walk at most the existing bounded ladder; no sort/copy of full universe."""
     qty = abs(position)
     ladder = book.bids if position > 0 else book.asks
     prices = reversed(ladder.prices) if position > 0 else iter(ladder.prices)
     remaining, gross, worst = qty, Decimal(0), None
+    own = {}
+    for quote in excluded:
+        if quote.side == ('bid' if position > 0 else 'ask'):
+            own[quote.yes_price] = own.get(quote.yes_price, Decimal(0))+quote.quantity
     for p in prices:
         validate_tick(p, bands)
-        take = min(remaining, ladder.levels[p]*haircut)
+        depth = ladder.levels[p]-own.get(p, Decimal(0))
+        if depth < 0:
+            raise InvalidData('excluded order depth exceeds current book')
+        take = min(remaining, depth*haircut)
         gross += take*(p-basis)*(1 if position > 0 else -1)
         remaining -= take
         worst = p

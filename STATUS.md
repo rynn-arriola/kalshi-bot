@@ -1,5 +1,45 @@
 # Current status
 
+## Live recovery blocker observed during D-098 verification — 2026-09-23
+
+At **11:37:15 UTC**, the standard read-only supervisor status showed generation
+49 in `recovering`, replacement child PID 35364, runtime
+`c113f24a47d84b17956897000d95feee`. New entries were paused; recovery was
+`blocked_retry_exhausted`, with `ambiguous_send`, no current account proof,
+8 reported resting entries and a reported 10-contract YES-equivalent position
+in `KXTOKENUSE-26SEP28-T152`. These are local saved observations, not a fresh
+venue reconciliation. Do not infer flatness or cancel success.
+
+Control records `unexpected_death`, `cleanup_unconfirmed`, `unresolved_work`.
+Retained child diagnostics show repeated incomplete/exhausted recovery through
+11:31:54 UTC; they do not establish the original child's death cause. The prior
+healthy checkpoint below is historical. D-098 source is isolated and was not
+deployed; no assistant process control or venue action occurred. Resolve this
+incident before deployment/restart; do not bypass ambiguity or reset the ledger.
+
+## D-098 order-lifecycle bundle prepared in isolation — 2026-09-23
+
+The [actual-code Poly comparison and implementation](docs/BUILD_ORDER_MAINTENANCE.md)
+cover entry, incumbent maintenance, fills, cancellations, passive/IOC exits,
+loss-cap drainage and restart. Qualifying incumbents stay; reference drift is
+repaired in the same program with terminal/fill proof before replacement.
+Existing reward estimates are exposed per program, never as paid cash. Three
+demonstrated exit/cap defects are included. Risk amounts are unchanged.
+
+Verified in `fix/order-maintenance`: **1,582 tests run, 1,581 passed, one expected
+Windows symlink-privilege skip**, 260.851s. Final source includes cap drainage
+and cooperative reflection yielding. An intermediate full run exposed an eager
+inventory access against an older minimal fixture; short-circuiting an empty
+overflow set fixed it, and the final full run passed. Poly's 76 pure reconciler
+tests, three deliberate regression reversals and 493 local documentation links
+also passed. Actual diff reviewed for source/race/ownership/exit-priority issues.
+
+Publish this reviewed commit to canonical `origin/master` from the isolated
+checkout. Keep the live checkout deliberately at clean `221dacc` until controlled
+deployment is authorized; isolated HEAD/remote parity is not deployed parity.
+No restart or venue action occurred. The live recovery incident above remains
+unresolved and prevents a restart-readiness claim.
+
 ## Current: D-097 live restart accepted and running — 2026-09-23
 
 Under the operator's explicit restart instruction, the preserved production

@@ -1,5 +1,11 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-098 [incumbent maintenance](BUILD_ORDER_MAINTENANCE.md) adds one bounded
+same-program withdrawal/re-entry policy ahead of existing selection/dispatch,
+never another writer or scanner. Actual source joins and terminal/fill proof
+remain mandatory; safety/exits precede maintenance. Per-program tracker output
+is advisory. Qualifying owners are not replaced for better global rank.
+
 D-096's [initial combined-ranking checkpoint](BUILD_INITIAL_RANKING.md) delays
 only normal broad-mode entries until evaluated coverage or a bounded timeout.
 Both book shards and metadata remain concurrent; current eligibility/dispatch

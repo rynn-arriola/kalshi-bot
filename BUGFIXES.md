@@ -1,5 +1,17 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — passive deferral, cancellation order and resting cap enforcement
+
+**Mechanisms:** `passive_deferred` could not enter passive dispatch or writer
+authorization; passive cancellations followed lexical IDs rather than removing
+building exposure first; the ratchet applied to admissions but not live overflow.
+
+**Fix:** Keep exact passive management after ordinary depth/loss deferral,
+prioritize building-side cancellation and actively withdraw owned flat overflow,
+retaining complete pairs first. No changed exit loss, capital or contract limits.
+Three new regressions fail when their fixes are reversed in memory. Full details
+and incumbent-maintenance integration: [D-098](docs/BUILD_ORDER_MAINTENANCE.md).
+
 Bugs that reached an instrument or runtime. Symptom, mechanism, fix — written
 when fixed, not at the end of a session. Companion to `FINDINGS.md`. Each live
 entry states whether orders, positions or exposure were observed.

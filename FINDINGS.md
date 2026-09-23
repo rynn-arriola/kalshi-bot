@@ -1,5 +1,30 @@
 # Findings — kalshi-bot
 
+## 148. Existing live run entered recovery during isolated verification — 2026-09-23
+
+VERIFIED local status at 11:37:15 UTC: generation 49 recovering, new entries
+paused, `blocked_retry_exhausted`, `ambiguous_send`, 8 reported resting entries
+and one reported 10-contract position. No current account proof, so counts are
+not independently reconciled venue facts. Retained diagnostics show repeated
+recovery exhaustion; original child-death cause remains UNKNOWN. Canonical
+source is still clean `221dacc`; D-098 remains isolated and undeployed. STATUS
+owns the operational blocker; no production action was taken to suppress it.
+
+## 147. Actual-code comparison identifies three lifecycle gaps — 2026-09-23
+
+VERIFIED from Kalshi `221dacc` and read-only Poly `acba287f`: passive-deferred
+plans could not obtain reducer dispatch/writer authorization; ordinary passive
+cancels sorted by ID rather than building direction; reduced entry caps blocked
+additions but did not drain overflow. Existing owners stayed but reward quotes
+were not maintained, despite an existing tracker. The
+[D-098 audit/build](docs/BUILD_ORDER_MAINTENANCE.md) records corrections, regression
+reversals and comparison paths. Poly's 76 pure reconciler tests pass.
+
+Qualifying owners remain even above estimated $1; a richer spare is not a
+replacement trigger. Same-program estimates plus remaining projection are not
+assured payment. The earlier hypothetical-reference census does not prove actual
+order earnings. No production mutation/restart occurred in this unit.
+
 ## 146. Current slate is eligible but materially below the sampled best slate — 2026-09-23
 
 MEASURED PUBLIC-ONLY over 1,024 reviewed markets from 10:47:46–10:49:21 UTC:

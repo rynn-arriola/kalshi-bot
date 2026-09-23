@@ -1,0 +1,253 @@
+"""Bounded incumbent maintenance; keys only, never a second order writer.
+
+One pair withdraws at a time. Exact terminal/fill proof precedes a fresh pair
+through the ordinary selector/writer. Recovery-only startup never resumes this
+ephemeral policy; the existing supervisor drains durable orders first.
+"""
+from dataclasses import dataclass
+from decimal import Decimal
+
+from .selection import MarketSelector
+from .values import InvalidData, utc
+
+
+@dataclass(frozen=True)
+class MaintenanceCycle:
+    ticker: str
+    program: object
+    order_ids: tuple[str, ...]
+    reason: str
+    reenter: bool
+
+
+class QuoteMaintenance:
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.bindings = {}
+        self.cycle = None
+        self.samples = {}
+        self._dwell = {}
+        self._cooldown = {}
+        self._actual = MarketSelector(1)
+        self._target = MarketSelector(1)
+
+    def bind(self, program):
+        # Selection identity is advisory; only durable order evidence proves
+        # a pair was placed. Scope is bounded by the existing subscribed universe.
+        if program.ticker not in self.runtime.engine.market_shard:
+            raise InvalidData('maintenance binding outside runtime scope')
+        for old in tuple(self.bindings):
+            if old not in self.runtime.engine.market_shard:
+                for table in (self.bindings, self.samples, self._dwell, self._cooldown):
+                    table.pop(old, None)
+        if self.bindings.get(program.ticker) != program:
+            self._dwell.pop(program.ticker, None)
+        self.bindings[program.ticker] = program
+
+    def entry_allowed(self, ticker, program_id):
+        c = self.cycle
+        if c is None:
+            return True
+        observation = self.runtime.selection._observation(ticker)
+        return (c.reenter and c.ticker == ticker and c.program.program_id == program_id
+                and observation is not None and c.program in observation.programs)
+
+    def credit(self, program):
+        rewards = self.runtime.rewards
+        record = rewards.tracker.records.get(program.program_id) if rewards else None
+        # Never combine programs, changed terms, unknown periods or paid cash.
+        return (record.estimate if record is not None and not record.conflict
+                and record.program == program else Decimal(0))
+
+    def continuation(self):
+        c = self.cycle
+        return ({c.ticker: (c.program.program_id, self.credit(c.program))}
+                if c is not None and c.reenter else {})
+
+    def _finish(self, ticker):
+        self.cycle = None
+        self._dwell.pop(ticker, None)
+        self._cooldown[ticker] = self.runtime.clock()+30
+        self.runtime._entry_dirty = True
+
+    def _start(self, plan, program, reason, reenter):
+        r = self.runtime
+        if self.cycle is not None or r.entry_pause_active:
+            return
+        if reenter:
+            rows = r.current_entry_orders()
+            window = getattr(r.accounting_result, 'window', None)
+            if rows is None or window is None or len(rows)-len(plan.inventory.orders)+2 > window.cap:
+                return  # In particular, do not churn an intentional odd-cap orphan.
+        service = r.dispatch_supervisor
+        if service is not None and service.dispatcher.status().active is not None:
+            return  # No new maintenance episode during an in-flight mutation.
+        ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
+        self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter)
+        self._dwell.pop(plan.ticker, None)
+        self.samples[plan.ticker]['action'] = reason
+
+    def refresh(self, ticker):
+        r, now = self.runtime, utc(self.runtime.now())
+        program = self.bindings.get(ticker)
+        if program is None:
+            return
+        plan = r.management.current(ticker, require_market=False)
+        report = r.account.current_report(now)
+        if (plan is None or report is None or not report.positions_match
+                or report.audit.blockers or plan.inventory.blockers):
+            return
+        inventory = plan.inventory
+        c = self.cycle
+        if inventory.position:
+            if c is not None and c.ticker == ticker:
+                self._finish(ticker)
+            self._dwell.pop(ticker, None)
+            self.samples[ticker] = dict(state='INVENTORY', action='existing_exit_policy')
+            return
+        orders = inventory.orders
+        if any(not o.owned or o.awaiting_fills or o.reducing or o.order.terminal
+               for o in orders):
+            return
+        journal = inventory.exit_journal
+        if journal is None or journal.cancel_ids or journal.unresolved_ioc:
+            return
+        if c is not None and c.ticker == ticker:
+            if orders:
+                if not set(c.order_ids) & {o.order.order_id for o in orders}:
+                    self._finish(ticker)  # Acknowledged replacement, not cancel ACK.
+                return
+            if not c.reenter or now >= c.program.end:
+                self._finish(ticker)
+                self.bindings.pop(ticker, None)
+                return
+            window = getattr(r.accounting_result, 'window', None)
+            entries = r.current_entry_orders()
+            if (window is not None and window.start <= now < window.end
+                    and entries is not None and len(entries)+2 > window.cap):
+                self._finish(ticker)
+                self.bindings.pop(ticker, None)
+                return  # The ratchet may tighten while cancellation is pending.
+            # Only the same program can use the freed capacity. Unknown sources
+            # wait; a freshly evaluated failed gate releases a flat/clear owner.
+            if r.selection.current(ticker):
+                observation = r.selection._observation(ticker)
+                if observation is not None and c.program not in observation.programs:
+                    self._finish(ticker)
+                    self.bindings.pop(ticker, None)
+                    return
+                rows = r.selection.selector.board.markets.get(ticker, ())
+                row = next((row for row in rows if row.program_id == c.program.program_id), None)
+                if row is not None and (row.blockers or row.gross_remaining_usd is None
+                        or row.gross_remaining_usd+self.credit(c.program) < 1):
+                    self._finish(ticker)
+                    self.bindings.pop(ticker, None)
+                else:
+                    r._entry_dirty = True
+            return
+        if not orders:
+            return
+        # Exact lifecycle deadlines do not require reward/reflection estimates.
+        terms = plan.terms
+        if program.end > now:
+            due = r.clock()+(program.end-now).total_seconds()
+            current_due = r.engine.deadlines.due_for(ticker)
+            if current_due is None or due < current_due:
+                r.engine.schedule(ticker, due)
+        expired = now >= program.end
+        if (terms is not None and terms.observed_at <= now < terms.valid_until
+                and (not terms.active or now >= terms.deadline)):
+            expired = True
+        self.samples[ticker] = dict(state='UNKNOWN', action='retain_pending_evidence')
+        if expired:
+            self._start(plan, program, 'earning_window_ended', False)
+            return
+        rewards = r.rewards
+        source = rewards._sources(ticker) if rewards else None
+        quotes = rewards.reflected_quotes(ticker) if rewards else None
+        if source is None or quotes is None or not quotes:
+            return
+        if not any(p == program for p in source[1].programs):
+            return  # Missing/changed terms are not proof of zero earnings.
+        plan, observation, report, book = source
+        if r.selection.candidate_inputs is not None:
+            if r.selection.candidate_inputs.blockers(ticker, now):
+                return
+        until = min(observation.valid_until, plan.terms.valid_until,
+                    rewards.reflection_valid_until(ticker))
+        if until <= now:
+            return
+        try:
+            self._actual.invalidate(next(iter(self._actual.board.markets), ticker))
+            self._actual.update(book, (program,), terms=plan.terms, now=now,
+                valid_until=until, reflected=quotes, proposed=quotes)
+            actual = self._actual.board.markets[ticker][0]
+            self._target.invalidate(next(iter(self._target.board.markets), ticker))
+            self._target.update(book, (program,), terms=plan.terms, now=now,
+                valid_until=until, reflected=quotes)
+            target = self._target.board.markets[ticker][0]
+        except InvalidData:
+            return
+        self.samples[ticker] = dict(state='OBSERVED', observed_at=now.isoformat(),
+            valid_until=until.isoformat(), program_id=program.program_id,
+            orders=[dict(side=q.side, price=str(q.yes_price), remaining=str(q.quantity)) for q in quotes],
+            quote_statuses=actual.quote_statuses,
+            bid_reference=str(actual.bid_reference), ask_reference=str(actual.ask_reference),
+            bid_cutoff=str(actual.bid_cutoff), ask_cutoff=str(actual.ask_cutoff),
+            target_blockers=target.blockers, action='retain')
+        known_failures = {'proposed_quote_not_scoring', 'insufficient_two_sided_depth',
+                          'exit_depth_missing', 'entry_retained_value_below_minimum',
+                          'market_or_program_inactive', 'entry_horizon_ended'}
+        if set(actual.blockers+target.blockers)-known_failures:
+            self.samples[ticker]['state'] = 'UNKNOWN'
+            return
+        # A qualifying incumbent is never displaced by the global rank or by
+        # reaching $1. Only lost price weight/qualification or an incomplete
+        # pair requests maintenance. Better-than-reference full-weight stays.
+        complete = (len(quotes) == 2 and {q.side for q in quotes} == {'bid','ask'}
+                    and all(q.quantity == 10 for q in quotes))
+        drift = (actual.quote_statuses != ('full_price_weight','full_price_weight')
+                 or not complete or bool(actual.blockers))
+        target_ok = (not target.blockers and target.gross_remaining_usd is not None
+                     and target.gross_remaining_usd+self.credit(program) >= 1)
+        if not drift:
+            self._dwell.pop(ticker, None)
+            return
+        # Thirty seconds of repeatedly current drift before repricing; ninety
+        # before withdrawing a persistently unscoring, unrepairable pair.
+        # A >5s evidence gap resets the dwell, never counts as bad economics.
+        mono = r.clock()
+        since, last = self._dwell.get(ticker, (mono, mono))
+        if not 0 <= mono-last <= 5:
+            since = mono
+        self._dwell[ticker] = (since, mono)
+        delay = 30 if target_ok else 90
+        if mono-since < delay or mono < self._cooldown.get(ticker, 0):
+            return
+        if target_ok:
+            self._start(plan, program, 'restore_reference_pair', True)
+        elif actual.blockers:
+            self._start(plan, program, 'persistently_unscoring', False)
+
+    def cancel_target(self, plan):
+        c = self.cycle
+        if c is None or c.ticker != plan.ticker or plan.inventory.position:
+            return None
+        for row in plan.inventory.orders:
+            if (row.order.order_id in c.order_ids and row.owned and not row.reducing
+                    and not row.awaiting_fills and not row.order.terminal):
+                return row.order.order_id
+        return None
+
+    def status(self):
+        c = self.cycle
+        current = {t for t,p in self.runtime.management._plans.items()
+                   if p.inventory.orders or p.inventory.position}
+        if c is not None:
+            current.add(c.ticker)
+        return dict(cycle=None if c is None else dict(ticker=c.ticker,
+            program_id=c.program.program_id, reason=c.reason, reenter=c.reenter),
+            markets={t:self.samples[t] for t in sorted(current)[:30] if t in self.samples},
+            historical_samples=True, reprice_dwell_seconds=30,
+            unscoring_dwell_seconds=90, cooldown_seconds=30,
+            replaces_for_better_rank=False, estimate_only=True)

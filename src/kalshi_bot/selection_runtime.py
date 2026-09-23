@@ -213,6 +213,8 @@ class RuntimeSelection:
             return False
         observation = self._observation(proof.ticker)
         return (self._proofs.get(proof.ticker) is proof.source_proof
+                and (r.maintenance is None or r.maintenance.entry_allowed(
+                    proof.ticker, proof.program.program_id))
                 and observation is proof.observation
                 and any(program is proof.program for program in observation.programs)
                 and observation.observed_at <= now < observation.valid_until
@@ -297,7 +299,9 @@ class RuntimeSelection:
         cash = min(decimal(free_cash), report.snapshot.available_balance)
         result = self.selector.propose(view=view, window=window, free_cash=cash,
             account_known=report.positions_match and not report.audit.blockers,
-            now=r.now(), protected=protected, current=self.current)
+            now=r.now(), protected=protected, current=self.current,
+            continuations=r.maintenance.continuation() if r.maintenance is not None else None,
+            entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True)
         if any(not self.current(row.ticker) or utc(r.now()) >= row.valid_until for row in result.additions):
             return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)))
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}
@@ -315,6 +319,6 @@ class RuntimeSelection:
                     last_proposal=self.last_proposal,
                     initial_ranking=(self.initial_ranking.status()
                                      if self.initial_ranking is not None else None),
-                    venue_requests=0, automatic_repricing=False,
+                    venue_requests=0, automatic_repricing=self.runtime.maintenance is not None,
                     candidate_inputs=(self.candidate_inputs.status()
                                       if self.candidate_inputs is not None else None))

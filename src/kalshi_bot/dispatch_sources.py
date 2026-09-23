@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from .adapters import create_payload
 from .dispatch import (DispatchCandidate, EntryPairCandidate, MutationDispatcher,
-                       SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER, ENTRY_PAIR)
+                       SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER, ENTRY_PAIR, QUOTE_CANCEL)
 from .execution import InjectedExecutor, encoded_request
 from .exits import ioc_payload
 from .management import ManagedPlan
@@ -25,6 +25,7 @@ class _Proof:
     kind: str
     request_json: object
     entry_selection: object = None
+    maintenance_cycle: object = None
 
 
 class InventoryDispatchSource:
@@ -125,7 +126,7 @@ class InventoryDispatchSource:
         if (self._refreshing or not self._available()
                 or ticker not in self.runtime.engine.market_shard
                 or priority not in {SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER,
-                                    ENTRY_PAIR}):
+                                    ENTRY_PAIR, QUOTE_CANCEL}):
             return blocked('entry_runtime_unavailable')
         self._refreshing = True
         try:
@@ -138,7 +139,7 @@ class InventoryDispatchSource:
                 runtime.selection.refresh(ticker)
             if (plan is None or plan.exit is None or plan.inventory.blockers
                     or not self._plan_current(plan, report.observed_at,
-                                              require_book=priority != SAFETY_CANCEL)
+                                              require_book=priority not in {SAFETY_CANCEL, QUOTE_CANCEL})
                     or runtime.account.current_report(runtime.now()) is not report):
                 return blocked('entry_management_proof_unavailable')
             if priority == ENTRY_PAIR:
@@ -208,6 +209,10 @@ class InventoryDispatchSource:
                     tuple(requests), view, report.snapshot.available_balance,
                     plan.terms.taker_fee_per_contract_bound,
                     source.value.exchange)
+                if runtime.maintenance is not None:
+                    if not runtime.maintenance.entry_allowed(ticker, row.program_id):
+                        return blocked('incumbent_maintenance_reserved')
+                    runtime.maintenance.bind(programs[0])
                 self._proof = _Proof(plan, report.observed_at, 'batch_create',
                     tuple(encoded_request(request) for request in requests),
                     entry_selection)
@@ -216,15 +221,34 @@ class InventoryDispatchSource:
             journal = plan.inventory.exit_journal
             if journal is None or journal.unresolved_ioc or journal.cancel_ids:
                 return None
-            if priority == SAFETY_CANCEL:
+            maintenance_cycle = None
+            if priority == QUOTE_CANCEL:
+                owner = runtime.maintenance
+                target = owner.cancel_target(plan) if owner is not None else None
+                if target is None or plan.passive.blockers:
+                    return None
+                maintenance_cycle = owner.cycle
+                evidence = await runtime.writer.cancel_evidence(target)
+                if evidence is None or owner.cycle is not maintenance_cycle:
+                    return None
+                request = dict(order_id=evidence.order_id, market_ticker=ticker,
+                    subaccount=runtime.account.subaccount, exchange_index=evidence.exchange_index)
+                kind = 'cancel'
+            elif priority == SAFETY_CANCEL:
                 # Only the cancellation selected by the existing strategy.
                 # Never bypass a blocked/wait/attention exit via its subplan.
                 allowed = {'await_terminal_cancellation_and_fill_proof'}
                 paused = runtime.entry_pause_active
                 entry_ids = tuple(sorted(r.order.order_id for r in plan.inventory.orders
                     if r.owned and not r.reducing and not r.order.terminal)) if paused else ()
-                if not entry_ids and (exit_plan.mode not in {'flat', 'passive', 'cancel_before_ioc'}
-                        or exit_plan.blockers or not passive.cancel_ids
+                if not entry_ids:
+                    overflow = runtime.entry_overflow_ids()
+                    entry_ids = tuple(sorted(r.order.order_id for r in plan.inventory.orders
+                                             if r.order.order_id in overflow))
+                deferred = (exit_plan.mode == 'passive_deferred'
+                            and exit_plan.blockers == ('ordinary_exit_depth_or_loss',))
+                if not entry_ids and (exit_plan.mode not in {'flat', 'passive', 'passive_deferred', 'cancel_before_ioc'}
+                        or (exit_plan.blockers and not deferred) or not passive.cancel_ids
                         or set(passive.blockers)-allowed):
                     return None
                 evidence = await runtime.writer.cancel_evidence(
@@ -236,7 +260,10 @@ class InventoryDispatchSource:
                 kind = 'cancel'
             else:
                 mode = 'ioc' if priority == DUE_IOC else 'passive'
-                if (exit_plan.mode != mode or exit_plan.blockers or plan.terms is None
+                deferred = (mode == 'passive' and exit_plan.mode == 'passive_deferred'
+                            and exit_plan.blockers == ('ordinary_exit_depth_or_loss',))
+                if ((exit_plan.mode != mode and not deferred)
+                        or (exit_plan.blockers and not deferred) or plan.terms is None
                         or passive.cancel_ids or passive.keep_id is not None
                         or (mode == 'passive' and passive.blockers)):
                     return None
@@ -263,12 +290,13 @@ class InventoryDispatchSource:
                 kind = 'create'
             if (evidence is None or generation != self._generation
                     or not self._plan_current(plan, report.observed_at,
-                                              require_book=priority != SAFETY_CANCEL)
+                                              require_book=priority not in {SAFETY_CANCEL, QUOTE_CANCEL})
                     or runtime.account.current_report(runtime.now()) is not report):
                 return None
             candidate = DispatchCandidate(ticker, priority, str(uuid4()), request,
                                           evidence, request['exchange_index'])
-            self._proof = _Proof(plan, report.observed_at, kind, encoded_request(request))
+            self._proof = _Proof(plan, report.observed_at, kind, encoded_request(request),
+                                 maintenance_cycle=maintenance_cycle)
             return candidate
         finally:
             self._refreshing = False
@@ -288,6 +316,10 @@ class InventoryDispatchSource:
                    else None)
         return (proof is not None and kind == proof.kind
                 and encoded == proof.request_json
+                and (proof.maintenance_cycle is None
+                     or (self.runtime.maintenance is not None
+                         and self.runtime.maintenance.cycle is proof.maintenance_cycle
+                         and not proof.plan.inventory.position))
                 and self._plan_current(proof.plan, proof.report_observed_at, sending=True,
                                        require_book=kind != 'cancel')
                 and (kind != 'batch_create'

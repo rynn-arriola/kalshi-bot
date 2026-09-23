@@ -254,6 +254,8 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     if not broad:
         runtime.attach_admission()
     runtime.attach_rewards(scope='primary-account', checkpoint_path=Path(writer.path).with_suffix('.rewards.json'))
+    if not session.entries_paused:
+        runtime.attach_maintenance()
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

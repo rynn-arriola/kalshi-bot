@@ -207,13 +207,16 @@ def inventory_plan(position: Decimal, orders: tuple[OrderReceipt, ...], *, ticke
     if p is None:
         # Preserve existing reducing work when its book side is unavailable.
         # This mirrors the reference's no-touch branch, not a forced IOC choice.
-        cancels = tuple(sorted(r.order.order_id for r in working
-                               if r.order.side != side or not r.reducing))
+        cancels = tuple(r.order.order_id for r in sorted(working,
+            key=lambda r: (r.order.side == side, r.order.order_id))
+            if r.order.side != side or not r.reducing)
         return InventoryPlan(cancels, None, None, Decimal(0), tuple(blockers+["no_passive_touch"]))
     matching = sorted((r for r in working if r.reducing and r.order.side == side
                        and r.order.remaining == qty and r.order.yes_price == p), key=lambda r: r.order.order_id)
     keep = matching[0].order.order_id if matching else None
-    cancels = tuple(sorted(r.order.order_id for r in working if r.order.order_id != keep))
+    # Withdraw exposure-building work before an old reducer, irrespective of ID.
+    cancels = tuple(r.order.order_id for r in sorted(working,
+        key=lambda r: (r.order.side == side, r.order.order_id)) if r.order.order_id != keep)
     if cancels:
         blockers.append("await_terminal_cancellation_and_fill_proof")
     return InventoryPlan(cancels, keep, side if not blockers and keep is None else None,

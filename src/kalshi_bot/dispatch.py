@@ -22,7 +22,8 @@ SAFETY_CANCEL = 'safety_cancel'
 DUE_IOC = 'due_ioc'
 PASSIVE_REDUCER = 'passive_reducer'
 ENTRY_PAIR = 'entry_pair'
-_PRIORITY = {SAFETY_CANCEL: 0, DUE_IOC: 1, PASSIVE_REDUCER: 2, ENTRY_PAIR: 3}
+QUOTE_CANCEL = 'quote_cancel'
+_PRIORITY = {SAFETY_CANCEL: 0, DUE_IOC: 1, PASSIVE_REDUCER: 2, QUOTE_CANCEL: 3, ENTRY_PAIR: 4}
 
 
 @dataclass(frozen=True)
@@ -41,7 +42,7 @@ class DispatchCandidate:
         if self.priority not in _PRIORITY:
             raise InvalidData('invalid dispatch priority')
         integer(self.shard, 0, 2**31-1)
-        kind = 'cancel' if self.priority == SAFETY_CANCEL else 'create'
+        kind = 'cancel' if self.priority in {SAFETY_CANCEL, QUOTE_CANCEL} else 'create'
         validate_request(kind, self.request)
         if self.request['exchange_index'] != self.shard:
             raise InvalidData('dispatch shard differs from request route')
@@ -70,7 +71,7 @@ class DispatchCandidate:
 
     @property
     def operation(self):
-        if self.priority == SAFETY_CANCEL:
+        if self.priority in {SAFETY_CANCEL, QUOTE_CANCEL}:
             return 'DELETE', ORDERS+'/'+self.request['order_id']
         return 'POST', ORDERS
 
@@ -276,7 +277,7 @@ class MutationDispatcher:
                     offline_fixture=self.offline_fixture,
                     fee_per_contract_bound=current.fee_per_contract_bound)
                 receipt = prepared.batch
-            elif priority == SAFETY_CANCEL:
+            elif priority in {SAFETY_CANCEL, QUOTE_CANCEL}:
                 prepared = await self.writer.prepare_cancel(
                     current.attempt_id, current.request,
                     evidence=current.evidence, now=self.now())

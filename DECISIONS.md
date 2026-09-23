@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-098 — Retain rewarded owners and review the complete order lifecycle
+
+- **Status:** ACCEPTED implementation, 2026-09-23.
+- **Decision owner:** Operator accepted incumbent retention, actual-reference
+  monitoring, controlled same-market repricing and per-program reward progress,
+  then requested the full entry/exit comparison with executable Polymarket code
+  and inclusion of relevant fixes in the next restart bundle.
+- **Scope:** Keep qualifying markets rather than chasing higher-ranked spares;
+  reaching an estimated $1 does not release a market. Reuse the existing tracker,
+  source owners, dispatcher and exact terminal/fill reconciliation. New entries
+  retain $2-first/$1-fallback and 70% retained-value gates. Inventory handling
+  takes priority over reward maintenance. Fix demonstrated lifecycle defects
+  without importing Poly's current numeric risk settings or sports-only policy.
+- **Boundary:** Build/test/review/publish in an isolated checkout. No live order
+  action, deployment or restart is authorized by preparing the next bundle.
+  Reward estimates remain advisory, never paid cash or guaranteed payout.
+
 ### D-097 — Repair recurring Windows status publication failure
 
 - **Status:** ACCEPTED implementation, 2026-09-23.

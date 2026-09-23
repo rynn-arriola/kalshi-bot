@@ -276,7 +276,8 @@ def reduction_decision_blockers(evidence, request, *, writer_epoch,
             and decision['ticker'] == request['ticker']
             and decision['writer_epoch'] == writer_epoch
             and decision['writer_revision'] == writer_revision
-            and decision['mode'] == expected_mode
+            and (decision['mode'] == expected_mode
+                 or (expected_mode == 'passive' and decision['mode'] == 'passive_deferred'))
             and price(decision['limit_price']) == price(request['price'])
             and count(decision['quantity']) == count(request['count']))
     except (KeyError, TypeError, ValueError) as exc:

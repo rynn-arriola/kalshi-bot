@@ -71,6 +71,16 @@ class ExitTests(unittest.TestCase):
         p=self.plan(position=D(4),orders=(receipt(),))
         self.assertEqual(p.passive.cancel_ids,('r',)); self.assertIsNone(p.passive.reduce_side)
 
+    def test_passive_building_cancel_precedes_old_reducer_regardless_of_id(self):
+        p = self.plan(position=D(4), orders=(receipt('a'),
+            receipt('z', side='bid', reducing=False)))
+        self.assertEqual(p.passive.cancel_ids, ('z', 'a'))
+
+    def test_passive_no_position_building_cancel_precedes_bid_reducer(self):
+        p = self.plan(position=D(-4), orders=(receipt('a', side='bid'),
+            receipt('z', side='ask', reducing=False)))
+        self.assertEqual(p.passive.cancel_ids, ('z', 'a'))
+
     def test_tick_band_boundary_steps_to_valid_neighbor(self):
         bands=(PriceBand(D(0),D('.5'),D('.01')),PriceBand(D('.5'),D(1),D('.005')))
         self.assertEqual(adjacent_tick(D('.5'),'ask',bands),D('.49'))
