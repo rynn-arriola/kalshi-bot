@@ -95,4 +95,5 @@ one exact 4,096-receipt archive of 88,318 bytes with no active coverage gap.
 No live database was modified or copied. Final complete suite: **1,611 tests
 passed, one expected Windows privilege skip**, 259.825 seconds. Publication and
 deployment state remain owned by STATUS. The reviewed implementation was
-published as `5df66f7`; the active production checkout was not changed.
+published as `5df66f7`, with the no-report reflection follow-up in `09cb482`;
+the active production checkout was not changed.

@@ -33,9 +33,9 @@ deferrals with no queue request, followed by immediate reflection after a
 successful recovery. Its readers, engine, dispatcher and logging remain alive,
 but recovery is blocked until a reviewed deployment/restart. Final verification:
 **1,611 tests passed, one expected Windows privilege skip**, 259.825 seconds.
-Reviewed implementation commit `5df66f7` is published to `origin/master`.
-The isolated checkout and remote contain that commit; the canonical live checkout
-deliberately remains on `ad96429`, so publication is not deployment.
+Reviewed implementation commits `5df66f7` and `09cb482` are published to
+`origin/master`. The isolated checkout and remote contain both; the canonical
+live checkout deliberately remains on `ad96429`, so publication is not deployment.
 
 ## D-099 deployed and live restart accepted — 2026-09-23
 
