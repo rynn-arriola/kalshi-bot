@@ -1,5 +1,14 @@
 # Active work queue
 
+## Investigated priority: maintenance timing — 2026-09-23
+
+Review the [evidence-gap diagnosis and proposed correction](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md).
+Coordinate account/reflection observations and revise bounded drift confirmation
+so ordinary gaps cannot postpone correction indefinitely. Preserve fresh
+decision/dispatch proofs and ownership/terminal-fill handling. This is a proposed
+change to D-098's five-second-reset contract, not implemented or authorized by
+the read-only investigation. Add realistic timing regressions when approved.
+
 ## After D-099 live acceptance — 2026-09-23
 
 1. Monitor generation 63 for fills, positions, exits, same-market maintenance,

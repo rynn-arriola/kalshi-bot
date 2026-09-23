@@ -1,5 +1,16 @@
 # Current status
 
+## Known maintenance limitation found after restart — 2026-09-23
+
+Generation 63 remains healthy with 30 orders and no reported positions during
+the 13:36:13–13:37:42 UTC read-only check, but Oregon harvest's non-scoring bid
+has not triggered maintenance. [Investigation](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md)
+reproduces a dwell-timer starvation mechanism: evidence gaps over five seconds
+repeatedly reset the required 30-second confirmation. Existing 21 tests pass;
+live timing supports the diagnosis, but internal reset state is not exposed.
+No fix, order action or restart occurred. Earlier restart acceptance does not
+establish reliable repricing under these live evidence gaps.
+
 ## D-099 deployed and live restart accepted — 2026-09-23
 
 Canonical source commit `ad96429` is deployed. A fresh pre-start venue check at

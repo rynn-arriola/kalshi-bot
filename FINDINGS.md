@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 151. Maintenance dwell can starve under normal evidence gaps — 2026-09-23
+
+[Read-only investigation](docs/INVESTIGATION_MAINTENANCE_DWELL_2026-09-23.md):
+Oregon harvest retained its 52-cent bid despite production outside-cutoff
+observations. In 90 live status samples, 83 were unknown/missing and no cycle
+started. Two distinct valid observations were 5.236 seconds apart; gaps over
+five seconds reset the 30-second repricing dwell. Unchanged real-owner fixtures
+reproduce no repricing after 180 seconds of consistently bad fresh samples six
+seconds apart; two/four-second samples do start it. All 21 existing tests pass.
+Timing starvation is verified synthetically and strongly supported live; exact
+internal live resets are not observable. Proposed correction is not implemented.
+
 ## 150. Recovery-only fencing and normal restart succeed after D-099 — 2026-09-23
 
 VERIFIED LIVE: after a fresh 0-order/0-position venue check, generation 62
