@@ -2,11 +2,12 @@
 
 ## D-101 — stopped; prepare the next restart bundle
 
-1. Publish the verified/reviewed
-   [actual-order repricing and final-drain fixes](docs/BUILD_REPRICING_SOURCE_JOIN.md)
-   with remote parity. Full suite and baseline-reversal checks are complete.
-   Do not restart the bot.
-2. On separate restart instruction, clear the verified dead native reservation
+The [verified/reviewed repair](docs/BUILD_REPRICING_SOURCE_JOIN.md) is published
+as `44986ee` with remote parity. Full suite and baseline-reversal checks are
+complete. The canonical checkout is intentionally not deployed.
+
+1. Keep the bot stopped until a separate restart instruction.
+2. On that instruction, clear the verified dead native reservation
    through the supported supervisor path, deploy reviewed source, reconcile the
    preserved account/ledger in recovery-only mode and require flat/disarmed
    evidence before normal entry. Do not reset the ledger or bypass control.

@@ -99,3 +99,7 @@ globally highest-paying portfolio.
 
 Live acceptance remains pending a separately authorized deployment/restart.
 Neither these offline tests nor the public census proves reward payout or profit.
+
+Reviewed implementation `44986ee` was pushed to `origin/master` and exact remote
+parity verified. Canonical `dbbc4dd` remains clean and stopped; publication did
+not deploy code, alter the production ledger or restart trading.
