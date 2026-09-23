@@ -12,7 +12,9 @@ unscoped snapshot, so retry policy alone could not converge.
 Controlled stop canceled seven orders within five seconds and all fourteen by
 the next eight-second observation; saved account state is `STOPPED_FLAT`, zero
 positions/exposure. D-090 restores the transport's existing bounded defaults only
-for lifecycle. Live acceptance after deployment remains required.
+for lifecycle. After deployment, the normal child loaded 5,060 markets on
+lifecycle attempt one and remained subscribed with no retry round. The accepted
+snapshot was live-ready with 28 orders, zero positions and zero dropped logs.
 [Build](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md).
 
 ## 132. SENDING preceded transport and created false cancellation uncertainty — 2026-09-22

@@ -22,3 +22,10 @@ so the reader could not converge and the runtime correctly paused entries.
 - Complete suite passes: 1,482 tests, one expected Windows privilege skip.
 - Live acceptance requires one complete initial lifecycle generation without
   queue overflow, plus current account/catalog/admission proof.
+
+## Live result
+
+Published as `afff8f5`. Recovery-only clearance completed first. The normal live
+child then loaded 5,060 lifecycle markets on connection attempt one and remained
+subscribed with zero retry rounds. The accepted status had current account proof,
+entries allowed, 28 bounded resting orders, zero positions and zero dropped logs.

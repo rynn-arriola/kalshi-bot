@@ -1,6 +1,6 @@
 # Current status
 
-## D-090 lifecycle snapshot overflow fixed offline; deployment pending — 2026-09-22
+## D-090 deployed and live accepted — 2026-09-22
 
 D-089 was published and deployed. The two retained proof-before-transport
 cancels were corrected only after exact ledger/log matching and backup; a
@@ -21,8 +21,13 @@ complete and no live process remains.
 queues at 256 events / 2 MiB and raises only lifecycle to the transport's bounded
 8,192 events / 16 MiB defaults. Targeted verification passes 127 tests. The
 complete suite passes **1,482 tests with one expected Windows privilege skip**.
-Commit, publication, controlled recovery clearance and live restart remain
-pending.
+Commit `afff8f5` is published with local/remote parity. Recovery-only clearance
+completed in 26 seconds, then the normal child subscribed lifecycle on attempt
+one and ingested 5,060 markets without overflow. The latest acceptance snapshot
+is healthy/live-ready with all readers subscribed, current account evidence,
+28 resting orders (14 markets), zero positions, $121.20 exposure and zero
+dropped logs. The supervisor remains active; no restart was performed after
+acceptance.
 
 ## Pre-transport cancellation fix verified; exact live recovery pending — 2026-09-22
 

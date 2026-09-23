@@ -6,7 +6,8 @@
 only the unscoped lifecycle reader enough bounded capacity for the observed
 5,018-row initial snapshot. Private account and scoped book limits are unchanged.
 The affected 127-test set and complete 1,482-test suite pass, with one expected
-Windows privilege skip. Controlled deployment and live acceptance are pending.
+Windows privilege skip. Published as `afff8f5`; live acceptance loaded 5,060
+lifecycle markets on attempt one, with zero retry rounds or dropped logs.
 
 ## D-089 proven pre-transport abort — 2026-09-22
 

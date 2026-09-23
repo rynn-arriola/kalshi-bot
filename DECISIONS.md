@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-090 — Size lifecycle transport for one bounded full-market snapshot
 
-- **Status:** ACCEPTED implementation and controlled restart, 2026-09-22 Eastern.
+- **Status:** ACCEPTED, DEPLOYED and live-verified, 2026-09-22 Eastern.
 - **Decision owner:** Operator: “Also fix this issue before restart,” “Continue
   working,” and “Why it take so long just to cancel the order?” during the
   authorized stop/restart investigation.

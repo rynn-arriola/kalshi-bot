@@ -1,16 +1,12 @@
 # Active work queue
 
-## Current: deploy D-090 and verify one complete lifecycle generation
+## Current: observe the accepted D-090 live run
 
-1. Commit and publish the verified lifecycle-only buffer correction.
-2. Start through the production supervisor. Because the prior stop left a stale
-   attention classification despite verified flatness, permit its normal
-   recovery-only clearance before any normal live child.
-3. Require lifecycle to remain subscribed through the complete initial snapshot,
-   with no `event queue overflow`, while catalog/admission reach current state.
-4. Confirm the normal child is healthy, account current, entries allowed, logs
-   healthy and orders bounded. If lifecycle still fails, stop and remain flat;
-   do not enlarge buffers again without measuring event and byte high-water.
+1. Preserve the active supervised child and collect normal reward/fill evidence.
+2. Treat any new lifecycle overflow/reconnect as a measured incident; stop flat
+   before changing capacity again.
+3. Continue existing profitability validation. D-090 fixes source convergence;
+   it does not prove reward payment or profitable fills.
 
 ## Current: publish D-089, recover the final two orders, then restart
 

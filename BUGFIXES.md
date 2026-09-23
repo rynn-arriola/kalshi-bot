@@ -23,6 +23,8 @@ limits only for lifecycle. Account and scoped-book readers remain at 256 / 2 MiB
 
 **Verification.** A regression locks the per-stream bounds; 127 affected tests
 and all 1,482 repository tests pass (one expected Windows privilege skip).
+Live deployment loaded 5,060 lifecycle markets on attempt one with no retry
+round, while all readers, account proof and bounded entries remained healthy.
 [Report](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md).
 
 ## 2026-09-22 — pre-transport proof change falsely became UNKNOWN
