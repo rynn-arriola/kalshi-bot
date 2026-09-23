@@ -468,7 +468,8 @@ class RecoveryRuntime:
             if self.engine.submit_private(event, generation=generation):
                 self._epoch_ingress += 1
         elif spec.name in self.engine.shards:
-            self.engine.submit_book(spec.name, event, generation=generation)
+            self.engine.submit_book(spec.name, event, generation=generation,
+                                    received_at=event.pop('_received_mono', None))
         else:
             if self.market_inputs is not None:
                 self.market_inputs.ingest(event,generation=generation)

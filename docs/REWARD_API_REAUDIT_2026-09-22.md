@@ -1,5 +1,8 @@
 # Reward API re-audit — September 22, 2026 Eastern
 
+Follow-up: D-086 [implements the two source repairs](BUILD_REWARD_SOURCE_REFRESH.md)
+in isolation. This document retains the original audit-time observations below.
+
 Research only. No live configuration, order, ledger, key, process or retry hold
 was changed. This supplements [the full September 19 research](LIQUIDITY_REWARD_RESEARCH.md)
 and [API reference](KALSHI_API_REFERENCE.md), not a replacement strategy.

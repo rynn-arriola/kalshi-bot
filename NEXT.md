@@ -2,16 +2,21 @@
 
 ## Priority: repair observed selection-source failures
 
-Diagnosis is recorded in FINDINGS section 125; implementation is not yet done.
+Diagnosis is recorded in FINDINGS section 125. D-086 implements items 1 and 2
+in the isolated `fix/reward-source-refresh` branch; see
+[repair](docs/BUILD_REWARD_SOURCE_REFRESH.md). Verification is complete; obtain
+controlled live deployment authority for the isolated fix. Do not overwrite the active
+package while its old supervisor owns the recovery fingerprint.
 
-1. Resolve full-catalog refresh timeouts under real page-count/shared-read load.
+1. Verify repaired full-catalog refresh under live shared-read load after deployment.
    The [reward API re-audit](docs/REWARD_API_REAUDIT_2026-09-22.md) measured 1,000-row
    pages: five requests / 1.986 seconds versus roughly 50 at our current size.
-   Test this bounded page-size change before considering broader redesign.
+   Offline page-size/resource tests now pass; live shared-budget behavior remains
+   to be observed before considering broader redesign.
    Preserve complete/fresh reward proof; do not bypass exhaustion or use an
    expired catalog to place entries. Verify the proposed repair offline before
    any separately approved live deployment/restart.
-2. Address quiet-book freshness and metadata-to-book timing with the documented
+2. Verify the implemented quiet-book freshness refresh with the documented
    WS `get_snapshot` capability, subject to bounded request/response and sequence
    tests; not a blind extension of stale-data limits or per-market REST polling.
 3. Evaluate the existing 128-market/16-per-cycle/300-second discovery path and

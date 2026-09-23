@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 127. Reward-source omissions repaired offline — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: D-086 implements the two actionable audit findings:
+1,000-row complete catalog pages and quiet-book WS snapshot refresh. Existing
+freshness, byte/row/time bounds, retry holds and economic gates remain intact.
+The actual runtime/selector regression restores eligibility from a fresh
+same-generation snapshot, while an old queued snapshot remains ineligible.
+No order or live source was changed by verification. Source-sync into the active
+checkout is deferred because it changes the recovery-child fingerprint.
+
+MEASURED SYNTHETIC: 5,000/10,000 catalog rows take five/ten requests and pass the
+existing resource gates. This does not establish live venue timing, broader
+occupancy or earnings. [Implementation and evidence](docs/BUILD_REWARD_SOURCE_REFRESH.md).
+
 ## 126. Reward endpoint is correct; page size and WS refresh are underused — 2026-09-22
 
 VERIFIED DOCS/CODE: [fresh reward API audit](docs/REWARD_API_REAUDIT_2026-09-22.md)

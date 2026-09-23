@@ -19,18 +19,20 @@ NOW = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
 
 async def run(subscribed, rows):
     pages = []
-    for offset in range(0, rows, 100):
+    for offset in range(0, rows, 1000):
         programs = [dict(id=f'p{i}', market_ticker=f'M{i:05}', incentive_type='liquidity',
             start_date=(NOW-timedelta(hours=1)).isoformat(),
             end_date=(NOW+timedelta(hours=1)).isoformat(), target_size_fp='1000',
             discount_factor_bps=5000, period_reward=1000000, paid_out=False)
-            for i in range(offset, min(rows, offset+100))]
+            for i in range(offset, min(rows, offset+1000))]
         pages.append(json.dumps(dict(incentive_programs=programs,
-            next_cursor=str(offset//100+1) if offset+100 < rows else '')).encode())
+            next_cursor=str(offset//1000+1) if offset+1000 < rows else '')).encode())
     calls = 0
     def wire(url, headers, limit):
         nonlocal calls
         calls += 1
+        assert parse_qs(urlparse(url).query)['limit'] == ['1000']
+        assert len(pages[int(parse_qs(urlparse(url).query).get('cursor', ['0'])[0])]) <= limit
         index = int(parse_qs(urlparse(url).query).get('cursor', ['0'])[0])
         return WireResponse(200,pages[index])
     clock = time.monotonic
@@ -64,7 +66,7 @@ async def run(subscribed, rows):
             assert service.current() is not None
             assert len(service.current().observations) == rows
             assert selection.status()['program_markets'] == subscribed
-            assert service.current().pages == rows//100 and calls == rows//100
+            assert service.current().pages == rows//1000 and calls == rows//1000
             before = time.perf_counter()
             service.request()
             turns.append(time.perf_counter()-before)

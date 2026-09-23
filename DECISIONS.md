@@ -10,6 +10,17 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-086 — Repair reward catalog and quiet-book sources
+
+- **Status:** ACCEPTED implementation, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Ok add all the fix,” following the reward API audit.
+- **Scope:** Use bounded 1,000-row incentive pages in preparation and runtime;
+  refresh quiet subscribed books using documented WebSocket `get_snapshot`,
+  with bounded requests, correlation, sequence checks and offline regressions.
+- **Boundary:** Preserve reward/risk filters, freshness, retry exhaustion and
+  account authority. No new earnings API is invented. No live restart, retry
+  reset, order action or wider market capacity is included in this code task.
+
 ### D-085 — Reconcile the single pre-transport cancel refusal
 
 - **Status:** ACCEPTED one-time operational correction, 2026-09-22 Eastern.

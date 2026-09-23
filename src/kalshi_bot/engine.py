@@ -165,7 +165,7 @@ class EventEngine:
         self.high_water = max(self.high_water, self.backlog)
         return True
 
-    def submit_book(self, name, event, *, generation):
+    def submit_book(self, name, event, *, generation, received_at=None):
         self._check()
         shard = self.shards[name]
         if generation != shard.generation:
@@ -173,6 +173,11 @@ class EventEngine:
         try:
             if shard.failed:
                 raise ProofLost("book shard requires recovery")
+            now = self._time()
+            received = now if received_at is None else received_at
+            if (type(received) not in (float, int) or not math.isfinite(received)
+                    or received < 0 or received > now):
+                raise ProofLost('invalid book ingress clock')
             raw, size = self._freeze(event)
             if len(self.public[name]) >= self.capacity or self.public_bytes[name]+size > self.byte_capacity:
                 raise ProofLost("public queue overflow; shard proof lost")
@@ -180,7 +185,7 @@ class EventEngine:
             self._lose_book(name)
             self.wake.set()
             raise
-        self.public[name].append((raw, size, generation, self._time()))
+        self.public[name].append((raw, size, generation, received))
         self.public_bytes[name] += size
         self.wake.set()
         self.high_water = max(self.high_water, self.backlog)

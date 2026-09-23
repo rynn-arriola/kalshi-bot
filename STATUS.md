@@ -1,6 +1,23 @@
 # Current status
 
-## Reward API re-audit completed; repair not implemented — 2026-09-22
+## D-086 source repairs verified; deployment pending — 2026-09-22
+
+The [catalog and quiet-book fixes](docs/BUILD_REWARD_SOURCE_REFRESH.md) are in
+`fix/reward-source-refresh` at `C:/Users/rynna/Bots/kalshi-reward-source-fix`.
+Final full suite: **1,471 run, 1,470 passed, one expected Windows privilege skip**,
+227.536 seconds. Both catalog and snapshot-controller resource checks, five
+breadth probes and three targeted in-memory reversals pass. Exact code review
+found no blocking defect; documentation links/whitespace/secret-pattern checks
+pass. Trading limits, economic filters and five-second freshness remain.
+The canonical live checkout/process/ledger have not been changed. A controlled
+deployment needs separate authority because changing the package while the old
+supervisor runs can invalidate its recovery-child fingerprint. Timestamped live
+observations below are historical, not a fresh health or order-count report.
+This verified unit is retained on the isolated branch; defer the normal D-065
+canonical merge until controlled deployment is approved, preserving the current
+supervisor's source fingerprint. Live performance/occupancy remains unverified.
+
+## Historical reward API re-audit; before D-086 — 2026-09-22
 
 [Fresh audit](docs/REWARD_API_REAUDIT_2026-09-22.md): our current 100-row incentive
 pages underuse the documented maximum of 10,000. A separate public-only read

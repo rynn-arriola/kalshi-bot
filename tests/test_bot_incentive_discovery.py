@@ -74,7 +74,7 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.s.current('A'))
         self.assertTrue((await self.s.propose(window=self.f.w, free_cash=500)).additions)
         query = parse_qs(urlparse(self.calls[0][0]).query)
-        self.assertEqual(query, dict(limit=['100'], status=['active'], type=['liquidity']))
+        self.assertEqual(query, dict(limit=['1000'], status=['active'], type=['liquidity']))
         self.assertFalse(any('ACCESS' in key for _, headers in self.calls for key in headers))
         self.assertEqual(self.reads.budget.spent, 1)
         self.assertFalse(self.d.status()['authorized'])
@@ -90,6 +90,25 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((value.pages,value.rows,len(self.calls)), (2,2,2))
         with self.assertRaises(TypeError): value.observations['C'] = None
         self.assertEqual(set(self.r.engine.market_shard), {'A'})  # No subscription mutation.
+
+    async def test_five_thousand_rows_use_five_bounded_pages(self):
+        self.pages = [dict(incentive_programs=[row(f'M{i}', f'p{i}')
+            for i in range(offset, offset+1000)],
+            next_cursor=str(offset//1000+1) if offset < 4000 else '')
+            for offset in range(0, 5000, 1000)]
+        await self.refresh()
+        self.assertEqual((self.d.current().rows, self.d.current().pages), (5000, 5))
+        self.assertEqual(len(self.calls), 5)
+        self.assertTrue(all(parse_qs(urlparse(url).query)['limit'] == ['1000']
+                            for url, _ in self.calls))
+        self.assertTrue(all(len(json.dumps(page).encode()) < self.reads.max_bytes
+                            for page in self.pages))
+
+    async def test_enlarged_page_still_rejects_response_byte_overflow(self):
+        self.pages[0]['padding'] = 'x' * (2*1024*1024)
+        await self.refresh()
+        self.assertIsNone(self.d.current())
+        self.assertEqual(self.d.failures, 1)
 
     async def test_empty_complete_refresh_revokes_prior_catalog_and_scores(self):
         await self.refresh()

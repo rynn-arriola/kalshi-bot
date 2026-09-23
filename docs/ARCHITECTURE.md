@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-086 [repairs reward sources](BUILD_REWARD_SOURCE_REFRESH.md): one shared
+1,000-row incentive query and a connection-owned, bounded quiet-book snapshot
+controller. Responses retain normal generation/sequence/depth validation and
+transport ingress timestamps; requests never grant freshness or order authority.
+
 D-079 adds [bounded automatic candidate preparation](BUILD_AUTOMATIC_CANDIDATES.md)
 ahead of D-078. Public REST supplies information unavailable from the live book
 stream: current incentive definitions, complete rules and primary milestones.

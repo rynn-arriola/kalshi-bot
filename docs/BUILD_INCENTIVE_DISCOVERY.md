@@ -1,5 +1,9 @@
 # Bounded incentive discovery — D-069 continuation
 
+D-086 updates the request size to **1,000** in both runtime and preparation;
+all other bounds remain. See [repair and current verification](BUILD_REWARD_SOURCE_REFRESH.md).
+The D-069 measurements below retain their original 100-row provenance.
+
 Offline implementation scope: one runtime-owned catalog refresh using the
 existing shared `RestReads` and account-wide budget. No new HTTP transport,
 account request, subscription mutation, order, configuration or live activation.
@@ -12,7 +16,7 @@ market set or evict any inventory owner.
   incentive WebSocket exists. Complete bounded cursor enumeration is required;
   cursor exhaustion is not an atomic venue snapshot. Reuse the recorded
   [operation and schemas](KALSHI_API_REFERENCE.md).
-- At most 10,000 rows, 100 pages, 8 MiB response bytes per enumeration, 100 rows
+- At most 10,000 rows, 100 pages, 8 MiB response bytes per enumeration, 1,000 rows
   per request, one refresh worker, 30-second attempt deadline, three attempts.
   Parse in 128-row chunks with event-loop yields. Never fetch books by REST.
 - Default refresh/validity 300 seconds, configurable 60–3,600 seconds. Freshness

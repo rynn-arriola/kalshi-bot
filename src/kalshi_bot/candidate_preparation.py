@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 
+from .incentive_discovery import QUERY as INCENTIVE_QUERY
 from .market_inputs import (
     SCHEDULED_RELEASE_CONDITION,
     SCHEDULED_RELEASE_REVIEW,
@@ -21,9 +22,6 @@ from .quoting import parse_program
 from .ranking import seconds
 from .rest import PageSet
 from .values import InvalidData, identity, integer, utc
-
-
-INCENTIVE_QUERY = tuple(sorted(dict(status='active', type='liquidity', limit=100).items()))
 
 
 @dataclass(frozen=True)

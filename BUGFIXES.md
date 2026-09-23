@@ -6,6 +6,29 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — avoid unnecessary catalog pages and refresh quiet books
+
+**Symptom.** Reward discovery exhausted on timeouts; otherwise qualifying quiet
+books aged beyond the existing five-second source gate.
+
+**Mechanism.** Both catalog consumers requested only 100 rows despite larger
+documented pages. The book reader never requested fresh snapshots after initial
+subscription. Transport queue delay could also be hidden by callback-time age.
+
+**Fix.** D-086 shares a 1,000-row query; adds bounded connection-local WS snapshot
+requests; and carries actual transport ingress time into the book engine.
+Correlated responses retain sequence/depth/generation checks and fail-closed
+timeouts. No stale-data relaxation, retry reset or filter change.
+
+**Verification.** Synthetic pagination, actual transport and runtime-selector
+regressions plus resource checks. See [report](docs/BUILD_REWARD_SOURCE_REFRESH.md)
+and STATUS for suite/publication. Live deployment/acceptance is separate.
+
+The full run also exposed a frozen-clock admission fixture: a legitimate
+one-second deferral could wait forever at a fixed injected time. A controlled
+injection reproduced this on unchanged source. Only the fixture wait now advances
+its retry clock; a regression preserves normal joined shutdown assertions.
+
 ## 2026-09-22 — metadata workers starved live market admission
 
 **Symptom.** The live bot rested 12 orders on six markets while a much broader

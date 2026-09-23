@@ -1,11 +1,19 @@
 # What exists
 
+## D-086 reward-source repair — 2026-09-22
+
+[Repair](docs/BUILD_REWARD_SOURCE_REFRESH.md) implements the shared 1,000-row
+catalog query and bounded quiet-book WS snapshots, with source-time propagation,
+same-generation selection and timeout/shutdown regressions. Catalog/controller
+resource gates pass. Final full suite: 1,471 run, 1,470 passed, one expected skip.
+This is isolated source, not deployment or live acceptance.
+
 ## Fresh reward API audit — 2026-09-22
 
 [Re-audit](docs/REWARD_API_REAUDIT_2026-09-22.md) records current schema coverage,
 source hashes, existing-code gaps and one bounded public catalog measurement.
-It supplements the dated full API/reward references without replacing them or
-claiming a runtime fix. Larger pages and WS snapshot refresh remain unimplemented.
+It supplements the dated full API/reward references without replacing them.
+At audit time these fixes were unimplemented; D-086 above supersedes that state.
 
 ## Offline selection-breadth diagnostic — 2026-09-22
 

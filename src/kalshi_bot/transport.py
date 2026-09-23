@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from websockets.asyncio.client import connect
 
+from .book_refresh import BookRefresh
 from .values import InvalidData, identity, integer
 
 WS_URL = "wss://external-api-ws.kalshi.com/trade-api/ws/v2"
@@ -106,6 +107,16 @@ class WebSocketReaders:
         self.invalid = True
         self._used = False
 
+    async def _refresh_books(self, socket, refresh):
+        # One bounded control worker per book connection, not per market. Its
+        # lifetime is joined with the receiver, including timeout/cancellation.
+        while True:
+            await asyncio.sleep(.5)
+            command = refresh.next_command(time.monotonic())
+            if command is not None:
+                async with asyncio.timeout(2):
+                    await socket.send(json.dumps(command))
+
     async def _pump(self, spec: Subscription):
         headers = self.signer.headers("GET", urlsplit(WS_URL).path)
         async with self.connector(WS_URL, additional_headers=headers, open_timeout=10,
@@ -113,19 +124,33 @@ class WebSocketReaders:
                                   max_size=1048576, max_queue=32, proxy=None,
                                   compression=None) as socket:
             await socket.send(json.dumps(spec.command()))
-            async for raw in socket:
-                wire_bytes = len(raw.encode("utf-8")) if isinstance(raw, str) else len(raw)
-                if wire_bytes > 1048576 or self.queued_bytes + wire_bytes > self.byte_capacity:
-                    raise InvalidData("event byte budget exceeded: proof lost")
-                event = json.loads(raw)
-                if not isinstance(event, dict) or event.get("type") == "error":
-                    raise InvalidData("invalid or rejected WebSocket subscription")
-                try:
-                    self.queue.put_nowait((spec.name, event, wire_bytes))
-                    self.queued_bytes += wire_bytes
-                except asyncio.QueueFull as exc:
-                    raise InvalidData("event queue overflow: account/book proof lost") from exc
-            raise InvalidData("WebSocket ended: proof lost")
+            async with asyncio.TaskGroup() as group:
+                refresh = (BookRefresh(spec.tickers)
+                           if spec.channels == ('orderbook_delta',) else None)
+                if refresh is not None:
+                    group.create_task(self._refresh_books(socket, refresh),
+                                      name='kalshi-snapshot-'+spec.name)
+                await self._receive(socket, spec, refresh)
+
+    async def _receive(self, socket, spec, refresh):
+        async for raw in socket:
+            received = time.monotonic()
+            wire_bytes = len(raw.encode("utf-8")) if isinstance(raw, str) else len(raw)
+            if wire_bytes > 1048576 or self.queued_bytes + wire_bytes > self.byte_capacity:
+                raise InvalidData("event byte budget exceeded: proof lost")
+            event = json.loads(raw)
+            if not isinstance(event, dict) or event.get("type") == "error":
+                raise InvalidData("invalid or rejected WebSocket subscription")
+            if refresh is not None:
+                refresh.observe(event, received)
+                # Transport-owned timestamp, never trust a wire-supplied value.
+                event['_received_mono'] = received
+            try:
+                self.queue.put_nowait((spec.name, event, wire_bytes))
+                self.queued_bytes += wire_bytes
+            except asyncio.QueueFull as exc:
+                raise InvalidData("event queue overflow: account/book proof lost") from exc
+        raise InvalidData("WebSocket ended: proof lost")
 
     async def run(self, consume):
         if self._used:

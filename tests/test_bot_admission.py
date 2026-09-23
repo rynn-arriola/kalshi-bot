@@ -426,11 +426,34 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             await until(lambda:self.r.reader_states[self.name]=='subscribed')
             self.f.advance(2)
             self.a.request()
-            await until(lambda:self.a.completed==1)
+            # A source/engine race may correctly defer once. The injected clock
+            # must reach its one-second retry deadline instead of freezing at 102
+            # while the real-time test timeout advances. Do not change policy.
+            async with asyncio.timeout(3):
+                while self.a.completed != 1:
+                    await asyncio.sleep(.001)
+                    delay = self.a.next_at-self.r.clock()
+                    if 0 < delay <= 1:
+                        self.f.advance(delay)
             self.r.stop()
             await task
         self.assertFalse(self.r.running or self.a.running)
         self.assertTrue(all(reader.closed for reader in self.readers))
+
+    async def test_runtime_ownership_wait_advances_one_deferred_retry(self):
+        self.a.next_at = 102
+        original = self.a.cycle
+        deferred = False
+        async def cycle():
+            nonlocal deferred
+            if not deferred:
+                deferred = True
+                self.a.state = 'deferred'
+                return False
+            return await original()
+        with patch.object(self.a, 'cycle', side_effect=cycle):
+            await self.test_runtime_owns_admission_and_book_tasks_until_stop()
+        self.assertTrue(deferred)
 
     async def test_explicit_attachment_and_duplicate_rejected(self):
         with self.assertRaises(InvalidData): self.r.attach_admission(offline_fixture=True)

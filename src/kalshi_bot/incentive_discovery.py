@@ -13,7 +13,7 @@ from .selection_runtime import ProgramObservation
 from .values import InvalidData, identity, integer, utc
 
 
-QUERY = tuple(sorted(dict(status='active', type='liquidity', limit=100).items()))
+QUERY = tuple(sorted(dict(status='active', type='liquidity', limit=1000).items()))
 
 
 @dataclass(frozen=True)
