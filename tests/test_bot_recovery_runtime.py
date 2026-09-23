@@ -465,6 +465,29 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await self.writer.pending_fills(0)), 1)
         self.assertEqual(self.delays, [1, 2])
 
+    async def test_successful_drain_progress_gets_a_fresh_failure_budget(self):
+        await self.connected()
+        calls = 0
+        async def progressive_repair():
+            nonlocal calls
+            calls += 1
+            if calls <= 5:
+                self.runtime.recovery_passes += 1
+                self.runtime.request_recovery()
+                return False
+            return True
+        self.runtime.recover_once = progressive_repair
+        self.runtime.request_recovery()
+        task = asyncio.create_task(self.runtime._recover())
+        self.tasks.append(task)
+        await self.eventually(
+            lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        self.assertEqual(calls, 6)
+        self.assertEqual(self.runtime.recovery_attempts, 6)
+        self.assertEqual(self.runtime.recovery_passes, 5)
+        self.assertNotEqual(self.runtime.recovery_state, 'blocked_retry_exhausted')
+        self.assertEqual(self.delays, [])
+
     async def test_coalesces_many_recovery_requests(self):
         await self.connected()
         for _ in range(1000):

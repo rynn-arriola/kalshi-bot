@@ -36,6 +36,7 @@ EVENTS = {
     'reader_retry_wait': ('WARNING', 'stream'),
     'recovery_started': ('INFO', 'recovery'), 'recovery_failed': ('WARNING', 'recovery'),
     'recovery_incomplete': ('WARNING', 'recovery'), 'recovery_repaired': ('INFO', 'recovery'),
+    'recovery_progressed': ('INFO', 'recovery'),
     'recovery_exhausted': ('ERROR', 'recovery'),
     'book_proof_lost': ('WARNING', 'engine'), 'private_ingress_failed': ('ERROR', 'engine'),
     'engine_failed': ('ERROR', 'engine'), 'engine_cancelled': ('INFO', 'engine'),

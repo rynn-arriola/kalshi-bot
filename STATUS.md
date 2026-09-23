@@ -1,5 +1,21 @@
 # Current status
 
+## Graceful-drain defect fixed offline; live recovery pending — 2026-09-22
+
+The authorized stop exposed D-088: acknowledged safety cancellations were
+incorrectly consuming the same three-attempt budget as no-progress recovery
+failures. Saved state fell from 14 to 9 resting entries with no positions, then
+the recovery child stayed `DRAINING` and the parent reported `shutdown_timeout`.
+The child later exited before the authorized targeted force-stop executed; no
+force-kill occurred. No process is currently trusted to manage the nine saved
+resting entries, so normal quoting must not start before recovery-only flatness.
+
+The isolated fix preserves fresh proof after every cancel and renews the bounded
+failure budget only after measured reconciliation progress. Its exact reversal
+fails as expected. The focused recovery/live/supervisor set passes 156 tests;
+the final suite passes **1,479 run, 1,478 passed, one expected Windows privilege
+skip**. Publication, deployment and recovery-only restart are pending.
+
 ## D-087 lifecycle recovery and reference audit complete; deployment pending — 2026-09-22
 
 The exact old lifecycle transport error is unavailable after bounded-log

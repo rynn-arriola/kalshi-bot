@@ -826,6 +826,7 @@ class RecoveryRuntime:
                 self.recovery_state = "recovering"
                 self.recovery_attempts += 1
                 self.diagnostics.emit('recovery_started', attempt=attempt+1, generation=self.account.generation)
+                completed_before = self.recovery_passes
                 try:
                     # Bounds the whole pass; individual account proofs retain 5s.
                     async with asyncio.timeout(20):
@@ -855,6 +856,18 @@ class RecoveryRuntime:
                         self.engine.dirty.mark(ticker)
                     self.engine.wake.set()
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation)
+                    break
+                if (self.recovery_passes > completed_before
+                        and self.recovery_requested.is_set()):
+                    # A source-consistent pass can authorize one safety action.
+                    # Its durable mutation immediately requests a fresh pass and
+                    # invalidates the report that authorized it. Treat that as
+                    # forward progress, not as one of the bounded failed attempts;
+                    # otherwise a drain with more than three resting orders can
+                    # never reach flatness in one process.
+                    self.recovery_state = 'progressed_retry_queued'
+                    self.diagnostics.emit('recovery_progressed',
+                        attempt=attempt+1, generation=self.account.generation)
                     break
                 if self._epoch_ambiguous:
                     if self.recovery_requested.is_set() and attempt+1 < self.attempt_limit:

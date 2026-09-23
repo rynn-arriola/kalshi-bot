@@ -6,6 +6,25 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — graceful drain exhausted after three successful cancellations
+
+**Symptom.** An authorized stop reduced 14 resting entries to 9, then remained
+`DRAINING`; the supervisor retained the child and reported `shutdown_timeout`.
+
+**Mechanism.** Each acknowledged safety cancel correctly invalidated its source
+report and requested a fresh reconciliation. The recovery owner counted those
+progress-making cycles against its three-attempt failure budget, exhausted, and
+could no longer authorize the remaining cancels in that process.
+
+**Fix.** D-088 starts a fresh bounded failure budget only when the preceding pass
+was source-consistent, incremented the completed-pass counter and received a new
+recovery request. True no-progress failures still exhaust after three attempts.
+
+**Verification.** A five-progress regression reaches a sixth repaired pass with
+no retry delay. Removing the new branch reproduces exhaustion after three. The
+focused 156-test set and final 1,479-test suite pass (one expected skip).
+[Report](docs/BUILD_GRACEFUL_DRAIN_RECOVERY.md).
+
 ## 2026-09-22 — lifecycle reader could not recover after three startup failures
 
 **Symptom.** The live child continued with books/account connected but lifecycle

@@ -1,5 +1,15 @@
 # Active work queue
 
+## Current: publish D-088, recover flat, then restart
+
+1. Complete the full suite and exact diff review; publish and deploy D-088.
+2. Start the supervisor in recovery-only mode. Verify all retained orders and
+   any naturally observed fills/positions reconcile to `STOPPED_FLAT`.
+3. Only after verified flatness, use the already authorized normal live start and
+   confirm current catalog, books, lifecycle, account and admission status.
+4. Preserve the shutdown-timeout evidence; do not force or manually relabel any
+   mutation outcome.
+
 ## Current: publish D-087 and reference-price verification
 
 1. Complete the exact staged-diff/security review and publish the isolated branch.

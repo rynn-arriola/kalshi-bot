@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-088 — Repair progress-aware graceful drain before restart
+
+- **Status:** ACCEPTED implementation and controlled restart, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Also fix this issue before restart,” after the
+  authorized stop exposed recovery exhaustion with resting orders remaining.
+- **Scope:** Preserve source revalidation after every safety cancellation, but
+  give a new bounded three-failure budget after a source-consistent pass made
+  durable forward progress and queued its required fresh reconciliation.
+- **Boundary:** Do not weaken ownership/proof checks, batch uncertain cancels,
+  retry an UNKNOWN mutation, reset the ledger/risk state or force flatness.
+  Resume normal entries only after recovery reaches verified flatness.
+
 ### D-087 — Recover the lifecycle stream after bounded retry rounds
 
 - **Status:** ACCEPTED implementation, 2026-09-22 Eastern.

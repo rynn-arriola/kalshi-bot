@@ -1,5 +1,14 @@
 # What exists
 
+## D-088 progress-aware graceful drain — 2026-09-22
+
+[Drain recovery](docs/BUILD_GRACEFUL_DRAIN_RECOVERY.md) keeps the three-attempt
+failure cap but starts a fresh cap after a source-consistent pass makes durable
+progress and requests mandatory revalidation. The exact regression detects the
+old three-cancel exhaustion. Focused verification passes 156 tests; the final
+suite passes 1,479 run, 1,478 passed and one expected Windows privilege skip.
+Deployment and live recovery remain pending publication.
+
 ## D-087 lifecycle reconnect — 2026-09-22
 
 [Lifecycle recovery](docs/BUILD_LIFECYCLE_RECONNECT.md) retains three attempts

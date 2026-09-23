@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 131. Successful safety cancels consumed the failure budget — 2026-09-22
+
+VERIFIED LIVE/CODE: the authorized stop acknowledged two cancels before one stale
+pre-transport proof stopped the old child. The first recovery-only child then
+acknowledged three more cancellations, reducing the saved count to nine. Each
+successful reconciliation/cancel cycle incremented `recovery_passes` and queued
+fresh proof, but `_recover` counted it as an incomplete failed attempt. At three,
+it latched `blocked_retry_exhausted`; the child correctly stayed alive because
+the account was not flat, and the parent reported `shutdown_timeout` rather than
+force-killing it. The child later exited; no force-stop command reached it.
+
+D-088 separates verified forward progress from no-progress failures while
+preserving one fresh proof per safety mutation. [Build](docs/BUILD_GRACEFUL_DRAIN_RECOVERY.md).
+
 ## 130. Reference-price path matches unified YES-price wire mode — 2026-09-22
 
 VERIFIED OFFICIAL/CODE: book subscriptions explicitly set
