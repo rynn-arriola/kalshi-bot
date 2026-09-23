@@ -465,6 +465,51 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.rewards.status()['production_reflection_available'])
         self.assertFalse(self.rewards.status()['paid_rewards_verified'])
 
+    async def test_normal_account_refresh_gap_preserves_only_bounded_continuity(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        report = self.r.account.report
+        sample = self.rewards.tracker.records['P'].sample
+
+        # Normal reconciliation removes the current report before publishing a
+        # replacement.  The old rate is not current during that gap, but its
+        # still-bounded endpoint must remain available for a safe overlap join.
+        self.r.account._invalidate()
+        self.assertFalse(self.rewards.current('A'))
+        self.assertIs(self.rewards.tracker.records['P'].sample, sample)
+        self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
+
+        self.f.now += timedelta(seconds=1)
+        self.f.mono += 1
+        token = self.r.account.begin_reconciliation(self.f.now)
+        await self.r.account.finish_reconciliation(token, report.snapshot, self.f.now)
+        await self.r.management.refresh('A')
+        await self.rewards.reflect_once()
+        progress = self.rewards.progress('P')
+        self.assertGreater(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 0)
+
+    async def test_account_refresh_past_old_lease_books_unknown_not_credit(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        report = self.r.account.report
+        self.r.account._invalidate()
+        self.assertFalse(self.rewards.current('A'))
+
+        self.f.now += timedelta(seconds=6)
+        self.f.mono += 6
+        token = self.r.account.begin_reconciliation(self.f.now)
+        await self.r.account.finish_reconciliation(token, report.snapshot, self.f.now)
+        await self.r.management.refresh('A')
+        await self.rewards.reflect_once()
+        progress = self.rewards.progress('P')
+        self.assertEqual(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 6)
+
     async def test_source_race_can_invalidate_proof_during_reflection_iteration(self):
         await self.owned()
         self.r.reads = QueueReads([dict(
@@ -521,12 +566,15 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_superseded_reflection_is_deferred_not_venue_failure(self):
         await self.owned()
         self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.reflect_once()
+        sample = self.rewards.tracker.records['P'].sample
         async def changed(): self.r.account._invalidate()
         self.r.reads.before = changed
         await self.rewards._reflect()
         self.assertEqual(self.rewards.reflection_superseded,1)
         self.assertEqual(self.rewards.reflection_failures,0)
         self.assertFalse(self.rewards._reflection)
+        self.assertIs(self.rewards.tracker.records['P'].sample, sample)
 
     async def test_real_reflection_failures_emit_bounded_safe_diagnostics(self):
         await self.owned()
@@ -622,6 +670,23 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.rewards.reflection_failures,0)
         self.assertEqual(self.r.reads.calls,[])
         self.assertFalse(self.rewards.status()['production_reflection_available'])
+        self.rewards.stop()
+        await task
+
+    async def test_missing_report_deferral_retains_only_old_bounded_endpoint(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(
+            order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        sample = self.rewards.tracker.records['P'].sample
+        self.r.account._invalidate()
+        task = asyncio.create_task(self.rewards.run())
+        await until(lambda:self.rewards.reflection_deferred == 1)
+        self.assertFalse(self.rewards._reflection)
+        self.assertFalse(self.rewards._proofs)
+        self.assertIs(self.rewards.tracker.records['P'].sample, sample)
+        self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
         self.rewards.stop()
         await task
 

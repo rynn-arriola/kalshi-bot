@@ -62,11 +62,24 @@ class RuntimeRewards:
         self._invalidate_sample(ticker)
 
     def _invalidate_sample(self, ticker):
-        # Market/plan freshness and the account-wide queue identity have
-        # separate leases. A temporary book/metadata gap revokes the rate, not
-        # still-current queue evidence. Explicit epoch invalidation clears both.
+        # Hard invalidation discards the interpolation endpoint.  Use only for
+        # positive conflicting evidence, an explicit source epoch change, or
+        # shutdown.  A temporary proof gap must use _suspend_sample instead.
         self._proofs.pop(ticker,None)
         self.tracker.invalidate(ticker)
+
+    def _suspend_sample(self, ticker, *, keep_queue_identity=False):
+        """Revoke the current rate without erasing its bounded old endpoint.
+
+        RewardTracker will bridge a later observation only when both endpoint
+        leases overlap, continuity is identical, and the gap is at most five
+        seconds.  Otherwise it books the whole interval UNKNOWN.  Retaining the
+        old endpoint is therefore safe across the account coordinator's normal
+        report-refresh gap and cannot make stale proof current.
+        """
+        if not keep_queue_identity:
+            self._reflection.pop(ticker,None)
+        self._proofs.pop(ticker,None)
 
     def _queue_identity_current(self, ticker):
         proof = self._reflection.get(ticker)
@@ -83,6 +96,10 @@ class RuntimeRewards:
         self._proofs.clear()
         for ticker in tuple(self.tracker._by_market):
             self.tracker.invalidate(ticker)
+
+    def _suspend_all(self):
+        self._reflection.clear()
+        self._proofs.clear()
 
     def _sources(self, ticker):
         r = self.runtime
@@ -273,9 +290,9 @@ class RuntimeRewards:
         source = self._sources(ticker)
         if source is None:
             if self._queue_identity_current(ticker):
-                self._invalidate_sample(ticker)
+                self._suspend_sample(ticker, keep_queue_identity=True)
             else:
-                self.invalidate(ticker)
+                self._suspend_sample(ticker)
             return
         plan, observation, report, book = source
         quotes = self._orders(plan)
@@ -295,6 +312,8 @@ class RuntimeRewards:
         if isinstance(reflected,ReflectionProof):
             until = min(until,reflected.valid_until)
         if until <= now:
+            # A source lease is affirmatively expired, not merely absent while
+            # the account coordinator swaps reports.  Do not bridge across it.
             self.invalidate(ticker)
             return
         programs = tuple(p for p in observation.programs
@@ -320,9 +339,9 @@ class RuntimeRewards:
         source = self._sources(ticker)
         if source is None:
             if self._queue_identity_current(ticker):
-                self._invalidate_sample(ticker)
+                self._suspend_sample(ticker, keep_queue_identity=True)
             else:
-                self.invalidate(ticker)
+                self._suspend_sample(ticker)
             return False
         proof = self._proofs.get(ticker)
         return proof is not None and all(a is b for a,b in zip(proof,source[:3]))
@@ -367,7 +386,10 @@ class RuntimeRewards:
             self.last_reflection_error = None
         except ReflectionSuperseded:
             self.reflection_superseded += 1
-            self._invalidate_all()
+            # The account report advanced during an otherwise valid read.  It
+            # is no longer current, but this is not evidence that the preceding
+            # leased observation was wrong.
+            self._suspend_all()
         except (InvalidData,QuotaUnavailable,TimeoutError,OSError) as exc:
             self.reflection_failures += 1
             self.last_reflection_error = type(exc).__name__
@@ -427,9 +449,10 @@ class RuntimeRewards:
                     else:
                         # Account recovery owns the missing prerequisite and
                         # requests an immediate join when it succeeds. Do not
-                        # count a local no-report check as a failed reflection.
+                        # count a local no-report check as a failed reflection or
+                        # destroy a still-bounded interpolation endpoint.
                         self.reflection_deferred += 1
-                        self._invalidate_all()
+                        self._suspend_all()
                     next_reflection = self.runtime.clock()+self.reflection_interval
                 if self.checkpoint is not None and self.runtime.clock() >= next_checkpoint:
                     await self._save()

@@ -1,15 +1,15 @@
 # Active work queue
 
-## Findings from generation 92 flow audit
+## After reward telemetry repair
 
-1. Reproduce the reward-source invalidation sequence and improve measured
-   observation coverage without weakening order or account freshness checks.
-   The 4.7% observed-time sample is insufficient for dependable earnings tracking.
-2. Reduce repetitive diagnostic volume or extend bounded retention: the present
-   child log window covers only about 3.4 minutes of operation.
-3. Continue checking natural exits and actual venue payout; preserve current
-   strategy and limits. See [finding 163](FINDINGS.md) for verified evidence and
-   untested failure paths. No implementation or restart was part of this audit.
+1. Deployment/restart is a separate operator decision. Generation 92 still runs
+   the previous source; do not interrupt it merely to manufacture acceptance.
+2. After a separately authorized restart, verify the reported 96 MiB child-log
+   bound and measure reward observed/unknown seconds over a representative
+   stable-order window. Do not infer improvement from offline tests alone.
+3. Continue checking natural exits and actual venue payout under unchanged
+   strategy and limits. Compare paid reward with trading loss and fees before
+   treating projected reward as profit. See [findings 163–164](FINDINGS.md).
 
 ## After generation 92 restart
 

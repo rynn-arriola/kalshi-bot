@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 164. Account refresh was deleting safe reward interpolation endpoints — 2026-09-23
+
+VERIFIED SYNTHETICALLY after the generation-92 audit. The three-second account
+refresh deliberately removes the current report while rebuilding it. Reward
+telemetry responded by deleting both current authority and the prior sample, so
+the following exact queue join had no endpoint from which to measure an interval.
+That converted ordinary refresh cadence into mostly unknown time even when the
+same orders remained resting.
+
+The repair distinguishes suspension from invalidation. Suspension removes all
+current reward and queue authority but retains the old in-memory endpoint. The
+existing tracker may bridge only when a new exact observation arrives within
+five seconds, both validity leases overlap, source continuity matches and the
+owned-order identity hash is unchanged. A six-second gap is recorded wholly
+UNKNOWN; explicit book/account epoch changes, program publication changes,
+queue disagreement, unsupported data, checkpoint failure and shutdown still
+hard-invalidate. No endpoint is persisted across restart.
+
+Generation 92 also produced about 786 KiB of child logs in 204 seconds. At that
+measured rate, its old 768 KiB production bound retained about 3.4 minutes. The
+new bounded 96 MiB child configuration projects about 7.2 hours at the same
+rate; this is a capacity estimate, not guaranteed duration. Live coverage and
+retention remain unverified until a separately authorized deployment/restart.
+
 ## 163. Live flow audit: executions work; reward observation coverage is poor — 2026-09-23
 
 MEASURED on generation 92, source `9fad565`, approximately 18:34–18:36 ET.

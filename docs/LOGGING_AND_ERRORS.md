@@ -33,6 +33,13 @@ segments only, never databases. Use a dedicated local log directory, not OneDriv
 or a network share. A Windows named lease prevents simultaneous writers/rotation
 in the same directory. Logs are gitignored; no existing data was removed.
 
+The supervised production child has a higher explicit bound because it owns the
+high-volume runtime stream: one 12 MiB current file plus seven backups, 96 MiB
+total. Generation 92's measured byte rate projects about 7.2 hours of history;
+duration varies with event volume and is not guaranteed. `status()` reports
+`max_bytes`, `backups` and `retention_bytes`. The parent and non-production
+diagnostics keep their narrower configured/default bounds.
+
 Each record includes schema version, UTC timestamp, monotonic nanoseconds,
 run ID, monotonically increasing sequence, severity, component and event code.
 Context includes allowed stream names, attempts, generations, revisions, queue

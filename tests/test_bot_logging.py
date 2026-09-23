@@ -18,6 +18,8 @@ from kalshi_bot.execution import InjectedExecutor
 from kalshi_bot.observability import Diagnostics, StrictRotatingHandler, safe_error
 from kalshi_bot.rest import RestReads, TokenBudget, WireResponse, ReadFailure
 from kalshi_bot.runtime import RecoveryRuntime
+from kalshi_bot.supervised_live_child import (PRODUCTION_LOG_BACKUPS,
+                                               PRODUCTION_LOG_MAX_BYTES)
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_engine import NOW, request
@@ -50,6 +52,14 @@ class LoggingTests(unittest.TestCase):
         self.log = Diagnostics(self.directory)
         self.assertFalse(self.directory.exists())
         self.assertFalse(self.log.status()['worker_alive'])
+
+    def test_status_reports_configured_production_retention_bound(self):
+        self.log = Diagnostics(self.directory, max_bytes=PRODUCTION_LOG_MAX_BYTES,
+                               backups=PRODUCTION_LOG_BACKUPS)
+        status = self.log.status()
+        self.assertEqual(status['max_bytes'], 12*1024*1024)
+        self.assertEqual(status['backups'], 7)
+        self.assertEqual(status['retention_bytes'], 96*1024*1024)
 
     def test_json_schema_order_correlation_and_drain(self):
         log = self.start()

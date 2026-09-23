@@ -200,6 +200,8 @@ class Diagnostics:
             return dict(enabled=True, run_id=self.run_id,
                         healthy=self._ready.is_set() and not self._failure and not self._stop.is_set(),
                         failure=self._failure, failure_detail=self._failure_detail,
+                        max_bytes=self.max_bytes, backups=self.backups,
+                        retention_bytes=self.max_bytes*(self.backups+1),
                         accepted=self._accepted, written=self._written,
                         dropped=self._dropped, backlog=self._queue.qsize(), high_water=self._high_water,
                         closed=self._stop.is_set(),

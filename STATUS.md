@@ -1,5 +1,25 @@
 # Current status
 
+## Reward telemetry continuity and retention repair verified offline — 2026-09-23
+
+The two defects identified by the generation-92 audit are repaired in source
+and regression-tested. Normal account-report refresh gaps now suspend the
+current reward rate without deleting its prior bounded endpoint. A later exact
+observation can bridge only when the existing five-second leases overlap and
+the writer epoch, account/book generations and owned-order identity are
+unchanged; expired, changed or conflicting evidence remains UNKNOWN. Production
+child diagnostics are now configured for a bounded 96 MiB across the current
+file and seven archives, projected to retain about 7.2 hours at the measured
+generation-92 byte rate instead of about 3.4 minutes. The configured bound is
+reported in logging status.
+
+Focused affected verification passes 328 tests with one expected Windows
+privilege skip. The exact complete suite passes **1,645 tests** with one expected
+skip; `compileall` and `git diff --check` pass. This is offline verification,
+not evidence that live reward coverage improved. Generation 92 was not stopped,
+restarted or otherwise changed and continues to run its previously deployed
+source. See [build record](docs/BUILD_REWARD_TELEMETRY_CONTINUITY.md).
+
 ## Generation 92 flow audit — 2026-09-23, approximately 18:36 ET
 
 The bot remains live with 30 resting entry orders and no open inventory at the

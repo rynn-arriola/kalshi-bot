@@ -1,5 +1,28 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — normal account refresh erased reward coverage and logs rotated too quickly
+
+**Mechanisms:** Every short account reconciliation temporarily removed the
+current report. Reward telemetry correctly revoked current authority but also
+deleted the previous leased sample, preventing the next identical exact queue
+join from measuring any interval. Separately, the production child used only
+three 256 KiB log files; generation 92 rotated them in about 3.4 minutes.
+
+**Fix:** Temporary report loss and superseded reads now suspend live proof while
+retaining only the prior in-memory interpolation endpoint. The unchanged tracker
+still requires overlapping five-second leases, identical continuity and exact
+owned-order identity; any gap or mismatch is UNKNOWN. Hard source conflicts and
+epoch changes still clear the endpoint. Child diagnostics now use a 12 MiB
+current file plus seven backups (96 MiB bounded total), with the configured
+retention exposed in status.
+
+**Verification:** Regressions prove a one-second exact refresh bridge, a six-
+second wholly unknown gap, missing-report deferral, superseded-read suspension,
+hard publication invalidation and the production retention bound. Focused
+affected suites pass 328 tests with one expected skip. The complete suite passes
+1,645 tests with one expected Windows privilege skip; compile and whitespace
+checks pass. No live process, order or configuration was changed.
+
 ## 2026-09-23 — manual venue close left the durable ledger long
 
 **Mechanism:** The operator closed one 10-contract position at the venue while

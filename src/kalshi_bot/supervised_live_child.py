@@ -35,6 +35,13 @@ from .windows_ipc import connect_pipe
 
 _LIFETIME_HANDLE = None  # Deliberately retained until process termination.
 
+# The child carries the high-volume runtime, recovery and market diagnostics.
+# Keep enough bounded local history to cover one six-hour loss-control window
+# at the measured generation-92 event rate.  Current file + seven archives is
+# capped at 96 MiB; financial authority remains in SQLite, never these logs.
+PRODUCTION_LOG_MAX_BYTES = 12*1024*1024
+PRODUCTION_LOG_BACKUPS = 7
+
 
 def _envelope(args, kind, sequence, payload):
     return Envelope(args.scope_digest, args.parent_session, args.child_id,
@@ -119,7 +126,8 @@ def main(argv=None):
         return 23
     profile = ProductionLaunchProfile(args.initialize_approved)
     diagnostics = Diagnostics(scope.control_root / "child-logs",
-                              max_bytes=262144, backups=2)
+                              max_bytes=PRODUCTION_LOG_MAX_BYTES,
+                              backups=PRODUCTION_LOG_BACKUPS)
     endpoint = None
     child_started = False
     with WindowsPowerMonitor() as power:

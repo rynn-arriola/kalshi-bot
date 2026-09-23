@@ -1,5 +1,15 @@
 # What exists
 
+## Bounded reward continuity and production diagnostic retention — 2026-09-23
+
+[Implementation and verification](docs/BUILD_REWARD_TELEMETRY_CONTINUITY.md)
+separate a temporary account-report gap from hard reward-source invalidation.
+Only exact observations with overlapping five-second leases and unchanged
+continuity may bridge; stale or changed evidence is unknown. Production child
+logs are bounded at 96 MiB and expose that configuration in status. The complete
+suite passes 1,645 tests with one expected Windows privilege skip. Deployment
+state belongs in `STATUS.md`.
+
 ## Exact external-close reconciliation and deterministic cancel recovery — 2026-09-23
 
 The ledger can retain a bounded, explicit operator-fill scope separately from
