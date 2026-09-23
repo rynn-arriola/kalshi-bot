@@ -10,6 +10,12 @@ Measure broad-book freshness, metadata retries, exclusions and candidate-to-orde
 conversion under sustained operation. Do not infer profitability from resting
 capacity; preserve existing limits and use the controlled stop path if needed.
 
+Highest-priority design question from live evidence: preserve safe reference
+quotes while making the final slate actually honor the $2 tier. Current code
+fills $1 fallbacks before broad metadata converges and never upgrades incumbents.
+Design a bounded dwell/reservation or safe replacement policy before changing
+live orders; do not enable price chasing or cancellation churn implicitly.
+
 ## Historical pre-D-094 queue — completed blockers retained below
 
 ### After D-093 implementation — 2026-09-23

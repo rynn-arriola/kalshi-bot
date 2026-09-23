@@ -1,5 +1,26 @@
 # Findings — kalshi-bot
 
+## 142. Reference pricing works; steady-state $2 priority does not — 2026-09-23
+
+VERIFIED LIVE at 05:28:31–05:28:35 UTC: all 15 resting two-sided markets matched
+fresh public bid/ask reward references exactly and scored at full price weight.
+The ledger recorded 30 create ACKs, four create NOT_SENT attempts, and no cancel
+or replacement mutation since restart. Runtime also reports
+`automatic_repricing=false`. The bot placed at reference and has not repositioned.
+
+MEASURED: those 15 programs projected $1.02–$1.90 remaining; none reached the
+$2 priority threshold. A subsequent 96-second public-only broad census examined
+1,024 reviewed markets: 174 passed the $1 gate and 30 sampled at $2+, with no
+owned-market overlap. This census assumes a flat $500 account and samples markets
+sequentially, so it is not simultaneous admission proof or payout evidence.
+
+VERIFIED CODE MECHANISM: `MarketSelector.propose` sorts currently ranked $2 rows
+ahead of $1 fallbacks. Runtime metadata/ranking arrives incrementally, however;
+fallback entries can fill all 30 order slots before the broad board converges.
+The entry cap then blocks additions and no incumbent upgrade/repricing policy
+exists. Thus the configured sort is real, but the final live slate is not
+globally $2-prioritized.
+
 ## 141. Normal restart reached the 30-order live limit — 2026-09-23
 
 VERIFIED LIVE under D-095: after public candidate refresh and fresh account

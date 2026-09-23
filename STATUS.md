@@ -24,6 +24,20 @@ The bot is **running**. Top-level `RUNNING_UNVERIFIED` is the deliberate protect
 process-presence label, not a failure or full readiness claim. Continue observing
 fills, exits, order turnover, reward estimates and broad-selection coverage.
 
+Live ranking check at 05:28–05:31 UTC: all 15 owned markets remained exactly at
+both current reference prices and full reward weight. No cancel/replace mutations
+occurred; automatic repricing is disabled. Their current remaining projections
+were $1.02–$1.90, so none occupied the configured $2-priority tier. A public-only
+96-second census of all 1,024 reviewed markets found 174 $1-pass samples and 30
+$2-priority samples, with zero overlap between those 30 and the 15 owned markets.
+The census is sequential/hypothetical-flat, not simultaneous account admission.
+
+The code sorts currently evaluated $2 rows first, but live dispatch filled the
+30-order cap while broad metadata was still arriving and does not replace an
+incumbent fallback with a later higher-tier market. Therefore $2 priority exists
+locally in each proposal but is not enforced for the final steady-state slate.
+Do not describe the current live allocation as $2-prioritized.
+
 ## D-094 host/account blockers repaired; bot stays stopped — 2026-09-23
 
 [Repair and evidence](docs/BUILD_HOST_CONTINUITY.md): the default explicit live
