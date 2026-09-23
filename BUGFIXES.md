@@ -6,6 +6,26 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-23 — transient Windows status replacement stopped live children
+
+**Mechanism.** `status.json` publication performed one `os.replace`. A Windows
+reader denying delete sharing could make that call raise `PermissionError`; the
+runtime correctly failed closed, but a momentary local diagnostic-file conflict
+therefore stopped both normal and recovery children. Repository status readers
+also used ordinary opens without an explicit delete-sharing contract.
+
+**Fix.** D-097 makes repository status readers request read/write/delete sharing.
+Atomic JSON publication now uses a unique same-directory temporary file and a
+bounded two-second retry only for `PermissionError`. Other errors and exhausted
+contention still propagate. The old complete file remains authoritative until a
+successful replace; failed temporary artifacts are removed.
+
+**Verification.** A native Windows test holds the destination open while denying
+delete sharing and releases it after 100ms; publication then succeeds with a
+whole current document. Synthetic transient and permanent-denial tests cover
+retry, bounded failure, old-document preservation and cleanup. Complete suite:
+1,557 tests, one expected privilege skip. No live restart was performed.
+
 ## 2026-09-23 — early fallback entries consumed capacity before broad ranking
 
 **Mechanism.** Entry dispatch consumed incremental rankings immediately, allowing

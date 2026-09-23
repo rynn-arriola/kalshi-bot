@@ -1,6 +1,25 @@
 # Current status
 
-## Current: stopped flat after recurring status-publication failure — 2026-09-23
+## Current: status-publication repair verified offline; bot stopped flat — 2026-09-23
+
+D-097 repairs the recurring Windows `status.json` publication failure. Repository
+status readers now explicitly allow delete/rename sharing. Atomic writers use a
+unique same-directory temporary file and retry only `PermissionError` for at most
+two seconds; permanent failure still propagates, preserves the previous whole
+document and retains fail-closed runtime handling. A native regression held the
+old status open without delete sharing, then proved publication succeeds after
+the handle closes. Synthetic permanent denial proves no false success or partial
+status. The complete suite passes: **1,557 tests, one expected Windows symlink-
+privilege skip**, 249.309s. Focused live-runtime, host-continuity and production-
+supervisor suites also pass.
+
+The code fix is verified but has **not been live-restarted**. Current account and
+process state remains the prior verified STOPPED_FLAT checkpoint: zero orders,
+no positions, zero exposure, supervisor disarmed and no protected parent/child.
+Another explicit controlled restart and live observation are required to verify
+the repair under sustained operation.
+
+## Historical failure evidence before D-097
 
 The restart is **not a sustained live success**. After the checkpoint below,
 the normal child failed at **06:09:22 UTC** with `PermissionError` (errno 13)
@@ -9,12 +28,10 @@ failure at **06:10:53**. Subsequent recovery reached **STOPPED_FLAT at 06:11:55*
 zero resting entries, no positions and zero reserved exposure. The supervisor
 disarmed; protected parent/child roles are both absent and recovery holds clear.
 
-The ranking fix remains deployed and verified. The separate status-file I/O
-failure blocks a reliable restart. It recurred after ordinary diagnostic readers
-were joined and delete-sharing monitoring was used, so that workaround is not
-a demonstrated fix. The interfering handle or other Windows cause is still
-unidentified. Do not restart repeatedly or weaken error handling; reproduce and
-repair the publication path in a separately reviewed work unit first.
+The ranking fix remains deployed and verified. The exact external handle that
+caused each historical denial remains unidentified; D-097 addresses the observed
+Windows sharing mode and transient-denial class without suppressing permanent
+I/O failure.
 
 ## D-096 historical live checkpoint before the failure
 

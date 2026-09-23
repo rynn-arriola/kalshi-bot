@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import time
+from threading import get_ident
 from uuid import UUID, uuid4
 
 from .market_inputs import ExitInputService
@@ -72,15 +73,75 @@ def inspect_runtime(runtime):
         books=books, market_inputs=metadata, runtime=status)
 
 
-def save_result(path, value):
-    """One local writer; readers see either the old or the new whole document."""
-    temporary = path.with_suffix('.json.tmp')
-    with temporary.open('w', encoding='utf-8') as output:
-        json.dump(value, output, indent=2, default=str, allow_nan=False)
-        output.write('\n')
-        output.flush()
-        os.fsync(output.fileno())
-    os.replace(temporary, path)
+def read_text_shared(path, *, limit=None, encoding='utf-8'):
+    """Read a local file without denying atomic replacement on Windows."""
+    path = Path(path)
+    if limit is not None and (type(limit) is not int or limit < 0):
+        raise InvalidData('read limit must be a nonnegative integer')
+    if os.name != 'nt':
+        with path.open('r', encoding=encoding) as source:
+            return source.read() if limit is None else source.read(limit+1)
+
+    # Python's ordinary CRT open does not promise FILE_SHARE_DELETE. Status
+    # readers must allow the single writer's same-directory atomic replacement.
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    api.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+        wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+        wintypes.HANDLE]
+    api.CreateFileW.restype = wintypes.HANDLE
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.restype = wintypes.BOOL
+    handle = api.CreateFileW(str(path), 0x80000000, 7, None, 3, 0x80, None)
+    invalid = wintypes.HANDLE(-1).value
+    if not handle or handle == invalid:
+        error = ctypes.get_last_error()
+        raise OSError(error, 'shared status read failed', str(path))
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except BaseException:
+        api.CloseHandle(handle)
+        raise
+    with open(descriptor, 'r', encoding=encoding, closefd=True) as source:
+        return source.read() if limit is None else source.read(limit+1)
+
+
+def save_result(path, value, *, replace_timeout=2.0):
+    """Atomically publish JSON, tolerating only bounded transient contention."""
+    if not isinstance(replace_timeout, (int, float)) or isinstance(replace_timeout, bool):
+        raise InvalidData('replace timeout must be numeric')
+    replace_timeout = float(replace_timeout)
+    if not 0 <= replace_timeout <= 10:
+        raise InvalidData('replace timeout outside bounds')
+    path = Path(path)
+    temporary = path.with_name(
+        f'.{path.name}.{os.getpid()}.{get_ident()}.{uuid4().hex}.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as output:
+            json.dump(value, output, indent=2, default=str, allow_nan=False)
+            output.write('\n')
+            output.flush()
+            os.fsync(output.fileno())
+        deadline = time.monotonic() + replace_timeout
+        delay = .01
+        while True:
+            try:
+                os.replace(temporary, path)
+                return
+            except PermissionError:
+                remaining = deadline-time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(delay, remaining))
+                delay = min(.1, delay*2)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            # The original publication exception remains authoritative.
+            pass
 
 
 async def supervise(runtime, *, seconds, stopped=lambda: False, publish=lambda _: None):

@@ -1,17 +1,18 @@
 # Active work queue
 
-## After D-096 — stopped; status-publication repair blocks sustained operation
+## After D-097 — stopped; controlled live acceptance remains
 
 The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is published,
 deployed and live-observed. Complete suite: 1,554 tests, one expected skip. The
 run reached 30 resting entries, then failed during atomic status publication.
-Recovery canceled all entries and verified flatness; STATUS owns current state.
+Recovery canceled all entries and verified flatness. D-097's offline repair is
+complete; STATUS owns current process and verification state.
 
-1. Reproduce and repair the Windows status-publication failure in a separate
-   reviewed change before another live restart. Delete-sharing diagnostic reads
-   alone did not resolve it. Inspect the actual reader/writer paths; test transient
-   contention and permanent failures without suppressing errors or weakening
-   runtime safeguards. No live bot is currently running.
+1. Obtain explicit controlled restart authority, then preserve the same ledger,
+   limits and supervisor path. Verify sustained status publication while invoking
+   the standard status command, plus current account/source health and normal
+   recovery behavior. Do not bypass or suppress a permanent I/O failure. No live
+   bot is currently running.
 2. Before proposing another selection policy, measure simultaneously current
    metadata/ranking coverage: startup released after 120s with 864/1,024 evaluated.
    More elapsed time alone does not keep earlier metadata fresh. Do not relax

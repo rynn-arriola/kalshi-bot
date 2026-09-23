@@ -29,7 +29,7 @@ from .recovery_fence import FenceCooldown, RecoveryFence
 from .rest import RestReads, TokenBudget
 from .restriction_journal import RestrictionJournal
 from .runtime import RecoveryRuntime, readonly_reader_factory
-from .startup import load_signer, save_result, _noop
+from .startup import load_signer, read_text_shared, save_result, _noop
 from .supervised_runtime import RuntimeRestrictions
 from .transport import MutationSigner
 from .values import InvalidData, integer
@@ -507,7 +507,7 @@ def main(argv=None):
     launch_attempted = False
     try:
         if args.command == 'status':
-            result = json.loads((DATA/'status.json').read_text(encoding='utf-8'))
+            result = json.loads(read_text_shared(DATA/'status.json'))
             # A saved RUNNING snapshot is evidence from its timestamp, not a
             # process-liveness guarantee and never a request to restart.
             result['saved_snapshot_only'] = True
@@ -520,7 +520,7 @@ def main(argv=None):
             BotConfig.load(ROOT/'config'/'bot.json')
             if (DATA/'account.db').exists():
                 try:
-                    saved = json.loads((DATA/'status.json').read_text(encoding='utf-8'))
+                    saved = json.loads(read_text_shared(DATA/'status.json'))
                 except (OSError, ValueError):
                     saved = {}
                 if saved.get('state') != 'STOPPED_FLAT':

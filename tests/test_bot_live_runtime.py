@@ -4,8 +4,10 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -29,7 +31,8 @@ from kalshi_bot.quota import QuotaGuard, QuotaPolicy, ProbeConfig
 from kalshi_bot.quota_supervisor import QuotaSupervisor
 from kalshi_bot.risk import WindowState, window_bounds
 from kalshi_bot.runtime import RecoveryRuntime
-from kalshi_bot.startup import save_result
+from kalshi_bot import startup
+from kalshi_bot.startup import read_text_shared, save_result
 from kalshi_bot.transport import MutationSigner
 from kalshi_bot.values import InvalidData
 from kalshi_bot.write_budget import WriteBudget
@@ -434,6 +437,60 @@ class LaunchInputTests(unittest.TestCase):
             save_result(path, {'state':'BLOCKED'})
             self.assertEqual(json.loads(path.read_text())['state'], 'BLOCKED')
             self.assertFalse(path.with_suffix('.json.tmp').exists())
+
+    def test_status_publish_retries_transient_replace_denial(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'status.json'
+            save_result(path, {'state':'OLD'})
+            actual_replace = os.replace
+            attempts = 0
+            def replace(source, target):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise PermissionError(13, 'synthetic sharing violation')
+                actual_replace(source, target)
+            with patch.object(startup.os, 'replace', side_effect=replace), patch.object(
+                    startup.time, 'sleep'):
+                save_result(path, {'state':'CURRENT'})
+            self.assertEqual(attempts, 3)
+            self.assertEqual(json.loads(path.read_text())['state'], 'CURRENT')
+
+    def test_permanent_replace_denial_preserves_previous_whole_status(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'status.json'
+            save_result(path, {'state':'OLD'})
+            with patch.object(startup.os, 'replace', side_effect=PermissionError(
+                    13, 'synthetic permanent denial')):
+                with self.assertRaises(PermissionError):
+                    save_result(path, {'state':'MUST_NOT_APPEAR'}, replace_timeout=0)
+            self.assertEqual(json.loads(path.read_text())['state'], 'OLD')
+            self.assertEqual(list(Path(directory).glob('*.tmp')), [])
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows sharing semantics')
+    def test_real_windows_reader_contention_is_bounded_and_recovers(self):
+        import ctypes
+        from ctypes import wintypes
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'status.json'
+            save_result(path, {'state':'OLD'})
+            api = ctypes.WinDLL('kernel32', use_last_error=True)
+            api.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+                wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+                wintypes.HANDLE]
+            api.CreateFileW.restype = wintypes.HANDLE
+            api.CloseHandle.argtypes = [wintypes.HANDLE]
+            api.CloseHandle.restype = wintypes.BOOL
+            # Share reads/writes but deliberately deny delete/rename.
+            handle = api.CreateFileW(str(path), 0x80000000, 3, None, 3, 0x80, None)
+            self.assertNotIn(handle, (None, 0, wintypes.HANDLE(-1).value))
+            closer = threading.Timer(.1, api.CloseHandle, args=(handle,))
+            closer.start()
+            try:
+                save_result(path, {'state':'CURRENT'}, replace_timeout=1)
+            finally:
+                closer.join()
+            self.assertEqual(json.loads(read_text_shared(path))['state'], 'CURRENT')
 
 
 class CompositionTests(unittest.IsolatedAsyncioTestCase):

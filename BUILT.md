@@ -1,5 +1,12 @@
 # What exists
 
+## D-097 resilient atomic status publication — 2026-09-23
+
+[Implementation](docs/BUILD_STATUS_PUBLICATION.md): Windows delete-sharing status
+reads, unique atomic temporary files and bounded transient replacement retry.
+Permanent failures remain fail-closed. Verification/deployment state belongs in
+STATUS; this work did not restart the live bot.
+
 ## D-096 initial combined-ranking checkpoint — 2026-09-23
 
 [Implementation](docs/BUILD_INITIAL_RANKING.md): bounded startup coverage owner,

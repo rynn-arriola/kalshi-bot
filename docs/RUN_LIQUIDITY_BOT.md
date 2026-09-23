@@ -199,6 +199,9 @@ order exists; inspect resting entries, positions, account/dispatch blockers and
 timestamps. Saved status is explicitly historical, not proof the PID is alive.
 Actual fills/fees and receipt-window risk remain in the ledger. Estimated rewards
 are not credited cash; no profitability claim precedes real payout reconciliation.
+Repository status commands use Windows delete-sharing reads; atomic publication
+has bounded transient-contention retry and still fails closed on permanent I/O
+errors. See [D-097](BUILD_STATUS_PUBLICATION.md).
 
 The separate bounded startup diagnostic is safe for the assistant to invoke:
 

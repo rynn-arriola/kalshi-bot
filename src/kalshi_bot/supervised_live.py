@@ -10,7 +10,7 @@ from .detached_host import spawn_host
 from .live import DATA, ROOT
 from .observability import safe_error
 from .process_supervisor import SupervisorHost
-from .startup import save_result
+from .startup import read_text_shared, save_result
 from .supervision import SupervisorState
 from .supervisor_control import (ControlOwner, ScopeSpec, SupervisorController, retain)
 from .supervisor_launch import ProductionLaunchProfile
@@ -74,8 +74,7 @@ def _launch_path(launch_id):
 
 
 def _read_object(path, limit):
-    with path.open("r", encoding="utf-8") as source:
-        raw = source.read(limit+1)
+    raw = read_text_shared(path, limit=limit)
     if len(raw) > limit:
         raise InvalidData("oversized saved status")
     value = json.loads(raw)

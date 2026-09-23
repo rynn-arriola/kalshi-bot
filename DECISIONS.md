@@ -10,6 +10,16 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-097 — Repair recurring Windows status publication failure
+
+- **Status:** ACCEPTED implementation, 2026-09-23.
+- **Decision owner:** Operator: “Fix it.”
+- **Scope:** Repair the observed transient Windows atomic-replacement failure,
+  add a real contention regression, retain whole-document publication and
+  fail-closed permanent-error handling, then verify/review/commit/push.
+- **Boundary:** No trading logic, risk/configuration change, ledger reset or live
+  restart. A later restart still requires explicit operational authority.
+
 ### D-096 — Initial combined-ranking checkpoint
 
 - **Status:** ACCEPTED implementation and subsequent reviewed restart, 2026-09-23.
