@@ -1,5 +1,19 @@
 # Active work queue
 
+## Priority: repair observed selection-source failures
+
+Diagnosis is recorded in FINDINGS section 125; implementation is not yet done.
+
+1. Resolve full-catalog refresh timeouts under real page-count/shared-read load.
+   Preserve complete/fresh reward proof; do not bypass exhaustion or use an
+   expired catalog to place entries. Verify the proposed repair offline before
+   any separately approved live deployment/restart.
+2. Address quiet-book freshness and metadata-to-book timing with a bounded,
+   source-verified refresh design, not a blind extension of stale-data limits.
+3. Evaluate the existing 128-market/16-per-cycle/300-second discovery path and
+   add bounded per-stage exclusion evidence. Prove current capacity can fill
+   when qualifying markets exist before considering wider subscriptions.
+
 ## Live observation after recovered restart
 
 The handoff fix is published as `238df32`. D-085 recovery reached verified flatness,

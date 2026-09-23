@@ -1,5 +1,47 @@
 # Findings — kalshi-bot
 
+## 125. Low order breadth: catalog timeout plus freshness/discovery limits — 2026-09-22
+
+VERIFIED LIVE: the unchanged normal run grew from 10 to 14 resting orders.
+At 20:30:30 Eastern, child 46576 remained healthy/account-current with no
+positions or accounting/risk blockers. Incentive refresh had exhausted three
+attempts and had no current catalog. Retained diagnostics identify TimeoutError
+inside the complete-enumeration 30-second deadline, not a zero-market response.
+The shared read-budget status recorded zero throttles; the exact network/queue
+latency responsible for missing that deadline was not measured. No fresh catalog
+means no new selection authority, even while process/account status is healthy.
+
+VERIFIED SYNTHETIC/CODE: [breadth probe](scripts/diagnose_selection_breadth.py)
+reproduces five behaviors without credentials, venue calls or the live ledger:
+
+- The same eligible pair is selectable with fresh sources, disappears after its
+  book ages six seconds despite refreshed account/risk/reward/metadata, and
+  returns after an identical fresh snapshot. `InventoryManager._book` rejects
+  per-market ingress older than five seconds. A quiet connected book is therefore
+  not sufficient under current policy; this test does not authorize changing it.
+- The production writer uses its default 128-market capacity. A synthetic 1,024
+  market catalog yields 128 discovery candidates and defers 896. This working set
+  is separate from the 30 resting-order ceiling and is not itself a five-market cap.
+- Actual admission adds at most 16 new markets per successful cycle and normally
+  schedules its next cycle 300 seconds later; requests can wake it sooner.
+- Three injected catalog timeouts remove selection source authority and exhaust
+  automatic retries. This reproduces the live failure mode, not its network cause.
+- Forty fresh qualifying fixture markets yield 15 pairs / 30 orders, with $138
+  estimated capital. There is no hidden 10-order selector cap.
+
+INFERRED: five-second book expiry combined with delayed metadata and slow scope
+rotation limits practical discovery. The live status repeatedly had 126 pending
+metadata refreshes with two active workers and only zero/one current selection
+proof. These snapshots are not a cumulative rejected-market census. Existing
+diagnostics do not establish how many live markets failed each economic gate;
+do not claim all 1,024 reviews qualify or that 30 orders are guaranteed.
+
+Verification: all five explicit characterization probes and 136 existing tests
+(47 selection, 36 admission, 27 metadata, 26 incentive discovery) pass. These
+passes confirm behavior, not production readiness. No runtime logic/configuration,
+live process, order, limit or ledger was changed by this diagnostic task. The
+catalog failure and selection-throughput work remain open; no fix is claimed.
+
 # 124. Six live markets were an admission handoff failure, not the eligible universe — 2026-09-22
 
 VERIFIED from generation 12 status and executable control flow: discovery held

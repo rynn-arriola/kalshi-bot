@@ -1,5 +1,15 @@
 # What exists
 
+## Offline selection-breadth diagnostic — 2026-09-22
+
+`scripts/diagnose_selection_breadth.py` characterizes five current limitations/
+controls with synthetic fixtures and read-only source inspection. It makes no
+venue calls and opens only disposable fixture ledgers. Run explicitly with the
+local Python environment; it is not a readiness gate or policy that defects must
+remain unchanged. Five probes and 136 relevant existing tests pass. Findings and
+the live catalog timeout remain recorded in FINDINGS section 125; no repair is
+included in this diagnostic artifact.
+
 ## Cooperative metadata/admission handoff — 2026-09-22
 
 `metadata_scheduler.py` now exposes a bounded exact-scope reservation used by

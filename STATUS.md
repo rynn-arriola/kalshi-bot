@@ -1,5 +1,21 @@
 # Current status
 
+## Breadth diagnosis: 14 orders; fresh reward catalog unavailable — 2026-09-22
+
+At 20:30:30 Eastern the existing child 46576 remained healthy/account-current,
+with 14 resting entries, zero positions and no accounting/risk blockers. The
+incentive catalog had expired and refresh exhausted three timeout attempts:
+`current_markets=0`, `exhausted=true`. This blocks new reward selection; healthy
+process status is not full functional readiness. Do not clear the hold or restart
+solely to reset its retry budget.
+
+Five offline probes reproduce catalog timeout/exhaustion, five-second quiet-book
+rejection, the 128-market live working set, 16-market/300-second rotation and
+successful 30-order ranking with sufficient fresh candidates. All five plus 136
+existing focused tests pass. These are diagnosis results, not fixes. See
+[FINDINGS section 125](FINDINGS.md) for evidence and its limits. No live mutation,
+restart or runtime-code change was performed during this diagnostic task.
+
 ## Live recovery completed; admission rotation observed — 2026-09-22
 
 The first live quoting generation reached 12 resting orders across six markets,
