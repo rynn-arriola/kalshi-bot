@@ -25,6 +25,18 @@ and explicitly withdraws the proposed fixed 60-market pool.
   launch. The preserved ledger and unchanged limits were used; no initialization
   or account-wide cancellation was performed during restart.
 
+### D-102 — Safety stop and immediate bounded close after live fill
+
+- **Status:** ACCEPTED operation, completed flat, 2026-09-23.
+- **Decision owner:** Operator: “Close position first then lets see where we at
+  on the other work.”
+- **Scope:** Cancel remaining entries through the supported stop, close only the
+  exact 10-contract KXONPOS position through the existing ledger-backed IOC path,
+  and verify venue/account flatness before further development.
+- **Boundary:** No new entries, ledger reset, account-wide cancel, risk change or
+  unrelated process termination. Production remains stopped after verified
+  flatness; another restart requires a separate instruction.
+
 ### D-100 — Repair live maintenance timing and rejected-reducer churn
 
 - **Status:** ACCEPTED, deployed and live-observed, 2026-09-23.

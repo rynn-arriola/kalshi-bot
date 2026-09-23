@@ -1,6 +1,6 @@
 # Current status
 
-## Safety-stopped with one open position — 2026-09-23
+## Stopped flat after recovery-only IOC — 2026-09-23
 
 A read-only WebSocket capacity probe began at 17:18:01.897 UTC. The venue fill
 preceded it at **17:18:01.626 UTC**, so the probe did not cause the fill and made
@@ -10,12 +10,19 @@ The opposite entry was canceled. A passive reduce-only bid at 73 cents received
 HTTP 400; account recovery then exhausted with 29 unrelated resting entries.
 
 The supported safety stop was invoked. It acknowledged all 29 remaining entry
-cancels from 17:22:47–17:22:56 UTC. Current account evidence now reports **zero
-resting orders**, the same -10 lot, no pending fill and no additional fill. Two
-more passive reduce-only bids at 73 cents were rejected with HTTP 400. Protected
-parent/child processes remain present to manage inventory, but control reports
-`attention_required/shutdown_timeout` because the account is not flat. No manual
-IOC, account-wide cancel, ledger reset or process termination was performed.
+cancels from 17:22:47–17:22:56 UTC. Two more passive reduce-only bids at 73 cents
+were rejected with HTTP 400. Recovery then remained exhausted past the existing
+15-minute IOC deadline. After exact PID/parent/session verification, only the
+stalled protected child was terminated; its Windows job closed the correlated
+parent. No broad process kill, account-wide cancel or ledger reset was used.
+
+The supported launcher started recovery-only generation 71. It reconciled the
+preserved lot and submitted the overdue ledger-backed IOC: 10 YES bought at 89
+cents at **17:35:02 UTC**. Gross trading loss was **$0.80**, fee **$0.0686**, net
+**-$0.8686**. Generation 71 then exited `STOPPED_FLAT` and disarmed. A separate
+authenticated GET-only check confirmed **zero resting orders and zero nonzero
+positions**; the ledger has zero lots and zero pending fills. Reported account
+balance after the close is **$496.1928**. The bot remains stopped.
 
 The capacity probe completed 128 and 256 markets and reached initial snapshot
 coverage in 0.34 and 0.56 seconds with 100% and 99.6% minimum steady freshness.

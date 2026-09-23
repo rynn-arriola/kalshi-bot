@@ -13,8 +13,10 @@ initial WebSocket delivery itself is not the demonstrated bottleneck.
 An unrelated live ask filled 0.27 seconds before the probe began. The probe made
 no account/order request. The fill left a -10 KXONPOS lot; three passive
 reduce-only bids were rejected with HTTP 400. Safety stop canceled the other 29
-entries, leaving zero resting orders while the protected inventory manager and
-position remain. This is not flatness and needs an operator exit-policy choice.
+entries. Recovery exhausted and prevented the overdue IOC from dispatching.
+Recovery-only generation 71 then reconciled the preserved position, bought 10
+YES at 89 cents, recorded a $0.80 gross loss plus $0.0686 fee, and exited
+`STOPPED_FLAT`. Independent venue reads confirmed zero orders and positions.
 
 ## 156. Generation 68 live-verifies owner-bound reference repair — 2026-09-23
 

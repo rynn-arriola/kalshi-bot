@@ -1,19 +1,20 @@
 # Active work queue
 
-## Immediate operator decision — one open KXONPOS position
+## Priority after verified flatness
 
-The safety stop canceled every resting entry, but a -10 YES-equivalent KXONPOS
-lot remains. Three passive reduce-only 73-cent bids were rejected with HTTP 400.
-The existing six-hour exit policy has not authorized an immediate marketable
-IOC. Obtain the operator's explicit choice: keep the existing timed exit policy,
-or authorize an immediate bounded IOC close. Do not restart entries, reset the
-ledger, kill the inventory manager or assume flatness.
-
-After the position is resolved and flatness is verified, build an order-disabled
-initial-ranking probe that compares two versus four book shards. Require full
-per-market outcome accounting and test shorter checkpoints. The existing probe
-proved fast initial snapshots but inadequate five-second freshness at 512 on
-two shards; do not infer that extra sockets alone solve metadata/ranking coverage.
+1. Fix the exercised exit/recovery failure before another trading restart:
+   passive `reduce_only` GTC received HTTP 400, recovery exhausted, and the due
+   15-minute IOC did not dispatch until a recovery-only replacement started.
+   Preserve exact ledger/account proof and reproduce both mechanisms in tests.
+2. Build an order-disabled initial-ranking probe comparing two versus four book
+   shards and shorter checkpoints. Require a reason for every market and repeated
+   1,024/1,024 coverage. The existing probe proved fast initial snapshots but
+   inadequate five-second freshness at 512 on two shards.
+3. Once source coverage is proven, require the 15 available market slots to use
+   $2 candidates whenever at least 15 simultaneously pass every gate. Keep $1
+   only as fallback; define controlled fallback upgrades without blind churn.
+4. Review/test/commit/push each unit. Keep production stopped until the exit
+   failure is fixed and a separate restart instruction is given.
 
 ## After D-101 live acceptance — generation 68 running
 
