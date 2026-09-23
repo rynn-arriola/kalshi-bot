@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-092 — Research and measure discovery alternatives before architecture changes
+
+- **Status:** ACCEPTED read-only research/testing, 2026-09-23 Eastern.
+- **Decision owner:** Operator: “Ok test it,” followed by research and comparison
+  before blindly building an architecture.
+- **Scope:** Bounded public-market WebSocket capacity measurements at increasing
+  reviewed/rewarded scope, current official API research and comparison of
+  broader subscriptions, ticker-assisted discovery and snapshot/metadata options.
+- **Boundary:** Diagnostic instruments only. No production configuration, risk,
+  order, ledger, restart or architecture change. Existing WS-first policy remains;
+  broad REST book polling is not implicitly approved. Present evidence and the
+  recommended implementation scope before adopting a production design.
+
 ### D-091 — Repair discovery coverage and bounded refill progress
 
 - **Status:** ACCEPTED implementation, 2026-09-22 Eastern.

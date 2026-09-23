@@ -1,5 +1,13 @@
 # What exists
 
+## Read-only discovery alternatives instruments — 2026-09-23
+
+`scripts/probe_book_capacity.py` measures staged broad-book subscriptions with
+the actual transport/parser and bounded resource/freshness targets.
+`scripts/probe_bulk_metadata.py` checks list/nested public metadata against
+existing parsers and sampled individual reads. [Results and limitations](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md).
+Neither changes production capacity, metadata loading, trading or configuration.
+
 ## Explicit public market-gate census — 2026-09-23
 
 `scripts/check_live_market_gates.py` checks current saved-reviewed reward markets

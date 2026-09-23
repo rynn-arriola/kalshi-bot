@@ -1,5 +1,20 @@
 # Current status
 
+## D-092 research favors broad WS books plus bulk metadata — 2026-09-23
+
+[Measured alternatives](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md): two WS
+connections delivered all 1,013 reviewed/rewarded books in 0.560s and met the
+45-second diagnostic targets (100% sampled freshness, 10.37% one-core CPU,
+67.19 MiB sampled RSS). Four bulk event requests supplied all 1,024 reviewed
+market definitions and milestone bindings in 2.228s. Sample detail comparisons
+matched existing parser outputs. No production code/configuration changed.
+
+This supersedes a presumptive slow rotating scanner recommendation: propose
+broad public books and shared bulk metadata instead, subject to approval and
+full-runtime verification. Fee-change completeness, production queue budgets,
+ranking/account latency and sustained load remain unverified. Bot stays stopped;
+host continuity and manual-cancellation reconciliation remain separate blockers.
+
 ## Read-only census: 156 passing markets; discovery speed still unresolved — 2026-09-23
 
 [Measured census](docs/VERIFY_MARKET_GATES_2026-09-23.md) examined 1,013 currently

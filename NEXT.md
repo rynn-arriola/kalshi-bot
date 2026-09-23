@@ -1,5 +1,14 @@
 # Active work queue
 
+## Priority after D-092 measurements — 2026-09-23
+
+Present/obtain approval for broad WS books plus shared bulk metadata using the
+[measured comparison](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md). Do not build
+the previously suggested rotating scanner by default. Implementation must
+preserve fee schedules, source freshness/generations and current trading limits;
+test actual reader queue budgets and ranking/account responsiveness. Only the
+read-only experiment is complete, not fast production ranking or restart gates.
+
 ## Priority: decide faster discovery after measured census — 2026-09-23
 
 [Census](docs/VERIFY_MARKET_GATES_2026-09-23.md) found 156 passing markets,

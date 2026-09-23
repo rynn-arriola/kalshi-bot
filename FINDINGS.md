@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 138. Broad books and bulk metadata remove assumed API bottlenecks — 2026-09-23
+
+MEASURED: all 1,013 currently reviewed/rewarded books arrived in 0.560s over two
+WS connections; four 45-second scope stages met diagnostic resource/freshness
+targets. Four bulk event requests returned 1,024 reviewed definitions and
+milestone bindings in 2.228s; rules matched and sampled parser/detail comparisons
+agreed. The venue does not force our observed 128/16/30s discovery schedule.
+
+LIMITS: diagnostic queues differ from production; full economics/fee schedules,
+account/ledger contention, sustained peak load and reconnects were not tested.
+This supports proposing broad WS books plus shared bulk metadata, not widening
+the live bot immediately or claiming subsecond complete ranking. Research also
+evaluates ticker hints, REST book snapshots and FIX as alternatives, without
+claiming unmeasured access/performance. [Evidence](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md).
+
 ## 137. Passing markets exist beyond seeds; discovery remains rate-limited by design — 2026-09-23
 
 MEASURED PUBLIC CENSUS: 1,013 current reviewed/rewarded markets examined in
