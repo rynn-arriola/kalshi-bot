@@ -49,10 +49,14 @@ waiting for a feed. Existing REST quota/concurrency and snapshot refresh remain.
 
 ## Verification and deployment
 
-Published/deployed as `bf03b56`; final normal-run acceptance is in STATUS. Live
+Published/deployed as `bf03b56`; timestamped normal-run evidence is in STATUS. Live
 waiting released at 120.132s with 864/1,024 evaluated, then reached 30 resting
 orders. This verifies the bounded partial-release path, not full simultaneous
 coverage. Subsequent markets continued entering the current ranking.
+
+The run later failed in the existing atomic status-publication path; recovery
+verified flatness and stopped. Sustained restart acceptance is blocked by that
+separate Windows I/O defect, not established by the temporary 30-order snapshot.
 
 Synthetic regressions exercise delayed opposite-shard priority, metadata delay,
 economic rejection, missing versus complete reward catalog, stale evidence at

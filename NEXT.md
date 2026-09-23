@@ -1,16 +1,17 @@
 # Active work queue
 
-## After D-096 — running; retain current evidence and scoped follow-ups
+## After D-096 — stopped; status-publication repair blocks sustained operation
 
 The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is published,
 deployed and live-observed. Complete suite: 1,554 tests, one expected skip. The
-final run has 30 resting entries and no observed inventory; STATUS owns the
-timestamped acceptance and its partial-coverage/estimate limitations.
+run reached 30 resting entries, then failed during atomic status publication.
+Recovery canceled all entries and verified flatness; STATUS owns current state.
 
-1. Continue bounded observation of fills, exits, actual reward evidence and source
-   availability. Use Windows delete-sharing for diagnostic status-file reads;
-   ordinary readers can interfere with atomic replacement. Investigate/harden the
-   standard status reader/writer path in a separate reviewed change.
+1. Reproduce and repair the Windows status-publication failure in a separate
+   reviewed change before another live restart. Delete-sharing diagnostic reads
+   alone did not resolve it. Inspect the actual reader/writer paths; test transient
+   contention and permanent failures without suppressing errors or weakening
+   runtime safeguards. No live bot is currently running.
 2. Before proposing another selection policy, measure simultaneously current
    metadata/ranking coverage: startup released after 120s with 864/1,024 evaluated.
    More elapsed time alone does not keep earlier metadata fresh. Do not relax

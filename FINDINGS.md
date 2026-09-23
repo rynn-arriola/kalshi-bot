@@ -1,8 +1,23 @@
 # Findings — kalshi-bot
 
+## 144. Status publication recurred after delete-sharing monitoring — 2026-09-23
+
+VERIFIED: normal child failure at 06:09:22 UTC and recovery-child failure at
+06:10:53 both record `PermissionError`, errno 13, at `startup.save_result`'s
+`os.replace` (line 83). Ordinary Python diagnostic monitors had already ended;
+the replacement monitor used ReadWrite|Delete sharing and also ended before
+the normal failure. The exact interfering handle/cause remains UNKNOWN.
+The prior hypothesis does not establish a fix or blame a particular reader.
+
+Existing bounded recovery ultimately verified STOPPED_FLAT at 06:11:55 UTC:
+zero orders, no positions, zero exposure. Read-only protected-role inspection
+found no parent/child; control generation 48 is disarmed with no recovery holds.
+No manual ledger/hold reset or force-kill was used. D-096's ranking acceptance
+below is historical evidence, not a claim of continued operation.
+
 ## 143. Startup coverage and current eligibility are separate — 2026-09-23
 
-VERIFIED LIVE in final run `8e905c9477a34c8484c55ab32be5144d`: zero entries during
+VERIFIED LIVE in run `8e905c9477a34c8484c55ab32be5144d`: zero entries during
 waiting; release at 120.132s with 864/1,024 evaluated; then 30 acknowledged orders
 by 06:08:37 UTC. At 06:09:15, no fills/positions and $126 reserved exposure.
 Matched selection-time samples put seven owned markets in $2+ and eight in
@@ -12,7 +27,7 @@ The first attempt's `startup.save_result` failed at `os.replace` with Windows
 PermissionError; it placed no orders and automatic recovery verified flat.
 Standard diagnostic opens may deny delete-sharing (exact interfering handle
 unidentified). A synthetic open-reader replacement passed with explicit
-ReadWrite|Delete sharing, used during successful final monitoring. Runtime
+ReadWrite|Delete sharing, used during the later monitoring. Runtime
 publication was not modified; general reader/writer hardening remains separate.
 
 VERIFIED OFFLINE: D-096's opposite-shard fixture holds an early $1 fallback,

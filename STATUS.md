@@ -1,9 +1,25 @@
 # Current status
 
-## D-096 deployed; initial checkpoint and restart observed — 2026-09-23
+## Current: stopped flat after recurring status-publication failure — 2026-09-23
+
+The restart is **not a sustained live success**. After the checkpoint below,
+the normal child failed at **06:09:22 UTC** with `PermissionError` (errno 13)
+in `startup.save_result` at `os.replace`. A recovery-only child hit the same
+failure at **06:10:53**. Subsequent recovery reached **STOPPED_FLAT at 06:11:55**:
+zero resting entries, no positions and zero reserved exposure. The supervisor
+disarmed; protected parent/child roles are both absent and recovery holds clear.
+
+The ranking fix remains deployed and verified. The separate status-file I/O
+failure blocks a reliable restart. It recurred after ordinary diagnostic readers
+were joined and delete-sharing monitoring was used, so that workaround is not
+a demonstrated fix. The interfering handle or other Windows cause is still
+unidentified. Do not restart repeatedly or weaken error handling; reproduce and
+repair the publication path in a separately reviewed work unit first.
+
+## D-096 historical live checkpoint before the failure
 
 Implementation `bf03b56` is published/deployed. The final authorized normal run
-`8e905c9477a34c8484c55ab32be5144d` (parent 46184, child 18516) is running. At
+`8e905c9477a34c8484c55ab32be5144d` (parent 46184, child 18516) was running. At
 **06:09:15 UTC**, protected parent/child presence, healthy supervisor, current
 account release and all four subscribed readers were verified; engine/dispatcher
 reported no failure, logging healthy with zero drops. **30 resting orders / 15
@@ -14,7 +30,7 @@ released as `timeout_partial`: **864/1,024 evaluated** (469/549 and 395/475 by
 shard). These frozen historical counts are not current coverage or eligibility.
 The first acknowledged creates were prepared at 06:07:09 UTC; 30 create ACKs
 were recorded by 06:08:37, plus 18 proven-NOT_SENT legs. No cancellation/replace
-mutations occurred in this final run. Later source changes remain rechecked.
+mutations had occurred at that observation. Later recovery canceled its orders.
 
 Matching the 15 owned markets to sampled pre-entry proposal estimates gives
 **7 $2+ and 8 $1–<$2** markets, versus zero $2+ in the previous observed slate.
