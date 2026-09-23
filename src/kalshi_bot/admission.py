@@ -203,9 +203,22 @@ class MarketAdmission:
             if after == before: continue
             future = asyncio.get_running_loop().create_future()
             change = ScopeChange(name,before,tuple(sorted(after)),candidates.source,future)
+            scope = (set(r.engine.market_shard)-before) | after
+            scheduler = r.metadata_scheduler
+            reserve = None if scheduler is None else getattr(scheduler,'request_rebind',None)
+            if reserve is not None and not reserve(scope):
+                self.deferred += 1
+                deferred = True
+                break
+            if scheduler is not None and not scheduler.can_rebind(scope):
+                self.deferred += 1
+                deferred = True
+                break
             if not await self.removable(change):
                 self.deferred += 1
                 deferred = True
+                cancel = None if scheduler is None else getattr(scheduler,'cancel_rebind',None)
+                if cancel is not None: cancel(scope)
                 continue
             self.pending = change
             self.state = 'rotating'
@@ -224,10 +237,16 @@ class MarketAdmission:
         # An idle-metadata/source race is not a stable slate. Retry through the
         # existing one-second backoff instead of sleeping a full catalog period.
         self.state = 'deferred' if deferred else 'stable'
+        if not deferred and r.metadata_scheduler is not None:
+            cancel = getattr(r.metadata_scheduler,'cancel_rebind',None)
+            if cancel is not None: cancel()
         return False
 
     def stop(self):
         self.stopping = True
+        if self.runtime.metadata_scheduler is not None:
+            cancel = getattr(self.runtime.metadata_scheduler,'cancel_rebind',None)
+            if cancel is not None: cancel()
         if self.pending is not None and not self.pending.result.done():
             self.pending.result.set_result(False)
         self.wake.set()

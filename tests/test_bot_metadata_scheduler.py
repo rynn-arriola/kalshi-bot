@@ -118,6 +118,41 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.defer = lambda:False
         await self.drain(4)
 
+    async def test_rebind_reservation_drains_workers_without_refilling_slots(self):
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+        async def slow(name):
+            entered.set()
+            await gate.wait()
+        self.reads.before = slow
+        self.connect()
+        self.scheduler.step()
+        await entered.wait()
+        self.scheduler.request('A')  # Coalesced follow-up work must remain queued.
+        self.assertTrue(self.scheduler.request_rebind(('B',)))
+        self.assertTrue(self.scheduler.status()['rebind_reserved'])
+        gate.set()
+        await self.drain(2)
+        self.assertFalse(self.scheduler.active)
+        self.assertTrue(self.scheduler.ready or self.scheduler.due)
+        self.assertTrue(self.scheduler.can_rebind(('B',)))
+        self.assertFalse(self.scheduler.can_rebind(('A','B')))
+        self.scheduler.rebind_scope(('B',))
+        self.assertFalse(self.scheduler.status()['rebind_reserved'])
+        self.assertEqual(self.service.tickers, {'B'})
+
+    async def test_abandoned_rebind_reservation_expires_and_work_resumes(self):
+        self.connect()
+        self.assertTrue(self.scheduler.request_rebind(('B',)))
+        self.scheduler.step()
+        self.assertFalse(self.scheduler.active)
+        self.assertEqual(set(self.scheduler.ready), {'A','B'})
+        self.advance(self.scheduler.REBIND_HOLD)
+        self.scheduler.step()
+        self.assertTrue(self.scheduler.active)
+        self.assertFalse(self.scheduler.status()['rebind_reserved'])
+        await self.drain(2)
+
     async def test_burst_coalesces_and_bounds_heap(self):
         self.connect()
         await self.drain(2)

@@ -1,5 +1,15 @@
 # What exists
 
+## Cooperative metadata/admission handoff — 2026-09-22
+
+`metadata_scheduler.py` now exposes a bounded exact-scope reservation used by
+`admission.py` before subscription rotation. It prevents continuous two-worker
+metadata refill from starving admission, without weakening the existing reward,
+account, inventory, source, capacity or timing gates. Reservations expire and
+have no order authority. Three regressions cover drain, expiry and retry; all
+1,453 repository tests pass with one expected Windows privilege skip. Production
+acceptance remains pending after reconciliation of nine prior resting orders.
+
 ## Current-path review repairs — 2026-09-22
 
 The [four final-review findings](docs/REVIEW_CURRENT_LIVE_PATH_2026-09-22.md) are

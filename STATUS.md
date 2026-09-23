@@ -1,5 +1,28 @@
 # Current status
 
+## Live market admission starvation fixed offline; recovery restart pending — 2026-09-22
+
+The first live quoting generation reached 12 resting orders across six markets,
+not because only six markets passed the reviewed reward gates, but because market
+admission could not acquire an idle metadata handoff. Two metadata workers
+immediately refilled their slots, while admission required all workers and
+dependency reads to be idle before replacing subscription scope. Admission
+therefore completed zero rotations despite 1,024 reviewed candidates.
+
+The scheduler now supports one exact, five-second admission reservation. Existing
+metadata work drains, no new worker starts during the reservation, and the same
+fresh account, inventory, timing, capacity and candidate proofs still precede a
+scope commit. Abandoned reservations expire and ordinary per-shard safety
+deferrals remain independent. The full offline suite passes: 1,453 tests in
+223.737 seconds, with one expected Windows privilege skip.
+
+The prior recovery-only child was entry-disabled and had zero positions. It
+canceled three orders, then exhausted accounting recovery with nine resting
+orders remaining. Graceful stop correctly timed out without replacement; the
+operator-authorized exact child PID was terminated. The supervisor is stopped
+at `attention_required` with no child. Publication and a controlled recovery
+restart are required before normal quoting can verify the admission fix live.
+
 ## First live opening failed closed; exact recovery correction verified — 2026-09-22
 
 The explicitly authorized supervised `-Live -Initialize` launch created the

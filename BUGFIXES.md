@@ -6,6 +6,27 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — metadata workers starved live market admission
+
+**Symptom.** The live bot rested 12 orders on six markets while a much broader
+reviewed candidate set existed; admission reported zero completed rotations.
+
+**Mechanism.** Scope replacement required metadata workers and shared dependency
+reads to be idle. The scheduler immediately filled each freed worker slot, so
+admission had no cooperative way to obtain that idle handoff.
+
+**Fix.** Add one exact, bounded metadata-rebind reservation. Existing work drains
+without launching replacements; admission then repeats every existing fresh
+account/inventory/source proof before committing. Reservations expire after five
+seconds and clear on rebind or shutdown. Preserve independent shard attempts
+when a non-metadata safety proof defers.
+
+**Verification.** New tests cover drain-without-refill, abandoned-reservation
+expiry and admission retry after drain. Focused scheduler/admission and composed
+live-runtime suites pass. The complete suite runs 1,453 tests successfully with
+one expected Windows privilege skip. Live expansion remains an operational
+acceptance step, not inferred from offline tests.
+
 ## 2026-09-22 — first live opening attribution and interrupted resume
 
 - **Symptom:** The first supervised live initialization captured a flat account

@@ -208,6 +208,30 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await self.cycle())
         self.assertFalse(self.readers[0].closed)
 
+    async def test_metadata_handoff_is_reserved_then_retried_after_workers_drain(self):
+        await self.prepare()
+        class Busy:
+            def __init__(self):
+                self.busy = True
+                self.target = None
+            def request_rebind(self, scope):
+                self.target = frozenset(scope)
+                return True
+            def can_rebind(self, scope):
+                return not self.busy and frozenset(scope) == self.target
+            def rebind_scope(self, scope):
+                if not self.can_rebind(scope): raise InvalidData('still busy')
+                self.target = None
+            def cancel_rebind(self, scope=None): self.target = None
+        scheduler = Busy()
+        with patch.object(self.r,'metadata_scheduler',scheduler):
+            self.assertFalse(await self.cycle())
+            self.assertEqual(scheduler.target, frozenset(('B',)))
+            self.assertFalse(self.readers[0].closed)
+            scheduler.busy = False
+            self.assertTrue(await self.cycle())
+        self.assertEqual(set(self.r.engine.market_shard), {'B'})
+
     async def test_due_safety_deadline_and_engine_step_take_priority(self):
         await self.prepare()
         self.r.engine.running_step = True

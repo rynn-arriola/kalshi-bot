@@ -10,6 +10,8 @@ from .quota import QuotaUnavailable
 
 
 class MetadataScheduler:
+    REBIND_HOLD = 5
+
     def __init__(self, service, *, defer=lambda: False, concurrency=2, attempts=3,
                  timeout=30, minimum_interval=.05, diagnostics=NO_LOG):
         self.service, self.defer, self.diagnostics = service, defer, diagnostics
@@ -28,18 +30,50 @@ class MetadataScheduler:
         self.wake = asyncio.Event()
         self.running = self.used = self.stopping = False
         self.last_clock = None
+        self.rebind_target = None
+        self.rebind_until = 0
         self.retired = {}  # Bounded retry tombstones; rotation cannot reset exhaustion.
         self.quota = getattr(service.reads, 'quota', None)
         if self.quota is not None:
             self.quota.listen(self.wake.set)
         service.listen(self._signal)
 
-    def can_rebind(self, tickers):
+    def _expire_rebind(self):
+        if self.rebind_target is not None and self.service.clock() >= self.rebind_until:
+            self.rebind_target = None
+            self.rebind_until = 0
+
+    def _rebind_retained(self, tickers):
         removed = self.service.tickers-set(tickers)
-        retain = set(self.retired) | {t for t in removed if t in self.failures or t in self.exhausted}
+        return set(self.retired) | {t for t in removed if t in self.failures or t in self.exhausted}
+
+    def request_rebind(self, tickers):
+        """Briefly quiesce new workers so an exact scope replacement can drain."""
+        target = frozenset(tickers)
+        if (self.stopping or self.service.closed
+                or len(target) > 1024 or len(self._rebind_retained(target)) > 1024):
+            return False
+        self.rebind_target = target
+        self.rebind_until = self.service.clock()+self.REBIND_HOLD
+        self.wake.set()
+        return True
+
+    def cancel_rebind(self, tickers=None):
+        target = None if tickers is None else frozenset(tickers)
+        self._expire_rebind()
+        if self.rebind_target is not None and (target is None or target == self.rebind_target):
+            self.rebind_target = None
+            self.rebind_until = 0
+            self.wake.set()
+
+    def can_rebind(self, tickers):
+        target = frozenset(tickers)
+        self._expire_rebind()
+        retain = self._rebind_retained(target)
         return (not self.stopping and not self.service.closed and not self.active
                 and not self.service.pending and not self.service.retiring
-                and not self.service.refreshing and len(retain) <= 1024)
+                and not self.service.refreshing and len(retain) <= 1024
+                and (self.rebind_target is None or self.rebind_target == target))
 
     def rebind_scope(self, tickers):
         if not self.can_rebind(tickers):
@@ -63,6 +97,7 @@ class MetadataScheduler:
                 self.not_before[ticker] = not_before
                 if exhausted: self.exhausted.add(ticker)
             self.request(ticker)
+        self.cancel_rebind(tickers)
         self.wake.set()
 
     def _signal(self, kind, ticker):
@@ -174,6 +209,7 @@ class MetadataScheduler:
     def step(self):
         """One bounded scheduling turn, also usable with injected fixture clocks."""
         self._clock_check()
+        self._expire_rebind()
         self._finished()
         now = self.service.clock()
         while self.heap and self.heap[0][0] <= now:
@@ -186,7 +222,8 @@ class MetadataScheduler:
                 self.service._clear_terms(ticker)
                 self.ready[ticker] = None
         quota_ready = self.quota is None or self.quota.poll()
-        if not self.stopping and self.service.connected and quota_ready and not self.defer():
+        if (not self.stopping and self.service.connected and quota_ready and not self.defer()
+                and self.rebind_target is None):
             while self.ready and len(self.active) < self.concurrency:
                 ticker, _ = self.ready.popitem(last=False)
                 self.not_before[ticker] = now+self.minimum_interval
@@ -201,6 +238,7 @@ class MetadataScheduler:
 
     def stop(self):
         self.stopping = True
+        self.cancel_rebind()
         self.service.disconnect()
         self.wake.set()
 
@@ -237,4 +275,5 @@ class MetadataScheduler:
         return dict(running=self.running, pending=len(self.due)+len(self.ready),
             active=len(self.active), heap=len(self.heap), exhausted=len(self.exhausted),
             started=self.started, completed=self.completed, high_water=self.high_water,
+            rebind_reserved=self.rebind_target is not None,
             live_authority=False)

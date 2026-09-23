@@ -1,5 +1,16 @@
 # Active work queue
 
+## Immediate live recovery and admission acceptance
+
+1. Publish the verified cooperative metadata/admission handoff.
+2. Start one supervised recovery-only generation and reconcile the nine prior
+   resting orders to verified flatness; do not enable entries during recovery.
+3. Start the normal supervised generation only after the recovery fence permits
+   it. Verify admission completes at least one rotation and that the bot selects
+   the best currently eligible markets up to the unchanged 30-order ceiling.
+4. If recovery or admission remains blocked, preserve the exact status/log
+   evidence and stop; do not bypass account, timing, reward or risk gates.
+
 ## First supervised opening recovery
 
 The first authorized launch failed closed before any order because the retained

@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+# 124. Six live markets were an admission handoff failure, not the eligible universe — 2026-09-22
+
+VERIFIED from generation 12 status and executable control flow: discovery held
+1,024 reviewed candidates and the incentive catalog held roughly 5,000 current
+markets, but admission completed zero rotations. `MetadataScheduler.step()`
+continuously launched up to two refreshes, while `MarketAdmission.removable()`
+required the scheduler and its shared dependency reads to be completely idle.
+The required idle instant was therefore not a reliable handoff protocol.
+
+The repair adds one bounded exact-scope reservation: active reads finish, queued
+metadata remains queued, and admission retries through its existing one-second
+backoff. The reservation cannot authorize a scope change, expires after five
+seconds, and is canceled on successful rebind or stop. All existing account,
+inventory, source, timing, capacity and ownership proofs remain in force. The
+full 1,453-test suite passes with one expected skip. Live admission expansion is
+not yet verified; nine old resting orders must first be reconciled.
+
 ## 123. First live opening retained exact personal cash but could not attribute it — 2026-09-22
 
 VERIFIED LIVE ACCOUNT / ZERO MUTATIONS: the first explicitly authorized
