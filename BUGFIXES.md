@@ -21,6 +21,8 @@ REST recovery; terminal tests prove the fence succeeds only with exact identity
 and a live parent while a trading pulse remains rejected. The complete suite ran
 1,591 tests successfully with one expected Windows privilege skip. Live speed
 must be measured on the next operationally required controlled stop.
+Recovery-only generation 62 subsequently completed `STOPPED_FLAT` and disarmed
+normally, live-verifying the terminal-fence half of the repair.
 
 ## 2026-09-23 — passive deferral, cancellation order and resting cap enforcement
 

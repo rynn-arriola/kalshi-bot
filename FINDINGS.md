@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 150. Recovery-only fencing and normal restart succeed after D-099 — 2026-09-23
+
+VERIFIED LIVE: after a fresh 0-order/0-position venue check, generation 62
+completed recovery-only as `STOPPED_FLAT`, cleared its recovery reasons and
+disarmed without the prior shutdown timeout. Normal generation 63 then became
+healthy and reached 30 resting orders/no reported position with a current
+account snapshot and $118.20 reserved exposure at 13:23:56 UTC. Initial ranking
+released at 120.14 seconds with 794/1,024 evaluated. This proves the terminal
+fence and restart path for this run, not accelerated live-drain latency, payout
+or profitability.
+
 ## 149. Per-order recovery made shutdown slow, then terminal fencing failed — 2026-09-23
 
 VERIFIED LIVE: the normal stop path canceled 30 resting entries one at a time

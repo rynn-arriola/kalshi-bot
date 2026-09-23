@@ -1,12 +1,34 @@
 # Current status
 
+## D-099 deployed and live restart accepted — 2026-09-23
+
+Canonical source commit `ad96429` is deployed. A fresh pre-start venue check at
+**13:18:08 UTC** verified zero resting orders and zero nonzero positions without
+modifying the production ledger. Supervisor generation 62 then ran recovery-only,
+reported `STOPPED_FLAT`, cleared every recovery reason and disarmed normally;
+this live-verifies the repaired terminal `FENCE_ACK` path.
+
+The subsequent normal generation 63 is healthy: parent PID 11100, child PID
+42520, runtime `0017eba031044b0e8b02825d416641d5`. At **13:23:56 UTC** it had
+**30 resting orders, no reported positions, $118.20 reserved exposure**, a
+current account snapshot, current entry authority, all four readers subscribed,
+healthy logging with zero drops, and no risk, accounting, control or recovery
+hold. Initial ranking released at its 120-second bound with 794/1,024 markets
+evaluated across both book shards. Active settled six-hour P&L remains
+**-$1.551600**.
+
+This accepts the restart and terminal-fence repair. The accelerated multi-order
+drain remains fully tested but has not been timed in another live stop; do not
+interrupt the healthy bot solely to manufacture that measurement. Resting
+orders and estimated reward do not prove payout or profitability.
+
 ## Emergency cancellation complete; shutdown repair verified — 2026-09-23
 
 The operator ordered an immediate force cancellation after the normal drain was
 observed taking too long. The exact protected parent/child processes were stopped
 and the authenticated account-wide cancel endpoint returned HTTP 204. A fresh
 GET-only account check at **12:43:19 UTC** then verified **0 resting orders and
-0 nonzero position rows**. The bot remains stopped while this repair is deployed;
+0 nonzero position rows**. The bot remained stopped while this repair was deployed;
 the active six-hour settled trading result is **-$1.551600**.
 
 The preceding normal drain did eventually cancel all 30 entries, but needed

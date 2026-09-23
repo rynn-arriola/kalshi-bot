@@ -1,18 +1,15 @@
 # Active work queue
 
-## Immediate controlled deployment and restart — 2026-09-23
+## After D-099 live acceptance — 2026-09-23
 
-1. Publish and fast-forward the reviewed paused-entry drain/terminal-fence fix
-   while the bot is stopped.
-2. Reconfirm zero venue orders and positions with GET-only evidence, then use the
-   already authorized normal supervisor restart with the preserved ledger and
-   unchanged limits. Do not initialize or clear recovery history.
-3. Accept the restart only with correlated parent/child identity, current account
-   authority, healthy sources and no unresolved recovery hold. Observe actual
-   orders and positions; estimated reward is not paid reward or profit.
-4. Measure the next real controlled drain rather than claiming a live latency
-   from synthetic tests. The normal running bot should not be stopped solely to
-   manufacture that measurement.
+1. Monitor generation 63 for fills, positions, exits, same-market maintenance,
+   current reward reflection and any supervisor recovery. Estimated reward is
+   not paid reward or profit.
+2. On the next operationally necessary controlled stop, measure the accelerated
+   30-order drain and verify a normal `STOPPED_FLAT` terminal result. Do not stop
+   the healthy bot solely to manufacture this measurement.
+3. Preserve the current ledger and configured limits. Investigate measured live
+   failures before adding more architecture or relaxing any gate.
 
 ## D-098 next restart bundle
 
