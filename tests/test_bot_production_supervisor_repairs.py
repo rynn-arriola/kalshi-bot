@@ -93,6 +93,8 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
             stack.enter_context(patch.object(child.LaunchInputs, 'load',
                                              return_value=NS(tickers=('A',))))
             stack.enter_context(patch.object(child, 'wait_handle', return_value=False))
+            prepared = stack.enter_context(patch.object(child, '_prepare_candidates',
+                new=AsyncMock(return_value={'state':'CANDIDATES_PREPARED'})))
             stack.enter_context(patch.object(child, 'run_live', runtime))
             stack.enter_context(patch.object(child, '_publish_fence', new=AsyncMock()))
             sent = stack.enter_context(patch.object(child, '_send_result', new=AsyncMock()))
@@ -102,6 +104,7 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
                 Endpoint(receive), None, lambda _message:True,
                 NS(changed=Event()), NO_LOG), 2)
             self.assertEqual(code, 27)
+            prepared.assert_awaited_once()
             self.assertEqual(acquired, [False])
             with WindowsLease(identity):
                 pass
@@ -129,6 +132,12 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         self.assertGreater(endpoint.receives, 0)
         self.assertTrue(cleaned.is_set())
+
+    async def test_recovery_only_does_not_expand_candidate_scope(self):
+        mode = child.production_child_mode(initialize_approved=False,
+            ledger_exists=True, recovery_only=True)
+        self.assertTrue(mode.recovery_only)
+        self.assertFalse(mode.initialize)
 
     async def test_inherited_cooldown_wait_remains_supervised(self):
         restrictions = RuntimeRestrictions()

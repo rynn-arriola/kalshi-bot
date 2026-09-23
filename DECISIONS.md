@@ -10,6 +10,17 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-095 — Controlled live restart after D-094 repair
+
+- **Status:** ACCEPTED operation, 2026-09-23 Eastern.
+- **Decision owner:** Operator: “Restart.”
+- **Scope:** Start the existing normal production supervisor with the preserved
+  ledger, reviewed inputs, strategy, risk limits and capital limits. Observe the
+  launch through current process, account, source, admission and order evidence.
+- **Boundary:** No initialization, configuration/risk changes, force-kill or
+  second process. Existing readiness gates remain authoritative; if they block,
+  diagnose rather than bypass them.
+
 ### D-094 — Repair host continuity and verify stopped-account recovery
 
 - **Status:** ACCEPTED implementation/verification, 2026-09-23 Eastern.

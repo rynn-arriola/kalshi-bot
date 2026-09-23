@@ -6,6 +6,22 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-23 — expired public candidate scope blocked normal restart
+
+**Mechanism.** Candidate preparation ran only for first-ledger initialization.
+A later normal restart loaded the prior scope directly, so any expired timing
+review blocked before fresh account reconciliation even though preparation is
+public-only and already supervised.
+
+**Fix.** Every explicit normal supervisor arm now runs the existing bounded,
+credential-free candidate preparation before input loading. Recovery-only stays
+narrow and does not expand discovery scope. All subsequent source/account/order
+gates remain unchanged.
+
+**Verification.** Production startup regressions assert normal preparation and
+the existing supervised stop/cancellation behavior; recovery-mode construction
+remains non-initializing. Final suite results are recorded in STATUS.
+
 ## 2026-09-23 — terminal-dependent host and misleading saved health
 
 **Mechanism.** The foreground launcher coupled supervisor life to its terminal;

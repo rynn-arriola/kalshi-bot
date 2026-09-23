@@ -38,9 +38,12 @@ a claim that a reward will be paid or that a market is profitable.
 ## Operation and safety
 
 `python -B -m kalshi_bot.live refresh-candidates` refreshes the ignored local
-input while no ledger exists or saved shutdown is verified flat. The first
-explicit `run --live --initialize` performs the same public preparation before
-loading credentials, creating a live session or constructing order transport.
+input while no ledger exists or saved shutdown is verified flat. Every explicit
+normal supervised launch performs the same public preparation before loading
+credentials, creating a live session or constructing order transport. This
+prevents expired reviewed markets from blocking a later normal restart.
+Recovery-only never performs broad preparation and remains limited to durable
+owners.
 An existing non-flat/uncertain ledger blocks explicit refresh. The original
 one-market input is backed up once under ignored `backups/`.
 

@@ -455,7 +455,11 @@ async def _run_live(args, scope, endpoint, protocol, control, power, diagnostics
                                      restrictions, status_sequence):
             return await early_stop()
         progress_sequence = status_sequence[0]
-        if initialize:
+        # Every explicit normal arm refreshes the public-only reviewed scope.
+        # Saved candidates can expire between runs; failing before account
+        # reconciliation would otherwise make a normal restart impossible.
+        # Recovery-only stays narrow and never expands its owner scope.
+        if not mode.recovery_only:
             refresh = await _prepare_candidates(args, endpoint, control, stop,
                                                  pulse, diagnostics, run_args,
                                                  status_sequence)

@@ -1,5 +1,16 @@
 # Current status
 
+## D-095 normal-restart candidate refresh verified; launch pending — 2026-09-23
+
+The operator explicitly authorized a controlled live restart. The prelaunch
+input check found expired reviewed markets and correctly blocked before trading.
+Normal supervised launch previously refreshed public candidates only for a new
+ledger; it now runs the same bounded credential-free preparation on every normal
+explicit arm. Recovery-only remains narrow. Focused restart/candidate suites:
+**39/39 pass**. Complete suite: **1,537 run / 1,536 passed / one expected Windows
+privilege skip**, 245.514s. No bot process or order action occurred during this
+repair. Publish the verified change before invoking the authorized launcher.
+
 ## D-094 host/account blockers repaired; bot stays stopped — 2026-09-23
 
 [Repair and evidence](docs/BUILD_HOST_CONTINUITY.md): the default explicit live
