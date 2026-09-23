@@ -1,5 +1,28 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — final priority-admission review exposed three false states
+
+**Mechanisms:** Any candidate blocker was treated as transient, so a fresh
+`market_inactive` result could preserve the old $2 hint and indefinitely block
+$1 fallback. The revalidation batch advanced only when completely empty, so one
+stalled member prevented all later remembered candidates from entering the
+window. Dispatch-selection evidence was written while preparing a candidate,
+allowing an attempt revoked before transport to look like an admitted order.
+
+**Fix:** Only missing timing/fee proof and exhausted metadata remain pending;
+fresh definitive candidate blockers retire the hint. Each proposal tops the
+bounded pending set back up without duplicating current/protected work. Entry
+evidence is staged by exact batch/client IDs and published only from the
+dispatcher result for ACK or a partial venue outcome; callback failure stops the
+dispatcher.
+
+**Verification:** Regressions cover hard ineligibility versus temporary
+exhaustion, a stalled member plus later-batch progression, successful ACK
+correlation and revoked-not-sent omission. Focused dispatch/selection/runtime
+verification passes 152 tests. The complete suite passes 1,638 tests with one
+expected Windows privilege skip; compile and whitespace checks pass. Reviewed
+source commit: `f6b9e3f`.
+
 ## 2026-09-23 — historical coverage forgot temporarily invalidated priority rows
 
 **Mechanism:** Startup coverage remembered only that a ticker had once been

@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 160. Priority memory needs resolution classes and outcome correlation — 2026-09-23
+
+VERIFIED SYNTHETICALLY: fresh hard ineligibility and unavailable proof cannot use
+the same retention rule. `market_inactive` must retire an obsolete $2 hint so
+fallback can proceed; `metadata_retry_exhausted` must preserve the hint and defer
+fallback until proof is available. A bounded work window also has to refill as
+members resolve—waiting for an entirely empty set lets one stalled candidate
+starve every later candidate. Finally, candidate preparation is not evidence of
+admission: a revoked `NOT_SENT` attempt produces no admission record, while an
+ACK is correlated to its exact batch, client IDs and venue order IDs. These are
+offline source/runtime results; generation 76 still runs older code and no live
+behavior is inferred.
+
 ## 159. Complete historical coverage can still admit fallback prematurely — 2026-09-23
 
 VERIFIED SYNTHETICALLY: with unchanged books/rewards, the real selector proposes

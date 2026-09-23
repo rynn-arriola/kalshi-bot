@@ -1,6 +1,6 @@
 # Priority admission investigation — 2026-09-23
 
-Status: investigation complete; D-105 implementation published at `9a20e57` and not deployed.
+Status: investigation complete; reviewed D-106 repair published at `f6b9e3f` and not deployed.
 No configuration, order, ledger or runtime operation changed. Investigated Kalshi
 source: `bef23eb`. Polymarket reference:
 `c4e8af20136e0b66b4f57e619c7e6eba0b6a7c42`, inspected read-only.
@@ -144,10 +144,13 @@ memory/network work; safety priority. Measure selection-to-first-pair and
 selection-to-full-cap latency separately from initial book delivery.
 
 D-105 implements bounded advisory memory and a two-times-vacancy refresh batch,
-with owned metadata as a higher scheduler tier. Missing/exhausted evidence stays
-pending and no hint grants order authority. Regressions cover source invalidation,
-fresh downgrade/removal, later batches, actual runtime early release, continued
-coverage, event-driven wakeup, scheduler ordering and bounded dispatch-selection
-evidence. The complete offline suite passes 1,636 tests with one expected Windows
-privilege skip. Live latency and composition remain unverified until a separately
+with owned metadata as a higher scheduler tier. D-106's final review correction
+classifies missing/exhausted evidence as pending but retires a hint on fresh hard
+ineligibility, refills partial batches around stalled candidates, and joins
+dispatch-selection evidence to ACK/partial outcomes instead of preparation.
+Regressions cover source invalidation, fresh downgrade/removal, temporary retry
+exhaustion, stalled/later batches, actual runtime early release, continued
+coverage, event-driven wakeup, scheduler ordering and exact outcome evidence.
+The complete offline suite passes 1,638 tests with one expected Windows privilege
+skip. Live latency and composition remain unverified until a separately
 authorized deployment/restart.

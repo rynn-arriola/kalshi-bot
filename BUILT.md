@@ -1,5 +1,17 @@
 # What exists
 
+## D-106 reviewed priority-admission corrections — 2026-09-23
+
+Priority resolution now distinguishes recoverable missing proof from fresh hard
+ineligibility, the two-times-vacancy window refills as individual candidates
+resolve, and bounded admission evidence is joined to the dispatch result rather
+than candidate preparation. ACK and partial venue outcomes retain exact batch,
+client-order and returned order identifiers; unsent/revoked attempts are omitted.
+The dispatcher owns the synchronous result callback and fails closed if it
+cannot publish the outcome. The complete suite passes 1,638 tests with one
+expected Windows privilege skip. Reviewed source commit: `f6b9e3f`; deployment
+state belongs in `STATUS.md`.
+
 ## D-105 remembered-priority revalidation — 2026-09-23
 
 Runtime selection keeps bounded, non-authoritative memory of previously current

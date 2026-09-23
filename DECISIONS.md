@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-106 — Repair final priority-admission review findings
+
+- **Status:** ACCEPTED, implemented and published; not deployed, 2026-09-23.
+- **Decision owner:** Operator: “Fix it,” after the end-to-end review identified
+  three concrete D-105 defects.
+- **Scope:** Retire remembered priority on fresh definitive ineligibility while
+  preserving it for missing/temporarily exhausted proof; continuously refill
+  the bounded revalidation window around stalled candidates; and publish
+  dispatch-selection evidence only after an ACK or partial venue outcome.
+- **Boundary:** No strategy, limits, source concurrency, configuration, runtime,
+  deployment, restart, cancel or live-order change is included.
+
 ### D-105 — Revalidate remembered $2 candidates before $1 fallback
 
 - **Status:** ACCEPTED, implemented and published; not deployed, 2026-09-23.

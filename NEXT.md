@@ -1,11 +1,12 @@
 # Active work queue
 
-## D-105 priority revalidation
+## D-106 reviewed priority revalidation
 
-The verified [priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md)
-is published at `9a20e57`. Keep generation 76 and its current incumbents
-untouched. Deployment/restart remains a separate operator decision. If later
-deployed, measure priority-refresh latency and quota load before considering any
+The verified [priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md),
+including its final review corrections, is published at `f6b9e3f`. Keep
+generation 76 and its current incumbents untouched. Deployment/restart remains a
+separate operator decision. If later deployed, measure priority-refresh latency,
+batch progression, admitted-tier evidence and quota load before considering any
 REST-concurrency change.
 
 
