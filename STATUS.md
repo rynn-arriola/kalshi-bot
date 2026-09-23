@@ -28,9 +28,11 @@ because 1,815 of 1,895 records were empty-market `inventory_plan_changed`
 events across broad discovery; D-100 suppresses that noise. The replacement
 child logged 48 expected publication races and four quota deferrals as ERROR;
 these now retry/defer without spending market failure attempts or claiming a
-failed dependency. Its readers, engine, dispatcher and logging remain alive,
+failed dependency. Its 533 no-report reward attempts are also changed to local
+deferrals with no queue request, followed by immediate reflection after a
+successful recovery. Its readers, engine, dispatcher and logging remain alive,
 but recovery is blocked until a reviewed deployment/restart. Final verification:
-**1,610 tests passed, one expected Windows privilege skip**, 267.084 seconds.
+**1,611 tests passed, one expected Windows privilege skip**, 259.825 seconds.
 Reviewed implementation commit `5df66f7` is published to `origin/master`.
 The isolated checkout and remote contain that commit; the canonical live checkout
 deliberately remains on `ad96429`, so publication is not deployment.

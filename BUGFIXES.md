@@ -16,6 +16,9 @@ the new current receipt in the same SQLite transaction. Archived rows remain
 audit evidence and an explicit continuity blocker, never current account
 authority. Overtaken metadata reads retry without consuming failure budget;
 quota holds defer without dependency-failure logs.
+Reward reflection also waits for a current clean account report instead of
+counting the missing prerequisite as a failed reflection every four seconds;
+successful recovery already requests an immediate join.
 
 **Verification:** Rollback injection preserves all hot rows when archival fails;
 scope/time tests prevent unrelated archives from blocking; an existing schema-5

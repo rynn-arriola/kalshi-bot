@@ -43,6 +43,7 @@ class RuntimeRewards:
         self.wake = asyncio.Event()
         self.reflection_requested = False
         self.reflection_attempts = self.reflection_completed = self.reflection_failures = 0
+        self.reflection_deferred = 0
         self.checkpoint_saves = self.checkpoint_failures = 0
         self.last_reflection_at = self.last_checkpoint_at = None
         self.last_reflection_error = self.last_checkpoint_error = None
@@ -353,6 +354,10 @@ class RuntimeRewards:
             self.reflection_requested = True
             self.wake.set()
 
+    def _reflection_ready(self):
+        report = self.runtime.account.current_report(self.runtime.now())
+        return report is not None and report.audit is not None and not report.audit.blockers
+
     async def close(self):
         self.stop()
         task = self.task
@@ -382,7 +387,14 @@ class RuntimeRewards:
                 if (self.runtime.reads is not None
                         and (now >= next_reflection or self.reflection_requested)):
                     self.reflection_requested = False
-                    await self._reflect()
+                    if self._reflection_ready():
+                        await self._reflect()
+                    else:
+                        # Account recovery owns the missing prerequisite and
+                        # requests an immediate join when it succeeds. Do not
+                        # count a local no-report check as a failed reflection.
+                        self.reflection_deferred += 1
+                        self._invalidate_all()
                     next_reflection = self.runtime.clock()+self.reflection_interval
                 if self.checkpoint is not None and self.runtime.clock() >= next_checkpoint:
                     await self._save()
@@ -414,6 +426,7 @@ class RuntimeRewards:
                     reflection_attempts=self.reflection_attempts,
                     reflection_completed=self.reflection_completed,
                     reflection_failures=self.reflection_failures,
+                    reflection_deferred=self.reflection_deferred,
                     reflection_requested=self.reflection_requested,
                     checkpoint_configured=self.checkpoint is not None,
                     checkpoint_saves=self.checkpoint_saves,
@@ -426,7 +439,8 @@ class RuntimeRewards:
                     last_checkpoint_error=self.last_checkpoint_error,
                     estimate_only=True, paid_rewards_verified=False,
                     production_reflection_available=(self.runtime.reads is not None
-                        and self.started and not self.stopping and not self.failed),
+                        and self.started and not self.stopping and not self.failed
+                        and self._reflection_ready()),
                     program_progress=self._progress_status(), authorized=False)
 
     def _progress_status(self):

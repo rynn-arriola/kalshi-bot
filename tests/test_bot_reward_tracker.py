@@ -549,6 +549,19 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             await task
         self.assertFalse(self.r.running)
 
+    async def test_missing_account_report_defers_without_false_reflection_failure(self):
+        self.r.reads = QueueReads([])
+        self.r.account._invalidate()
+        await self.rewards.start()
+        task = asyncio.create_task(self.rewards.run())
+        await until(lambda:self.rewards.reflection_deferred == 1)
+        self.assertEqual(self.rewards.reflection_attempts,0)
+        self.assertEqual(self.rewards.reflection_failures,0)
+        self.assertEqual(self.r.reads.calls,[])
+        self.assertFalse(self.rewards.status()['production_reflection_available'])
+        self.rewards.stop()
+        await task
+
     async def test_stop_during_queue_read_cannot_publish_late_proof(self):
         await self.owned()
         entered,release = asyncio.Event(),asyncio.Event()

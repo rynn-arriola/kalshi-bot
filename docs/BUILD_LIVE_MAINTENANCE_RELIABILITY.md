@@ -83,10 +83,16 @@ without incrementing the market failure streak. Quota holds emit a deferred INFO
 event and retain the scheduler's existing infrastructure wait. Real malformed,
 conflicting or exhausted metadata still fails closed.
 
+Final status review found 533 reward-reflection failures while the replacement
+child had no current account report. Those attempts failed before any queue REST
+request, but still wasted a four-second telemetry wake and obscured real failures.
+The reward service now defers locally until the exact report prerequisite is
+current; successful account recovery already requests the immediate reflection.
+
 Focused recovery/metadata review: 237 tests passed. A disposable production-
 scale run committed 4,097 receipts in 2.175 seconds, leaving one hot receipt and
 one exact 4,096-receipt archive of 88,318 bytes with no active coverage gap.
-No live database was modified or copied. Final complete suite: **1,610 tests
-passed, one expected Windows privilege skip**, 267.084 seconds. Publication and
+No live database was modified or copied. Final complete suite: **1,611 tests
+passed, one expected Windows privilege skip**, 259.825 seconds. Publication and
 deployment state remain owned by STATUS. The reviewed implementation was
 published as `5df66f7`; the active production checkout was not changed.
