@@ -9,8 +9,8 @@ from .command_capacity import (DEFAULT_POLICY, active_episode_evidence,
     consume_cancel_capacity, consume_reduction_capacity, ledger_id,
     episode_for_client, maybe_retire_episode, release_client_credits, status,
     validate_capacity)
-from .command_types import (CancelEvidence, CommandDenied, PreparationResult,
-    PreparedBatch, PreparedMutation, ReductionEvidence, SendResult)
+from .command_types import (CancelEvidence, CommandDenied, MutationHTTPFailure,
+    PreparationResult, PreparedBatch, PreparedMutation, ReductionEvidence, SendResult)
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 from .observability import NO_LOG
 
@@ -594,7 +594,7 @@ def abort_sending_batch_before_submission(ledger, batch, *, writer_epoch,
 
 
 def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
-    if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
+    if operation not in {'unknown', 'ack', 'rejected'} or not isinstance(receipt, PreparedMutation):
         raise InvalidData('invalid mutation outcome')
     if receipt.ledger_id != ledger_id(ledger) or receipt.writer_epoch != writer_epoch:
         raise InvalidData('mutation outcome belongs to another ledger')
@@ -609,19 +609,27 @@ def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
     if operation == 'ack':
         response = json.dumps(acknowledgement(receipt.kind, receipt.request, document),
                               sort_keys=True)
+    elif operation == 'rejected':
+        if receipt.kind != 'create' or document != {'state':'rejected', 'status':400}:
+            raise InvalidData('unsupported deterministic mutation rejection')
+        response = json.dumps(document, sort_keys=True, separators=(',', ':'))
+    phase = {'unknown':'UNKNOWN', 'ack':'ACK', 'rejected':'REJECTED'}[operation]
     ledger.connection.execute('UPDATE mutation_attempts SET phase=?,response=? WHERE id=?',
-                              ('UNKNOWN' if operation == 'unknown' else 'ACK',
-                               response, receipt.attempt_id))
+                              (phase, response, receipt.attempt_id))
     ledger.connection.execute(
         'UPDATE command_authorizations SET state=? WHERE id=?',
-        ('UNKNOWN' if operation == 'unknown' else 'ACK', receipt.authorization_id))
+        (phase, receipt.authorization_id))
     if receipt.kind == 'create':
         state = ledger.connection.execute('SELECT state FROM intents WHERE client_id=?',
                                           (receipt.subject_id,)).fetchone()
         if state is None:
             raise InvalidData('mutation create intent missing')
-        if state[0] == 'SENDING':
+        if state[0] == 'SENDING' and operation == 'unknown':
             ledger.transition_intent(receipt.subject_id, 'UNKNOWN')
+        elif state[0] == 'SENDING' and operation == 'rejected':
+            ledger.transition_intent(receipt.subject_id, 'REJECTED')
+            release_client_credits(ledger, receipt.subject_id)
+            maybe_retire_episode(ledger, receipt.episode_id)
 
 
 def record_batch_outcome(ledger, batch, document, now, *, writer_epoch):
@@ -824,13 +832,23 @@ class InjectedExecutor:
                 ack = acknowledgement(receipt.kind, durable_request, reply)
             except BaseException as exc:
                 persistence_error = None
+                rejected = (type(exc) is MutationHTTPFailure and exc.status == 400
+                            and receipt.kind == 'create')
                 if not finalized:
                     try:
                         await self._retain(
-                            self.writer.record_outcome('unknown', receipt, {}, self.now()))
+                            self.writer.record_outcome('rejected' if rejected else 'unknown',
+                                receipt, {'state':'rejected', 'status':400} if rejected else {},
+                                self.now()))
                         finalized = True
                     except BaseException as outcome_exc:
                         persistence_error = outcome_exc
+                if rejected and persistence_error is None:
+                    self.failed = False
+                    self.diagnostics.emit('mutation_rejected', operation=receipt.authorization_id,
+                                          http_status=400)
+                    self.diagnostics.ensure_healthy()
+                    return AttemptResult(receipt.authorization_id, 'REJECTED', None)
                 if self.failed:
                     try:
                         self.diagnostics.emit('mutation_unknown', error=exc,

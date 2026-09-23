@@ -4,25 +4,11 @@ from dataclasses import dataclass
 import inspect
 import math
 
+from .command_types import MutationHTTPFailure
 from .execution import (acknowledgement, batch_acknowledgement,
                         validate_entry_pair, validate_request)
 from .values import InvalidData, integer
 from .write_budget import WriteBudget
-
-
-class MutationHTTPFailure(InvalidData):
-    """Transport reports only a numeric non-success status, never a raw body.
-
-    An observed HTTP failure is not durable rejection/no-fill evidence. The
-    executor still records UNKNOWN and holds its authority for reconciliation.
-    """
-    def __init__(self, status):
-        self._status = integer(status, 300, 599)
-        super().__init__('mutation_http_failure')
-
-    @property
-    def status(self):
-        return self._status
 
 
 @dataclass(frozen=True)
@@ -86,7 +72,8 @@ class MutationOutcomeOwner:
                 status = exc.status if type(exc) is MutationHTTPFailure else None
                 if status is not None:
                     integer(status, 300, 599)
-                outcome = ('rate_limited' if status == 429 else 'http_failure' if status is not None
+                outcome = ('rejected' if kind == 'create' and status == 400
+                           else 'rate_limited' if status == 429 else 'http_failure' if status is not None
                            else 'interrupted' if isinstance(exc, asyncio.CancelledError)
                            else 'uncertain')
                 notice = MutationNotice(*scope, outcome, status)

@@ -358,7 +358,7 @@ class MutationDispatcher:
                         order_ids=result.order_ids)
                 return DispatchResult('ACK', ticker, priority, current.attempt_id,
                                       order_ids=result.order_ids)
-            return DispatchResult('ACK', ticker, priority, current.attempt_id,
+            return DispatchResult(result.phase, ticker, priority, current.attempt_id,
                                   order_id=result.order_id)
         except BaseException:
             if receipt is not None and not consumed:

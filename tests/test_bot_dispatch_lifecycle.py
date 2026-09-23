@@ -148,6 +148,21 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.request())
         self.assertEqual(len(self.closed_peers), len(self.f.runtime.specs))
 
+    async def test_create_400_rejection_does_not_crash_runtime(self):
+        task = await self.start(runtime=True)
+        async def fail(*args):
+            raise MutationHTTPFailure(400)
+        self.f.dispatcher.executor.invoke.invoke = fail
+        self.request()
+        await until(lambda: self.service.last_outcome is not None
+                    and self.service.last_outcome['state'] == 'REJECTED')
+        self.assertFalse(task.done())
+        self.assertFalse(self.service.failed)
+        self.assertFalse(self.f.dispatcher.executor.failed)
+        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'REJECTED')
+        self.f.runtime.stop()
+        await task
+
     async def test_late_failure_during_stop_is_not_reported_healthy(self):
         task = await self.start(runtime=True)
         entered = asyncio.Event()

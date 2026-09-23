@@ -74,7 +74,7 @@ raw error detail for safety; reproduce using the indicated source location.
 | `recovery_failed`, `recovery_incomplete`, `recovery_exhausted` | Exceptions or incomplete proof; inspect generation/attempt. `recovery_repaired` still does not allow entries. |
 | `rest_retry`, `rest_failed`, `rest_transport_failed` | Inspect endpoint template, HTTP status or safe error type. Existing three-attempt HTTP transient policy is unchanged; 401/403 are not blindly retried. |
 | `writer_failed`, `writer_overflow` | Durable owner is poisoned; no later risk action may overtake it. Error context is captured before returning sanitized failures. Close failures also latch failed state. |
-| `mutation_prepared`, `mutation_sending`, `mutation_ack` | Durable lifecycle milestones, not terminal/fill proof. Correlate with operation reference. |
+| `mutation_prepared`, `mutation_sending`, `mutation_ack`, `mutation_rejected` | Durable lifecycle milestones. A rejected create was not accepted; ACK still is not terminal/fill proof. Correlate with operation reference. |
 | `mutation_unknown`, `mutation_failed` | Retain reservations and reconcile; never retry blindly. Existing offline-only restriction remains. |
 | `inventory_plan_changed` | Mode/blocker transition only, not every price tick. This is an advisory plan, never an executed action. |
 | `engine_failed`, `runtime_failed` | Unexpected exception propagated; runtime shuts down peers and revokes proof. Cancellation is a separate INFO event. |

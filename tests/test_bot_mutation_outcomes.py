@@ -64,6 +64,31 @@ class OutcomeTests(unittest.IsolatedAsyncioTestCase):
         await self.f.ready()
         await self.failure(MutationHTTPFailure(409))
 
+    async def test_create_http_400_is_durable_rejection_not_ambiguous_send(self):
+        await self.f.ready()
+        async def fail(kind, req):
+            self.f.calls.append((kind, dict(req)))
+            raise MutationHTTPFailure(400)
+        self.owner.invoke = fail
+        result = await self.f.run_priority()
+        self.assertEqual(result.state, 'REJECTED')
+        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'REJECTED')
+        self.assertEqual(self.owner.last.outcome, 'rejected')
+        self.assertFalse(self.f.dispatcher.executor.failed)
+        self.assertNotIn('ambiguous_send', (await self.f.writer.portfolio(
+            subaccount=0, now=self.f.now)).blockers)
+
+    async def test_cancel_http_400_remains_unknown_until_terminal_proof(self):
+        await self.f.ready(filled='4', remaining='6')
+        async def fail(kind, req):
+            self.f.calls.append((kind, dict(req)))
+            raise MutationHTTPFailure(400)
+        self.owner.invoke = fail
+        with self.assertRaises(MutationHTTPFailure):
+            await self.f.run_priority(SAFETY_CANCEL)
+        await self.assert_unknown()
+        self.assertEqual(self.owner.last.outcome, 'http_failure')
+
     async def test_server_failure_is_unknown(self):
         await self.f.ready()
         await self.failure(MutationHTTPFailure(503))

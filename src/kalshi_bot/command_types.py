@@ -7,6 +7,17 @@ import json
 from .values import InvalidData, decimal, identity, integer, utc
 
 
+class MutationHTTPFailure(InvalidData):
+    """Numeric mutation failure only; never retains a raw venue response."""
+    def __init__(self, status):
+        self._status = integer(status, 300, 599)
+        super().__init__('mutation_http_failure')
+
+    @property
+    def status(self):
+        return self._status
+
+
 @dataclass(frozen=True)
 class CapacityStatus:
     mutation_used: int

@@ -375,7 +375,7 @@ class LedgerWriter:
             self._submit('abort_sending_batch_before_submission', batch))
 
     async def record_outcome(self, operation, receipt, document, now):
-        if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
+        if operation not in {'unknown', 'ack', 'rejected'} or not isinstance(receipt, PreparedMutation):
             raise InvalidData('invalid typed mutation outcome')
         frozen = json.loads(json.dumps(document, allow_nan=False))
         return await self._wait(self._submit('mutation_outcome', operation, receipt,
