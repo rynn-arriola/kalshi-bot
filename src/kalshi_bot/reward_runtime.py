@@ -215,11 +215,15 @@ class RuntimeRewards:
                     or signature != self._snapshot_signature(report,ticker)):
                 continue
             proofs[ticker] = ReflectionProof(report,generation,revision,signature,valid_until)
+        published = tuple(proofs)
         self._reflection = proofs
         for ticker in tuple(self.tracker._by_market):
             if ticker not in proofs:
                 self.tracker.invalidate(ticker)
-        for ticker in proofs:
+        # refresh() may invalidate the just-published proof when its joined
+        # sources race forward.  Iterate a snapshot, not the same dictionary
+        # that invalidate() is allowed to mutate.
+        for ticker in published:
             self.refresh(ticker)
             if r.maintenance is not None:
                 r.maintenance.refresh(ticker)
@@ -229,7 +233,7 @@ class RuntimeRewards:
             # its sources rather than trusting the pre-yield reflection join.
             await asyncio.sleep(0)
         self.last_reflection_at = now
-        return len(proofs)
+        return len(published)
 
     def refresh(self, ticker):
         if self.blocker is not None:

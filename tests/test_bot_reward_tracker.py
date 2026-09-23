@@ -465,6 +465,16 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.rewards.status()['production_reflection_available'])
         self.assertFalse(self.rewards.status()['paid_rewards_verified'])
 
+    async def test_source_race_can_invalidate_proof_during_reflection_iteration(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(
+            order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        with patch.object(self.rewards,'refresh',
+                side_effect=lambda ticker:self.rewards.invalidate(ticker)):
+            self.assertEqual(await self.rewards.reflect_once(),1)
+        self.assertFalse(self.rewards._reflection)
+
     async def test_queue_mismatch_duplicate_and_bad_quantity_fail_closed(self):
         await self.owned()
         invalid = ([],
