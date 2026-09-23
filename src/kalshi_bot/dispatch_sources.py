@@ -43,6 +43,7 @@ class InventoryDispatchSource:
         self._refreshing = False
         self._generation = 0
         self._stopped = False
+        self.last_entry_block = None
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
         """Compose matching producer/executor callbacks and an explicit transport."""
@@ -111,6 +112,12 @@ class InventoryDispatchSource:
         return True
 
     async def refresh(self, ticker, priority):
+        def blocked(reason):
+            if priority == ENTRY_PAIR:
+                self.last_entry_block = dict(ticker=ticker, reason=reason,
+                    observed_at=utc(self.runtime.now()).isoformat(), historical_only=True)
+            return None
+
         # Concurrent refresh cannot leave either caller holding authority.
         self._generation += 1
         generation = self._generation
@@ -119,13 +126,13 @@ class InventoryDispatchSource:
                 or ticker not in self.runtime.engine.market_shard
                 or priority not in {SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER,
                                     ENTRY_PAIR}):
-            return None
+            return blocked('entry_runtime_unavailable')
         self._refreshing = True
         try:
             runtime = self.runtime
             report = runtime.account.current_report(runtime.now())
             if report is None:
-                return None
+                return blocked('entry_account_report_unavailable')
             plan = await runtime.management.refresh(ticker)
             if priority == ENTRY_PAIR and runtime.selection is not None:
                 runtime.selection.refresh(ticker)
@@ -133,10 +140,10 @@ class InventoryDispatchSource:
                     or not self._plan_current(plan, report.observed_at,
                                               require_book=priority != SAFETY_CANCEL)
                     or runtime.account.current_report(runtime.now()) is not report):
-                return None
+                return blocked('entry_management_proof_unavailable')
             if priority == ENTRY_PAIR:
                 if not self.offline_fixture and not runtime.entry_allowed:
-                    return None
+                    return blocked('entry_authority_unavailable')
                 release = runtime.accounting_result
                 inputs = runtime.market_inputs
                 selection = runtime.selection
@@ -149,7 +156,7 @@ class InventoryDispatchSource:
                         or getattr(result, 'blockers', ())
                         or source is None or not inputs._fresh(source)
                         or plan.terms.taker_fee_per_contract_bound is None):
-                    return None
+                    return blocked('entry_selection_or_metadata_unavailable')
                 proposal = await selection.propose(
                     window=release.window,
                     free_cash=report.snapshot.available_balance)
@@ -160,20 +167,20 @@ class InventoryDispatchSource:
                         or inputs.values.get(('market', ticker)) is not source
                         or inputs.results.get(ticker) is not result
                         or not inputs._fresh(source)):
-                    return None
+                    return blocked('entry_proposal_missing_or_changed')
                 row = rows[0]
                 observation = selection._observation(ticker)
                 programs = () if observation is None else tuple(
                     p for p in observation.programs if p.program_id == row.program_id)
                 if len(programs) != 1:
-                    return None
+                    return blocked('entry_program_unavailable')
                 entry_selection = selection.capture_dispatch_proof(
                     ticker, row.program_id, row.valid_until)
                 if entry_selection is None:
-                    return None
+                    return blocked('entry_selection_proof_changed')
                 expires = int(min(plan.terms.deadline, programs[0].end).timestamp())
                 if expires <= utc(runtime.now()).timestamp():
-                    return None
+                    return blocked('entry_horizon_ended')
                 requests = []
                 for quote in sorted(row.quotes, key=lambda value: value.side):
                     request = create_payload(ticker=ticker,
@@ -196,7 +203,7 @@ class InventoryDispatchSource:
                         or not inputs._fresh(source)
                         or (view.epoch, view.revision) !=
                            (runtime.writer.epoch, runtime.writer.revision)):
-                    return None
+                    return blocked('entry_sources_changed_after_risk_read')
                 candidate = EntryPairCandidate(ticker, priority, str(uuid4()),
                     tuple(requests), view, report.snapshot.available_balance,
                     plan.terms.taker_fee_per_contract_bound,

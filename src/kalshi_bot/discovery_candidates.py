@@ -14,13 +14,15 @@ class DiscoveryCandidates:
     deferred: int
     source: IncentiveCatalog | None
     authorized: bool = False
+    refill: bool = False  # Scheduling hint only; never entry authority.
 
 
 class CandidateDiscovery:
     def __init__(self):
-        self.cursor = 0
+        self.pending = ()  # At most the 10,000-row catalog bound; no per-tick work.
 
-    def choose(self, catalog, *, now, budget, protected=(), incumbents=(), eligible=None):
+    def choose(self, catalog, *, now, budget, protected=(), incumbents=(), eligible=None,
+               subscribed=()):
         """Budget is engineering capacity, NOT desired market/order occupancy.
 
         Pool/time/target is only a cheap exploration hint. Actual selection still
@@ -28,7 +30,7 @@ class CandidateDiscovery:
         """
         now = utc(now)
         integer(budget,1,1024)
-        for values in (protected,incumbents):
+        for values in (protected,incumbents,subscribed):
             if type(values) is not tuple or len(values) > 1024 or len(set(values)) != len(values):
                 raise InvalidData('bounded unique discovery owner list required')
             for ticker in values: identity(ticker)
@@ -55,6 +57,16 @@ class CandidateDiscovery:
                 if scores: ranked.append((-max(scores),ticker))
         ranked.sort()
         eligible = {ticker for _,ticker in ranked}
+        # A proposed slate is NOT an admission acknowledgement. Keep unjoined
+        # candidates at the front, even across partial joins or failed retries.
+        # Only the runtime's actual subscribed scope moves to the back. Preserve
+        # queue order across catalog refreshes; append newly eligible tickers.
+        pending = [ticker for ticker in self.pending if ticker in eligible]
+        known = set(pending)
+        pending.extend(ticker for _,ticker in ranked if ticker not in known)
+        observed = set(subscribed)
+        self.pending = tuple(t for t in pending if t not in observed) + tuple(
+            t for t in pending if t in observed)
         selected = list(retained)
         chosen = set(selected)
         # Stable eligible incumbents first; unprotected additions may be skipped,
@@ -69,10 +81,8 @@ class CandidateDiscovery:
         # the rest remains a rotating exploration tail and is ranked by books.
         head = min(slots,max(1,min(30,budget//4))) if slots else 0
         selected.extend(remaining[:head])
-        tail, slots = remaining[head:],slots-head
+        chosen.update(selected)
+        tail, slots = [t for t in self.pending if t not in chosen],slots-head
         if tail and slots:
-            start = self.cursor % len(tail)
-            count = min(slots,len(tail))
-            selected.extend(tail[(start+i) % len(tail)] for i in range(count))
-            self.cursor = (start+count) % len(tail)
+            selected.extend(tail[:slots])
         return DiscoveryCandidates(tuple(selected),retained,len(eligible-set(selected)),catalog)

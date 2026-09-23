@@ -390,6 +390,23 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(self.r.engine.market_shard),{'B'})
         self.assertFalse(self.a.running)
 
+    async def test_refill_schedules_thirty_seconds_and_catalog_cannot_skip_dwell(self):
+        await self.prepare()
+        original = self.r.selection.discovery_candidates
+        async def refill():
+            return replace(await original(), refill=True)
+        with patch.object(self.r.selection, 'discovery_candidates', side_effect=refill):
+            task = asyncio.create_task(self.a.run())
+            self.tasks.append(task)
+            await until(lambda:self.a.completed == 1 and self.a.next_at > self.r.clock())
+            self.assertEqual(self.a.next_at-self.r.clock(), 30)
+            self.a.request()  # A catalog notification must not churn the reader.
+            self.assertFalse(await self.cycle())
+            self.assertEqual(self.a.state, 'observing')
+            self.assertEqual(self.a.completed, 1)
+            self.a.stop()
+            await task
+
     async def test_transient_removal_deferral_retries_without_catalog_refresh(self):
         await self.prepare()
         original = self.a.removable

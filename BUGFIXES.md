@@ -6,6 +6,23 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — partial subscriptions skipped exploration candidates
+
+**Symptom/mechanism.** Discovery advanced past every proposed tail ticker, but
+admission subscribed at most 16. With 14 protected synthetic markets, 332 of
+1,024 never reached the book set. The exact historical 28-order blocker remains
+unproved; this is a reproducible contributing coverage defect.
+
+**Fix.** D-091 advances pending order only for the actual subscribed scope,
+preserves unjoined candidates, and uses bounded 30-second refill when another
+pair fits a fresh risk window. Existing gates/limits are unchanged. Timestamped
+selection and dispatch reasons now survive idle status.
+
+**Verification.** All 1,024 reached in the 14-owner reproduction; old-code
+counterfactual fails the new regression. Coverage, defer, churn, dwell, cap and
+outside-seed fifteenth-pair tests added. [Build](docs/BUILD_DISCOVERY_COVERAGE.md).
+No venue calls, runtime launch or production ledger changes in this repair.
+
 ## 2026-09-22 — lifecycle snapshot permanently overflowed its reader queue
 
 **Evidence correction:** the 5,018/5,060 counts below came from the REST incentive

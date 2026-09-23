@@ -1,6 +1,23 @@
 # Current status
 
-## Stopped; market-coverage defect reproduced, repair pending — 2026-09-22
+## D-091 coverage/refill repair verified offline; bot remains stopped — 2026-09-22
+
+[Coverage repair](docs/BUILD_DISCOVERY_COVERAGE.md) now advances exploration from
+actual subscriptions, preserving candidates across partial/deferred joins. The
+1,024-market / 14-owner regression covers every candidate in 56 rotations instead
+of missing 332. Risk-aware refill uses 30 seconds, with a minimum post-join dwell;
+existing reward, ownership, risk and source checks remain unchanged. Timestamped
+selection exclusions and dispatch outcomes are retained in bounded status.
+
+Complete suite: **1,492 run, 1,491 passed, one expected Windows privilege skip**
+in 234.396 seconds. Six breadth diagnostics and 30/120-market admission resource
+checks pass; the old discovery fails the new coverage regression. Actual diff
+review found no blocking issue in this repair. No venue calls, production ledger
+changes or live restart occurred. No profitability or current eligible count is
+claimed. Host continuity/liveness and manual-cancellation reconciliation remain
+separate pre-restart work; historical saved status is not current account proof.
+
+## Historical diagnosis — superseded by D-091 offline repair above
 
 The final supervisor/child are absent; runtime status froze at 23:22:32 Eastern.
 The operator reports manually canceling all orders. Current venue flatness has

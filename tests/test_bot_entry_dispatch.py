@@ -349,6 +349,13 @@ class EntrySourceTests(unittest.IsolatedAsyncioTestCase):
             'batch_create', candidate.requests))
         await self.writer.abort_batch(prepared.batch)
 
+    async def test_missing_account_retains_entry_block_reason_without_authority(self):
+        self.runtime.account._invalidate()
+        self.assertIsNone(await self.source.refresh('A', ENTRY_PAIR))
+        self.assertEqual(self.source.last_entry_block['reason'], 'entry_account_report_unavailable')
+        self.assertTrue(self.source.last_entry_block['historical_only'])
+        self.assertFalse(await self.writer.mutations())
+
     async def test_runtime_evaluation_queues_lower_priority_entry_pair(self):
         budget = WriteBudget(snapshot(rate=100, capacity=100), shards=(0, 1),
             now=quota_now(), offline_fixture=True)

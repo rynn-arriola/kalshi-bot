@@ -29,6 +29,8 @@ async def join_cancelled(task):
 
 
 class MarketAdmission:
+    REFILL_INTERVAL = 30
+
     def __init__(self, runtime, *, offline_fixture=False):
         from .runtime import RecoveryRuntime
         if (not isinstance(runtime,RecoveryRuntime)
@@ -49,6 +51,8 @@ class MarketAdmission:
         self.state = 'idle'
         self.next_at = 0.
         self.interval = runtime.incentives.interval
+        self.refill = False
+        self.last_change_at = None
 
     @property
     def transitioning(self):
@@ -133,6 +137,7 @@ class MarketAdmission:
             for mapping in (r.selection.programs,r.selection._last_observed,r.selection._rejected):
                 mapping.pop(ticker,None)
         self.completed += 1
+        self.last_change_at = r.clock()
         return True
 
     async def book_loop(self, spec):
@@ -175,6 +180,12 @@ class MarketAdmission:
 
     async def _cycle(self):
         r = self.runtime
+        self.refill = False
+        # Catalog notifications must not turn bounded exploration into a reader
+        # reconnect loop. Give each joined scope a minimum observation dwell.
+        if self.last_change_at is not None and r.clock() < self.last_change_at+self.REFILL_INTERVAL:
+            self.state = 'observing'
+            return False
         if not self._ready():
             self.state = 'deferred'
             return False
@@ -182,6 +193,7 @@ class MarketAdmission:
         if candidates.source is None or not self._ready():
             self.state = 'sources_unavailable'
             return False
+        self.refill = candidates.refill
         existing = set(r.engine.market_shard)
         desired = set(candidates.tickers)
         names = tuple(sorted(r.engine.shards))
@@ -262,8 +274,11 @@ class MarketAdmission:
                 if now >= self.next_at:
                     self.requested = False
                     await self.cycle()
-                    self.next_at = now+(1 if self.state in {'deferred','sources_unavailable'}
-                                        else self.interval)
+                    delay = (1 if self.state in {'deferred','sources_unavailable'}
+                             else self.REFILL_INTERVAL if self.refill else self.interval)
+                    self.next_at = self.runtime.clock()+delay
+                    if self.state == 'observing':
+                        self.next_at = self.last_change_at+self.REFILL_INTERVAL
                 delay = max(.01,min(1,self.next_at-self.runtime.clock()))
                 try:
                     await asyncio.wait_for(self.wake.wait(),delay)
@@ -277,4 +292,6 @@ class MarketAdmission:
 
     def status(self):
         return dict(state=self.state,running=self.running,rotating=self.transitioning,
-                    completed=self.completed,deferred=self.deferred,authorized=False)
+                    completed=self.completed,deferred=self.deferred,authorized=False,
+                    refill=self.refill, refill_interval_seconds=self.REFILL_INTERVAL,
+                    next_cycle_in_seconds=max(0,self.next_at-self.runtime.clock()))

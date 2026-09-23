@@ -1,5 +1,9 @@
 # D-071 — Inventory-safe market admission and rotation
 
+D-091 [updates exploration progress and refill cadence](BUILD_DISCOVERY_COVERAGE.md).
+Its actual-scope queue and risk-aware 30-second refill supersede the historical
+proposal cursor/catalog-only cadence below; ownership and join fences remain.
+
 ## Design before implementation
 
 One optional offline runtime service owns candidate admission. Reuse D-070's

@@ -354,6 +354,17 @@ class RuntimeSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await self.writer.mutations())
         self.assertFalse(result.authorized or self.r.entry_allowed)
 
+    async def test_saved_proposal_has_bounded_exclusions_and_explicit_history(self):
+        await self.s.propose(window=self.w, free_cash=D(500))
+        diagnostic = self.s.status()['last_proposal']
+        self.assertTrue(diagnostic['historical_only'])
+        self.assertEqual(diagnostic['additions'], 1)
+        await self.s.propose(window=replace(self.w, cap=0), free_cash=D(500))
+        diagnostic = self.s.status()['last_proposal']
+        self.assertIn('entry_cap', diagnostic['blockers'])
+        self.assertLessEqual(len(diagnostic['exclusion_samples']), 8)
+        self.assertEqual(diagnostic['observed_at'], self.r.now().isoformat())
+
     async def test_account_changes_during_await_defeat_proposal(self):
         original=self.r.risk_view
         async def raced():

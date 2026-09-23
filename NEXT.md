@@ -1,21 +1,22 @@
 # Active work queue
 
-## Current priority: market coverage and fewer-than-expected candidates
+## Market-coverage repair complete offline; remaining live acceptance
 
 The bot is stopped and the operator reports all orders manually canceled.
 See the [read-only investigation](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md).
 
-1. Repair the reproduced discovery/admission cursor mismatch: only consume
-   exploration progress actually admitted; preserve pending candidates across
-   partial/deferred joins. Verify full coverage with protected owners and two
-   shards. The frozen-input reproduction misses 332/1,024 candidates indefinitely.
-2. Decouple bounded refill progress from the 300-second catalog interval; retain
-   per-stage exclusion reasons. Verify a viable fifteenth market initially outside
-   the seed scope reaches the full entry path under realistic refresh timing.
-3. Separately establish/test process-host continuity and truthful liveness status.
-4. Before a separately authorized live restart, reconcile manual cancellations
+D-091 [repairs coverage/refill](docs/BUILD_DISCOVERY_COVERAGE.md). All 1,024
+synthetic candidates are reached; the complete 1,492-test suite passes with one
+expected skip. No further discovery implementation is pending from this unit.
+
+1. Separately establish/test process-host continuity and truthful liveness status.
+2. Before a separately authorized live restart, reconcile manual cancellations
    and any fills using actual venue evidence. Do not treat stale saved state as
    current or mark local orders canceled without evidence.
+3. During authorized acceptance, inspect fresh proposal exclusions, entry-source
+   blocks and rotation progress. Distinguish subscribed/economically qualified/
+   selected/placed counts; do not promise 30 entries or earnings from offline
+   coverage. Resolve any measured bottleneck before expanding capacity.
 
 ## Historical completed D-089 publication/recovery checklist
 

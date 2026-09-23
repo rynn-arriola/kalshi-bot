@@ -34,8 +34,8 @@ def evidence(name, **values):
 
 
 class BreadthDiagnostics(unittest.IsolatedAsyncioTestCase):
-    async def test_discovery_cursor_can_skip_candidates_after_partial_admission(self):
-        """Characterization, NOT desired behavior: remove after repairing coverage.
+    async def test_discovery_covers_candidates_after_partial_admission(self):
+        """D-091 regression: partial consumption must no longer skip candidates.
 
         Real discovery and admission selection arithmetic; immediate successful
         synthetic joins replace account/metadata/transport checks. Frozen inputs
@@ -52,18 +52,20 @@ class BreadthDiagnostics(unittest.IsolatedAsyncioTestCase):
             market_shard={t: 'b'+str(i//64) for i, t in enumerate(tickers[:128])})
 
         async def choose():
-            return discovery.choose(data, now=NOW, budget=128, protected=protected)
+            return discovery.choose(data, now=NOW, budget=128, protected=protected,
+                                    subscribed=tuple(sorted(engine.market_shard)))
 
         runtime = SimpleNamespace(engine=engine,
             selection=SimpleNamespace(discovery_candidates=choose),
             writer=SimpleNamespace(market_capacity=128),
             reader_states={'b0': 'subscribed', 'b1': 'subscribed'},
             reader_failures={'b0': 0, 'b1': 0}, attempt_limit=3,
-            metadata_scheduler=None)
+            metadata_scheduler=None, clock=lambda: 0)
         admission = object.__new__(MarketAdmission)
         admission.runtime = runtime
         admission.cursor = admission.completed = admission.deferred = 0
         admission.pending = None
+        admission.last_change_at = None
         admission._ready = lambda: True
 
         async def removable(change):
@@ -85,20 +87,23 @@ class BreadthDiagnostics(unittest.IsolatedAsyncioTestCase):
         admission.signals = {n: SimpleNamespace(set=joined) for n in engine.shards}
         states = {}
         for cycle in range(1001):
-            state = (discovery.cursor, admission.cursor,
+            state = (discovery.pending, admission.cursor,
                      tuple((n, tuple(sorted(s.tickers))) for n, s in engine.shards.items()))
             if state in states:
                 break
             states[state] = cycle
             await admission._cycle()
+            if len(seen) == 1024:
+                break
         else:
-            self.fail('expected a repeated frozen-input exploration state')
+            self.fail('coverage failed to converge')
         missing = set(tickers)-seen
-        self.assertEqual(len(missing), 332)
-        self.assertEqual(len(seen), 692)
-        evidence('partial_admission_coverage_cycle', synthetic_candidates=1024,
+        self.assertEqual(len(missing), 0)
+        self.assertEqual(len(seen), 1024)
+        self.assertLessEqual(cycle+1, 64)
+        evidence('partial_admission_coverage', synthetic_candidates=1024,
             protected_markets=14, distinct_admitted=len(seen), never_admitted=len(missing),
-            repeated_state_at_cycle=cycle, first_seen_at_cycle=states[state],
+            cycles=cycle+1,
             venue_requests=0, production_cause_proven=False)
 
     async def test_catalog_timeouts_remove_selection_source_and_exhaust(self):

@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-091 — Repair discovery coverage and bounded refill progress
+
+- **Status:** ACCEPTED implementation, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Ok lets do it,” approving the preceding
+  market-coverage diagnosis and recommendation.
+- **Scope:** Consume exploration progress only for actually subscribed markets,
+  retain unadmitted candidates across partial/deferred rotations, and improve
+  bounded refill cadence when another pair fits the current risk limit. Add
+  composed coverage/selection tests and bounded exclusion diagnostics.
+- **Boundary:** Preserve protected ownership, 128 active books, two shards,
+  16 additions per rotation, reward/reference/value gates, quota, risk and
+  freshness rules. No live restart, venue commands, ledger edits or hosting
+  overhaul in this work unit.
+
 ### D-090 — Size lifecycle transport for one bounded full-market snapshot
 
 - **Status:** ACCEPTED, DEPLOYED and live-verified, 2026-09-22 Eastern.

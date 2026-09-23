@@ -39,6 +39,7 @@ class RuntimeSelection:
         self._discovery = None
         self._last_additions = ()
         self.candidate_inputs = None  # Explicit live composition only.
+        self.last_proposal = None  # Bounded historical diagnostics, not authority.
 
     def invalidate(self, ticker):
         self.selector.invalidate(ticker)
@@ -109,9 +110,29 @@ class RuntimeSelection:
         if self._discovery is None: self._discovery = CandidateDiscovery()
         eligible = (self.candidate_inputs.eligible(catalog, r.now())
                     if self.candidate_inputs is not None and catalog is not None else None)
-        return self._discovery.choose(catalog,now=r.now(),budget=r.writer.market_capacity,
+        candidates = self._discovery.choose(catalog,now=r.now(),budget=r.writer.market_capacity,
                                       protected=tuple(sorted(owned)),incumbents=incumbents,
-                                      eligible=eligible)
+                                      eligible=eligible,
+                                      subscribed=tuple(sorted(r.engine.market_shard)))
+        release = r.accounting_result
+        window = release.window if release is not None and release.released else None
+        now = utc(r.now())
+        refill = (window is not None and not window.held and window.start <= now < window.end
+                  and timedelta(0) <= now-window.observed_at <= timedelta(seconds=5)
+                  and timedelta(0) <= now-view.observed_at <= timedelta(seconds=5)
+                  and view.entry_count+2 <= window.cap)
+        return replace(candidates, refill=refill)
+
+    def _record_proposal(self, result):
+        counts = {}
+        for _, reasons in result.exclusions:
+            for reason in set(reasons):
+                counts[reason] = counts.get(reason, 0)+1
+        self.last_proposal = dict(observed_at=utc(self.runtime.now()).isoformat(),
+            additions=len(result.additions), blockers=list(result.blockers),
+            exclusion_counts=counts, exclusion_samples=list(result.exclusions[:8]),
+            historical_only=True)
+        return result
 
     def _available(self):
         r = self.runtime
@@ -216,14 +237,14 @@ class RuntimeSelection:
         """
         r = self.runtime
         if r.admission is not None and r.admission.transitioning:
-            return SelectionReport((),(),(),('subscription_handoff_in_progress',))
+            return self._record_proposal(SelectionReport((),(),(),('subscription_handoff_in_progress',)))
         report = r.account.current_report(r.now())
         if not self._available() or report is None:
-            return SelectionReport((), (), (), ('selection_sources_unavailable',))
+            return self._record_proposal(SelectionReport((), (), (), ('selection_sources_unavailable',)))
         view = await r.risk_view()
         if (not self._available() or r.account.current_report(r.now()) is not report
                 or (view.epoch, view.revision) != (r.writer.epoch, r.writer.revision)):
-            return SelectionReport((), (), (), ('selection_sources_changed',))
+            return self._record_proposal(SelectionReport((), (), (), ('selection_sources_changed',)))
         protected = tuple(t for t, plan in r.management._plans.items()
                           if plan.inventory.position or plan.inventory.orders or plan.inventory.blockers
                           or (plan.inventory.exit_journal is not None and
@@ -234,12 +255,12 @@ class RuntimeSelection:
             account_known=report.positions_match and not report.audit.blockers,
             now=r.now(), protected=protected, current=self.current)
         if any(not self.current(row.ticker) or utc(r.now()) >= row.valid_until for row in result.additions):
-            return SelectionReport((), result.retained, (), ('selection_sources_changed',))
+            return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)))
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}
         missing = tuple((t, self._rejected.get(t, ('selection_evidence_unavailable',)))
                         for t in sorted(r.engine.market_shard) if t not in accounted)
         self._last_additions = tuple(row.ticker for row in result.additions)
-        return replace(result, exclusions=result.exclusions+missing)
+        return self._record_proposal(replace(result, exclusions=result.exclusions+missing))
 
     def status(self):
         return dict(authorized=False, program_markets=sum(
@@ -247,6 +268,7 @@ class RuntimeSelection:
                     cached_markets=len(self.selector.board.markets),
                     current_markets=sum(self.current(t) for t in tuple(self._proofs)),
                     rejected_markets=len(self._rejected),
+                    last_proposal=self.last_proposal,
                     venue_requests=0, automatic_repricing=False,
                     candidate_inputs=(self.candidate_inputs.status()
                                       if self.candidate_inputs is not None else None))

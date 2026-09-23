@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-091 [repairs exploration coverage](BUILD_DISCOVERY_COVERAGE.md): actual joined
+scope, not a proposed slate, advances the bounded pending queue. Available-pair
+refill uses a 30-second minimum dwell independently of catalog refresh. Existing
+subscription ownership, quotas, economic filters and mutation authority remain.
+
 D-087 [restores advisory lifecycle connectivity](BUILD_LIFECYCLE_RECONNECT.md)
 after bounded attempt rounds. Disconnect still revokes all lifecycle-derived
 authority; account/book exhaustion semantics and metadata retry holds are unchanged.

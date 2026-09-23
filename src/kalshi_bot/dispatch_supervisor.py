@@ -32,6 +32,7 @@ class DispatchSupervisor:
         self.used = self.running = self.stopping = self.failed = False
         self.turns = 0
         self.last_state = None
+        self.last_outcome = None
 
     def request(self, ticker, priority):
         if self.stopping or self.failed or self.source.runtime.stop_requested.is_set():
@@ -82,6 +83,10 @@ class DispatchSupervisor:
                 result = await self.dispatcher.run_one()
                 self.turns += 1
                 self.last_state = result.state
+                if result.state != 'IDLE':
+                    self.last_outcome = dict(state=result.state, ticker=result.ticker,
+                        priority=result.priority, blockers=list(result.blockers),
+                        observed_at=self.source.runtime.now().isoformat(), historical_only=True)
                 if result.state in {'FAILED', 'INTERRUPTED'} or 'dispatcher_busy' in result.blockers:
                     if not self.stopping:
                         raise InvalidData('dispatch owner failed or unexpectedly stopped')
@@ -128,4 +133,5 @@ class DispatchSupervisor:
         state = self.dispatcher.status()
         return dict(running=self.running, stopping=self.stopping, failed=self.failed,
             turns=self.turns, last_state=self.last_state, queued=len(state.queued),
-            active=state.active is not None, high_water=state.high_water, live_ready=False)
+            active=state.active is not None, high_water=state.high_water, live_ready=False,
+            last_outcome=self.last_outcome, last_entry_block=self.source.last_entry_block)

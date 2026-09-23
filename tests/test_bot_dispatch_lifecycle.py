@@ -83,6 +83,10 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.request())
         await until(lambda: len(self.f.calls) == 1 and self.service.last_state == 'IDLE')
         self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'ACK')
+        retained = self.service.status()['last_outcome']
+        self.assertEqual(retained['ticker'], 'A')
+        self.assertNotEqual(retained['state'], 'IDLE')
+        self.assertTrue(retained['historical_only'])
         self.service.stop()
         await task
         self.assertFalse(self.service.running)

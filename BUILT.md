@@ -1,5 +1,13 @@
 # What exists
 
+## D-091 admission-aware exploration — 2026-09-22
+
+[Coverage repair](docs/BUILD_DISCOVERY_COVERAGE.md) replaces proposal-driven
+cursor advancement with a bounded actual-scope queue, adds risk-aware 30-second
+refill/dwell and retains bounded selection/dispatch reasons. The six breadth
+checks now verify full 1,024-market coverage, not the previously expected bug.
+New composed regressions prove the old discovery fails coverage. No live restart.
+
 ## Market-coverage diagnostic expanded — 2026-09-22
 
 `scripts/diagnose_selection_breadth.py` now has six credential-free checks.

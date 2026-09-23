@@ -1,5 +1,15 @@
 # Findings — kalshi-bot
 
+## 136. Actual-scope progress restores bounded exploration coverage — 2026-09-22
+
+VERIFIED SYNTHETIC: D-091 reaches all 1,024 candidates in 56 partial rotations
+with 14 protected markets; old discovery reaches only 692 under the regression.
+Deferred joins no longer consume unjoined candidates. A candidate outside the
+initial 128 reaches the actual selector and supplies the fifteenth two-order
+pair under a synthetic 28-entry view. This is not current venue eligibility or
+profitability evidence. Minimum dwell and risk-aware refill are 30 seconds;
+existing economic, source and capacity gates remain. [Evidence](docs/BUILD_DISCOVERY_COVERAGE.md).
+
 ## 135. Partial admission loses exploration coverage — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: discovery advances across its proposed tail while

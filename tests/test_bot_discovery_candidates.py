@@ -2,6 +2,7 @@
 from dataclasses import replace
 from datetime import timedelta
 from types import MappingProxyType
+from types import SimpleNamespace
 import unittest
 
 from kalshi_bot.discovery_candidates import CandidateDiscovery
@@ -42,12 +43,14 @@ class CandidateTests(unittest.TestCase):
     def test_head_is_retained_and_tail_eventually_covers_universe(self):
         seen = set()
         data = catalog()
+        subscribed = ()
         for _ in range(10):
-            result = self.choose(data)
+            result = self.choose(data, subscribed=subscribed)
             self.assertEqual(result.tickers[:2],('M000','M001'))
             self.assertEqual(len(result.tickers),10)
             self.assertEqual(len(set(result.tickers)),10)
             seen.update(result.tickers)
+            subscribed = result.tickers
         self.assertEqual(seen,set(data.observations))
         self.assertFalse(result.authorized)
 
@@ -60,6 +63,29 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(len(self.choose(catalog(100),budget=3).tickers),3)
         self.assertEqual(len(self.choose(catalog(100),budget=75).tickers),75)
         self.assertEqual(len(self.choose(catalog(2),budget=75).tickers),2)
+
+    def test_uncommitted_proposals_do_not_consume_tail(self):
+        data = catalog(100)
+        first = self.choose(data)
+        for _ in range(10):
+            self.assertEqual(self.choose(data).tickers, first.tickers)
+
+    def test_partial_admission_preserves_unjoined_candidates_across_refresh(self):
+        data = catalog(100)
+        first = self.choose(data)
+        joined = first.tickers[:4]
+        refreshed = replace(data, generation=2)
+        next_plan = self.choose(refreshed, subscribed=joined)
+        self.assertEqual(next_plan.tickers[2:8], first.tickers[4:10])
+        self.assertEqual(self.choose(refreshed, subscribed=joined).tickers, next_plan.tickers)
+
+    def test_removed_candidates_pruned_and_new_candidates_appended(self):
+        self.choose(catalog(50))
+        self.choose(catalog(2))
+        self.assertEqual(set(self.d.pending), {'M000', 'M001'})
+        self.choose(catalog(60))
+        self.assertEqual(len(self.d.pending), 60)
+        self.assertEqual(len(set(self.d.pending)), 60)
 
     def test_saturation_preserves_owners_or_fails_no_truncation(self):
         owners = tuple(f'O{i}' for i in range(10))
@@ -102,6 +128,24 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(result.tickers),{'A','B'})
         self.assertEqual(set(self.f.r.engine.market_shard),{'A'})
         self.assertFalse(result.authorized)
+
+    async def test_refill_requires_fresh_released_window_and_two_free_slots(self):
+        await self.f.refresh()
+        r = self.f.r
+        original = r.risk_view
+        base = await original()
+        for entries, held, released, age, expected in (
+                (28, False, True, 0, True), (29, False, True, 0, False),
+                (30, False, True, 0, False), (28, True, True, 0, False),
+                (28, False, False, 0, False), (28, False, True, 6, False)):
+            async def view():
+                return replace(base, entry_count=entries)
+            r.risk_view = view
+            r.accounting_result = SimpleNamespace(released=released,
+                window=replace(self.f.f.w, held=held,
+                               observed_at=r.now()-timedelta(seconds=age)))
+            self.assertEqual((await self.f.s.discovery_candidates()).refill, expected)
+        r.risk_view = original
 
     async def test_account_or_catalog_change_during_await_keeps_old_scope(self):
         await self.f.refresh()
