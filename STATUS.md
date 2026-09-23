@@ -1,5 +1,20 @@
 # Current status
 
+## Read-only live source comparison passed before deployment — 2026-09-22
+
+At 21:19 Eastern, the [30-second source probe](docs/VERIFY_REWARD_SOURCE_LIVE.md)
+retrieved 5,006 programs in six public requests and validated 128 rewarded seed
+books. After warmup, fresh books averaged 4.81 under the no-refresh timestamp
+baseline versus 128 with snapshots on the same feed; final counts were 2/128.
+All readers joined; no orders/private REST/trader restart. This verifies source
+coverage, not full economic eligibility or production occupancy. Nineteen
+targeted tests pass; code/docs are retained on the isolated fix branch.
+
+At 21:20:31 the unchanged production PID 46576 still reported 14 resting entries,
+zero positions, catalog exhaustion and a separate lifecycle retry-exhaustion
+hold. Full economic-filter verification and lifecycle diagnosis remain before
+claiming readiness. Canonical deployment still awaits explicit authority.
+
 ## D-086 source repairs verified; deployment pending — 2026-09-22
 
 The [catalog and quiet-book fixes](docs/BUILD_REWARD_SOURCE_REFRESH.md) are in

@@ -41,8 +41,9 @@ Frequently updated markets do not receive redundant snapshot requests.
 
 The existing five-second book gate is unchanged. This can refresh quiet books,
 but does not guarantee every book remains fresh under network/backlog failure.
-Actual venue snapshot sequencing and workload behavior still need controlled
-live acceptance. No live command was sent to test this repair.
+[Subsequent read-only live verification](VERIFY_REWARD_SOURCE_LIVE.md) confirms
+venue snapshot sequencing/freshness for 128 sampled books. Full production
+workload, economic eligibility and deployment acceptance remain outstanding.
 
 ## Verification and release
 

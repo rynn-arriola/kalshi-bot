@@ -8,6 +8,11 @@ in the isolated `fix/reward-source-refresh` branch; see
 controlled live deployment authority for the isolated fix. Do not overwrite the active
 package while its old supervisor owns the recovery fingerprint.
 
+Predeployment [live source check](docs/VERIFY_REWARD_SOURCE_LIVE.md) now passes:
+128 refreshed books versus 4.81 average baseline on the same feed. Still needed:
+full timing/fee/economic-filter counts and diagnosis of the independently
+observed production lifecycle retry exhaustion. Neither requires placing orders.
+
 1. Verify repaired full-catalog refresh under live shared-read load after deployment.
    The [reward API re-audit](docs/REWARD_API_REAUDIT_2026-09-22.md) measured 1,000-row
    pages: five requests / 1.986 seconds versus roughly 50 at our current size.
@@ -16,9 +21,9 @@ package while its old supervisor owns the recovery fingerprint.
    Preserve complete/fresh reward proof; do not bypass exhaustion or use an
    expired catalog to place entries. Verify the proposed repair offline before
    any separately approved live deployment/restart.
-2. Verify the implemented quiet-book freshness refresh with the documented
-   WS `get_snapshot` capability, subject to bounded request/response and sequence
-   tests; not a blind extension of stale-data limits or per-market REST polling.
+2. Quiet-book venue response/sequence compatibility is verified by the bounded
+   source probe. After separately approved deployment, verify the same behavior
+   under real runtime/account/metadata load; keep the stale-data limit unchanged.
 3. Evaluate the existing 128-market/16-per-cycle/300-second discovery path and
    add bounded per-stage exclusion evidence. Prove current capacity can fill
    when qualifying markets exist before considering wider subscriptions.

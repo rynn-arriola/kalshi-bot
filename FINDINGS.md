@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 128. Live snapshot refresh keeps 128 sampled rewarded books fresh — 2026-09-22
+
+MEASURED: [read-only source probe](docs/VERIFY_REWARD_SOURCE_LIVE.md), 21:19
+Eastern, 30 seconds. Complete catalog: 5,006 programs in six requests / 5.376 s.
+Two public-book connections validate 128 initial and 1,135 correlated refresh
+snapshots. After warmup, the same-feed baseline without refresh timestamps
+averages 4.81 fresh books versus 128 with refresh; final counts are 2 and 128.
+This is source coverage, not 128 economically eligible markets or an earnings
+claim. No private REST, ledger access, order action, restart or deployment.
+The existing production catalog/lifecycle retry holds remained unchanged.
+
 ## 127. Reward-source omissions repaired offline — 2026-09-22
 
 VERIFIED CODE/SYNTHETIC: D-086 implements the two actionable audit findings:

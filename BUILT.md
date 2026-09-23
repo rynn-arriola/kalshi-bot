@@ -1,5 +1,13 @@
 # What exists
 
+## Explicit predeployment source probe — 2026-09-22
+
+`scripts/probe_reward_sources.py` compares same-feed book freshness with/without
+refresh timestamps, using public catalog reads and two public-book WS streams.
+No trader/account REST/ledger is constructed. Four synthetic probe tests plus
+15 book-refresh tests pass; [live measurement](docs/VERIFY_REWARD_SOURCE_LIVE.md)
+confirms 128 sampled books stay fresh. Economic eligibility remains unverified.
+
 ## D-086 reward-source repair — 2026-09-22
 
 [Repair](docs/BUILD_REWARD_SOURCE_REFRESH.md) implements the shared 1,000-row
