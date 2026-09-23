@@ -250,7 +250,7 @@ class InputResult:
 
 class ExitInputService:
     def __init__(self, reads, tickers, *, now, ttl, clock=time.monotonic, diagnostics=NO_LOG,
-                 timing_reviews=(), fee_profile=None, candidate_reviews=()):
+                 timing_reviews=(), fee_profile=None, candidate_reviews=(), bulk_events=False):
         if type(ttl) not in (int,float) or not math.isfinite(ttl) or not 0<ttl<=60:
             raise InvalidData('explicit metadata freshness budget up to 60 seconds required')
         if not 1<=len(tickers)<=1024 or len(set(tickers))!=len(tickers):
@@ -287,6 +287,10 @@ class ExitInputService:
         self.slots = asyncio.Semaphore(2)
         self.refreshing = set()
         self.listener = None
+        if type(bulk_events) is not bool:
+            raise InvalidData('bulk_events must be a boolean')
+        from .bulk_event_inputs import BulkEventInputs
+        self.bulk = BulkEventInputs(self) if bulk_events else None
 
     def listen(self, callback):
         if self.listener is not None or not callable(callback):
@@ -315,6 +319,9 @@ class ExitInputService:
                 self.event_markets.setdefault(review.event, set()).add(ticker)
         self._prune_dependencies()
 
+        if self.bulk is not None:
+            self.bulk.reset()
+
     def _notify(self, kind, ticker=None):
         if self.listener is not None:
             self.listener(kind, ticker)
@@ -341,6 +348,8 @@ class ExitInputService:
                 self.event_markets.setdefault(event, set()).add(ticker)
         self._clear_terms(ticker)
         self._prune_dependencies()
+        if self.bulk is not None:
+            self.bulk.reset()
         self._notify('changed', ticker)
 
     def set_fee_profile(self, profile):
@@ -398,6 +407,8 @@ class ExitInputService:
 
     def disconnect(self):
         self.connected = False
+        if self.bulk is not None:
+            self.bulk.reset()
         self._notify('disconnected')
         self.sid = self.seq = None
         for target in tuple(self.pending):
@@ -518,8 +529,11 @@ class ExitInputService:
                 else:
                     parameter = {'market':'ticker','event':'event_ticker','series':'series_ticker',
                                  'series_fees':'series_ticker','milestone':'milestone_id'}[name]
-                    doc = (await self.reads.read(name,reason='metadata',
-                        coalesce_scope=(self.read_scope,generation,revision),**{parameter:key})).payload
+                    if self.bulk is not None and target in self.bulk.targets:
+                        doc, observed, mono = await self.bulk.get(target)
+                    else:
+                        doc = (await self.reads.read(name,reason='metadata',
+                            coalesce_scope=(self.read_scope,generation,revision),**{parameter:key})).payload
                     if name=='market': value = parse_market(doc,key)
                     elif name=='event': value = parse_event(doc,key)
                     elif name=='series': value = parse_series(doc,key)
@@ -539,6 +553,8 @@ class ExitInputService:
             if any(getattr(value,field)!=expected for field,expected in overlay.items()):
                 raise InvalidData('REST conflicts with latest lifecycle fields')
             sources = (name,'lifecycle') if stream_fields else (name,)
+            if self.bulk is not None and target in self.bulk.targets:
+                sources += ('events_bulk',)
             result = Evidence(value,observed,expires,mono,self.ttl,revision+1,sources,stream_fields)
             if (self.closed or not self.connected or generation!=self.generation
                     or revision!=self.epochs.get(target) or not self._fresh(result)):
@@ -646,6 +662,8 @@ class ExitInputService:
             if kind=='market_lifecycle_v2':
                 ticker = identity(msg['market_ticker'])
                 if ticker not in self.tickers: return True
+                if self.bulk is not None:
+                    self.bulk.invalidate(('market', ticker))
                 self._clear_terms(ticker)
                 target = self._key('market',ticker)
                 previous = self.values.pop(target,None)
@@ -681,6 +699,8 @@ class ExitInputService:
                 # Unknown events cannot grow caches from the universe-wide stream.
                 affected = self.event_markets.get(ticker,())
                 if target not in self.epochs and not affected: return True
+                if self.bulk is not None:
+                    self.bulk.invalidate(target)
                 self._key(*target)
                 self._retire_pending(target)
                 self._bump(target)

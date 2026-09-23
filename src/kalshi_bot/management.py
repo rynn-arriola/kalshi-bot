@@ -31,6 +31,8 @@ class InventoryManager:
         self.unmanaged = set()
         self.terms = {}
         self._logged_states = {}  # bounded by managed market scope, no tick-by-tick logs
+        self._inventory_revision = None
+        self._inventory_cache = {}
 
     def set_terms(self, terms):
         if not isinstance(terms, ExitTerms) or terms.ticker not in self.runtime.engine.market_shard:
@@ -122,7 +124,20 @@ class InventoryManager:
         book_generation = shard.generation
         book_revision = book.revision if book else -1
         terms = self.terms.get(ticker)
-        inventory = await runtime.writer.market_inventory(ticker, subaccount=account.subaccount)
+        # Pure durable inventory is independent of book/time. Reuse only within
+        # the exact writer epoch/revision; plans and all source checks below are
+        # still recomputed. One mutation invalidates the entire bounded cache.
+        version = (runtime.writer.epoch, runtime.writer.revision, account.subaccount)
+        if version != self._inventory_revision:
+            self._inventory_cache.clear()
+            self._inventory_revision = version
+        inventory = self._inventory_cache.get(ticker) if runtime.broad_discovery else None
+        if inventory is None:
+            inventory = await runtime.writer.market_inventory(ticker, subaccount=account.subaccount)
+            if (runtime.broad_discovery and version == self._inventory_revision
+                    and version == (inventory.writer_epoch, inventory.writer_revision, account.subaccount)
+                    and version == (runtime.writer.epoch, runtime.writer.revision, account.subaccount)):
+                self._inventory_cache[ticker] = inventory
         new_shard, new_book = self._book(ticker)
         if ((generation, revision) != (account.generation, account.revision) or not account.connected
                 or (inventory.writer_epoch, inventory.writer_revision) !=

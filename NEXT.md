@@ -1,22 +1,11 @@
 # Active work queue
 
-## Priority after D-092 measurements — 2026-09-23
+## After D-093 implementation — 2026-09-23
 
-Present/obtain approval for broad WS books plus shared bulk metadata using the
-[measured comparison](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md). Do not build
-the previously suggested rotating scanner by default. Implementation must
-preserve fee schedules, source freshness/generations and current trading limits;
-test actual reader queue budgets and ranking/account responsiveness. Only the
-read-only experiment is complete, not fast production ranking or restart gates.
-
-## Priority: decide faster discovery after measured census — 2026-09-23
-
-[Census](docs/VERIFY_MARKET_GATES_2026-09-23.md) found 156 passing markets,
-141 outside the saved seed. D-091's coverage repair alone is not fast global
-selection. Present a bounded discovery/execution separation proposal and obtain
-the operator's decision before changing architecture. Measure coverage latency
-and account-path responsiveness; do not weaken reward gates or increase orders.
-Host continuity and manual-cancellation reconciliation below remain required.
+[Broad discovery](docs/BUILD_BROAD_DISCOVERY.md) is implemented and verified.
+Retain the existing pre-restart order below. Do not restart implicitly.
+The new public-only census completes in 90 seconds with 150 passing markets;
+that is not a current-account or simultaneous-slate guarantee.
 
 ## Market-coverage repair complete offline; remaining live acceptance
 
@@ -31,8 +20,8 @@ expected skip. No further discovery implementation is pending from this unit.
 2. Before a separately authorized live restart, reconcile manual cancellations
    and any fills using actual venue evidence. Do not treat stale saved state as
    current or mark local orders canceled without evidence.
-3. During authorized acceptance, inspect fresh proposal exclusions, entry-source
-   blocks and rotation progress. Distinguish subscribed/economically qualified/
+3. During authorized acceptance, inspect broad-book freshness, metadata retries,
+   proposal exclusions and entry-source blocks. Distinguish subscribed/economically qualified/
    selected/placed counts; do not promise 30 entries or earnings from offline
    coverage. Resolve any measured bottleneck before expanding capacity.
 

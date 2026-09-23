@@ -1,5 +1,26 @@
 # Current status
 
+## D-093 broad discovery verified; bot remains stopped — 2026-09-23
+
+[Integration and evidence](docs/BUILD_BROAD_DISCOVERY.md): next normal launch
+observes all reviewed candidates (up to 1,024) on two book shards, shares bulk
+event metadata and queues only bounded ranked entry work. Account, order, fee,
+freshness and economic limits remain unchanged; recovery-only stays narrow.
+
+Public-only acceptance examined 1,013 markets in **90.073s / 570 REST reads**,
+versus 415.320s / 2,563 reads previously. **150 passed market gates**, including
+28 $2-priority candidates; no source errors. Sequential hypothetical empty-account
+observations, not simultaneous admission or earnings. Synthetic 1,024-book
+runtime burst/reconnect targets pass. Complete suite: **1,519 run, 1,518 passed,
+one expected Windows privilege skip**, 239.829s. Final targeted rerun: **100 pass**,
+22.951s, including three additional bulk boundary regressions and final query
+validation changes. Actual diff review found no blocking implementation issue;
+482 relative documentation links and whitespace checks pass.
+Bot remains stopped; no deployment, account calls or production ledger changes.
+Host continuity and manual-cancellation reconciliation remain pre-restart work.
+
+## Historical D-092 recommendation — accepted as D-093 above
+
 ## D-092 research favors broad WS books plus bulk metadata — 2026-09-23
 
 [Measured alternatives](docs/RESEARCH_DISCOVERY_OPTIONS_2026-09-23.md): two WS

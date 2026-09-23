@@ -6,6 +6,23 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-23 — normal discovery tied book coverage to rotating admission
+
+**Mechanism.** Watching 128 books with 16-market replacements delayed discovery
+of qualifying candidates; repeated detail metadata reads increased cold coverage
+cost. Simply expanding the watchlist would also enqueue entry attempts for every
+candidate against a 128-key dispatcher.
+
+**Fix.** D-093 watches the bounded reviewed universe, shares bulk definitions,
+retains complete fee/source checks and queues one fresh ranked entry key per
+bounded idle turn. Risk/account limits remain separate. Revision-bound inventory
+reuse avoids repeated durable reads for unchanged state.
+
+**Verification.** Full-scope, priority, source-race and cache regressions plus
+actual composed fake-ACK tests; 1,024-book runtime benchmark; public-only census
+90.073s, 1,013 examined, 150 passing, no final source errors.
+[Evidence and limitations](docs/BUILD_BROAD_DISCOVERY.md). No restart or orders.
+
 ## 2026-09-22 — partial subscriptions skipped exploration candidates
 
 **Symptom/mechanism.** Discovery advanced past every proposed tail ticker, but

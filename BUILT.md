@@ -1,5 +1,13 @@
 # What exists
 
+## D-093 broad reviewed discovery — 2026-09-23
+
+[Build and acceptance](docs/BUILD_BROAD_DISCOVERY.md): broad public book scope,
+shared versioned bulk metadata, revision-bound inventory reuse and bounded
+ranked-entry handoff are integrated. The updated public census uses production
+reader bounds; a new synthetic 1,024-book runtime benchmark passes. No deployment
+or restart. Full-suite/review evidence is owned by STATUS.
+
 ## Read-only discovery alternatives instruments — 2026-09-23
 
 `scripts/probe_book_capacity.py` measures staged broad-book subscriptions with

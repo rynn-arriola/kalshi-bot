@@ -7,6 +7,11 @@ task, startup entry, model switch or worker is installed.
 
 ## Current state
 
+The next authorized normal launch uses D-093's
+[broad reviewed discovery](BUILD_BROAD_DISCOVERY.md), not the historical 128-book
+rotation described below. Recovery-only remains narrow. The same launch commands,
+reviewed inputs and trading limits apply; no automatic deployment/restart occurs.
+
 Current operational evidence is owned by [STATUS](../STATUS.md), not the dated
 prelaunch checks below. On 2026-09-22 the operator-authorized live run placed
 orders; D-085 recovery later reached STOPPED_FLAT, and an authorized normal

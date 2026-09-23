@@ -1,6 +1,7 @@
 """Explicit public market-gate census; no trader, private REST, ledger or orders.
 
-Uses actual metadata/selection code and live WS books in batches of at most 128.
+Uses actual metadata/selection code and live WS books. --broad selects the new
+shared bulk metadata path and up to 1,024 simultaneous books.
 Account admission is NOT assessed: the selector receives an explicitly hypothetical
 empty $500 account solely to isolate market gates. Results are sequential samples.
 """
@@ -25,6 +26,7 @@ from kalshi_bot.portfolio import PortfolioView
 from kalshi_bot.quoting import parse_program
 from kalshi_bot.rest import RestReads, TokenBudget, get_wire
 from kalshi_bot.risk import WindowState, window_bounds
+from kalshi_bot.runtime import readonly_reader_factory
 from kalshi_bot.selection import MarketSelector
 from kalshi_bot.startup import load_signer, save_result
 from kalshi_bot.transport import WebSocketReaders, topology
@@ -45,7 +47,7 @@ class PublicWire:
     def __call__(self, url, headers, maximum):
         parsed = urlsplit(url)
         if (parsed.scheme != 'https' or parsed.netloc != 'external-api.kalshi.com'
-                or not re.fullmatch(r'/trade-api/v2/(incentive_programs|'
+                or not re.fullmatch(r'/trade-api/v2/(incentive_programs|events|'
                     r'(markets|events|series|milestones)/[A-Za-z0-9_.-]+)', parsed.path)
                 or set(headers)-{'Accept', 'Accept-Encoding'}):
             raise InvalidData('census forbids private or unrelated REST')
@@ -105,13 +107,14 @@ async def catalog(reads):
     return {t:tuple(ps) for t,ps in values.items()}
 
 
-async def batch(reads, signer, reviews, profile, programs, rows, exchanges):
+async def batch(reads, signer, reviews, profile, programs, rows, exchanges, *, broad=False):
     tickers = tuple(r.ticker for r in reviews)
     service = ExitInputService(reads, tickers, now=now, ttl=60,
-                              timing_reviews=reviews, fee_profile=profile)
+                              timing_reviews=reviews, fee_profile=profile, bulk_events=broad)
     service.bind(lambda _: None, lambda _: None)
     service.begin(1)
-    specs = tuple(s for s in topology(tickers) if s.name != 'account')
+    specs = tuple(s for s in topology(tickers, market_capacity=1024 if broad else 128)
+                  if s.name != 'account')
     feeds = {s.name:BookConnection(s.tickers) for s in specs if s.name != 'lifecycle'}
     generations = {n:f.reconnect() for n,f in feeds.items()}
     stamps, books, ready = {}, {}, asyncio.Event()
@@ -127,8 +130,23 @@ async def batch(reads, signer, reviews, profile, programs, rows, exchanges):
             if ticker is not None:
                 stamps[ticker] = event['_received_mono']
                 books[ticker] = feeds[name].books[ticker]
-    reader = WebSocketReaders(signer,specs)
-    task = asyncio.create_task(reader.run(consume))
+    async def read_books():
+        if not broad:
+            await WebSocketReaders(signer,specs).run(consume)
+            return
+        # Exercise the same per-connection buffering as normal composition.
+        factory = readonly_reader_factory(signer)
+        tasks = [asyncio.create_task(factory(spec).run(consume)) for spec in specs]
+        try:
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for done_task in done:
+                done_task.result()
+            raise InvalidData('public reader ended')
+        finally:
+            for owned_task in tasks:
+                owned_task.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
+    task = asyncio.create_task(read_books())
     jobs = asyncio.Queue()
     for t in tickers:
         jobs.put_nowait(t)
@@ -139,7 +157,16 @@ async def batch(reads, signer, reviews, profile, programs, rows, exchanges):
                 if task.done():
                     task.result()
                     raise InvalidData('public reader ended')
-                result = await service.refresh(ticker)
+                for attempt in range(3 if broad else 1):
+                    try:
+                        result = await service.refresh(ticker)
+                        break
+                    except InvalidData:
+                        if not broad or attempt == 2:
+                            raise
+                        # Bounded source-convergence retry; PublicWire still
+                        # latches HTTP refusal and never retries that network.
+                        await asyncio.sleep(1)
                 deadline = time.monotonic()+4
                 while (ticker not in books or time.monotonic()-stamps[ticker] > 5) and time.monotonic()<deadline:
                     await asyncio.sleep(.1)
@@ -182,7 +209,8 @@ async def run(args, output):
     result = dict(state='RUNNING', started_at=now().isoformat(), rows=[],
         account_admission_assessed=False, hypothetical_flat_capital_usd='500',
         orders_modified=0, private_rest_requests=0, trading_started=False,
-        simultaneous_census=False, source='saved reviews, fresh REST metadata and live WS books')
+        simultaneous_census=False, broad_books_bulk_metadata=bool(args.broad),
+        source='saved reviews, fresh REST metadata and live WS books')
     wire = PublicWire()
     reads = RestReads(TokenBudget(rate=10,capacity=10,default_cost=1,initial_tokens=2),wire=wire)
     try:
@@ -199,16 +227,22 @@ async def run(args, output):
         current = {r.ticker:r for r in reviews if r.valid_until>now() and r.ticker in programs}
         seeds = tuple(t for t in raw['initial_tickers'] if t in current)
         ordered = seeds+tuple(t for t in current if t not in seeds)
+        if args.broad:
+            # Match MetadataScheduler's connected bootstrap order; seed-first
+            # batching was a property of the former rotating diagnostic only.
+            ordered = tuple(sorted(current))
         ordered = ordered[:args.markets]
         result.update(reviewed=len(reviews), active_reward_markets=len(programs),
                       eligible_review_scope=len(current), requested=len(ordered), seed_tickers=seeds)
         save_result(output,result)
         async with asyncio.timeout(900):
-            for offset in range(0,len(ordered),128):
+            width = 1024 if args.broad else 128
+            for offset in range(0,len(ordered),width):
                 if offset:
                     programs = await catalog(reads)
-                scope = tuple(current[t] for t in ordered[offset:offset+128])
-                await batch(reads,signer,scope,profile,programs,result['rows'],frozenset(raw['exchange_indices']))
+                scope = tuple(current[t] for t in ordered[offset:offset+width])
+                await batch(reads,signer,scope,profile,programs,result['rows'],
+                            frozenset(raw['exchange_indices']),broad=args.broad)
                 save_result(output,result)
         result['state'] = 'OBSERVED'
         if any('metadata_or_source_error' in r['reasons'] or 'book_missing_or_stale' in r['reasons']
@@ -235,6 +269,7 @@ def main():
     parser.add_argument('--read-only-live-check',required=True,action='store_true')
     parser.add_argument('--source-root',required=True,type=Path)
     parser.add_argument('--markets',type=int,default=128)
+    parser.add_argument('--broad',action='store_true')
     args = parser.parse_args()
     integer(args.markets,1,1024)
     if not args.source_root.is_absolute():

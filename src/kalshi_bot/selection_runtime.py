@@ -31,7 +31,8 @@ class RuntimeSelection:
                         or runtime.live_components_enabled)):
             raise InvalidData('matching offline runtime required')
         self.runtime = runtime
-        self.selector = MarketSelector(runtime.writer.market_capacity)
+        self.selector = MarketSelector(max(runtime.writer.market_capacity,
+                                           len(runtime.engine.market_shard)))
         self.programs = {}
         self._last_observed = {}  # Retain high-water marks after invalid publication.
         self._proofs = {}

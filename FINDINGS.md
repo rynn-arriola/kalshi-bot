@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 139. Integrated broad books and bulk metadata reduce census cost — 2026-09-23
+
+MEASURED: [D-093 acceptance](docs/BUILD_BROAD_DISCOVERY.md) examines 1,013 markets
+in 90.073 seconds / 570 public REST requests, versus 415.320s / 2,563 previously.
+150 pass unchanged market gates, including 28 $2-priority candidates. No source
+errors in the final run; the earlier three-expiry-failure run remains recorded.
+The 4.6x timing improvement is not a controlled reward comparison; source times
+and queue ordering differ. No actual account admission or profitability claim.
+
+VERIFIED OFFLINE: 1,024-book engine/management/selection fixture proposes at most
+15 pairs, retains writer/account bounds and coalesces entry scheduling. Exact
+inventory revision reuse reduces repeated database work; current source checks
+remain mandatory. Public data breadth is independent of resting-order capacity.
+Sustained real account/fill/cancel latency remains unmeasured. Bot stays stopped.
+
 ## 138. Broad books and bulk metadata remove assumed API bottlenecks — 2026-09-23
 
 MEASURED: all 1,013 currently reviewed/rewarded books arrived in 0.560s over two

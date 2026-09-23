@@ -478,6 +478,9 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 reward_row('B', 'reward-b'), reward_row('UNREVIEWED', 'reward-u')]
         if unsupported:
             docs['/series/S']['series']['fee_type'] = 'flat'
+        docs['/events'] = {'events':[{**metadata.Reads().event,
+            'markets':[market]+([metadata.market('B')] if discover else [])}],
+            'milestones':[metadata.Reads().milestone], 'cursor':''}
         def wire(url, *_):
             path = urlparse(url).path.removeprefix('/trade-api/v2')
             return WireResponse(200, json.dumps(docs[path], default=str).encode())
@@ -527,17 +530,17 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(guard.listeners), 5)
                 self.assertFalse(runtime.observation_only)
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
-                self.assertIsNotNone(runtime.admission)
-                self.assertEqual(set(runtime.engine.market_shard), {'A'})
+                self.assertIsNone(runtime.admission)
+                self.assertTrue(runtime.broad_discovery)
+                self.assertIsNotNone(runtime.market_inputs.bulk)
+                self.assertEqual(set(runtime.engine.market_shard), {'A','B'} if discover else {'A'})
                 task = asyncio.create_task(runtime.run())
                 async with asyncio.timeout(10):
                     while not calls and not (unsupported and 'B' in runtime.market_inputs.results):
                         if task.done(): task.result()
                         await asyncio.sleep(.01)
                 if discover:
-                    self.assertGreaterEqual(runtime.admission.completed, 1)
                     self.assertNotIn('UNREVIEWED', runtime.engine.market_shard)
-                    self.assertEqual(runtime.selection.candidate_inputs.counts.get('timing_review_missing'), 1)
                     self.assertIn('B', runtime.market_inputs.reviews)
                 if unsupported:
                     await asyncio.sleep(.1)

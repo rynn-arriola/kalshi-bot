@@ -28,13 +28,12 @@ def readonly_reader_factory(signer, *, connector=None):
     """Factory only; does not open sockets or load credentials."""
     def create(spec):
         kwargs = {} if connector is None else {"connector": connector}
-        # Kalshi's unscoped lifecycle subscription begins with a snapshot of
-        # every active market (more than 5,000 rows in production).  Keep the
-        # private/account and scoped-book queues tight, but allow one bounded
-        # full snapshot on the lifecycle connection so it cannot reconnect in
-        # an endless queue-overflow loop before the consumer catches up.
+        # Lifecycle has its separate D-090 bound. Broad public shards need room
+        # for a complete snapshot burst; account and small-book bounds stay put.
         capacity, byte_capacity = ((8192, 16*1024*1024)
                                    if spec.name == "lifecycle"
+                                   else (2048, 8*1024*1024)
+                                   if spec.name.startswith('book-') and len(spec.tickers) > 128
                                    else (256, 2*1024*1024))
         return WebSocketReaders(signer, (spec,), capacity=capacity,
                                 byte_capacity=byte_capacity, **kwargs)
@@ -63,10 +62,15 @@ class RecoveryRuntime:
                  invalidate=lambda ticker: None, clock=time.monotonic,
                  sleep=asyncio.sleep, jitter=lambda: random.uniform(.8, 1.2), attempts=3,
                  diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None,
-                 accounting_boundary=None, observation_only=False, opening_reference=None):
+                 accounting_boundary=None, observation_only=False, opening_reference=None,
+                 broad_discovery=False):
         if type(observation_only) is not bool:
             raise InvalidData('observation_only must be a boolean')
         self.observation_only = observation_only
+        if type(broad_discovery) is not bool:
+            raise InvalidData('broad_discovery must be a boolean')
+        self.broad_discovery = broad_discovery
+        self._entry_dirty = False
         self.live_session = writer.live_session
         if observation_only and self.live_session is not None:
             raise InvalidData('observation runtime cannot own a live session')
@@ -82,7 +86,8 @@ class RecoveryRuntime:
         if self.history_start >= utc(now()):
             raise InvalidData("explicit nonempty startup history scope required")
         self.attempt_limit = integer(attempts, 1, 8)
-        self.specs = topology(tuple(tickers), market_capacity=writer.market_capacity)
+        self.specs = topology(tuple(tickers),
+                              market_capacity=1024 if broad_discovery else writer.market_capacity)
         self.account = AccountCoordinator(writer, subaccount=subaccount, capacity=writer.market_capacity, clock=clock)
         shards = {s.name: BookConnection(s.tickers) for s in self.specs if s.name.startswith("book-")}
         self.lost = {name: asyncio.Event() for name in shards}
@@ -200,6 +205,8 @@ class RecoveryRuntime:
 
     def attach_admission(self, *, offline_fixture=False):
         from .admission import MarketAdmission
+        if self.broad_discovery:
+            raise InvalidData('broad discovery owns a fixed reviewed book scope')
         self.admission = MarketAdmission(self,offline_fixture=offline_fixture)
         return self.admission
 
@@ -216,7 +223,10 @@ class RecoveryRuntime:
             if (self.dispatch_supervisor is not None
                     and self.selection.current(ticker)):
                 from .dispatch import ENTRY_PAIR
-                self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
+                if self.broad_discovery:
+                    self._entry_dirty = True
+                else:
+                    self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
         if self.rewards is not None:
             self.rewards.refresh(ticker)
         await self._evaluate_callback(ticker, book, generation)
@@ -229,6 +239,43 @@ class RecoveryRuntime:
         if self.rewards is not None:
             self.rewards.refresh(ticker)
         await self._deadline_callback(ticker)
+
+    async def _ranked_entry_turn(self):
+        """One advisory key per turn, never one entry request per public tick.
+
+        The ordinary dispatch source still reproposes/revalidates before every
+        reservation. Inventory priorities remain on their existing immediate path.
+        """
+        if (not self._entry_dirty or self.selection is None
+                or self.dispatch_supervisor is None or not self.entry_allowed):
+            return
+        state = self.dispatch_supervisor.dispatcher.status()
+        if state.active is not None or state.queued or state.stopping or state.failed:
+            return  # Never compete with pending cancellation/inventory work.
+        release = self.accounting_result
+        report = self.account.current_report(self.now())
+        if release is None or not release.released or release.window is None or report is None:
+            return
+        self._entry_dirty = False
+        proposal = await self.selection.propose(window=release.window,
+            free_cash=report.snapshot.available_balance)
+        if (proposal.blockers or not proposal.additions or not self.entry_allowed
+                or self.accounting_result is not release
+                or self.account.current_report(self.now()) is not report):
+            return
+        ticker = proposal.additions[0].ticker
+        state = self.dispatch_supervisor.dispatcher.status()
+        if state.active is not None or state.queued or state.stopping or state.failed:
+            self._entry_dirty = True
+            return
+        if self.selection.current(ticker):
+            from .dispatch import ENTRY_PAIR
+            self.dispatch_supervisor.request(ticker, ENTRY_PAIR)
+
+    async def _ranked_entries(self):
+        while not self.stop_requested.is_set():
+            await asyncio.sleep(.25)
+            await self._ranked_entry_turn()
 
     def _request_inventory_dispatch(self, ticker):
         """Queue a key, never a command; the source revalidates before dispatch.
@@ -1022,6 +1069,8 @@ class RecoveryRuntime:
             if self.dispatch_supervisor is not None:
                 dispatch_task = asyncio.create_task(self.dispatch_supervisor.run(), name='kalshi-dispatch')
                 tasks.append(dispatch_task)
+                if self.broad_discovery:
+                    tasks.append(asyncio.create_task(self._ranked_entries(), name='kalshi-ranked-entries'))
             tasks.extend(asyncio.create_task(self.admission.book_loop(spec)
                 if self.admission is not None and spec.name in self.engine.shards
                 else self._connection(spec)) for spec in self.specs)
@@ -1094,6 +1143,7 @@ class RecoveryRuntime:
 
     def status(self):
         return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
+            discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
             completed_repair_passes=self.recovery_passes, readers=dict(self.reader_states),
             connection_attempts=dict(self.connection_attempts),

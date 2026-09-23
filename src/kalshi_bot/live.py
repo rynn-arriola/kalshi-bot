@@ -232,21 +232,27 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     """Actual owners and non-fixture execution. Injectable wires allow safe tests."""
     session = writer.live_session
     seeds = await initial_scope(writer, inputs, now())
+    # Validate existing ownership above, independently of public observation
+    # capacity. Recovery-only retains its narrow, protected scope.
+    broad = not session.entries_paused
+    if broad:
+        seeds = inputs.tickers
     source = WriteQuotaSource(reads, shards=inputs.exchange_indices, live_session=session)
     await quota.bootstrap()
     metadata = ExitInputService(reads, seeds, now=now, clock=clock, ttl=60,
         diagnostics=diagnostics, timing_reviews=tuple(r for r in inputs.reviews if r.ticker in seeds),
-        fee_profile=inputs.fee_profile, candidate_reviews=inputs.reviews)
+        fee_profile=inputs.fee_profile, candidate_reviews=inputs.reviews, bulk_events=broad)
     runtime = RecoveryRuntime(writer, reads, reader_factory, tickers=seeds,
         subaccount=0, history_start=boundary, accounting_boundary=boundary,
         opening_reference=('operator-launch-'+session.run_id) if initialize else None,
         now=now, clock=clock, evaluate=_noop, deadline_handler=_noop,
         lifecycle_handler=_noop, diagnostics=diagnostics, market_inputs=metadata,
-        quota_supervisor=quota)
+        quota_supervisor=quota, broad_discovery=broad)
     runtime.attach_selection()
     runtime.attach_incentives()
     runtime.selection.candidate_inputs = CandidateInputs(runtime, inputs.exchange_indices)
-    runtime.attach_admission()
+    if not broad:
+        runtime.attach_admission()
     runtime.attach_rewards(scope='primary-account', checkpoint_path=Path(writer.path).with_suffix('.rewards.json'))
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)

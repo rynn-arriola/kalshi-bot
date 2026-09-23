@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-093 [broad reviewed discovery](BUILD_BROAD_DISCOVERY.md) supersedes normal
+live subscription rotation below: up to 1,024 books on two shards, shared bulk
+missing-field metadata and one bounded ranked-entry handoff. Trading/account
+capacity stays unchanged. Recovery-only retains the narrow ownership path.
+
 D-091 [repairs exploration coverage](BUILD_DISCOVERY_COVERAGE.md): actual joined
 scope, not a proposed slate, advances the bounded pending queue. Available-pair
 refill uses a 30-second minimum dwell independently of catalog refresh. Existing

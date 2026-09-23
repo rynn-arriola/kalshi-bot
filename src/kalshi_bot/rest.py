@@ -77,6 +77,8 @@ ENDPOINTS = {
                            "incentives", False, "incentive_programs", "next_cursor"),
     "markets": endpoint("/markets", "tickers status mve_filter limit cursor",
                         "candidate", False, "markets"),
+    "events": endpoint("/events", "tickers limit cursor with_nested_markets with_milestones",
+                       "metadata", False, "events"),
     "milestones": endpoint("/milestones", "minimum_start_date limit cursor",
                            "candidate", False, "milestones"),
     "market": endpoint("/markets/{ticker}", "ticker", "metadata", False),
@@ -106,7 +108,12 @@ def request_path(name: str, params: dict, reason: str) -> tuple[Endpoint, str]:
     for key, value in query.items():
         if key in {"limit", "depth", "min_ts", "max_ts", "subaccount", "exchange_index"}:
             ceiling = 1000 if key in {"limit", "depth"} else 2**63-1
+            if name == 'events' and key == 'limit':
+                ceiling = 200
             integer(value, 1 if key in {"limit", "depth"} else 0, ceiling)
+        elif name == 'events' and key in {'with_nested_markets', 'with_milestones'}:
+            if value not in ('true', 'false'):
+                raise InvalidData('explicit event query boolean required')
         elif not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value):
             raise InvalidData("invalid query value")
     if "min_ts" in query and "max_ts" in query and query["min_ts"] > query["max_ts"]:

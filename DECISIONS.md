@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-093 — Adopt broad reviewed books and shared bulk metadata
+
+- **Status:** ACCEPTED implementation, 2026-09-23 Eastern.
+- **Decision owner:** Operator: “Ok lets use that,” following D-092's measured
+  recommendation.
+- **Scope:** Watch up to the existing 1,024 reviewed candidates on two public
+  book shards; share bounded bulk event/market/milestone reads. Preserve current
+  validators, complete fee schedules, freshness, generations and quotas. Bound
+  ranking-to-entry work independently from public subscription breadth.
+- **Boundary:** Supersedes D-091's 128-book rotating scope for normal live
+  composition only. Monetary/account capacity, 30 resting entries, reward gates
+  and all execution proofs remain unchanged. Test integration and performance;
+  no live restart, account calls, order actions or production ledger changes.
+
 ### D-092 — Research and measure discovery alternatives before architecture changes
 
 - **Status:** ACCEPTED read-only research/testing, 2026-09-23 Eastern.
