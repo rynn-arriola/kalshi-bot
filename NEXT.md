@@ -3,12 +3,12 @@
 ## After D-094 host/account repair — 2026-09-23
 
 [Host continuity and manual-cancellation reconciliation](docs/BUILD_HOST_CONTINUITY.md)
-are complete. Bot remains stopped, supervisor disarmed and account observed flat.
-Next: obtain explicit restart authority, refresh/revalidate reviewed inputs and
-run the normal readiness path. Inspect live broad-book freshness, metadata
-retries, exclusions and actual selected/placed counts before judging capacity.
-No further implementation is required by this repair unit; actual live acceptance
-and profitability remain unverified.
+are complete. D-095's authorized restart is running at the 30-order limit with
+no observed position at the acceptance checkpoint. Next: monitor actual fills,
+partial closes/exits, order turnover, reward estimates and settled trading loss.
+Measure broad-book freshness, metadata retries, exclusions and candidate-to-order
+conversion under sustained operation. Do not infer profitability from resting
+capacity; preserve existing limits and use the controlled stop path if needed.
 
 ## Historical pre-D-094 queue — completed blockers retained below
 

@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 141. Normal restart reached the 30-order live limit — 2026-09-23
+
+VERIFIED LIVE under D-095: after public candidate refresh and fresh account
+reconciliation, runtime `e6b52e1b72ff496ab4b5d0eaf3925f46` placed 30 resting
+orders across 15 two-sided markets with $126.10 reserved exposure and no observed
+position by 05:22 UTC. Both book shards, account and lifecycle readers were
+subscribed; engine, dispatch and logging had no reported failure or hold.
+
+MEASURED over 15 one-second local snapshots: account/live-ready authority was
+present for 9 samples and fail-closed during periodic reconciliation for six,
+then restored. The orders remained at 30. This establishes restart and capacity,
+not fills, exit quality, reward payment or profitability.
+
 ## 140. Host lifetime verified independently; manual cancellations reconciled — 2026-09-23
 
 VERIFIED: [D-094 evidence](docs/BUILD_HOST_CONTINUITY.md) demonstrates inert

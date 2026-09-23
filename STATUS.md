@@ -1,6 +1,6 @@
 # Current status
 
-## D-095 normal-restart candidate refresh verified; launch pending — 2026-09-23
+## D-095 controlled live restart running — 2026-09-23
 
 The operator explicitly authorized a controlled live restart. The prelaunch
 input check found expired reviewed markets and correctly blocked before trading.
@@ -8,8 +8,21 @@ Normal supervised launch previously refreshed public candidates only for a new
 ledger; it now runs the same bounded credential-free preparation on every normal
 explicit arm. Recovery-only remains narrow. Focused restart/candidate suites:
 **39/39 pass**. Complete suite: **1,537 run / 1,536 passed / one expected Windows
-privilege skip**, 245.514s. No bot process or order action occurred during this
-repair. Publish the verified change before invoking the authorized launcher.
+privilege skip**, 245.514s. Commit `2522f7a` is published on `origin/master`.
+
+The independent supervisor acknowledged launch at **05:17:31 UTC / 01:17:31
+Eastern**, parent PID 30568, child PID 44308, runtime
+`e6b52e1b72ff496ab4b5d0eaf3925f46`. By 05:20 UTC it reached the configured
+30-resting-order maximum across 15 two-sided markets, reserved **$126.10** and
+reported no position. Both book shards plus account/lifecycle readers are
+subscribed; engine, dispatcher and logging report healthy/no failure. A 15-second
+sample observed fresh account/live-ready authority in 9/15 samples; periodic
+reconciliation correctly revoked it in the other six and then restored it.
+Existing orders remained at 30. No risk/accounting blockers or recovery holds.
+
+The bot is **running**. Top-level `RUNNING_UNVERIFIED` is the deliberate protected
+process-presence label, not a failure or full readiness claim. Continue observing
+fills, exits, order turnover, reward estimates and broad-selection coverage.
 
 ## D-094 host/account blockers repaired; bot stays stopped — 2026-09-23
 
