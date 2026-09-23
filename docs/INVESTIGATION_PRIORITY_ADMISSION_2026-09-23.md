@@ -1,6 +1,6 @@
 # Priority admission investigation — 2026-09-23
 
-Status: investigation complete; D-105 implementation prepared and not deployed.
+Status: investigation complete; D-105 implementation published at `9a20e57` and not deployed.
 No configuration, order, ledger or runtime operation changed. Investigated Kalshi
 source: `bef23eb`. Polymarket reference:
 `c4e8af20136e0b66b4f57e619c7e6eba0b6a7c42`, inspected read-only.

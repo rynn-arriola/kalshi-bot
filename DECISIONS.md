@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-105 — Revalidate remembered $2 candidates before $1 fallback
 
-- **Status:** ACCEPTED implementation; not deployed, 2026-09-23.
+- **Status:** ACCEPTED, implemented and published; not deployed, 2026-09-23.
 - **Decision owner:** Operator: “Ok do it,” after review of the priority-admission
   investigation and recommendation.
 - **Scope:** Retain bounded advisory memory of previously current $2 candidates,

@@ -22,7 +22,7 @@ fallback deferral, fresh downgrade, bounded later batches, scheduler priority,
 runtime early release, continued coverage, source-event wakeup and dispatch-tier
 evidence. The complete suite passes 1,636 tests with one expected Windows
 privilege skip; compile, whitespace and documentation checks are part of
-publication.
+publication. Reviewed source commit: `9a20e57`.
 
 ## 2026-09-23 — owned metadata starvation and false clean-stop failure
 

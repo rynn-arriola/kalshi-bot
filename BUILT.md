@@ -11,7 +11,7 @@ reports memory, pending refreshes, fallback rationale and bounded dispatch-
 selection evidence. The actual broad entry loop now owns event-driven checkpoint
 progress instead of making early release unreachable. Deployment state belongs
 in `STATUS.md`. The complete offline suite passes 1,636 tests with one expected
-Windows privilege skip.
+Windows privilege skip. Reviewed source commit: `9a20e57`.
 
 ## Active-owner metadata priority and clean stop pulses — 2026-09-23
 

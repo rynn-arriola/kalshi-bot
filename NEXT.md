@@ -2,11 +2,11 @@
 
 ## D-105 priority revalidation
 
-Complete diff review and publication of the verified
-[priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md).
-Keep generation 76 and its current incumbents untouched. Deployment/restart
-remains a separate operator decision. If later deployed, measure priority-refresh
-latency and quota load before considering any REST-concurrency change.
+The verified [priority-admission repair](docs/INVESTIGATION_PRIORITY_ADMISSION_2026-09-23.md)
+is published at `9a20e57`. Keep generation 76 and its current incumbents
+untouched. Deployment/restart remains a separate operator decision. If later
+deployed, measure priority-refresh latency and quota load before considering any
+REST-concurrency change.
 
 
 ## After D-104 live acceptance — generation 76 running

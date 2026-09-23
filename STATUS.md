@@ -15,8 +15,9 @@ order. Early priority release is now exercised through the real runtime turn and
 historical coverage continues afterward. Verification/publication details will
 be added after publication. The complete suite passes **1,636 tests** with one
 expected Windows privilege skip; focused source/selection/scheduler suites also
-pass. This source is not deployed and generation 76 continues running its prior
-`e614981` code. The earlier complete 5-priority/10-
+pass. Reviewed source commit `9a20e57` is published with local/remote parity.
+It is not deployed and generation 76 continues running its prior `e614981` code.
+The earlier complete 5-priority/10-
 fallback count was not supported by a complete current sample; see the audit.
 
 
