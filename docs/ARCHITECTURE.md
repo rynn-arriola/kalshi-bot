@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-096's [initial combined-ranking checkpoint](BUILD_INITIAL_RANKING.md) delays
+only normal broad-mode entries until evaluated coverage or a bounded timeout.
+Both book shards and metadata remain concurrent; current eligibility/dispatch
+proofs remain separate from historical coverage. Inventory/safety work never waits.
+
 D-094 [independent Windows hosting](BUILD_HOST_CONTINUITY.md) separates the
 on-demand supervisor from the launching terminal/job. The existing exact child,
 recovery fences and single account writer remain unchanged. Local status probes

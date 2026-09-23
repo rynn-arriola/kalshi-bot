@@ -1,5 +1,19 @@
 # Active work queue
 
+## D-096 — authorized deployment and live checkpoint acceptance
+
+The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is verified
+offline; the complete 1,554-test suite passes with one expected skip. Controlled
+drain and recovery-only verification are complete; the old supervisor is disarmed
+and the latest runtime reports STOPPED_FLAT, no positions/exposure.
+
+1. Publish/deploy the exact reviewed fix and perform the authorized normal start.
+2. Observe no initial entries while waiting, coverage/timeout release, current
+   $2-priority proposals and actual order capacity. Separate historical evaluated
+   coverage from simultaneously current candidates; never promise earnings.
+3. Incumbent replacement/repricing remains unapproved and unimplemented. Later
+   better candidates do not displace already resting orders automatically.
+
 ## After D-094 host/account repair — 2026-09-23
 
 [Host continuity and manual-cancellation reconciliation](docs/BUILD_HOST_CONTINUITY.md)
@@ -10,11 +24,9 @@ Measure broad-book freshness, metadata retries, exclusions and candidate-to-orde
 conversion under sustained operation. Do not infer profitability from resting
 capacity; preserve existing limits and use the controlled stop path if needed.
 
-Highest-priority design question from live evidence: preserve safe reference
-quotes while making the final slate actually honor the $2 tier. Current code
-fills $1 fallbacks before broad metadata converges and never upgrades incumbents.
-Design a bounded dwell/reservation or safe replacement policy before changing
-live orders; do not enable price chasing or cancellation churn implicitly.
+D-096 above addresses early entry before initial coverage. A future safe incumbent
+replacement policy still requires a separate decision; do not enable price
+chasing or cancellation churn implicitly.
 
 ## Historical pre-D-094 queue — completed blockers retained below
 

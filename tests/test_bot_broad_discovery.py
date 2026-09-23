@@ -32,6 +32,7 @@ class BroadTests(unittest.IsolatedAsyncioTestCase):
             history_start=NOW-timedelta(hours=1),now=lambda:NOW,clock=lambda:100.,
             evaluate=noop,deadline_handler=noop,lifecycle_handler=noop,broad_discovery=True)
         self.s = self.r.attach_selection(offline_fixture=True)
+        self.s.start()
         self.r.account.connect_generation()
         self.r.engine.begin_private_epoch()
         self.window = await self.writer.observe(NOW)
@@ -83,6 +84,8 @@ class BroadTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(read.await_count,1)
 
     async def test_many_book_updates_queue_one_ranked_key_and_respect_safety_work(self):
+        # This test isolates the post-checkpoint dispatcher scheduling boundary.
+        for ticker in self.tickers: self.s.initial_ranking.observe(ticker)
         queued = []
         state = SimpleNamespace(active=None,queued=(),stopping=False,failed=False)
         self.r.dispatch_supervisor = SimpleNamespace(
@@ -106,6 +109,7 @@ class BroadTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.r._entry_dirty)
 
     async def test_ranked_entry_does_not_survive_source_change_during_proposal(self):
+        for ticker in self.tickers: self.s.initial_ranking.observe(ticker)
         calls = []
         self.r.dispatch_supervisor = SimpleNamespace(dispatcher=SimpleNamespace(status=lambda:
             SimpleNamespace(active=None,queued=(),stopping=False,failed=False)),request=lambda *a:calls.append(a))

@@ -2,6 +2,7 @@
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from .config import BotConfig
 from .quoting import Program
 from .selection import MarketSelector, SelectionReport
 from .values import InvalidData, decimal, identity, utc
@@ -24,7 +25,7 @@ class SelectionDispatchProof:
 
 
 class RuntimeSelection:
-    def __init__(self, runtime, *, offline_fixture=False):
+    def __init__(self, runtime, *, offline_fixture=False, initial_timeout=120):
         from .runtime import RecoveryRuntime
         if (not isinstance(runtime, RecoveryRuntime)
                 or not (offline_fixture is True or runtime.observation_only
@@ -41,6 +42,32 @@ class RuntimeSelection:
         self._last_additions = ()
         self.candidate_inputs = None  # Explicit live composition only.
         self.last_proposal = None  # Bounded historical diagnostics, not authority.
+        from .initial_ranking import InitialRankingCheckpoint
+        self.initial_ranking = (InitialRankingCheckpoint(runtime.engine.market_shard,
+            clock=runtime.clock, timeout=initial_timeout) if runtime.broad_discovery else None)
+
+    def start(self):
+        if self.initial_ranking is not None:
+            self.initial_ranking.start()
+
+    def _initial_progress(self, ticker=None):
+        gate = self.initial_ranking
+        if gate is None or gate.reason is not None:
+            return
+        r = self.runtime
+        catalog = r.incentives.current() if r.incentives is not None else None
+        gate.sync((tuple((name, shard.generation, shard.failed)
+                         for name, shard in r.engine.shards.items()),
+                   r.market_inputs.generation if r.market_inputs is not None else None,
+                   (catalog.generation, catalog.observed_mono) if catalog is not None else None))
+        if ticker is not None:
+            gate.observe(ticker)
+
+    def initial_ranking_ready(self):
+        if self.initial_ranking is None:
+            return True
+        self._initial_progress()
+        return self.initial_ranking.ready()
 
     def invalidate(self, ticker):
         self.selector.invalidate(ticker)
@@ -131,6 +158,12 @@ class RuntimeSelection:
                 counts[reason] = counts.get(reason, 0)+1
         self.last_proposal = dict(observed_at=utc(self.runtime.now()).isoformat(),
             additions=len(result.additions), blockers=list(result.blockers),
+            priority_additions=sum(row.gross_remaining_usd is not None
+                and row.gross_remaining_usd >= BotConfig().priority_projected_reward_usd
+                for row in result.additions),
+            addition_samples=[dict(ticker=row.ticker,
+                projected_remaining_usd=str(row.gross_remaining_usd))
+                for row in result.additions[:8]],
             exclusion_counts=counts, exclusion_samples=list(result.exclusions[:8]),
             historical_only=True)
         return result
@@ -159,7 +192,7 @@ class RuntimeSelection:
     def capture_dispatch_proof(self, ticker, program_id, valid_until):
         """Pin entry-only selection inputs before the writer advances revision."""
         ticker, program_id, valid_until = identity(ticker), identity(program_id), utc(valid_until)
-        if not self.current(ticker):
+        if not self.initial_ranking_ready() or not self.current(ticker):
             return None
         source = self._proofs.get(ticker)
         observation = self._observation(ticker)
@@ -172,7 +205,8 @@ class RuntimeSelection:
 
     def dispatch_proof_current(self, proof):
         """Synchronous send fence that tolerates only the writer's own prepare."""
-        if not isinstance(proof, SelectionDispatchProof) or not self._available():
+        if (not isinstance(proof, SelectionDispatchProof) or not self._available()
+                or not self.initial_ranking_ready()):
             return False
         r, now = self.runtime, utc(self.runtime.now())
         if r.admission is not None and r.admission.transitioning:
@@ -194,6 +228,11 @@ class RuntimeSelection:
             return
         now = utc(r.now())
         observation = self._observation(ticker)
+        if observation is None and r.incentives is not None and r.incentives.current() is not None:
+            # A complete current catalog can rule out an unrewarded market
+            # without waiting for a book/metadata combination it cannot use.
+            self._initial_progress(ticker)
+            return
         plan = r.management.current(ticker)
         report = r.account.current_report(now)
         if (observation is None or not observation.programs or plan is None or plan.terms is None
@@ -226,9 +265,11 @@ class RuntimeSelection:
                 r.diagnostics.emit('selection_inputs_rejected', market=ticker, error=exc)
                 r.diagnostics.ensure_healthy()
             self._rejected[ticker] = ('unsupported_selection_inputs',)
+            self._initial_progress(ticker)
             return  # One unsupported market must not stop inventory management.
         self._rejected.pop(ticker, None)
         self._proofs[ticker] = (plan, observation, report)
+        self._initial_progress(ticker)
 
     async def propose(self, *, window, free_cash):
         """Read-only advisory batch; recheck all retained source proofs after await.
@@ -237,6 +278,8 @@ class RuntimeSelection:
         every tick: it mutates writer risk state and revokes account leases.
         """
         r = self.runtime
+        if not self.initial_ranking_ready():
+            return self._record_proposal(SelectionReport((), (), (), ('initial_ranking_pending',)))
         if r.admission is not None and r.admission.transitioning:
             return self._record_proposal(SelectionReport((),(),(),('subscription_handoff_in_progress',)))
         report = r.account.current_report(r.now())
@@ -270,6 +313,8 @@ class RuntimeSelection:
                     current_markets=sum(self.current(t) for t in tuple(self._proofs)),
                     rejected_markets=len(self._rejected),
                     last_proposal=self.last_proposal,
+                    initial_ranking=(self.initial_ranking.status()
+                                     if self.initial_ranking is not None else None),
                     venue_requests=0, automatic_repricing=False,
                     candidate_inputs=(self.candidate_inputs.status()
                                       if self.candidate_inputs is not None else None))

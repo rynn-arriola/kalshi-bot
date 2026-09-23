@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-096 — Initial combined-ranking checkpoint
+
+- **Status:** ACCEPTED implementation and subsequent reviewed restart, 2026-09-23.
+- **Decision owner:** Operator: “Ok do recommended,” then “Can you also restart
+  once you review the fix.”
+- **Scope:** Keep both book feeds and missing-field metadata concurrent; delay
+  new entries until initial evaluated coverage or a bounded timeout, then rank
+  current eligible candidates together with existing $2-first/$1-fallback rules.
+  Revalidate prices, sources and limits before each order. Test and review before
+  controlled stop/deployment/restart using the existing ledger.
+- **Boundary:** No incumbent-upgrade policy, automatic repricing, risk changes,
+  second bot or force-kill. Timeout never makes missing/stale evidence eligible.
+  Inventory, cancellation and recovery continue independently of the checkpoint.
+
 ### D-095 — Controlled live restart after D-094 repair
 
 - **Status:** ACCEPTED operation, 2026-09-23 Eastern.

@@ -168,11 +168,12 @@ class RecoveryRuntime:
             self.rewards.invalidate(ticker)
         self.invalidate(ticker)
 
-    def attach_selection(self, *, offline_fixture=False):
+    def attach_selection(self, *, offline_fixture=False, initial_timeout=120):
         from .selection_runtime import RuntimeSelection
         if self.used or self.stop_requested.is_set() or self.selection is not None:
             raise InvalidData('selection requires unused runtime')
-        self.selection = RuntimeSelection(self, offline_fixture=offline_fixture)
+        self.selection = RuntimeSelection(self, offline_fixture=offline_fixture,
+                                          initial_timeout=initial_timeout)
         return self.selection
 
     def attach_dispatch(self, source, dispatcher, *, offline_fixture=False):
@@ -246,7 +247,8 @@ class RecoveryRuntime:
         The ordinary dispatch source still reproposes/revalidates before every
         reservation. Inventory priorities remain on their existing immediate path.
         """
-        if (not self._entry_dirty or self.selection is None
+        if (self.selection is None or not self.selection.initial_ranking_ready()
+                or not self._entry_dirty
                 or self.dispatch_supervisor is None or not self.entry_allowed):
             return
         state = self.dispatch_supervisor.dispatcher.status()
@@ -1048,6 +1050,8 @@ class RecoveryRuntime:
                 await self.rewards.start()
             self.diagnostics.ensure_healthy()
             self.diagnostics.emit('runtime_started')
+            if self.selection is not None:
+                self.selection.start()
             tasks = [asyncio.create_task(self.engine.run(), name='kalshi-engine'),
                      asyncio.create_task(self._recover(), name='kalshi-recovery'),
                      asyncio.create_task(self._diagnostic_health(), name='kalshi-log-health')]

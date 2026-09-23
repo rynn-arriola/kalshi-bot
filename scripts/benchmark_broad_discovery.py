@@ -27,6 +27,7 @@ async def main():
         return await original_read(*args,**kwargs)
     fixture.writer.market_inventory = counted
     loop_lags, private_lags, deadline_lags, rounds, proposal_times = [], [], [], [], []
+    proposal_retries = 0
     pending_deadline = None
     stopped = False
     async def private(event, generation):
@@ -56,8 +57,25 @@ async def main():
         for _ in range(5):
             before = time.perf_counter()
             await fixture.populate()
+            # Synthetic private sentinels can interrupt a first evaluation.
+            # Model subsequent dirty-book refreshes without resetting epochs;
+            # real quiet-book snapshots supply these ongoing evaluations.
+            for _ in range(8):
+                gate = fixture.s.initial_ranking
+                if fixture.s.initial_ranking_ready():
+                    break
+                for ticker in set(gate.scope)-gate.evaluated:
+                    r.engine.dirty.mark(ticker)
+                while r.engine.dirty.pending or r.engine.private:
+                    await r.engine.step()
             proposal_start = time.perf_counter()
-            proposal = await fixture.s.propose(window=fixture.window,free_cash=500)
+            for attempt in range(8):
+                await r.engine.step()
+                proposal = await fixture.s.propose(window=fixture.window,free_cash=500)
+                if not proposal.blockers:
+                    break
+                assert set(proposal.blockers) <= {'selection_sources_changed', 'selection_sources_unavailable'}
+                proposal_retries += 1
             proposal_times.append(time.perf_counter()-proposal_start)
             assert len(proposal.additions)==15
             rounds.append(time.perf_counter()-before)
@@ -66,9 +84,11 @@ async def main():
         result = dict(markets=1024,burst_reconnect_rounds=5,
             initial_ranked_seconds=rounds[0],warm_ranked_seconds=rounds[1:],
             proposal_seconds=proposal_times,
+            proposal_source_retries=proposal_retries,
             cpu_seconds=time.process_time()-cpu,wall_seconds=time.perf_counter()-started,
             inventory_reads=read_count,writer_capacity=fixture.writer.market_capacity,
             entry_pairs=len(proposal.additions),engine=r.engine.status(),
+            initial_ranking=fixture.s.initial_ranking.status(),
             loop_lag_ms=distribution(loop_lags),private_sentinel_ms=distribution(private_lags),
             due_sentinel_ms=distribution(deadline_lags),working_set_bytes=working_set())
         result['passed']=(rounds[0]<5 and max(rounds[1:])<2 and read_count==1024

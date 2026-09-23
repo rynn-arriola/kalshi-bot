@@ -6,6 +6,20 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-23 — early fallback entries consumed capacity before broad ranking
+
+**Mechanism.** Entry dispatch consumed incremental rankings immediately, allowing
+early $1 fallbacks to fill capacity before later $2 candidates were evaluated.
+
+**Fix.** D-096 adds a bounded initial combined-coverage checkpoint on new entries
+and direct entry dispatch. Current-source selection follows coverage or timeout;
+inventory/cancellation processing is independent. This does not add incumbent
+replacement or guarantee all markets remain fresh simultaneously.
+
+**Verification.** Opposite-shard arrival-order, missing metadata, timeout/staleness,
+source-generation, direct dispatch and safety tests; [contract](docs/BUILD_INITIAL_RANKING.md).
+Final verification/deployment evidence belongs in STATUS.
+
 ## 2026-09-23 — expired public candidate scope blocked normal restart
 
 **Mechanism.** Candidate preparation ran only for first-ledger initialization.

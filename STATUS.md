@@ -1,5 +1,33 @@
 # Current status
 
+## D-096 checkpoint verified; controlled deployment next — 2026-09-23
+
+[Initial combined ranking](docs/BUILD_INITIAL_RANKING.md) delays normal broad-mode
+entries until evaluated coverage or 120 seconds, then uses only current eligible
+rankings. The $2-first/$1-fallback rule and all risk/source checks remain; no
+incumbent replacement. Both feeds, metadata and safety work continue concurrently.
+
+Verification: **1,554 tests run / 1,553 passed / one expected Windows privilege
+skip**, 239.635s, in the isolated checkout's correctly source-pinned environment.
+Focused ranking/live suites: 102 pass; native supervisor suite: 12 pass. Reversing
+the gate in memory fails the delayed-priority regression as expected. Exact code
+review found no blocking defect. Repository-relative documentation links and
+whitespace checks pass (four ignored historical data links are absent from the
+isolated checkout, not repository links). No secrets/private data are staged.
+
+The updated 1,024-book synthetic benchmark passes: initial coverage/ranking
+0.615s, warm rounds 0.310–0.355s, 15 proposed pairs, 1,024 inventory reads, no book
+failures; loop/private/due sentinel p99 55.35/56.19/56.15ms. Fixed source clocks
+and synthetic sentinels are not live scan or cancellation latency measurements.
+
+Under the operator's explicit restart approval, the old run drained from 30
+orders to **STOPPED_FLAT at 05:55:28 UTC**, with no positions/exposure. The drain
+exceeded the supervisor timeout, retaining recovery requirements. An ordinary
+recovery-only start verified flatness and disarmed cleanly at **05:56:45 UTC**;
+no holds were manually cleared. The bot is now stopped/disarmed. Publish and
+deploy this reviewed unit, then complete the authorized normal restart and
+observe the checkpoint/selection before claiming live acceptance.
+
 ## D-095 controlled live restart running — 2026-09-23
 
 The operator explicitly authorized a controlled live restart. The prelaunch

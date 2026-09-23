@@ -1,5 +1,12 @@
 # What exists
 
+## D-096 initial combined-ranking checkpoint — 2026-09-23
+
+[Implementation](docs/BUILD_INITIAL_RANKING.md): bounded startup coverage owner,
+entry-only selection/dispatch fence, frozen coverage diagnostics and priority
+proposal samples. Concurrent readers/metadata and safety work remain independent.
+No replacement policy. Verification and deployment state belong in STATUS.
+
 ## D-094 independent host and truthful status — 2026-09-23
 
 [Implementation and account evidence](docs/BUILD_HOST_CONTINUITY.md): fixed

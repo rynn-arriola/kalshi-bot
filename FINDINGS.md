@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 143. Startup coverage and current eligibility are separate — 2026-09-23
+
+VERIFIED OFFLINE: D-096's opposite-shard fixture holds an early $1 fallback,
+waits for a later $2 candidate, then ranks the $2 row first. Timeout does not
+admit stale evidence, and direct dispatch cannot bypass the initial checkpoint.
+Known economic exclusions count as evaluated; missing inputs do not. Inventory
+cancellations remain independent. [Contract and limitations](docs/BUILD_INITIAL_RANKING.md).
+
+Coverage is cumulative within source epochs, not proof that all metadata/books
+are current simultaneously. The 120-second bounded wait may release partially;
+current-source gates remain mandatory. No guaranteed payout or incumbent upgrade.
+
 ## 142. Reference pricing works; steady-state $2 priority does not — 2026-09-23
 
 VERIFIED LIVE at 05:28:31–05:28:35 UTC: all 15 resting two-sided markets matched
