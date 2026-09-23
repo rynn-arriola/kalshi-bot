@@ -1,5 +1,24 @@
 # Findings — kalshi-bot
 
+## 146. Current slate is eligible but materially below the sampled best slate — 2026-09-23
+
+MEASURED PUBLIC-ONLY over 1,024 reviewed markets from 10:47:46–10:49:21 UTC:
+148 passed current $1/depth/70% market gates and 40 were in the $2+ priority tier.
+All 15 live-owned markets passed, but only four were $2+; their diagnostic ranks
+ranged from 7 to 130. Fourteen markets had orders at or better than sampled
+references. `KXBUDLIGHTPOS-26OCT03-T87` had an ask at 48c versus a 43c reference;
+its 50% per-tick program discounts five ticks to 3.125% price weight if the order
+remains inside the cutoff. Automatic repricing is disabled.
+
+The sampled owned slate totals $26.38 projected remaining / $0.218 per hour,
+versus $44.05 / $0.494 for the diagnostic top 15. This is a sequential public
+census with hypothetical flat-account admission, not guaranteed rewards,
+private/public reflection proof, simultaneous replacement proof or net-profit
+evidence. The top set is concentrated in related ladders and is not an allocation
+recommendation or correlation-risk analysis. Existing no-replacement
+policy explains why later superior rows do not displace incumbents. Full table
+and limitations: [current market-quality check](docs/VERIFY_CURRENT_MARKET_QUALITY_2026-09-23.md).
+
 ## 145. D-097 survives standard status reads during live refill — 2026-09-23
 
 VERIFIED LIVE: generation 49 restarted the preserved ledger on runtime

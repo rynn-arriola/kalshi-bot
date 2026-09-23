@@ -19,6 +19,13 @@ through the acceptance check. This verifies the previously failing status path
 under current live operation; it does not guarantee future OS/storage behavior,
 fills, payout, profitability or globally optimal market selection.
 
+A subsequent [public-only quality check](docs/VERIFY_CURRENT_MARKET_QUALITY_2026-09-23.md)
+found all 15 owned markets still pass current gates, but only four are in the
+$2+ priority tier versus 40 available samples. Fourteen owned markets were at or
+better than their sampled reference pair; one ask was five ticks worse. The bot
+remained healthy at 30 orders/no reported position after the check. Estimates
+are sequential and do not authorize automatic repricing or incumbent replacement.
+
 ## D-097 implementation and offline verification
 
 D-097 repairs the recurring Windows `status.json` publication failure. Repository

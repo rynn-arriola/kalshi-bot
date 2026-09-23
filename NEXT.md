@@ -17,7 +17,10 @@ live restart are complete; STATUS owns current process and verification state.
    More elapsed time alone does not keep earlier metadata fresh. Do not relax
    freshness or claim global $2 optimality from cumulative coverage.
 3. Incumbent replacement/repricing remains unapproved and unimplemented. Later
-   better candidates do not displace already resting orders automatically.
+   better candidates do not displace already resting orders automatically. The
+   latest public census found 4/15 incumbents in the $2+ tier versus 40 available
+   priority samples and one five-tick stale ask; use that evidence if the operator
+   chooses to design bounded replacement/repricing.
 
 ## After D-094 host/account repair — 2026-09-23
 
