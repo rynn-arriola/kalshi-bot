@@ -354,6 +354,25 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertEqual(self.f.calls[0][0], 'cancel')
 
+    async def test_paused_dispatch_service_drains_two_entries_without_rest_recovery(self):
+        first = await self.f.opening(filled='0', remaining='10', side='bid',
+                                     client='first', order_id='first-order')
+        second = await self.f.opening(filled='0', remaining='10', side='ask',
+                                      client='second', order_id='second-order')
+        await self.f.report('0', (first, second))
+        self.f.runtime.live_session = SimpleNamespace(entries_paused=True)
+        task = asyncio.create_task(self.service.run())
+        self.assertTrue(self.service.request('A', SAFETY_CANCEL))
+        for _ in range(100):
+            if len(self.f.calls) == 2:
+                break
+            await asyncio.sleep(.01)
+        self.assertEqual({row[1]['order_id'] for row in self.f.calls},
+                         {'first-order', 'second-order'})
+        self.assertIsNone(self.f.runtime.last_reports)
+        self.service.stop()
+        await task
+
     async def test_observation_runtime_cannot_attach_dispatch_even_as_fixture(self):
         self.f.runtime.observation_only = True
         with self.assertRaises(InvalidData):

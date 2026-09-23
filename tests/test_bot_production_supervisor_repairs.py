@@ -22,9 +22,38 @@ from kalshi_bot.rest import TokenBudget
 from kalshi_bot.restriction_journal import RestrictionJournal
 from kalshi_bot.supervised_runtime import RuntimeRestrictions
 from kalshi_bot.supervision import ChildOutcome
+from kalshi_bot.supervisor_protocol import MessageKind
 from kalshi_bot.supervisor_launch import ProductionLaunchProfile
 from kalshi_bot.values import InvalidData
 from kalshi_bot.windows import WindowsLease
+
+
+class TerminalFenceAdmissionTests(unittest.TestCase):
+    def values(self):
+        args = NS(child_generation=7, child_id='child', parent_session='parent')
+        state = NS(generation=7, child_generation=7, child_id='child',
+                   stop_latched=True, desired_armed=False)
+        native = NS(parent_session='parent', child_id='child', child_generation=7,
+                    stage='bound')
+        return args, state, native
+
+    def test_terminal_fence_ack_survives_stop_latch_but_no_other_authority(self):
+        args, state, native = self.values()
+        fence_ack = NS(kind=MessageKind.FENCE_ACK)
+        self.assertFalse(child._admission_revoked(args, fence_ack, state, native,
+            stop_signaled=True, parent_signaled=False))
+        self.assertTrue(child._admission_revoked(args,
+            NS(kind=MessageKind.PULSE), state, native,
+            stop_signaled=True, parent_signaled=False))
+
+    def test_terminal_fence_ack_cannot_cross_identity_or_dead_parent(self):
+        args, state, native = self.values()
+        message = NS(kind=MessageKind.FENCE_ACK)
+        self.assertTrue(child._admission_revoked(args, message, state,
+            NS(**(vars(native) | {'child_id':'other'})),
+            stop_signaled=True, parent_signaled=False))
+        self.assertTrue(child._admission_revoked(args, message, state, native,
+            stop_signaled=True, parent_signaled=True))
 
 
 class Endpoint:

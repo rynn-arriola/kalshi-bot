@@ -1,5 +1,13 @@
 # What exists
 
+## Rapid paused-entry drain and terminal shutdown fence — 2026-09-23
+
+The sole dispatcher can cancel exact durable owned entry orders consecutively
+while entry admission is paused, without a full account recovery between each
+order. Reducers and ordinary live management are unchanged. The child can also
+complete its exact terminal fence after the stop latch without regaining trading
+authority. Tests and operational evidence are recorded in STATUS and FINDINGS.
+
 ## D-098 incumbent maintenance and lifecycle repairs — 2026-09-23
 
 [Code audit/build](docs/BUILD_ORDER_MAINTENANCE.md): one same-program maintenance

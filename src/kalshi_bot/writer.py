@@ -262,6 +262,17 @@ class LedgerWriter:
     async def cancel_evidence(self, order_id):
         return await self._wait(self._submit('cancel_evidence', identity(order_id)))
 
+    async def next_entry_cancel_evidence(self, ticker, *, subaccount):
+        """Return one exact uncancelled entry order from durable local evidence.
+
+        This is a safety-only source for an already-paused live session.  It
+        deliberately does not require a current public book or account report:
+        cancelling an exact owned order can only reduce resting exposure.  Any
+        prior submitted/uncertain cancel remains non-repeatable.
+        """
+        return await self._wait(self._submit('next_entry_cancel_evidence',
+            identity(ticker), integer(subaccount, 0, 63)))
+
     async def reduction_evidence(self, request, *, now):
         frozen = json.dumps(request, allow_nan=False, sort_keys=True, separators=(',', ':'))
         if len(frozen.encode()) > 16384:
@@ -652,6 +663,27 @@ class LedgerWriter:
                 return None
             return CancelEvidence(self.epoch, self._revision, update.order_id, update.ticker,
                                   update.subaccount, update.exchange_index)
+        if command == 'next_entry_cancel_evidence':
+            ticker, subaccount = args
+            rows = ledger.connection.execute(
+                'SELECT payload FROM order_evidence ORDER BY order_id').fetchall()
+            for row in rows:
+                update = OrderUpdate.decode(row[0])
+                if (update.ticker != ticker or update.subaccount != subaccount
+                        or update.terminal):
+                    continue
+                receipt = settle_order(ledger, update.order_id)
+                if receipt is None or not receipt.owned or receipt.reducing:
+                    continue
+                prior = ledger.connection.execute(
+                    "SELECT phase FROM mutation_attempts WHERE kind='cancel' "
+                    "AND json_extract(request,'$.order_id')=? ORDER BY rowid",
+                    (update.order_id,)).fetchall()
+                if prior and not (len(prior) == 1 and prior[0][0] == 'NOT_SENT'):
+                    continue
+                return CancelEvidence(self.epoch, self._revision, update.order_id,
+                    update.ticker, update.subaccount, update.exchange_index)
+            return None
         if command == 'reduction_evidence':
             from .execution import encoded_request, reduction_authority, validate_request
             from .management import ManagedPlan
@@ -951,7 +983,8 @@ class LedgerWriter:
                     read_only = {"portfolio", "market_inventory", "inventory", "fill_scope",
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
-                                 'reduction_evidence', 'command_capacity', 'accounting_status'}
+                                 'next_entry_cancel_evidence', 'reduction_evidence',
+                                 'command_capacity', 'accounting_status'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

@@ -69,18 +69,19 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
             taker_fee_per_contract_bound=D('.02'))
         self.runtime.management.set_terms(replace(terms, **kwargs))
 
-    async def opening(self, *, filled='10', remaining='0', side='bid', route=0):
-        req = request('open', side=side) | dict(exchange_index=route)
-        prepared = await self.writer.reserve_entry(req, attempt_id='open-attempt',
+    async def opening(self, *, filled='10', remaining='0', side='bid', route=0,
+                      client='open', order_id='opening-order'):
+        req = request(client, side=side) | dict(exchange_index=route)
+        prepared = await self.writer.reserve_entry(req, attempt_id=client+'-attempt',
             view=await self.writer.portfolio(subaccount=0, now=self.now),
             config=BotConfig(), now=self.now, free_cash=D(500),
             account_known=True, offline_fixture=True)
         self.assertTrue(prepared.reserved, prepared.blockers)
         self.assertTrue((await self.writer.begin_send(prepared.receipt)).dispatch_allowed)
         await self.writer.record_outcome('ack', prepared.receipt,
-            dict(order_id='opening-order', fill_count=filled,
+            dict(order_id=order_id, fill_count=filled,
                  remaining_count=remaining, ts_ms=1), self.now)
-        order = OrderUpdate('opening-order', 'open', 'A', side, D('.5'), D(10),
+        order = OrderUpdate(order_id, client, 'A', side, D('.5'), D(10),
             D(filled), D(remaining), 'resting' if D(remaining) else 'executed' if filled == '10' else 'canceled',
             0, route, 1)
         await self.writer.order(order, self.now)
@@ -203,6 +204,22 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         for priority in (SAFETY_CANCEL, PASSIVE_REDUCER, DUE_IOC):
             self.assertIsNone(await self.source.refresh('A', priority))
         self.assertEqual(len(self.calls), 1)
+
+    async def test_paused_drain_cancels_all_exact_entries_without_recovery_between(self):
+        first = await self.opening(filled='0', remaining='10', side='bid',
+                                   client='first', order_id='first-order')
+        second = await self.opening(filled='0', remaining='10', side='ask',
+                                    client='second', order_id='second-order')
+        await self.report('0', (first, second))
+        self.runtime.live_session = type('Paused', (), {'entries_paused': True})()
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        # The first cancel ACK is not terminal proof and makes the account
+        # report stale. The second exact safety cancel must still proceed.
+        self.assertIsNone(self.runtime.account.current_report(self.now))
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        self.assertEqual({row[1]['order_id'] for row in self.calls},
+                         {'first-order', 'second-order'})
+        self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
 
     async def test_missing_account_terms_and_wrong_priority_block(self):
         await self.opening()

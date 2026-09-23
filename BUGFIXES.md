@@ -1,5 +1,27 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — paused drain serialized on recovery and terminal fence was rejected
+
+**Mechanisms:** Every stopped-session entry-cancel outcome revoked continuity and
+started full REST recovery before another cancellation. Thirty entries therefore
+took about 70 seconds to drain. Once flat, the child control path treated the
+already-latched stop as revoking its terminal `FENCE_ACK`, producing a false
+failure and shutdown timeout.
+
+**Fix:** A safety-only writer query selects one exact owned, nonterminal,
+nonreducing entry with no submitted/uncertain prior cancel. While entries are
+paused, the sole dispatcher may drain those exact orders back-to-back through
+the existing durable mutation pipeline; normal reducers and live maintenance
+keep their original recovery behavior. Terminal fencing permits only
+`STOP_HINT`/`FENCE_ACK` after authority is revoked and still requires exact
+generation, child, parent-session and native binding.
+
+**Verification:** Two regressions prove same-market paired entries drain without
+REST recovery; terminal tests prove the fence succeeds only with exact identity
+and a live parent while a trading pulse remains rejected. The complete suite ran
+1,591 tests successfully with one expected Windows privilege skip. Live speed
+must be measured on the next operationally required controlled stop.
+
 ## 2026-09-23 — passive deferral, cancellation order and resting cap enforcement
 
 **Mechanisms:** `passive_deferred` could not enter passive dispatch or writer

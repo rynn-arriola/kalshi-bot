@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 149. Per-order recovery made shutdown slow, then terminal fencing failed — 2026-09-23
+
+VERIFIED LIVE: the normal stop path canceled 30 resting entries one at a time
+from approximately 12:40:38–12:41:48 UTC. Each acknowledged cancellation
+revoked continuity and required a full recovery before the next exact owned
+entry could be selected. Local cleanup reached `STOPPED_FLAT` at 12:41:51, but
+the stop latch then rejected the child's terminal `FENCE_ACK`; the supervisor
+therefore recorded a false child failure/shutdown timeout after flatness.
+
+Under explicit emergency authority the exact protected processes were stopped,
+the official account-wide cancel returned HTTP 204, and a fresh GET-only check
+at 12:43:19 UTC established zero resting orders and zero nonzero positions. No
+fill occurred in that generation. The active settled six-hour result remains
+-$1.551600. The implemented fast path is limited to paused, owned, nonreducing
+entry orders with exact durable evidence and no prior submitted/uncertain cancel.
+It removes repeated recovery waits, not mutation or transport proof.
+
 ## 148. Existing live run entered recovery during isolated verification — 2026-09-23
 
 VERIFIED local status at 11:37:15 UTC: generation 49 recovering, new entries

@@ -1,5 +1,34 @@
 # Current status
 
+## Emergency cancellation complete; shutdown repair verified — 2026-09-23
+
+The operator ordered an immediate force cancellation after the normal drain was
+observed taking too long. The exact protected parent/child processes were stopped
+and the authenticated account-wide cancel endpoint returned HTTP 204. A fresh
+GET-only account check at **12:43:19 UTC** then verified **0 resting orders and
+0 nonzero position rows**. The bot remains stopped while this repair is deployed;
+the active six-hour settled trading result is **-$1.551600**.
+
+The preceding normal drain did eventually cancel all 30 entries, but needed
+about 70 seconds because every individual cancellation triggered a full account
+recovery before the next exact owned cancellation. It reached locally verified
+`STOPPED_FLAT`, then incorrectly rejected the child's terminal `FENCE_ACK` after
+the stop latch and reported a false shutdown timeout.
+
+The repair drains paused entry orders from exact durable owned-order evidence
+without an intervening REST recovery per order. It does not apply that shortcut
+to reducers or ordinary live management, and every cancellation retains the
+existing prepare/send/outcome ledger and transport fences. A stopped child may
+now receive only `STOP_HINT` or its exact terminal `FENCE_ACK`; identity,
+generation, native binding and live-parent checks remain mandatory. Final
+verification: **1,591 tests passed, one expected Windows privilege skip**.
+
+Three earlier runtime repairs now at canonical `origin/master` are also retained:
+rejected create HTTP 400 outcomes become terminal instead of ambiguous; reward
+reflection iterates a stable snapshot; and public candidate preparation runs
+concurrently (measured about 20.4 seconds instead of about 43 seconds). None
+changes the configured trading limits.
+
 ## Live recovery blocker observed during D-098 verification — 2026-09-23
 
 At **11:37:15 UTC**, the standard read-only supervisor status showed generation

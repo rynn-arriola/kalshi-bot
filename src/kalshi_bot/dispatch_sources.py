@@ -28,6 +28,13 @@ class _Proof:
     maintenance_cycle: object = None
 
 
+@dataclass(frozen=True)
+class _PausedCancelProof:
+    writer_epoch: str
+    writer_revision: int
+    request_json: str
+
+
 class InventoryDispatchSource:
     """Activation-gated composition for the existing, sole management owner.
 
@@ -45,6 +52,7 @@ class InventoryDispatchSource:
         self._generation = 0
         self._stopped = False
         self.last_entry_block = None
+        self._paused_cancel_notice = None
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
         """Compose matching producer/executor callbacks and an explicit transport."""
@@ -60,8 +68,30 @@ class InventoryDispatchSource:
             offline_fixture=self.offline_fixture)
 
     def _mutation_observed(self, notice=None):
+        paused_cancel = isinstance(self._proof, _PausedCancelProof)
         self._proof = None
         self._generation += 1
+        if (notice is not None and notice.kind == 'cancel'
+                and self.runtime.entry_pause_active and paused_cancel):
+            if notice.http_status is not None:
+                self.runtime.diagnostics.emit('mutation_failed',
+                    http_status=notice.http_status, market=notice.ticker,
+                    order=notice.subject_id)
+                self.runtime.diagnostics.ensure_healthy()
+            self._paused_cancel_notice = notice.ticker
+            return
+        if notice is None and self._paused_cancel_notice is not None:
+            ticker, self._paused_cancel_notice = self._paused_cancel_notice, None
+            # The durable ACK/UNKNOWN now exists. Invalidate old recovery proof,
+            # but let the exact cancel queue drain before the existing live
+            # refresh owner starts a full REST pass.
+            self.runtime.last_reports = None
+            self.runtime._refresh_continuity()
+            owner = self.runtime.dispatch_supervisor
+            if owner is not None and owner.running and not owner.stopping:
+                owner.request(ticker, SAFETY_CANCEL)
+            return
+        self._paused_cancel_notice = None
         self.runtime._revoke()
         self.runtime.request_recovery()  # Existing coalesced owner; no task/read here.
         if notice is not None and notice.http_status is not None:
@@ -131,6 +161,20 @@ class InventoryDispatchSource:
         self._refreshing = True
         try:
             runtime = self.runtime
+            if priority == SAFETY_CANCEL and runtime.entry_pause_active:
+                evidence = await runtime.writer.next_entry_cancel_evidence(
+                    ticker, subaccount=runtime.account.subaccount)
+                if (evidence is None or generation != self._generation
+                        or not self._available() or not runtime.entry_pause_active):
+                    return None
+                request = dict(order_id=evidence.order_id, market_ticker=ticker,
+                    subaccount=evidence.subaccount,
+                    exchange_index=evidence.exchange_index)
+                candidate = DispatchCandidate(ticker, priority, str(uuid4()),
+                    request, evidence, evidence.exchange_index)
+                self._proof = _PausedCancelProof(runtime.writer.epoch,
+                    evidence.writer_revision, encoded_request(request))
+                return candidate
             report = runtime.account.current_report(runtime.now())
             if report is None:
                 return blocked('entry_account_report_unavailable')
@@ -314,6 +358,13 @@ class InventoryDispatchSource:
                    if kind == 'batch_create' and type(request) is tuple
                    else encoded_request(request) if isinstance(request, dict)
                    else None)
+        if isinstance(proof, _PausedCancelProof):
+            return (kind == 'cancel' and encoded == proof.request_json
+                and self.runtime.entry_pause_active
+                and proof.writer_epoch == self.runtime.writer.epoch
+                and self.runtime.writer.revision in {
+                    proof.writer_revision+1, proof.writer_revision+2}
+                and self._available())
         return (proof is not None and kind == proof.kind
                 and encoded == proof.request_json
                 and (proof.maintenance_cycle is None

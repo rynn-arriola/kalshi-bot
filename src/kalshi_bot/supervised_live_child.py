@@ -171,15 +171,9 @@ def _run_admitted(args, scope, profile, endpoint, power, diagnostics):
                 security_sid=scope.approved_user_sid)
             accepted = protocol.accept(message, now_ns=time.monotonic_ns(),
                                        current_revision=revision)
-            if message.kind != MessageKind.STOP_HINT and (
-                    state.stop_latched or not state.desired_armed
-                    or state.generation != args.child_generation
-                    or state.child_id != args.child_id
-                    or native.parent_session != args.parent_session
-                    or native.child_id != args.child_id
-                    or native.stage != "bound"
-                    or wait_handle(args.stop_handle)
-                    or wait_handle(args.parent_handle)):
+            if _admission_revoked(args, message, state, native,
+                    stop_signaled=wait_handle(args.stop_handle),
+                    parent_signaled=wait_handle(args.parent_handle)):
                 raise InvalidData("child admission revoked")
             return accepted
 
@@ -205,6 +199,27 @@ def _run_admitted(args, scope, profile, endpoint, power, diagnostics):
         break
     return asyncio.run(_run_live(args, scope, endpoint, protocol, control,
                                  power, diagnostics))
+
+
+def _admission_revoked(args, message, state, native, *, stop_signaled,
+                       parent_signaled):
+    """Keep identity binding strict while allowing terminal fence completion."""
+    binding_revoked = (
+        state.generation != args.child_generation
+        or state.child_id != args.child_id
+        or state.child_generation != args.child_generation
+        or native.parent_session != args.parent_session
+        or native.child_id != args.child_id
+        or native.child_generation != args.child_generation
+        or native.stage != "bound"
+        or parent_signaled)
+    authority_revoked = state.stop_latched or not state.desired_armed or stop_signaled
+    # A stopped child retains no trading authority, but it must still receive
+    # the exact terminal recovery-fence acknowledgement so it can report
+    # verified-flat cleanup instead of a false shutdown timeout.
+    return (binding_revoked or
+        (message.kind not in {MessageKind.STOP_HINT, MessageKind.FENCE_ACK}
+         and authority_revoked))
 
 
 async def _send_result(args, endpoint, diagnostics, *, outcome,

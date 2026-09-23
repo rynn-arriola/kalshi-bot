@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-099 — Emergency force cancellation, shutdown repair and controlled restart
+
+- **Status:** ACCEPTED operation and implementation, 2026-09-23.
+- **Decision owner:** Operator: “Force cancel all order then fix this” and, for
+  the combined entry/exit repair, “fix it then restart.”
+- **Scope:** Immediately cancel every account order, stop only the verified bot
+  processes, repair the slow cancellation and false terminal-timeout mechanisms,
+  test/review/publish/deploy, reconfirm a flat account and perform the already
+  authorized normal restart.
+- **Boundary:** Preserve the ledger, strategy and configured limits. No
+  initialization, blind resend, risk expansion or process-wide termination.
+  Cancellation speed cannot weaken exact owned-order, mutation, transport,
+  identity or recovery proof; restart remains conditional on current flatness
+  and normal supervisor admission.
+
 ### D-098 — Retain rewarded owners and review the complete order lifecycle
 
 - **Status:** ACCEPTED implementation, 2026-09-23.
