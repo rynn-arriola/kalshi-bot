@@ -8,6 +8,9 @@ exact consumer checks, classify superseded reads, log bounded real failures,
 and reconcile once after new durable paused-cancel outcomes finish draining.
 Synthetic regressions cover actual production-proof repricing and sequential
 two-leg terminal reconciliation. Publication/deployment state belongs in STATUS.
+Generation 68 subsequently live-verified two complete cancellation/re-entry
+cycles and returned to 30 orders without a fill or position; STATUS owns the
+current process evidence and limitations.
 
 ## Bounded exact history-receipt archival — 2026-09-23
 

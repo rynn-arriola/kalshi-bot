@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 156. Generation 68 live-verifies owner-bound reference repair — 2026-09-23
+
+VERIFIED LIVE: reviewed D-101 source reached 30 resting orders across 15 markets
+with no reported position. Two natural same-market maintenance cycles canceled
+and restored exact pairs: MONSTER moved `0.69/0.83` to `0.69/0.82`, and TOKENUSE
+T144 moved `0.10/0.58` to `0.10/0.56`. Four cancel ACKs and four replacement
+create ACKs were recorded, with no current-generation fill, pending fill or lot.
+Account authority recovered after each cycle and the bot returned to 30 orders.
+
+The public-only census found 286 $1-pass and 38 $2-priority markets among 1,024.
+All 15 selected markets passed its later sequential sample. Owner-bound live
+samples distinguished a better-than-reference full-weight pair from an actually
+outside-cutoff quote, so a raw price/reference mismatch is not itself a repair
+condition. One quota warning overlapped the separate census; reflections later
+completed. This proves the exercised source join and two repair cycles, not paid
+reward, profitability or a simultaneous globally optimal portfolio.
+
 ## 155. Generation 66 repricing stalled; final drain also lost its wake — 2026-09-23
 
 VERIFIED from local ledger/status: 30 entries acknowledged after 15:23 UTC,

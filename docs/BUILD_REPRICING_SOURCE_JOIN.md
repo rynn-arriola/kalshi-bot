@@ -2,8 +2,9 @@
 
 September 23, 2026. Prepared in the isolated `fix/order-maintenance` checkout.
 The operator requested fixes for the running bot's reference positioning and
-related retained-log defects, then explicitly ordered stop/cancellation. No
-subsequent live start is authorized. STATUS owns current process/deployment state.
+related retained-log defects, then explicitly ordered stop/cancellation. A later
+explicit restart instruction authorized deployment and live acceptance. STATUS
+owns current process/deployment state.
 
 ## Evidence and scope
 
@@ -97,9 +98,24 @@ are idle, and cannot create repeated attempts without a new durable outcome.
 The reviewed change does not claim our protected incumbents always form the
 globally highest-paying portfolio.
 
-Live acceptance remains pending a separately authorized deployment/restart.
-Neither these offline tests nor the public census proves reward payout or profit.
+## Live acceptance
 
-Reviewed implementation `44986ee` was pushed to `origin/master` and exact remote
-parity verified. Canonical `dbbc4dd` remains clean and stopped; publication did
-not deploy code, alter the production ledger or restart trading.
+Generation 68 deployed the reviewed source with the preserved ledger and limits.
+It reached 30 resting orders across 15 markets and completed two exact-pair
+maintenance cycles. MONSTER changed `0.69/0.83` to `0.69/0.82`; TOKENUSE T144
+changed `0.10/0.58` to `0.10/0.56`. Durable evidence contains four cancel ACKs
+and four replacement-create ACKs, with no generation-68 fill, pending fill or
+lot through acceptance. Account authority recovered and the bot returned to 30
+orders after each cycle.
+
+A later read-only census found 286 $1-pass and 38 $2-priority markets among
+1,024, and all 15 selected markets passed. Sequential public references are not
+owner-adjusted simultaneous portfolio proof. Live reflected samples showed that
+a better-than-reference mismatch can retain full price weight; maintenance acted
+on demonstrated incomplete/outside-cutoff pairs rather than blindly matching
+every public reference.
+
+Reviewed implementation `44986ee` and deployment/status commit `c15d709` were
+published before this acceptance record. The final-drain wake remains unexercised
+live until the next operationally necessary stop. Neither the tests, resting
+orders, reflection estimates nor public census proves reward payout or profit.

@@ -1,28 +1,44 @@
 # Current status
 
-## Stopped flat; D-101 next-restart repair verified — 2026-09-23
+## D-101 deployed; generation 68 live acceptance — 2026-09-23
 
-The operator explicitly requested stop and cancellation. Generation 66 recorded
-29 cancellation ACKs in approximately nine seconds but stalled in final
-reconciliation. A separate complete GET-only venue check at **16:35:52 UTC**
-verified **0 resting orders and 0 nonzero positions**. Only correlated parent
-47516 and child 24180 were terminated after that check. Native presence at
-16:36:11 confirmed both absent. The stop latch remains set; no restart occurred.
-Saved runtime `DRAINING` is historical, not current process presence.
+The operator authorized restart after the verified generation-66 stop. Canonical
+source was fast-forwarded without changing the production ledger or limits. The
+first supported launch safely released the dead native child reservation and
+started no trader. The second launch started normal generation 68 on reviewed
+commit `c15d709` with build fingerprint
+`ff3cd91803c454d8c742079721734995521c512d5c1dd97238fdace9f57f558c`.
 
-The canonical checkout remains `dbbc4dd`; the live source was not edited.
-[D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md) is verified in the isolated
-`fix/order-maintenance` checkout. It addresses the actual repricing/source-join
-failure and the final-drain wake, not reward-chasing replacement. Existing
-qualifying markets remain protected. No strategy, risk, size or freshness
-threshold changed. Complete suite: **1,620 run, 1,619 passed, one expected
-Windows privilege skip**, no failures, 276.362 seconds. Three focused baseline
-reversals detect the original defects. Exact diff review, 421 local-document
-links and whitespace checks pass. Reviewed implementation `44986ee` is published
-to `origin/master`, with isolated-checkout/remote parity verified. Canonical
-`dbbc4dd` is deliberately unchanged and clean; deployment and live acceptance
-remain pending a separate restart instruction. Final native check: both roles
-absent, `STOPPED`, desired armed false and stop latch true.
+At **17:01:58 UTC**, protected parent/child presence and healthy control were
+current; all four readers were subscribed; engine, dispatch and logging reported
+no failure; logging had zero drops; account and entry authority were current;
+and the bot held **30 resting orders across 15 markets, no reported position and
+$117.70 reserved exposure**. Initial ranking released at its 120-second bound
+after evaluating 749/1,024 markets across both book shards.
+
+D-101's actual maintenance path completed twice under live account evidence.
+`KXMONSTERPOS-26OCT03-T101` moved from `0.69/0.83` to the sampled reference
+`0.69/0.82`; `KXTOKENUSE-26SEP28-T144` moved from `0.10/0.58` to `0.10/0.56`.
+Each cycle canceled exactly its two owned orders, waited for account recovery,
+and restored a complete size-10 pair. The ledger recorded four cancel ACKs and
+four replacement-create ACKs, with **zero fills, zero pending fills and zero
+open lots** in generation 68 through acceptance. The bot returned to 30 orders.
+
+An independent public-only 1,024-market census found 286 $1-pass markets and 38
+$2-priority markets. All 15 selected markets passed; 11 initial pairs exactly
+matched the later sequential references. Live owner-bound maintenance samples
+classified the intentionally better-than-reference `KXTOKENUSE...T138` pair as
+full-price-weight and retained it. The census is sequential, includes aggregate
+own liquidity and assumes flat $500 capital; it does not prove global optimality,
+paid reward or profitability.
+
+Reward reflection completed repeatedly and supplied current owner-bound
+maintenance observations. One bounded `QuotaUnavailable` reflection warning
+occurred while the separate public census was running; subsequent reflections
+completed. Expected first-pass `recovery_incomplete` warnings occurred while
+replacement orders changed the account snapshot, then repaired. No blocking
+runtime, control, account, dispatch, engine or logging issue remained at the
+acceptance checkpoint.
 
 ## D-100 deployed; generation 66 live acceptance — 2026-09-23
 

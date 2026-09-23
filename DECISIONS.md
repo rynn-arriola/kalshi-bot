@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-101 — Repair actual-order repricing and final drain reconciliation
 
-- **Status:** ACCEPTED implementation and stop/cancel operation, 2026-09-23.
+- **Status:** ACCEPTED, deployed and live-observed, 2026-09-23.
 - **Decision owner:** Operator requested the demonstrated repricing fix and a
   review of retained logs for the next restart, then explicitly clarified:
   "stop the bot and cancel all order."
@@ -21,8 +21,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   observed post-drain recovery stall. Review, test, commit and publish.
 - **Boundary:** Keep qualifying incumbents, $2-first/$1-fallback entry ranking,
   sizes, risk, exact fill/terminal proof and all freshness limits unchanged.
-  Stop/cancellation is authorized; another live start is not. Prepare in the
-  isolated checkout; publication is not deployment. Preserve the ledger.
+  The later explicit restart instruction authorized controlled deployment and
+  launch. The preserved ledger and unchanged limits were used; no initialization
+  or account-wide cancellation was performed during restart.
 
 ### D-100 — Repair live maintenance timing and rejected-reducer churn
 

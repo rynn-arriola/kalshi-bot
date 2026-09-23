@@ -17,9 +17,11 @@ separate counter; real failures emit bounded stack-only diagnostics. A durable
 paused-cancel outcome requests one bounded post-drain reconciliation when both
 dispatch and any in-flight repair are idle; no new outcome means no new retry.
 
-**Verification:** Regression and full-suite evidence, review and deployment
-limits are recorded in [D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md). No live
-acceptance of this repair is claimed; the operator-requested stop is complete.
+**Verification:** Regression/full-suite evidence and review are recorded in
+[D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md). Generation 68 then completed two
+live exact-pair reference repairs, returned to 30 orders and recorded no fill or
+position through acceptance. The repaired final-drain wake remains pending the
+next operationally necessary stop; do not stop solely to manufacture that test.
 
 ## 2026-09-23 — history receipt capacity killed the writer
 

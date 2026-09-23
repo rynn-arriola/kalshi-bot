@@ -1,18 +1,18 @@
 # Active work queue
 
-## D-101 — stopped; prepare the next restart bundle
+## After D-101 live acceptance — generation 68 running
 
-The [verified/reviewed repair](docs/BUILD_REPRICING_SOURCE_JOIN.md) is published
-as `44986ee` with remote parity. Full suite and baseline-reversal checks are
-complete. The canonical checkout is intentionally not deployed.
+The [verified/reviewed repair](docs/BUILD_REPRICING_SOURCE_JOIN.md) is deployed.
+Two real same-market reference repairs completed and the bot returned to its
+30-order cap without a fill or position.
 
-1. Keep the bot stopped until a separate restart instruction.
-2. On that instruction, clear the verified dead native reservation
-   through the supported supervisor path, deploy reviewed source, reconcile the
-   preserved account/ledger in recovery-only mode and require flat/disarmed
-   evidence before normal entry. Do not reset the ledger or bypass control.
-3. Observe real reference-drift completion and current reward-source coverage
-   after that launch. Offline tests cannot prove future live execution or payout.
+1. Monitor natural fills, exits, further reference repairs, reward-source
+   coverage and actual payout. Do not induce a fill or source failure solely for
+   acceptance; estimates are not paid reward or profit.
+2. Measure the repaired post-drain reconciliation on the next operationally
+   necessary stop. Do not stop the healthy bot merely to manufacture evidence.
+3. Preserve the production ledger and current limits. Investigate measured live
+   failures before adding architecture or relaxing freshness/economic gates.
 
 ## After D-100 live acceptance — 2026-09-23
 
