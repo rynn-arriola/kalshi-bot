@@ -218,5 +218,6 @@ def ioc_payload(*, ticker, client_id, position, limit_price, bands):
         outcome='no' if position > 0 else 'yes',
         outcome_price=1-price(limit_price) if position > 0 else price(limit_price),
         quantity=abs(position), bands=bands, reducing=True, position=position)
-    payload.update(time_in_force='immediate_or_cancel', post_only=False)
+    payload.update(time_in_force='immediate_or_cancel', post_only=False,
+                   reduce_only=True)
     return payload

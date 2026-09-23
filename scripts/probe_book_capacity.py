@@ -1,7 +1,8 @@
 """Explicit read-only WS capacity experiment; no account, ledger or trading.
 
-Four sequential scopes use the production book transport and parser, not the
-production launcher. Logs contain aggregates only; saved scope stays in data/.
+Configured scopes and two/four-shard variants use the production book transport
+and parser, not the production launcher. Logs contain aggregates only; saved
+scope stays in data/.
 """
 import argparse
 import asyncio
@@ -109,8 +110,9 @@ def assess(summary):
     return reasons
 
 
-async def stage(signer, tickers, programs, seconds):
-    specs = tuple(s for s in topology(tickers, market_capacity=1024)
+async def stage(signer, tickers, programs, seconds, *, book_shards=2):
+    specs = tuple(s for s in topology(tickers, market_capacity=1024,
+                                      book_connections=book_shards)
                   if s.channels == ('orderbook_delta',))
     measure = Measurement(specs, {t:programs[t] for t in tickers})
     reader = WebSocketReaders(signer, specs)
@@ -149,6 +151,22 @@ async def stage(signer, tickers, programs, seconds):
         result['reader_joined'] = task.done()
     steady = [s for s in samples if s['elapsed_seconds'] >= 10]
     fresh = [s['refreshed_fresh']/len(tickers) for s in steady]
+    observed_at = time.monotonic()
+    outcomes = []
+    for spec in specs:
+        feed = measure.feeds[spec.name]
+        for ticker in spec.tickers:
+            book = feed.books.get(ticker)
+            stamp = measure.refreshed.get(ticker)
+            reasons = []
+            if stamp is None:
+                reasons.append('initial_snapshot_missing')
+            if book is None or not book.valid or feed.failed:
+                reasons.append('book_invalid')
+            if stamp is not None and not 0 <= observed_at-stamp <= 5:
+                reasons.append('book_stale_over_5_seconds')
+            outcomes.append(dict(ticker=ticker, shard=spec.name,
+                                 reasons=reasons or ['fresh_valid_book']))
     result.update(seconds=elapsed, cpu_seconds=cpu, cpu_percent_one_core=100*cpu/elapsed,
         unique_books=len(measure.refreshed), first_snapshot_seconds=measure.first_snapshot,
         full_snapshot_seconds=measure.full_snapshot, steady_samples=len(steady),
@@ -159,6 +177,7 @@ async def stage(signer, tickers, programs, seconds):
         callback_ms=distribution(measure.callback_ms), queue_peak=measure.queue_peak,
         sampled_queue_bytes_peak=measure.queue_bytes_peak,
         normalized_bytes=measure.wire_bytes, counts=dict(measure.counts), samples=samples,
+        market_outcomes=outcomes,
         finished_at=utc().isoformat())
     result['target_failures'] = assess(result)
     if result['state'] == 'OBSERVED' and result['target_failures']:
@@ -202,21 +221,26 @@ async def run(args, output):
             raise InvalidData('no current reviewed rewards')
         seeds = [t for t in document['initial_tickers'] if t in programs]
         tickers = tuple(dict.fromkeys(seeds+sorted(set(programs)-set(seeds))))
-        sizes = sorted({min(n,len(tickers)) for n in (128,256,512,1024)})
+        sizes = sorted({min(n,len(tickers)) for n in args.markets})
         result.update(tickers=tickers, catalog_rows=len(pages.rows), catalog_pages=pages.pages,
                       reviewed_rewarded_markets=len(tickers), stage_sizes=sizes)
         signer = load_signer(args.source_root/'kalshi-bot.txt',args.source_root/'Kalshi-Bot2.txt')
-        for size in sizes:
-            print(json.dumps(dict(stage_start=size,seconds=args.seconds)),flush=True)
-            row = await stage(signer,tickers[:size],programs,args.seconds)
-            result['stages'].append(row)
-            save_result(output,result)
-            print(json.dumps({k:v for k,v in row.items() if k != 'samples'}),flush=True)
-            if row['state'] != 'OBSERVED':
-                result['state'] = 'STOPPED_AT_FAILED_STAGE'
-                break
+        for repetition in range(1, args.repetitions+1):
+            for shards in args.book_shards:
+                for size in sizes:
+                    print(json.dumps(dict(stage_start=size,seconds=args.seconds,
+                        book_shards=shards,repetition=repetition)),flush=True)
+                    row = await stage(signer,tickers[:size],programs,args.seconds,
+                                      book_shards=shards)
+                    row.update(repetition=repetition, configured_book_shards=shards)
+                    result['stages'].append(row)
+                    save_result(output,result)
+                    print(json.dumps({k:v for k,v in row.items()
+                        if k not in {'samples','market_outcomes'}}),flush=True)
         else:
-            result['state'] = 'OBSERVED'
+            result['state'] = ('OBSERVED' if result['stages']
+                and all(row['state']=='OBSERVED' for row in result['stages'])
+                else 'TARGETS_NOT_MET')
     except Exception as exc:
         result.update(state='FAILED',errors=safe_error(exc))
     finally:
@@ -230,9 +254,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--read-only-live-check',required=True,action='store_true')
     parser.add_argument('--source-root',type=Path,required=True)
-    parser.add_argument('--seconds',type=int,default=45)
+    parser.add_argument('--seconds',type=int,default=15)
+    parser.add_argument('--markets',type=int,nargs='+',default=[1024])
+    parser.add_argument('--book-shards',type=int,nargs='+',default=[2,4])
+    parser.add_argument('--repetitions',type=int,default=2)
     args = parser.parse_args()
-    integer(args.seconds,20,60)
+    integer(args.seconds,12,60)
+    integer(args.repetitions,1,3)
+    if any(integer(value,1,1024) is None for value in args.markets):
+        raise InvalidData('invalid market stages')
+    if any(integer(value,2,4) is None or value not in {2,4}
+           for value in args.book_shards):
+        raise InvalidData('book shards must be two or four')
     if not args.source_root.is_absolute():
         raise InvalidData('absolute source root required')
     output = Path(__file__).resolve().parents[1]/'data'/'book-capacity'/uuid4().hex/'result.json'

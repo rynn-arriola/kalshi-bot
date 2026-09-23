@@ -71,7 +71,7 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
         return dict(ticker="A", client_order_id=client, side="ask", count="3",
             price=price, time_in_force="immediate_or_cancel" if ioc else "good_till_canceled",
             self_trade_prevention_type="taker_at_cross", post_only=not ioc,
-            reduce_only=True, cancel_order_on_pause=True, subaccount=0,
+            reduce_only=ioc, cancel_order_on_pause=True, subaccount=0,
             exchange_index=exchange_index)
 
     async def reduction_proof(self, request, *, now=None):
@@ -219,7 +219,7 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
             ticker="A", client_order_id="reduce", side="ask", count="10",
             price="0.6", time_in_force="good_till_canceled",
             self_trade_prevention_type="taker_at_cross", post_only=True,
-            reduce_only=True, cancel_order_on_pause=True, subaccount=0,
+            reduce_only=False, cancel_order_on_pause=True, subaccount=0,
             exchange_index=1)
         evidence, _ = await self.reduction_proof(unknown_request)
         self.assertIsNone(evidence)
@@ -537,7 +537,7 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
             return dict(ticker="A", client_order_id=client, side="ask", count="3",
                 price="0.6", time_in_force="good_till_canceled",
                 self_trade_prevention_type="taker_at_cross", post_only=True,
-                reduce_only=True, cancel_order_on_pause=True, subaccount=0,
+                reduce_only=False, cancel_order_on_pause=True, subaccount=0,
                 exchange_index=1)
 
         evidence, decision_now = await self.reduction_proof(reducer("reduce-one"))

@@ -22,7 +22,7 @@ class BotConfig:
     # for explicitly unresolved configurations; never infer it from live counts.
     managed_market_slots: int | None = 20
     live_enabled: bool = False
-    book_connections: int = 2
+    book_connections: int = 4
     event_queue_capacity: int = 8192
     max_levels_per_side: int = 4096
     max_managed_markets: int = 128
@@ -44,7 +44,7 @@ class BotConfig:
         integer(self.max_resting_entries, 30, 30)
         if self.live_enabled is not False:
             raise InvalidData("live execution is unavailable in this build")
-        integer(self.book_connections, 2, 2)
+        integer(self.book_connections, 2, 4)
         integer(self.event_queue_capacity, 1, 65536)
         integer(self.max_levels_per_side, 1, 10000)
         integer(self.max_managed_markets, 1, 1024)

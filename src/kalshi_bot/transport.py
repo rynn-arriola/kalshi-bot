@@ -74,14 +74,17 @@ class Subscription:
         return {"id": 1, "cmd": "subscribe", "params": params}
 
 
-def topology(tickers: tuple[str, ...], *, market_capacity: int = 128) -> tuple[Subscription, ...]:
+def topology(tickers: tuple[str, ...], *, market_capacity: int = 128,
+             book_connections: int = 2) -> tuple[Subscription, ...]:
     integer(market_capacity, 1, 1024)
+    integer(book_connections, 2, 4)
     if not tickers or len(set(tickers)) != len(tickers) or len(tickers) > market_capacity:
         raise InvalidData("invalid stream market scope")
-    groups: list[list[str]] = [[], []]
+    groups: list[list[str]] = [[] for _ in range(book_connections)]
     for ticker in sorted(tickers):
         identity(ticker)
-        bucket = int.from_bytes(hashlib.blake2b(ticker.encode(), digest_size=8).digest(), "big") % 2
+        bucket = (int.from_bytes(hashlib.blake2b(ticker.encode(), digest_size=8).digest(), "big")
+                  % book_connections)
         groups[bucket].append(ticker)
     books = [Subscription(f"book-{index}", ("orderbook_delta",), tuple(group), True)
              for index, group in enumerate(groups) if group]
@@ -99,7 +102,7 @@ class WebSocketReaders:
                  capacity: int = 8192, byte_capacity: int = 16777216, connector=connect):
         integer(capacity, 1, 65536)
         integer(byte_capacity, 1, 67108864)
-        if not 1 <= len(subscriptions) <= 4 or len({s.name for s in subscriptions}) != len(subscriptions):
+        if not 1 <= len(subscriptions) <= 6 or len({s.name for s in subscriptions}) != len(subscriptions):
             raise InvalidData("invalid connection topology")
         self.signer, self.subscriptions, self.connector = signer, subscriptions, connector
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=capacity)

@@ -1,15 +1,24 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-103 [repairs exit/coverage/priority behavior](BUILD_EXIT_COVERAGE_PRIORITY.md).
+Normal broad discovery uses four measured deterministic book shards. Initial
+entry permission requires complete reasoned coverage or enough current $2+
+candidates to fill every available pair slot; an early release remains
+priority-only until coverage completes. Passive GTC exits carry venue-valid
+`reduce_only=false` while exact durable managed-exit proof and a single-create
+transport arm preserve reducer authority. Due IOC stays reduce-only and can
+rearm one exhausted recovery at the existing safety boundary.
+
 D-098 [incumbent maintenance](BUILD_ORDER_MAINTENANCE.md) adds one bounded
 same-program withdrawal/re-entry policy ahead of existing selection/dispatch,
 never another writer or scanner. Actual source joins and terminal/fill proof
 remain mandatory; safety/exits precede maintenance. Per-program tracker output
 is advisory. Qualifying owners are not replaced for better global rank.
 
-D-096's [initial combined-ranking checkpoint](BUILD_INITIAL_RANKING.md) delays
-only normal broad-mode entries until evaluated coverage or a bounded timeout.
-Both book shards and metadata remain concurrent; current eligibility/dispatch
-proofs remain separate from historical coverage. Inventory/safety work never waits.
+D-096's [initial combined-ranking checkpoint](BUILD_INITIAL_RANKING.md), amended
+by D-103 above, delays only normal broad-mode entries. Book shards and metadata
+remain concurrent; current eligibility/dispatch proofs remain separate from
+historical coverage. Inventory/safety work never waits.
 
 D-094 [independent Windows hosting](BUILD_HOST_CONTINUITY.md) separates the
 on-demand supervisor from the launching terminal/job. The existing exact child,
@@ -17,7 +26,8 @@ recovery fences and single account writer remain unchanged. Local status probes
 protected process-role presence; saved snapshots are not liveness/account proof.
 
 D-093 [broad reviewed discovery](BUILD_BROAD_DISCOVERY.md) supersedes normal
-live subscription rotation below: up to 1,024 books on two shards, shared bulk
+live subscription rotation below: up to 1,024 books on configurable shards,
+with D-103 preparing four after measurement, plus shared bulk
 missing-field metadata and one bounded ranked-entry handoff. Trading/account
 capacity stays unchanged. Recovery-only retains the narrow ownership path.
 

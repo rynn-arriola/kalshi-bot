@@ -22,8 +22,8 @@ class EventEngine:
                  clock=time.monotonic, invalidate=lambda ticker: None, book_lost=lambda name: None,
                  diagnostics=NO_LOG):
         self.diagnostics = diagnostics
-        if not 1 <= len(shards) <= 2 or any(not isinstance(b, BookConnection) for b in shards.values()):
-            raise InvalidData("one or two validated book shards required")
+        if not 1 <= len(shards) <= 4 or any(not isinstance(b, BookConnection) for b in shards.values()):
+            raise InvalidData("one to four validated book shards required")
         tickers = [t for b in shards.values() for t in b.tickers]
         if len(set(tickers)) != len(tickers) or len(tickers) > 1024:
             raise InvalidData("book ownership must be unique and bounded")

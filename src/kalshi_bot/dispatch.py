@@ -61,7 +61,9 @@ class DispatchCandidate:
             tif = self.request['time_in_force']
             expected_tif = ('immediate_or_cancel' if self.priority == DUE_IOC
                             else 'good_till_canceled')
-            if (self.request['reduce_only'] is not True or tif != expected_tif
+            expected_reduce_only = self.priority == DUE_IOC
+            if (self.request['reduce_only'] is not expected_reduce_only
+                    or tif != expected_tif
                     or self.ticker != self.request['ticker']
                     or (self.evidence.ticker, self.evidence.subaccount,
                         self.evidence.exchange_index, self.evidence.request_json) !=

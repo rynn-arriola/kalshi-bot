@@ -1,5 +1,27 @@
 # Current status
 
+## D-103 repaired and verified offline; stopped, not restarted — 2026-09-23
+
+The exit incident, recovery starvation and initial-ranking priority defect are
+repaired in the working source. Passive GTC exits now use the venue-valid wire
+flag while durable managed-exit proof remains authoritative; due IOC remains
+reduce-only. A due inventory episode can rearm one exhausted recovery and must
+obtain fresh account proof before dispatch. Incomplete ranking timeout no longer
+releases entries; a current $2 slate may release early only when it fills every
+available pair slot, and remains priority-only until full coverage.
+
+The order-disabled repeated 1,024-market probe received all books with 100%
+five-second freshness in all four stages. Four shards passed both target sets;
+two shards had one callback-ingress p99 miss. `config/bot.json` is prepared with
+four book connections. The bot remains `STOPPED_FLAT`; no restart, deployment,
+private API call, order action or production-ledger change occurred. Build and
+measurement details: [D-103](docs/BUILD_EXIT_COVERAGE_PRIORITY.md).
+
+Focused verification passed 402 tests. Final review found and repaired the old
+two-shard event-engine construction bound, then added an actual four-shard engine
+regression. The post-fix complete suite passed **1,628 tests** with one expected
+skip in 276.071 seconds. Commit and push evidence will be recorded after publication.
+
 ## Stopped flat after recovery-only IOC — 2026-09-23
 
 A read-only WebSocket capacity probe began at 17:18:01.897 UTC. The venue fill

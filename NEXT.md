@@ -1,6 +1,18 @@
 # Active work queue
 
+## D-103 prepared; restart remains a separate decision
+
+1. Finish complete-suite/documentation/security review, commit and push D-103.
+2. Keep production stopped. A later explicit restart must deploy the reviewed
+   commit with the preserved ledger and limits, then verify four book readers,
+   ranking state, exact passive/IOC exit behavior and current account state.
+3. After a separately authorized live run, observe actual $2 candidate/order
+   composition, natural-vacancy fallback behavior, fills, exits and payout.
+   Synthetic ranking and projected reward do not prove paid reward or profit.
+
 ## Priority after verified flatness
+
+Completed by D-103; retained below as the incident-derived checklist.
 
 1. Fix the exercised exit/recovery failure before another trading restart:
    passive `reduce_only` GTC received HTTP 400, recovery exhausted, and the due

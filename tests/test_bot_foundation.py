@@ -57,6 +57,9 @@ class ValueConfigTests(unittest.TestCase):
         for slots, dollars in ((20,300),(30,400),(32,420)):
             self.assertEqual(BotConfig(managed_market_slots=slots).portfolio_exposure_usd, dollars)
 
+    def test_four_book_connections_is_supported_engineering_limit(self):
+        self.assertEqual(BotConfig(book_connections=4).book_connections,4)
+
     def test_drift_and_bool_settings_rejected(self):
         for kwargs in ({"entry_contracts": "9"}, {"capital_usd":"501"},
                        {"window_stop_usd":"10"}, {"live_enabled":True},
@@ -272,7 +275,7 @@ class AdapterTests(unittest.TestCase):
 
     def test_reducer_never_overcloses(self):
         with self.assertRaises(InvalidData): self.payload(reducing=True,position=D(4))
-        self.assertTrue(self.payload(reducing=True,position=D(10))["reduce_only"])
+        self.assertFalse(self.payload(reducing=True,position=D(10))["reduce_only"])
 
     def test_expiration_field_uses_v2_contract(self):
         p=self.payload(expiration_time=1800000000)

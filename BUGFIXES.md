@@ -1,5 +1,26 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — invalid passive reducer, stranded due IOC and partial fallback
+
+**Mechanisms:** Kalshi rejected passive GTC creates carrying `reduce_only=true`;
+after bounded recovery exhausted, the existing due IOC could not reacquire proof
+until process replacement. Separately, a 120-second partial ranking release let
+$1 fallback orders consume slots before known-later $2 candidates.
+
+**Fix:** Passive GTC exits use the venue-valid false wire flag but retain exact
+durable `managed_exit` authorization and an ephemeral single-create transport
+arm. IOC stays venue-enforced reduce-only. A due inventory episode rearms one
+fresh recovery. Incomplete timeout stays closed; full current $2 capacity may
+open priority-only while historical coverage continues. Four measured book
+shards replace two in prepared configuration.
+
+**Verification:** 1,024/1,024 books and 100% five-second freshness were observed
+in all four two/four-shard stages; four shards passed both complete target sets.
+Focused 402-test verification passes. Final review also caught and repaired the
+event engine's stale two-shard constructor bound. The post-fix complete suite
+passes 1,628 tests with one expected skip. Full results:
+[D-103](docs/BUILD_EXIT_COVERAGE_PRIORITY.md).
+
 ## 2026-09-23 — current queue evidence discarded and post-drain recovery stranded
 
 **Mechanism:** Queue reflection unnecessarily depended on current market plans

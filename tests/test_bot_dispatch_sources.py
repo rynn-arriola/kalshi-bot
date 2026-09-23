@@ -164,7 +164,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         kind, req = self.calls[0]
         self.assertEqual((kind, req['side'], D(req['price']), D(req['count']),
                           req['exchange_index']), ('create', 'ask', D('.59'), 4, 1))
-        self.assertTrue(req['reduce_only'] and req['post_only'])
+        self.assertFalse(req['reduce_only']); self.assertTrue(req['post_only'])
         self.assertFalse(result.live_ready)
         self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))
 
@@ -200,7 +200,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         req = self.calls[0][1]
         self.assertEqual((req['side'], D(req['count']), req['time_in_force']),
                          ('ask', D(4), 'good_till_canceled'))
-        self.assertTrue(req['post_only'] and req['reduce_only'])
+        self.assertTrue(req['post_only']); self.assertFalse(req['reduce_only'])
 
     async def test_deferred_early_exit_still_cancels_building_partial_fill(self):
         order = await self.ready(filled='4', remaining='6')

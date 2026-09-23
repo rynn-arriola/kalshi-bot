@@ -52,7 +52,11 @@ def active_rows(ledger, ticker=None):
     clause = "" if ticker is None else " AND json_extract(i.payload,'$.ticker')=?"
     params = () if ticker is None else (identity(ticker),)
     rows = ledger.connection.execute(
-        "SELECT i.client_id,i.payload,i.state,o.payload AS order_payload FROM intents i "
+        "SELECT i.client_id,i.payload,i.state,o.payload AS order_payload, "
+        "(json_extract(i.payload,'$.reduce_only')=1 OR EXISTS("
+        "SELECT 1 FROM command_authorizations a WHERE a.kind='create' "
+        "AND a.subject_id=i.client_id "
+        "AND json_extract(a.proof,'$.type')='managed_exit')) AS reducing FROM intents i "
         "LEFT JOIN order_evidence o ON o.client_id=i.client_id "
         "WHERE i.state IN ('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED')"+clause+" LIMIT 4097", params).fetchall()
     if len(rows) > 4096:
@@ -78,7 +82,7 @@ def market_inventory(ledger, ticker, subaccount):
             continue
         awaiting = ledger.filled_quantity(order.order_id) != order.filled
         receipts.append(OrderReceipt(order, True, False, awaiting, row["state"],
-                                     payload.get("reduce_only") is True))
+                                     bool(row["reducing"])))
     if ledger.connection.execute("SELECT 1 FROM pending_fills WHERE json_extract(payload,'$.ticker')=? LIMIT 1",
                                  (ticker,)).fetchone():
         blockers.add("pending_fills")
@@ -170,7 +174,7 @@ def portfolio_view(ledger, *, subaccount, epoch, revision, now, capacity):
             working += risk
             exposure[ticker] = exposure.get(ticker, Decimal(0))+risk
             # Reducers are exempt only from the count, not the dollar sum.
-            entries += int(payload.get("reduce_only") is not True)
+            entries += int(not row["reducing"])
         if ledger.connection.execute("SELECT 1 FROM pending_fills LIMIT 1").fetchone():
             blockers.add("pending_fills")
         if len(exposure) > capacity:
@@ -192,6 +196,8 @@ def reserve_entry(ledger, *, request, attempt_id, view, epoch, revision,
     identity(attempt_id)
     if request["reduce_only"]:
         raise InvalidData("entry reservation cannot authorize a reducer")
+    if count(request['count']) != config.entry_contracts:
+        raise InvalidData("entry reservation requires approved quantity")
     cash = decimal(free_cash)
     if cash < 0 or type(account_known) is not bool or type(offline_fixture) is not bool:
         raise InvalidData("invalid account evidence")

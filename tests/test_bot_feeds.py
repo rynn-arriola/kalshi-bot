@@ -176,6 +176,14 @@ class WireTests(unittest.TestCase):
         second={t:s.name for s in topology(("A","B","C")) for t in s.tickers}
         self.assertTrue(all(second[t]==name for t,name in first.items()))
 
+    def test_four_book_shards_cover_every_market_once(self):
+        tickers=tuple(f"M-{i}" for i in range(1024))
+        specs=topology(tickers,market_capacity=1024,book_connections=4)
+        books=[spec for spec in specs if spec.name.startswith('book-')]
+        self.assertEqual(len(books),4)
+        self.assertEqual(sorted(t for spec in books for t in spec.tickers),sorted(tickers))
+        self.assertLess(max(len(spec.tickers) for spec in books),300)
+
 
 class FakeSigner:
     def headers(self,*args): return {"fake":"fixture-only"}

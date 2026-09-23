@@ -17,6 +17,7 @@ class LiveSession:
         self.writer = None
         self.closed = False
         self.entries_paused = False
+        self._armed_single_create = None
 
     def bind(self, writer):
         if self.closed or self.writer is not None:
@@ -26,6 +27,19 @@ class LiveSession:
     def close(self):
         self.entries_paused = True
         self.closed = True
+        self._armed_single_create = None
+
+    def arm_single_create(self, receipt):
+        """Bind one single-create transport call to a prepared managed exit."""
+        from .command_types import PreparedMutation
+        if (not permits(self) or not isinstance(receipt, PreparedMutation)
+                or receipt.kind != 'create' or not receipt.reduction
+                or self._armed_single_create is not None):
+            raise InvalidData('single create lacks prepared reduction authority')
+        self._armed_single_create = receipt.request_json
+
+    def disarm_single_create(self):
+        self._armed_single_create = None
 
     def check(self, kind, requests):
         if not permits(self):
@@ -38,8 +52,11 @@ class LiveSession:
             if kind == 'batch_create':
                 if self.entries_paused or decimal(row['count']) != 10 or row['reduce_only']:
                     raise InvalidData('new entry disabled or outside approved size')
-            elif kind == 'create' and row['reduce_only'] is not True:
-                raise InvalidData('single create is reserved for exact inventory reducers')
+            elif kind == 'create':
+                from .execution import encoded_request
+                if self._armed_single_create != encoded_request(row):
+                    raise InvalidData('single create is reserved for prepared inventory reducers')
+                self._armed_single_create = None
 
 
 def permits(session, writer=None):

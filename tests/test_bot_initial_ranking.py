@@ -44,20 +44,22 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(g.status()['state'], 'coverage_complete')
         self.assertEqual(g.status()['shards']['book-1']['evaluated'], 1)
 
-    def test_exact_timeout_releases_partial_without_fabricating_coverage(self):
+    def test_exact_timeout_stays_closed_without_fabricating_coverage(self):
         g = self.gate
         g.start()
         g.observe('A')
         self.mono += 119.999
         self.assertFalse(g.ready())
         self.mono = 220.
-        self.assertTrue(g.ready())
+        self.assertFalse(g.ready())
         status = g.status()
-        self.assertEqual(status['state'], 'timeout_partial')
+        self.assertEqual(status['state'], 'timeout_incomplete')
+        self.assertTrue(status['timed_out'])
         self.assertEqual(status['missing_samples'], ['B'])
         self.assertFalse(status['grants_order_authority'])
         g.observe('B')
-        self.assertEqual(g.status()['missing_markets'], 1)  # frozen release record
+        self.assertTrue(g.ready())
+        self.assertEqual(g.status()['state'], 'coverage_complete')
 
     def test_epoch_change_discards_coverage_without_extending_deadline(self):
         g = self.gate
@@ -70,8 +72,29 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(g.ready())
         self.assertEqual(g.status()['missing_samples'], ['A'])
         self.mono += 20
+        self.assertFalse(g.ready())
+        self.assertEqual(g.status()['state'], 'timeout_incomplete')
+        g.observe('A')
         self.assertTrue(g.ready())
-        self.assertEqual(g.status()['state'], 'timeout_partial')
+        self.assertEqual(g.status()['state'], 'coverage_complete')
+
+    def test_current_priority_capacity_can_release_before_full_coverage(self):
+        self.gate.start()
+        self.gate.observe('A')
+        self.assertTrue(self.gate.release_for_priority_capacity(candidates=15,required=15))
+        status = self.gate.status()
+        self.assertEqual(status['state'], 'priority_capacity_met')
+        self.assertEqual(status['release_reason'], 'priority_capacity_met')
+        self.assertEqual(status['missing_samples'], ['B'])
+        self.gate.observe('B')
+        self.assertTrue(self.gate.ready())
+        self.assertEqual(self.gate.status()['state'], 'coverage_complete')
+        self.assertEqual(self.gate.status()['release_reason'], 'priority_capacity_met')
+
+    def test_partial_priority_capacity_does_not_release(self):
+        self.gate.start()
+        self.assertFalse(self.gate.release_for_priority_capacity(candidates=14,required=15))
+        self.assertEqual(self.gate.status()['state'], 'waiting')
 
     def test_release_does_not_rearm_or_restart_timer(self):
         g = self.gate
@@ -163,6 +186,14 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.status()['last_proposal']['priority_additions'],1)
         self.assertFalse(await self.writer.mutations())
 
+    async def test_current_priority_candidate_fills_available_slot_before_full_coverage(self):
+        self.window = replace(self.window,cap=2)
+        await self.publish('A',pool=5000000)
+        result = await self.proposal()
+        self.assertEqual([row.ticker for row in result.additions],['A'])
+        self.assertEqual(self.s.initial_ranking.status()['state'],'priority_capacity_met')
+        self.assertEqual(self.s.initial_ranking.status()['missing_samples'],['C'])
+
     async def test_books_alone_do_not_complete_metadata_coverage(self):
         await self.publish('A')
         await self.publish('C',metadata=False)
@@ -178,21 +209,24 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([row.ticker for row in (await self.proposal()).additions],['A'])
         self.assertEqual(self.s.initial_ranking.status()['state'],'coverage_complete')
 
-    async def test_timeout_uses_only_fresh_candidates_and_leaves_missing_explicit(self):
+    async def test_timeout_remains_closed_until_missing_market_is_evaluated(self):
         await self.publish('A')
         self.mono += 120
         self.now += timedelta(seconds=120)
         # Old evidence cannot become eligible simply because the timer elapsed.
         result = await self.proposal()
         self.assertFalse(result.additions)
-        self.assertEqual(self.s.initial_ranking.status()['state'],'timeout_partial')
+        self.assertEqual(self.s.initial_ranking.status()['state'],'timeout_incomplete')
         snap = normalize_snapshot((),(),dict(balance_dollars='500',updated_ts=1),subaccount=0)
         self.window = await self.writer.observe(self.now)
         await self.r.account.finish_reconciliation(self.r.account.begin_reconciliation(self.now),snap,self.now)
         await self.publish('A')
         result = await self.proposal()
-        self.assertEqual([row.ticker for row in result.additions],['A'])
+        self.assertFalse(result.additions)
+        self.assertIn('initial_ranking_pending',result.blockers)
         self.assertEqual(self.s.initial_ranking.status()['missing_samples'],['C'])
+        await self.publish('C')
+        self.assertEqual([row.ticker for row in (await self.proposal()).additions],['A','C'])
 
     async def test_reconnect_before_release_discards_old_coverage(self):
         await self.publish('A')

@@ -230,7 +230,8 @@ async def initial_scope(writer, inputs, now):
 
 
 async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
-                  now, clock, diagnostics, quota, initialize=False):
+                  now, clock, diagnostics, quota, initialize=False,
+                  book_connections=2):
     """Actual owners and non-fixture execution. Injectable wires allow safe tests."""
     session = writer.live_session
     seeds = await initial_scope(writer, inputs, now())
@@ -249,7 +250,8 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         opening_reference=('operator-launch-'+session.run_id) if initialize else None,
         now=now, clock=clock, evaluate=_noop, deadline_handler=_noop,
         lifecycle_handler=_noop, diagnostics=diagnostics, market_inputs=metadata,
-        quota_supervisor=quota, broad_discovery=broad)
+        quota_supervisor=quota, broad_discovery=broad,
+        book_connections=book_connections)
     runtime.attach_selection()
     runtime.attach_incentives()
     runtime.selection.candidate_inputs = CandidateInputs(runtime, inputs.exchange_indices)
@@ -452,7 +454,8 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
             OrderMutationTransport(mutation_signer, activation=session),
             inputs=inputs, boundary=boundary, now=now, clock=clock,
             diagnostics=diagnostics, quota=quota,
-            initialize=args.initialize or resume_opening)
+            initialize=args.initialize or resume_opening,
+            book_connections=BotConfig.load(ROOT/'config'/'bot.json').book_connections)
         runtime.dispatch_supervisor.dispatcher.budget.restriction_sink = journal.cooldown
         for item in recovery_restrictions.cooldowns:
             remaining = max(0., item.deadline_utc-time.time())

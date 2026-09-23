@@ -23,7 +23,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             async def run(self,consume):
                 raise probe.InvalidData('fixture reader failure')
         with patch.object(probe,'WebSocketReaders',BrokenReader):
-            row = await probe.stage(None,('A',),{'A':()},20)
+            row = await probe.stage(None,('A',),{'A':()},12)
         self.assertEqual(row['state'],'FAILED')
         self.assertTrue(row['reader_joined'])
         self.assertIn('errors',row)
@@ -60,6 +60,19 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(probe.assess(row),[])
         row['cpu_percent_one_core']=51
         self.assertEqual(probe.assess(row),['cpu_over_half_core'])
+
+    async def test_stage_records_one_reasoned_outcome_per_market(self):
+        class OneShotReader:
+            def __init__(self,*args):
+                self.queue = probe.asyncio.Queue()
+                self.queued_bytes = 0
+            async def run(self,consume):
+                await consume('book-0',snapshot() | {'_received_mono':probe.time.monotonic()})
+                await probe.asyncio.Event().wait()
+        with patch.object(probe,'WebSocketReaders',OneShotReader):
+            row = await probe.stage(None,('A',),{'A':()},12)
+        self.assertEqual(len(row['market_outcomes']),1)
+        self.assertEqual(row['market_outcomes'][0]['reasons'],['book_stale_over_5_seconds'])
 
     def test_percentiles_empty_and_small_samples(self):
         self.assertIsNone(probe.percentile([], .99))

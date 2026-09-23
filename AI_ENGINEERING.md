@@ -47,6 +47,10 @@ verification, safety and authority boundaries from `AI_OPERATOR.md`.
 - D-032 exit inputs require verified tick bands, event-risk/maintenance timing
   and a conservative taker-fee bound. Expected/latest expiry is not an event-risk
   clock. IOC must be exact remaining inventory, reduce-only and without expiry.
+  Kalshi V2 does not permit `reduce_only` on passive GTC creates: such exits must
+  use exact durable managed-exit authorization and a venue-valid false wire flag;
+  never infer entry authority from that flag. Single-create transport must remain
+  bound to the exact prepared reducer.
   Book freshness is measured from ingress, not later processing. Advisory plans
   never confer execution authority; cancel ACK/absence never proves no fill.
 

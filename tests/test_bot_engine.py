@@ -349,6 +349,17 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
     def submit(self):
         self.engine.submit_book("a", snapshot(), generation=self.ga)
 
+    async def test_four_book_shards_are_owned_by_one_bounded_engine(self):
+        async def noop(*_): pass
+        shards = {f'book-{i}':BookConnection((f'M-{i}',)) for i in range(4)}
+        engine = EventEngine(shards, private_handler=noop, evaluate=noop,
+                             deadline_handler=noop)
+        self.assertEqual(set(engine.shards),set(shards))
+        self.assertEqual(len(engine.market_shard),4)
+        with self.assertRaises(InvalidData):
+            EventEngine(shards | {'book-4':BookConnection(('M-4',))},
+                        private_handler=noop,evaluate=noop,deadline_handler=noop)
+
     async def test_deadline_private_then_quote(self):
         self.submit()
         self.engine.submit_private({"id": 1}, generation=self.pa)

@@ -119,8 +119,14 @@ def settle_order(ledger, order_id: str) -> OrderReceipt | None:
         episode = episode_for_client(ledger, update.client_id)
         release_client_credits(ledger, update.client_id)
         maybe_retire_episode(ledger, episode)
-    return OrderReceipt(update, True, True, waiting, state,
-                        json.loads(intent[1]).get("reduce_only") is True)
+    # Retain classification of legacy reducer intents already written with the
+    # former venue flag while new passive reducers use managed-exit proof.
+    reducing = (json.loads(intent[1]).get("reduce_only") is True
+        or ledger.connection.execute(
+        "SELECT 1 FROM command_authorizations WHERE kind='create' AND subject_id=? "
+        "AND json_extract(proof,'$.type')='managed_exit' LIMIT 1",
+        (update.client_id,)).fetchone() is not None)
+    return OrderReceipt(update, True, True, waiting, state, reducing)
 
 
 def record_order(ledger, update: OrderUpdate, now: datetime, *, capacity=4096) -> OrderReceipt:

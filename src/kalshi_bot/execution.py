@@ -34,8 +34,10 @@ def validate_request(kind, request):
     if not required <= set(request) or set(request)-required-{'expiration_time'}:
         raise InvalidData('unsupported create fields')
     identity(request['ticker']); identity(request['client_order_id'])
-    q = count(request['count']); price(request['price'])
-    passive = request['time_in_force'] == 'good_till_canceled' and request['post_only'] is True
+    count(request['count']); price(request['price'])
+    passive = (request['time_in_force'] == 'good_till_canceled'
+               and request['post_only'] is True
+               and request['reduce_only'] is False)
     ioc = (request['time_in_force'] == 'immediate_or_cancel'
            and request['post_only'] is False and request['reduce_only'] is True
            and 'expiration_time' not in request)
@@ -44,8 +46,6 @@ def validate_request(kind, request):
             or type(request['reduce_only']) is not bool
             or request['self_trade_prevention_type'] != 'taker_at_cross'):
         raise InvalidData('only passive or exact reduce-only IOC mechanics supported')
-    if not request['reduce_only'] and q != 10:
-        raise InvalidData('entry quantity must be ten')
     if 'expiration_time' in request:
         integer(request['expiration_time'], 1, 2**63-1)
 
@@ -357,7 +357,13 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
                       management_current=False, policy=DEFAULT_POLICY):
     validate_request('create', request)
     identity(attempt_id)
-    if request['reduce_only'] is not True or not isinstance(evidence, ReductionEvidence):
+    passive = (request['time_in_force'] == 'good_till_canceled'
+               and request['post_only'] is True
+               and request['reduce_only'] is False)
+    ioc = (request['time_in_force'] == 'immediate_or_cancel'
+           and request['post_only'] is False
+           and request['reduce_only'] is True)
+    if not (passive or ioc) or not isinstance(evidence, ReductionEvidence):
         raise InvalidData('typed reducing preparation required')
     encoded = encoded_request(request)
     blockers = list(check_new_attempt(ledger, attempt_id, 'create', encoded))
@@ -383,7 +389,7 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
             "JOIN command_authorizations a ON a.mutation_id=m.id "
             "WHERE a.episode_id=? AND m.kind='create' "
             "AND m.phase IN ('ACK','REJECTED') "
-            "AND json_extract(m.request,'$.reduce_only')=1 "
+            "AND json_extract(a.proof,'$.type')='managed_exit' "
             "AND json_remove(m.request,'$.client_order_id')="
             "json_remove(?,'$.client_order_id') ORDER BY m.created_at DESC LIMIT 5",
             (active, encoded)).fetchall()
@@ -405,11 +411,12 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
             if age < timedelta(seconds=delay):
                 blockers.append('identical_reduction_rejection_cooldown')
     active_reducer = ledger.connection.execute(
-        "SELECT 1 FROM intents WHERE state IN "
-        "('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED') "
-        "AND json_extract(payload,'$.ticker')=? "
-        "AND json_extract(payload,'$.subaccount')=? "
-        "AND json_extract(payload,'$.reduce_only')=1 LIMIT 1",
+        "SELECT 1 FROM intents i JOIN command_authorizations a "
+        "ON a.subject_id=i.client_id AND a.kind='create' "
+        "WHERE i.state IN ('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED') "
+        "AND json_extract(i.payload,'$.ticker')=? "
+        "AND json_extract(i.payload,'$.subaccount')=? "
+        "AND json_extract(a.proof,'$.type')='managed_exit' LIMIT 1",
         (request['ticker'], request['subaccount'])).fetchone()
     if active_reducer:
         blockers.append('reduction_command_already_active')
@@ -419,9 +426,11 @@ def prepare_reduction(ledger, *, attempt_id, request, evidence, writer_epoch,
     reusable = None
     if prior_intent is not None and prior_intent['state'] == 'ABORTED':
         reusable = ledger.connection.execute(
-            "SELECT * FROM mutation_attempts WHERE kind='create' AND phase='NOT_SENT' "
-            "AND json_extract(request,'$.client_order_id')=? "
-            "AND json_extract(request,'$.reduce_only')=1 ORDER BY rowid DESC LIMIT 1",
+            "SELECT m.* FROM mutation_attempts m JOIN command_authorizations a "
+            "ON a.mutation_id=m.id WHERE m.kind='create' AND m.phase='NOT_SENT' "
+            "AND json_extract(m.request,'$.client_order_id')=? "
+            "AND json_extract(a.proof,'$.type')='managed_exit' "
+            "ORDER BY m.rowid DESC LIMIT 1",
             (request['client_order_id'],)).fetchone()
     if prior_intent is not None and reusable is None:
         blockers.append('client_identity_already_reserved')
@@ -484,7 +493,7 @@ def begin_send(ledger, receipt, *, writer_epoch, writer_revision, post_revision,
             (receipt.kind, receipt.request_json, receipt.prepared_at.isoformat(), 'PREPARED')):
         raise InvalidData('current prepared mutation conflicts with authorization')
     if receipt.kind == 'create':
-        if receipt.request.get('reduce_only') is not True:
+        if not receipt.reduction:
             from .accounting import entry_blockers
             restrictions = entry_blockers(ledger)
             if accounting_current:
@@ -530,7 +539,7 @@ def abort_prepared(ledger, receipt, *, writer_epoch, writer_revision, post_revis
         (receipt.authorization_id,))
     if receipt.kind == 'create':
         ledger.transition_intent(receipt.subject_id, 'ABORTED')
-        if receipt.request.get('reduce_only') is not True:
+        if not receipt.reduction:
             release_client_credits(ledger, receipt.subject_id)
             maybe_retire_episode(ledger, receipt.episode_id)
     return SendResult(False, ('prepared_aborted',), post_revision)
@@ -573,7 +582,7 @@ def abort_sending_before_submission(ledger, receipt, *, writer_epoch,
             (receipt.subject_id,)).rowcount
         if changed != 1:
             raise InvalidData('sending create intent abort conflict')
-        if receipt.request.get('reduce_only') is not True:
+        if not receipt.reduction:
             release_client_credits(ledger, receipt.subject_id)
             maybe_retire_episode(ledger, receipt.episode_id)
     return SendResult(False, ('not_submitted_aborted',), post_revision)
@@ -738,6 +747,7 @@ class InjectedExecutor:
                                          or inspect.iscoroutinefunction(after_outcome)):
             raise InvalidData('synchronous outcome notification required')
         self.after_outcome = after_outcome
+        self.offline_fixture = offline_fixture is True
         self.writer, self.invoke, self.validate_proof, self.now = writer, invoke, validate_proof, now
         self.timeout = timeout
         self.lock = asyncio.Lock()
@@ -862,8 +872,15 @@ class InjectedExecutor:
                     if outcome_cancelled:
                         raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
-                async with asyncio.timeout(self.timeout):
-                    reply = await self.invoke(receipt.kind, dispatch_request)
+                session = self.writer.live_session
+                if self.offline_fixture is not True and receipt.kind == 'create':
+                    session.arm_single_create(receipt)
+                try:
+                    async with asyncio.timeout(self.timeout):
+                        reply = await self.invoke(receipt.kind, dispatch_request)
+                finally:
+                    if self.offline_fixture is not True and receipt.kind == 'create':
+                        session.disarm_single_create()
                 ack = acknowledgement(receipt.kind, durable_request, reply)
             except BaseException as exc:
                 persistence_error = None

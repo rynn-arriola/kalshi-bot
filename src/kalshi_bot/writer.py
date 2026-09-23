@@ -214,7 +214,7 @@ class LedgerWriter:
         receipts = receipt.receipts if isinstance(receipt, PreparedBatch) else (receipt,)
         if any(not isinstance(row, PreparedMutation) for row in receipts):
             return False
-        if all(row.kind != 'create' or row.request.get('reduce_only') is True
+        if all(row.kind != 'create' or row.reduction
                for row in receipts):
             return True
         if not self._accounting_enabled:
@@ -689,8 +689,14 @@ class LedgerWriter:
             from .management import ManagedPlan
             request, plan, now = json.loads(args[0]), args[1], args[2]
             validate_request('create', request)
-            if request['reduce_only'] is not True or not isinstance(plan, ManagedPlan):
-                raise InvalidData('reduction evidence requires reduce-only request')
+            passive = (request['time_in_force'] == 'good_till_canceled'
+                       and request['post_only'] is True
+                       and request['reduce_only'] is False)
+            ioc = (request['time_in_force'] == 'immediate_or_cancel'
+                   and request['post_only'] is False
+                   and request['reduce_only'] is True)
+            if not (passive or ioc) or not isinstance(plan, ManagedPlan):
+                raise InvalidData('reduction evidence requires managed exit request')
             inventory, exit_plan, terms = plan.inventory, plan.exit, plan.terms
             if (plan.ticker != request['ticker'] or exit_plan is None or terms is None
                     or inventory.ticker != request['ticker']

@@ -82,6 +82,11 @@ class PreparedMutation:
     def request(self):
         return json.loads(self.request_json)
 
+    @property
+    def reduction(self):
+        """Local command purpose; independent of the venue's GTC flag limits."""
+        return json.loads(self.proof_json).get('type') == 'managed_exit'
+
 
 @dataclass(frozen=True)
 class PreparedBatch:

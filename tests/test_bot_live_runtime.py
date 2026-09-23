@@ -306,7 +306,7 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         result = await self.f.dispatcher.run_one()
         self.assertEqual(result.state, 'ACK')
         self.assertEqual(D(self.f.calls[0][1]['count']), 4)
-        self.assertTrue(self.f.calls[0][1]['reduce_only'])
+        self.assertFalse(self.f.calls[0][1]['reduce_only'])
 
     async def test_due_timer_automatically_queues_ioc(self):
         await self.f.ready()
@@ -315,6 +315,19 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.f.dispatcher.status().queued, ((DUE_IOC,'A'),))
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertNotIn('expiration_time', self.f.calls[0][1])
+
+    async def test_due_inventory_rearms_one_exhausted_recovery_before_ioc(self):
+        await self.f.ready()
+        await self.f.due()
+        self.f.runtime.recovery_state = 'blocked_retry_exhausted'
+        self.f.runtime._revoke()
+        self.f.runtime.recovery_requested.clear()
+        await self.f.runtime._deadline('A')
+        self.assertTrue(self.f.runtime.recovery_requested.is_set())
+        self.assertEqual(self.f.dispatcher.status().queued, ())
+        self.f.runtime.recovery_requested.clear()
+        await self.f.runtime._deadline('A')
+        self.assertFalse(self.f.runtime.recovery_requested.is_set())
 
     async def test_partial_fill_cancels_old_entry_before_reducer(self):
         await self.f.ready(filled='4', remaining='6')

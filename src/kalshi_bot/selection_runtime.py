@@ -280,8 +280,10 @@ class RuntimeSelection:
         every tick: it mutates writer risk state and revokes account leases.
         """
         r = self.runtime
-        if not self.initial_ranking_ready():
-            return self._record_proposal(SelectionReport((), (), (), ('initial_ranking_pending',)))
+        # Record timeout/complete state, but do not let an incomplete timeout
+        # authorize fallback entries. A current all-$2 slate may open the gate
+        # early once it can fill every presently available two-order slot.
+        initial_ready = self.initial_ranking_ready()
         if r.admission is not None and r.admission.transitioning:
             return self._record_proposal(SelectionReport((),(),(),('subscription_handoff_in_progress',)))
         report = r.account.current_report(r.now())
@@ -302,6 +304,33 @@ class RuntimeSelection:
             now=r.now(), protected=protected, current=self.current,
             continuations=r.maintenance.continuation() if r.maintenance is not None else None,
             entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True)
+        if not initial_ready:
+            config = BotConfig()
+            available_pairs = max(0, (window.cap-view.entry_count)//2)
+            priority = sum(row.gross_remaining_usd is not None
+                           and row.gross_remaining_usd >= config.priority_projected_reward_usd
+                           for row in result.additions)
+            gate = self.initial_ranking
+            if (gate is None or not gate.release_for_priority_capacity(
+                    candidates=priority, required=min(15, available_pairs))):
+                return self._record_proposal(SelectionReport(
+                    (), result.retained, result.exclusions, ('initial_ranking_pending',)))
+        gate = self.initial_ranking
+        if gate is not None and gate.reason == 'priority_capacity_met':
+            # Early release proves only the current $2 slate. Keep collecting
+            # full coverage and never let a later source change turn that proof
+            # into permission for a partially ranked $1 fallback.
+            config = BotConfig()
+            priority_rows = tuple(row for row in result.additions
+                if row.gross_remaining_usd is not None
+                and row.gross_remaining_usd >= config.priority_projected_reward_usd)
+            deferred = tuple((row.ticker, ('initial_priority_only',))
+                             for row in result.additions if row not in priority_rows)
+            capital = sum((row.capital_usd+self.selector._fees[(row.ticker,row.program_id)]
+                           for row in priority_rows), decimal(0))
+            result = replace(result, additions=priority_rows,
+                             exclusions=result.exclusions+deferred,
+                             estimated_capital=capital)
         if any(not self.current(row.ticker) or utc(r.now()) >= row.valid_until for row in result.additions):
             return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)))
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}

@@ -1,5 +1,11 @@
 # D-096: initial combined-ranking checkpoint
 
+> D-103 supersedes the partial-timeout release described below. An incomplete
+> timeout now remains closed. Entry may open after complete reasoned coverage or
+> when current $2+ candidates fill every available pair slot; that early release
+> remains priority-only until coverage completes. See
+> [D-103](BUILD_EXIT_COVERAGE_PRIORITY.md).
+
 ## Behavior
 
 Both existing public book shards and the shared metadata scheduler continue

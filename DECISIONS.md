@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-103 — Repair exits and require priority-safe broad ranking
+
+- **Status:** ACCEPTED implementation; restart not authorized, 2026-09-23.
+- **Decision owner:** Operator: “Fix all the work but dont restart yet,” after
+  prioritizing the observed exit/recovery incident, repeatable 1,024-market
+  source coverage and $2-first admission.
+- **Scope:** Use the venue-valid passive-exit payload while retaining exact local
+  managed-exit authority; rearm one fresh recovery at a due safety boundary;
+  measure two versus four book shards; prepare four shards; and prevent partial
+  ranking from admitting $1 fallback before complete coverage or a full current
+  $2 slate. Review, test, commit and push.
+- **Boundary:** Keep the bot stopped and flat. No account/order mutation,
+  deployment, restart, ledger edit, risk/quantity/loss change or incumbent
+  reward-chasing replacement. Existing qualifying owners remain retained.
+
 ### D-101 — Repair actual-order repricing and final drain reconciliation
 
 - **Status:** ACCEPTED, deployed and live-observed, 2026-09-23.

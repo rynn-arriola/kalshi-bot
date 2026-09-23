@@ -43,10 +43,13 @@ def create_payload(*, ticker: str, client_id: str, outcome: str, outcome_price: 
             raise InvalidData("reducer must strictly reduce known exact inventory")
     elif q != 10 or pos != 0:
         raise InvalidData("entries require size 10 and flat inventory")
+    # Kalshi V2 rejects reduce_only on resting GTC orders. Passive reducers are
+    # still reducer-authorized by the durable managed-exit proof; only IOC/FOK
+    # may ask the venue to enforce reduce_only.
     payload = dict(ticker=ticker, client_order_id=client_id, side=side,
                    count=format(q, ".2f"), price=format(yes, "f"),
                    time_in_force="good_till_canceled", self_trade_prevention_type="taker_at_cross",
-                   post_only=True, reduce_only=reducing, cancel_order_on_pause=True)
+                   post_only=True, reduce_only=False, cancel_order_on_pause=True)
     if expiration_time is not None:
         payload["expiration_time"] = integer(expiration_time, 1, 2**63-1)
     return payload

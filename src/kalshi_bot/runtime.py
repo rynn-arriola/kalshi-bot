@@ -63,7 +63,7 @@ class RecoveryRuntime:
                  sleep=asyncio.sleep, jitter=lambda: random.uniform(.8, 1.2), attempts=3,
                  diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None,
                  accounting_boundary=None, observation_only=False, opening_reference=None,
-                 broad_discovery=False):
+                 broad_discovery=False, book_connections=2):
         if type(observation_only) is not bool:
             raise InvalidData('observation_only must be a boolean')
         self.observation_only = observation_only
@@ -87,7 +87,8 @@ class RecoveryRuntime:
             raise InvalidData("explicit nonempty startup history scope required")
         self.attempt_limit = integer(attempts, 1, 8)
         self.specs = topology(tuple(tickers),
-                              market_capacity=1024 if broad_discovery else writer.market_capacity)
+                              market_capacity=1024 if broad_discovery else writer.market_capacity,
+                              book_connections=book_connections)
         self.account = AccountCoordinator(writer, subaccount=subaccount, capacity=writer.market_capacity, clock=clock)
         shards = {s.name: BookConnection(s.tickers) for s in self.specs if s.name.startswith("book-")}
         self.lost = {name: asyncio.Event() for name in shards}
@@ -125,6 +126,7 @@ class RecoveryRuntime:
         self._shutdown_task = None
         self.dispatch_supervisor = None  # Explicit offline attachment only.
         self._post_drain_recovery_pending = False
+        self._safety_recovery_retries = set()
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
@@ -253,7 +255,25 @@ class RecoveryRuntime:
         await self._evaluate_callback(ticker, book, generation)
 
     async def _deadline(self, ticker):
-        await self.management.refresh(ticker)
+        plan = await self.management.refresh(ticker)
+        if plan is not None and not plan.inventory.position:
+            self._safety_recovery_retries.discard(ticker)
+        if (self.recovery_state == 'blocked_retry_exhausted'
+                and plan is not None and plan.inventory.position
+                and ticker not in self._safety_recovery_retries):
+            now = utc(self.now())
+            age_due = (plan.inventory.first_seen_at is not None
+                       and now-plan.inventory.first_seen_at >= timedelta(seconds=900))
+            deadline_due = plan.terms is not None and now >= plan.terms.deadline
+            if age_due or deadline_due:
+                # One inventory-episode retry at the existing safety boundary.
+                # It reacquires current account proof before any IOC; it never
+                # dispatches from the stale plan that triggered this wake-up.
+                self._safety_recovery_retries.add(ticker)
+                self.request_recovery()
+                self.diagnostics.emit('safety_recovery_rearmed', market=ticker)
+                await self._deadline_callback(ticker)
+                return
         self._request_inventory_dispatch(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)

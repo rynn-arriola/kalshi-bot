@@ -1,5 +1,13 @@
 # What exists
 
+## D-103 exit/coverage/priority repair — 2026-09-23
+
+[Implementation and capacity evidence](docs/BUILD_EXIT_COVERAGE_PRIORITY.md):
+venue-valid passive reducers with durable local purpose, one due-safety recovery
+rearm, configurable two-to-four deterministic book shards, reasoned repeated
+1,024-market capacity measurement, and fail-closed $2-capacity-aware initial
+ranking. The production config is prepared for four shards. No restart occurred.
+
 ## D-101 actual-order queue joins and post-drain recovery — 2026-09-23
 
 [Repair bundle](docs/BUILD_REPRICING_SOURCE_JOIN.md): separate account-bound

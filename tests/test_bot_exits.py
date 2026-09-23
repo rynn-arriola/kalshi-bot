@@ -273,7 +273,7 @@ class IntegratedExitTests(management_fixtures.ManagementTests):
 
     async def test_cancel_fill_race_recomputes_quantity_after_terminal_proof(self):
         await self.position()
-        payload=management_fixtures.request('reduce',side='ask',p='.59',reduce=True,quantity='10')
+        payload=management_fixtures.request('reduce',side='ask',p='.59',reduce=False,quantity='10')
         await self.prepare_reducer(payload,attempt='reduce-attempt')
         reducer=OrderUpdate('reduce','reduce','A','ask',D('.59'),D(10),D(0),D(10),'resting',0,0,1)
         await self.writer.order(reducer,self.now)
