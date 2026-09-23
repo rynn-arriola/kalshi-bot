@@ -2,6 +2,19 @@
 
 ## 143. Startup coverage and current eligibility are separate — 2026-09-23
 
+VERIFIED LIVE in final run `8e905c9477a34c8484c55ab32be5144d`: zero entries during
+waiting; release at 120.132s with 864/1,024 evaluated; then 30 acknowledged orders
+by 06:08:37 UTC. At 06:09:15, no fills/positions and $126 reserved exposure.
+Matched selection-time samples put seven owned markets in $2+ and eight in
+$1–<$2. Not a payout guarantee or simultaneous/global-optimum comparison.
+
+The first attempt's `startup.save_result` failed at `os.replace` with Windows
+PermissionError; it placed no orders and automatic recovery verified flat.
+Standard diagnostic opens may deny delete-sharing (exact interfering handle
+unidentified). A synthetic open-reader replacement passed with explicit
+ReadWrite|Delete sharing, used during successful final monitoring. Runtime
+publication was not modified; general reader/writer hardening remains separate.
+
 VERIFIED OFFLINE: D-096's opposite-shard fixture holds an early $1 fallback,
 waits for a later $2 candidate, then ranks the $2 row first. Timeout does not
 admit stale evidence, and direct dispatch cannot bypass the initial checkpoint.

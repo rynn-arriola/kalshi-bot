@@ -1,6 +1,37 @@
 # Current status
 
-## D-096 checkpoint verified; controlled deployment next — 2026-09-23
+## D-096 deployed; initial checkpoint and restart observed — 2026-09-23
+
+Implementation `bf03b56` is published/deployed. The final authorized normal run
+`8e905c9477a34c8484c55ab32be5144d` (parent 46184, child 18516) is running. At
+**06:09:15 UTC**, protected parent/child presence, healthy supervisor, current
+account release and all four subscribed readers were verified; engine/dispatcher
+reported no failure, logging healthy with zero drops. **30 resting orders / 15
+two-sided markets, no fills/positions, $126 reserved exposure** at this checkpoint.
+
+No entries were placed during initial waiting. At **120.132s**, the checkpoint
+released as `timeout_partial`: **864/1,024 evaluated** (469/549 and 395/475 by
+shard). These frozen historical counts are not current coverage or eligibility.
+The first acknowledged creates were prepared at 06:07:09 UTC; 30 create ACKs
+were recorded by 06:08:37, plus 18 proven-NOT_SENT legs. No cancellation/replace
+mutations occurred in this final run. Later source changes remain rechecked.
+
+Matching the 15 owned markets to sampled pre-entry proposal estimates gives
+**7 $2+ and 8 $1–<$2** markets, versus zero $2+ in the previous observed slate.
+These are selection-time samples, not guaranteed or paid rewards and not proof
+of an optimal full-universe allocation. Expired/source-changed rows remain
+excluded; later better candidates do not automatically replace incumbents.
+
+The first deployment attempt stopped before placing orders because atomic status
+replacement raised Windows `PermissionError`. Its supervisor recovered flat and
+disarmed. Ordinary diagnostic file handles are a plausible interfering reader;
+the exact external handle was not identified. After joining those monitors,
+a synthetic replacement-with-reader-open check passed using delete-sharing.
+The final run was monitored with that nonblocking reader; no production I/O
+safety rule or error handling was bypassed. General status-reader hardening is
+a follow-up, not implemented in this checkpoint change.
+
+## D-096 verification and controlled shutdown record
 
 [Initial combined ranking](docs/BUILD_INITIAL_RANKING.md) delays normal broad-mode
 entries until evaluated coverage or 120 seconds, then uses only current eligible
@@ -24,9 +55,8 @@ Under the operator's explicit restart approval, the old run drained from 30
 orders to **STOPPED_FLAT at 05:55:28 UTC**, with no positions/exposure. The drain
 exceeded the supervisor timeout, retaining recovery requirements. An ordinary
 recovery-only start verified flatness and disarmed cleanly at **05:56:45 UTC**;
-no holds were manually cleared. The bot is now stopped/disarmed. Publish and
-deploy this reviewed unit, then complete the authorized normal restart and
-observe the checkpoint/selection before claiming live acceptance.
+no holds were manually cleared. This was the stopped/disarmed predeployment
+checkpoint; the subsequent live acceptance above supersedes that process state.
 
 ## D-095 controlled live restart running — 2026-09-23
 

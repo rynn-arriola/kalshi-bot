@@ -49,6 +49,11 @@ waiting for a feed. Existing REST quota/concurrency and snapshot refresh remain.
 
 ## Verification and deployment
 
+Published/deployed as `bf03b56`; final normal-run acceptance is in STATUS. Live
+waiting released at 120.132s with 864/1,024 evaluated, then reached 30 resting
+orders. This verifies the bounded partial-release path, not full simultaneous
+coverage. Subsequent markets continued entering the current ranking.
+
 Synthetic regressions exercise delayed opposite-shard priority, metadata delay,
 economic rejection, missing versus complete reward catalog, stale evidence at
 timeout, reconnect/metadata epochs, direct dispatch refusal, safety cancellation,

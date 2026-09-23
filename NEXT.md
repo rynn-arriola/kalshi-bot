@@ -1,16 +1,20 @@
 # Active work queue
 
-## D-096 — authorized deployment and live checkpoint acceptance
+## After D-096 — running; retain current evidence and scoped follow-ups
 
-The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is verified
-offline; the complete 1,554-test suite passes with one expected skip. Controlled
-drain and recovery-only verification are complete; the old supervisor is disarmed
-and the latest runtime reports STOPPED_FLAT, no positions/exposure.
+The [initial ranking checkpoint](docs/BUILD_INITIAL_RANKING.md) is published,
+deployed and live-observed. Complete suite: 1,554 tests, one expected skip. The
+final run has 30 resting entries and no observed inventory; STATUS owns the
+timestamped acceptance and its partial-coverage/estimate limitations.
 
-1. Publish/deploy the exact reviewed fix and perform the authorized normal start.
-2. Observe no initial entries while waiting, coverage/timeout release, current
-   $2-priority proposals and actual order capacity. Separate historical evaluated
-   coverage from simultaneously current candidates; never promise earnings.
+1. Continue bounded observation of fills, exits, actual reward evidence and source
+   availability. Use Windows delete-sharing for diagnostic status-file reads;
+   ordinary readers can interfere with atomic replacement. Investigate/harden the
+   standard status reader/writer path in a separate reviewed change.
+2. Before proposing another selection policy, measure simultaneously current
+   metadata/ranking coverage: startup released after 120s with 864/1,024 evaluated.
+   More elapsed time alone does not keep earlier metadata fresh. Do not relax
+   freshness or claim global $2 optimality from cumulative coverage.
 3. Incumbent replacement/repricing remains unapproved and unimplemented. Later
    better candidates do not displace already resting orders automatically.
 
