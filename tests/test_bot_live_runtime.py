@@ -114,6 +114,12 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(r['expiration_time'] == int(
             (self.f.now+timedelta(hours=1)).timestamp()) for r in self.calls[0][1]))
         self.assertEqual({r['phase'] for r in await self.f.writer.mutations()}, {'ACK'})
+        evidence = self.selection.status()['dispatch_selection_evidence']
+        self.assertEqual(len(evidence),1)
+        self.assertEqual((evidence[0]['ticker'],evidence[0]['state'],evidence[0]['tier']),
+                         ('A','ACK','priority'))
+        self.assertEqual(set(evidence[0]['order_ids']),set(result.order_ids))
+        self.assertEqual(len(evidence[0]['client_order_ids']),2)
         self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
 
     async def test_reward_revocation_after_reservation_never_reaches_transport(self):
@@ -130,6 +136,7 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.calls)
         self.assertEqual({row['phase'] for row in await self.f.writer.mutations()},
                          {'NOT_SENT'})
+        self.assertFalse(self.selection.status()['dispatch_selection_evidence'])
 
     async def test_reward_revocation_after_sending_never_reaches_transport(self):
         original = self.f.writer.begin_batch_send

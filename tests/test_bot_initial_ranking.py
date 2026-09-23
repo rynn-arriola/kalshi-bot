@@ -188,8 +188,7 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         priority = result.additions[0]
         self.assertIsNotNone(self.s.capture_dispatch_proof(
             priority.ticker,priority.program_id,priority.valid_until))
-        evidence = self.s.status()['dispatch_selection_evidence'][-1]
-        self.assertEqual((evidence['ticker'],evidence['tier']),('C','priority'))
+        self.assertFalse(self.s.status()['dispatch_selection_evidence'])
         self.assertFalse(await self.writer.mutations())
 
     async def test_current_priority_candidate_fills_available_slot_before_full_coverage(self):
@@ -237,6 +236,32 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.status()['last_proposal']['fallback_reason'],
                          'priority_candidates_resolved')
 
+    async def test_fresh_inactive_market_retires_hint_and_allows_fallback(self):
+        from types import SimpleNamespace as NS
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.r.management.set_terms(replace(terms('C'),active=False))
+        await self.r.management.refresh('C')
+        self.s.candidate_inputs = NS(blockers=lambda ticker, now:
+            ('market_inactive',) if ticker == 'C' else (), status=lambda:{})
+        self.s.refresh('C')
+        result = await self.proposal()
+        self.assertEqual([row.ticker for row in result.additions],['A'])
+        self.assertNotIn('C',self.s._priority_hints)
+        self.assertNotIn('priority_revalidation_pending',result.blockers)
+
+    async def test_retry_exhaustion_keeps_priority_hint_pending(self):
+        from types import SimpleNamespace as NS
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.s.candidate_inputs = NS(blockers=lambda ticker, now:
+            ('metadata_retry_exhausted',) if ticker == 'C' else (), status=lambda:{})
+        self.s.refresh('C')
+        result = await self.proposal()
+        self.assertFalse(result.additions)
+        self.assertIn('C',self.s._priority_hints)
+        self.assertIn('priority_revalidation_pending',result.blockers)
+
     async def test_actual_entry_turn_can_release_current_priority_capacity(self):
         from types import SimpleNamespace as NS
         self.window = replace(self.window,cap=2)
@@ -263,11 +288,12 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
             now=self.now,available_pairs=15,protected=()))
         first = set(self.s._priority_refresh)
         self.assertEqual(len(first),30)
-        for ticker in first:
+        stalled = min(first)
+        for ticker in first-{stalled}:
             self.s._forget_priority(ticker)
         self.assertTrue(self.s._request_priority_revalidation(
             now=self.now,available_pairs=15,protected=()))
-        self.assertEqual(set(self.s._priority_refresh),set(tickers)-first)
+        self.assertEqual(set(self.s._priority_refresh),{stalled}|(set(tickers)-first))
 
     async def test_books_alone_do_not_complete_metadata_coverage(self):
         await self.publish('A')

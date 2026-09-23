@@ -15,6 +15,7 @@ class DispatchSupervisor:
                 or not isinstance(dispatcher, MutationDispatcher)
                 or dispatcher.writer is not source.runtime.writer
                 or dispatcher.refresh != source.refresh
+                or dispatcher.after_result != source._dispatch_result
                 or dispatcher.executor.validate_proof != source.validate_proof
                 or dispatcher.executor.after_outcome != source._mutation_observed
                 or not isinstance(dispatcher.executor.invoke, MutationOutcomeOwner)

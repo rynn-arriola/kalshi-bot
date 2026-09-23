@@ -162,7 +162,7 @@ class MutationDispatcher:
     queued and tells the caller when reevaluation can be attempted.
     """
     def __init__(self, writer, executor, budget, *, refresh, clock_pair, now,
-                 capacity=128, offline_fixture=False):
+                 capacity=128, offline_fixture=False, after_result=lambda result: None):
         from .live_session import permits
         if offline_fixture is not True and not permits(writer.live_session, writer):
             raise InvalidData('offline_fixture must be literally True')
@@ -172,10 +172,12 @@ class MutationDispatcher:
                 or executor.writer is not writer
                 or not isinstance(budget, WriteBudget)):
             raise InvalidData('single writer/executor and write budget required')
-        if not callable(refresh) or not callable(clock_pair) or not callable(now):
+        if (not callable(refresh) or not callable(clock_pair) or not callable(now)
+                or not callable(after_result)):
             raise InvalidData('dispatcher dependencies must be callable')
         self.writer, self.executor, self.budget = writer, executor, budget
         self.refresh, self.clock_pair, self.now = refresh, clock_pair, now
+        self.after_result = after_result
         self.capacity = integer(capacity, 1, 128)
         self._queues = {value: deque() for value in _PRIORITY.values()}
         self._pending = {}
@@ -373,14 +375,14 @@ class MutationDispatcher:
 
     async def run_one(self):
         if self._failed:
-            return DispatchResult('FAILED', blockers=('dispatcher_failed',))
+            return self._finish(DispatchResult('FAILED', blockers=('dispatcher_failed',)))
         if self._stopping:
-            return DispatchResult('INTERRUPTED', blockers=('dispatcher_stopping',))
+            return self._finish(DispatchResult('INTERRUPTED', blockers=('dispatcher_stopping',)))
         if self._active is not None:
-            return DispatchResult('BLOCKED', blockers=('dispatcher_busy',))
+            return self._finish(DispatchResult('BLOCKED', blockers=('dispatcher_busy',)))
         selected = self._take()
         if selected is None:
-            return DispatchResult('IDLE')
+            return self._finish(DispatchResult('IDLE'))
         ticker, rank = selected
         priority = self._priority(rank)
         task = asyncio.create_task(self._process(ticker, priority),
@@ -401,6 +403,16 @@ class MutationDispatcher:
             self._active = self._active_key = None
         if cancelled:
             raise asyncio.CancelledError
+        return self._finish(result)
+
+    def _finish(self, result):
+        try:
+            notification = self.after_result(result)
+            if notification is not None:
+                raise InvalidData('dispatch result notification must be synchronous')
+        except BaseException:
+            self._failed = True
+            raise
         return result
 
     def stop(self):

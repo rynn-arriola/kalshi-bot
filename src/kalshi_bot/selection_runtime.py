@@ -63,6 +63,7 @@ class RuntimeSelection:
         self.last_proposal = None  # Bounded historical diagnostics, not authority.
         self._priority_hints = {}  # Advisory only; current proofs still authorize.
         self._priority_refresh = set()
+        self._dispatch_candidates = {}
         self._dispatch_selection_evidence = {}
         from .initial_ranking import InitialRankingCheckpoint
         self.initial_ranking = (InitialRankingCheckpoint(runtime.engine.market_shard,
@@ -151,6 +152,14 @@ class RuntimeSelection:
         program_ids = {program.program_id for program in observation.programs}
         if not transient or old is None or old.program_id not in program_ids:
             self._forget_priority(ticker)
+
+    @staticmethod
+    def _priority_resolution_pending(candidate_blockers, ownership_blocked):
+        """Missing proof stays pending; fresh definitive ineligibility retires."""
+        pending = {'timing_review_missing', 'fee_profile_missing',
+                   'metadata_retry_exhausted'}
+        definitive = set(candidate_blockers)-pending
+        return not definitive and (ownership_blocked or bool(candidate_blockers))
 
     def priority_refresh_pending(self, ticker):
         """Pure scheduler priority predicate; it grants no source authority."""
@@ -295,24 +304,46 @@ class RuntimeSelection:
         if len(programs) != 1:
             return None
         proof = SelectionDispatchProof(ticker, programs[0], observation, source, valid_until)
-        if not self.dispatch_proof_current(proof):
-            return None
-        row = next((row for row in self.selector.board.ranked_programs(
-            now=self.runtime.now(), by='selection')
-            if row.ticker == ticker and row.program_id == program_id), None)
-        if row is not None:
-            threshold = BotConfig().priority_projected_reward_usd
-            self._dispatch_selection_evidence[ticker] = dict(
-                ticker=ticker, program_id=program_id,
-                prepared_at=utc(self.runtime.now()).isoformat(),
-                projected_remaining_usd=(None if row.gross_remaining_usd is None
-                                         else str(row.gross_remaining_usd)),
-                tier=('priority' if row.gross_remaining_usd is not None
-                      and row.gross_remaining_usd >= threshold else 'fallback'),
-                valid_until=valid_until.isoformat())
-            while len(self._dispatch_selection_evidence) > 64:
-                self._dispatch_selection_evidence.pop(next(iter(self._dispatch_selection_evidence)))
-        return proof
+        return proof if self.dispatch_proof_current(proof) else None
+
+    def stage_dispatch_evidence(self, batch_id, row, client_order_ids):
+        """Retain one candidate until the dispatcher supplies its real outcome."""
+        batch_id = identity(batch_id)
+        if (type(client_order_ids) is not tuple or len(client_order_ids) != 2
+                or len(set(client_order_ids)) != 2):
+            raise InvalidData('exact entry client ids required')
+        for value in client_order_ids:
+            identity(value)
+        for key, value in tuple(self._dispatch_candidates.items()):
+            if value['ticker'] == row.ticker:
+                self._dispatch_candidates.pop(key)
+        threshold = BotConfig().priority_projected_reward_usd
+        self._dispatch_candidates[batch_id] = dict(ticker=row.ticker,
+            program_id=row.program_id, candidate_at=utc(self.runtime.now()).isoformat(),
+            projected_remaining_usd=(None if row.gross_remaining_usd is None
+                                     else str(row.gross_remaining_usd)),
+            tier=('priority' if row.gross_remaining_usd is not None
+                  and row.gross_remaining_usd >= threshold else 'fallback'),
+            client_order_ids=list(client_order_ids), valid_until=row.valid_until.isoformat())
+        while len(self._dispatch_candidates) > 4:
+            self._dispatch_candidates.pop(next(iter(self._dispatch_candidates)))
+
+    def record_dispatch_result(self, result):
+        """Publish only ACK/partial venue outcomes, never prepared attempts."""
+        attempt_id = getattr(result, 'attempt_id', None)
+        candidate = self._dispatch_candidates.pop(attempt_id, None)
+        if candidate is None:
+            return
+        order_ids = tuple(getattr(result, 'order_ids', ()))
+        state = getattr(result, 'state', None)
+        if state != 'ACK' and not order_ids:
+            return
+        candidate.update(batch_id=attempt_id, state=state,
+            order_ids=list(order_ids), outcome_at=utc(self.runtime.now()).isoformat())
+        ticker = candidate['ticker']
+        self._dispatch_selection_evidence[ticker] = candidate
+        while len(self._dispatch_selection_evidence) > 64:
+            self._dispatch_selection_evidence.pop(next(iter(self._dispatch_selection_evidence)))
 
     def dispatch_proof_current(self, proof):
         """Synchronous send fence that tolerates only the writer's own prepare."""
@@ -361,9 +392,11 @@ class RuntimeSelection:
         _, book = r.management._book(ticker)
         if book is None:
             return
-        blockers = plan.inventory.blockers + report.audit.blockers
+        ownership_blockers = plan.inventory.blockers + report.audit.blockers
+        candidate_blockers = ()
         if self.candidate_inputs is not None:
-            blockers += self.candidate_inputs.blockers(ticker, now)
+            candidate_blockers = self.candidate_inputs.blockers(ticker, now)
+        blockers = ownership_blockers + candidate_blockers
         # Any owned order remains protected. A private receipt is NOT proof of
         # public-book reflection; do not manufacture a current reward share.
         if plan.inventory.orders:
@@ -371,6 +404,9 @@ class RuntimeSelection:
         journal = plan.inventory.exit_journal
         if journal is not None and (journal.unresolved_ioc or journal.cancel_ids):
             blockers += ('pending_inventory_mutation',)
+        unresolved = self._priority_resolution_pending(candidate_blockers,
+            bool(ownership_blockers or plan.inventory.orders or
+                 (journal is not None and (journal.unresolved_ioc or journal.cancel_ids))))
         until = min(observation.valid_until, plan.terms.valid_until,
                     report.observed_at+timedelta(seconds=5), now+timedelta(seconds=5))
         if until <= now:
@@ -389,7 +425,7 @@ class RuntimeSelection:
             return  # One unsupported market must not stop inventory management.
         self._rejected.pop(ticker, None)
         self._proofs[ticker] = (plan, observation, report)
-        self._resolve_priority(ticker, observation, transient=bool(blockers))
+        self._resolve_priority(ticker, observation, transient=unresolved)
         self._initial_progress(ticker)
 
     def _clean_priority_memory(self, now):
@@ -407,16 +443,19 @@ class RuntimeSelection:
         protected = set(protected)
         self._priority_refresh.intersection_update(self._priority_hints)
         self._priority_refresh.difference_update(protected)
-        if not self._priority_refresh and available_pairs > 0:
+        if available_pairs > 0:
             candidates = [(hint.projected_remaining(now), ticker)
                 for ticker, hint in self._priority_hints.items()
-                if ticker not in protected and not self._current_priority(ticker, now)]
+                if (ticker not in protected and ticker not in self._priority_refresh
+                    and not self._current_priority(ticker, now))]
             candidates.sort(key=lambda item:(-item[0], item[1]))
             limit = min(30, 2*available_pairs)
-            self._priority_refresh.update(ticker for _, ticker in candidates[:limit])
+            selected = tuple(ticker for _, ticker in
+                             candidates[:max(0, limit-len(self._priority_refresh))])
+            self._priority_refresh.update(selected)
             scheduler = self.runtime.metadata_scheduler
             if scheduler is not None:
-                for ticker in tuple(self._priority_refresh):
+                for ticker in selected:
                     scheduler.request(ticker)
         return bool(self._priority_refresh)
 
@@ -512,7 +551,7 @@ class RuntimeSelection:
                     priority_revalidation_pending=len(self._priority_refresh),
                     priority_revalidation_samples=sorted(self._priority_refresh)[:8],
                     dispatch_selection_evidence=list(
-                        self._dispatch_selection_evidence.values())[-8:],
+                        self._dispatch_selection_evidence.values()),
                     last_proposal=self.last_proposal,
                     initial_ranking=(self.initial_ranking.status()
                                      if self.initial_ranking is not None else None),

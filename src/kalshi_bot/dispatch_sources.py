@@ -65,7 +65,12 @@ class InventoryDispatchSource:
             after_outcome=self._mutation_observed)
         return MutationDispatcher(self.runtime.writer, executor, budget,
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
-            offline_fixture=self.offline_fixture)
+            offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
+
+    def _dispatch_result(self, result):
+        selection = self.runtime.selection
+        if selection is not None and result.priority == ENTRY_PAIR:
+            selection.record_dispatch_result(result)
 
     def _mutation_observed(self, notice=None):
         paused_cancel = isinstance(self._proof, _PausedCancelProof)
@@ -261,6 +266,8 @@ class InventoryDispatchSource:
                 self._proof = _Proof(plan, report.observed_at, 'batch_create',
                     tuple(encoded_request(request) for request in requests),
                     entry_selection)
+                selection.stage_dispatch_evidence(candidate.batch_id, row,
+                    tuple(request['client_order_id'] for request in requests))
                 return candidate
             exit_plan, passive = plan.exit, plan.passive
             journal = plan.inventory.exit_journal
