@@ -505,6 +505,49 @@ def abort_prepared(ledger, receipt, *, writer_epoch, writer_revision, post_revis
     return SendResult(False, ('prepared_aborted',), post_revision)
 
 
+def abort_sending_before_submission(ledger, receipt, *, writer_epoch,
+                                    writer_revision, post_revision):
+    """Durably release a SENDING command proven not to have reached transport."""
+    if not isinstance(receipt, PreparedMutation):
+        raise InvalidData('typed prepared mutation required')
+    if receipt.ledger_id != ledger_id(ledger) or receipt.writer_epoch != writer_epoch:
+        return SendResult(False, ('prepared_receipt_owner_changed',), writer_revision)
+    row = ledger.connection.execute('SELECT * FROM mutation_attempts WHERE id=?',
+                                    (receipt.attempt_id,)).fetchone()
+    if row is None:
+        raise InvalidData('sending mutation evidence missing')
+    authorization = validate_prepared_identity(ledger, receipt, row)
+    if authorization['state'] != 'SENDING':
+        return SendResult(False, ('prepared_receipt_already_used',), writer_revision)
+    if ((row['kind'], row['request'], row['created_at'], row['phase']) !=
+            (receipt.kind, receipt.request_json, receipt.prepared_at.isoformat(), 'SENDING')):
+        raise InvalidData('current sending mutation conflicts with authorization')
+    changed = ledger.connection.execute(
+        "UPDATE mutation_attempts SET phase='NOT_SENT' WHERE id=? AND phase='SENDING'",
+        (receipt.attempt_id,)).rowcount
+    authorized = ledger.connection.execute(
+        "UPDATE command_authorizations SET state='ABORTED' "
+        "WHERE id=? AND state='SENDING'", (receipt.authorization_id,)).rowcount
+    if (changed, authorized) != (1, 1):
+        raise InvalidData('sending mutation abort conflict')
+    if receipt.kind == 'create':
+        intent = ledger.connection.execute(
+            'SELECT payload,state FROM intents WHERE client_id=?',
+            (receipt.subject_id,)).fetchone()
+        if (intent is None or intent['payload'] != receipt.request_json
+                or intent['state'] != 'SENDING'):
+            raise InvalidData('sending create intent conflicts')
+        changed = ledger.connection.execute(
+            "UPDATE intents SET state='ABORTED' WHERE client_id=? AND state='SENDING'",
+            (receipt.subject_id,)).rowcount
+        if changed != 1:
+            raise InvalidData('sending create intent abort conflict')
+        if receipt.request.get('reduce_only') is not True:
+            release_client_credits(ledger, receipt.subject_id)
+            maybe_retire_episode(ledger, receipt.episode_id)
+    return SendResult(False, ('not_submitted_aborted',), post_revision)
+
+
 def begin_batch_send(ledger, batch, *, writer_epoch, writer_revision,
                      post_revision, accounting_current=False):
     if not isinstance(batch, PreparedBatch):
@@ -533,6 +576,20 @@ def abort_batch(ledger, batch, *, writer_epoch, writer_revision, post_revision):
             post_revision=post_revision) for receipt in batch.receipts)
     blockers = tuple(dict.fromkeys(code for row in results for code in row.blockers))
     return SendResult(False, blockers or ('prepared_aborted',), post_revision)
+
+
+def abort_sending_batch_before_submission(ledger, batch, *, writer_epoch,
+                                          writer_revision, post_revision):
+    if not isinstance(batch, PreparedBatch):
+        raise InvalidData('typed prepared batch required')
+    with ledger.transaction():
+        results = tuple(abort_sending_before_submission(ledger, receipt,
+            writer_epoch=writer_epoch, writer_revision=writer_revision,
+            post_revision=post_revision) for receipt in batch.receipts)
+        if any(row.blockers != ('not_submitted_aborted',) for row in results):
+            raise InvalidData('sending batch abort was not all-or-none')
+    blockers = tuple(dict.fromkeys(code for row in results for code in row.blockers))
+    return SendResult(False, blockers or ('not_submitted_aborted',), post_revision)
 
 
 def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
@@ -660,6 +717,11 @@ class InjectedExecutor:
             result = await self._execute_prepared(receipt, before_invoke=before_invoke)
             completed = True
             return result
+        except CommandDenied:
+            # A denial may durably prove a SENDING command was never submitted.
+            # Re-signal the owner so the fresh command can be planned promptly.
+            completed = not self.failed
+            raise
         finally:
             # Recovery may consume an ingress notification while persistence is
             # awaited. Revoke/re-signal AFTER retained outcome recording too,
@@ -707,9 +769,19 @@ class InjectedExecutor:
                 if (self.writer.revision != send.writer_revision
                         or not self.writer.entry_accounting_current(receipt)
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
-                    _, outcome_cancelled = await self._retain(
-                        self.writer.record_outcome('unknown', receipt, {}, self.now()))
+                    aborted, outcome_cancelled = await self._retain(
+                        self.writer.abort_sending_before_submission(receipt, self))
+                    if aborted.blockers != ('not_submitted_aborted',):
+                        raise InvalidData('proven-unsent mutation abort was not committed')
                     finalized = True
+                    self.failed = False
+                    try:
+                        self.diagnostics.emit('mutation_not_submitted',
+                                              operation=receipt.authorization_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        self.failed = True
+                        raise
                     if outcome_cancelled:
                         raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
@@ -730,6 +802,21 @@ class InjectedExecutor:
                     raise CommandDenied(('accounting_lease_stale',))
                 if (self.writer.revision != send.writer_revision
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
+                    aborted, outcome_cancelled = await self._retain(
+                        self.writer.abort_sending_before_submission(receipt, self))
+                    if aborted.blockers != ('not_submitted_aborted',):
+                        raise InvalidData('proven-unsent mutation abort was not committed')
+                    finalized = True
+                    self.failed = False
+                    try:
+                        self.diagnostics.emit('mutation_not_submitted',
+                                              operation=receipt.authorization_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        self.failed = True
+                        raise
+                    if outcome_cancelled:
+                        raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
                 async with asyncio.timeout(self.timeout):
                     reply = await self.invoke(receipt.kind, dispatch_request)
@@ -743,14 +830,15 @@ class InjectedExecutor:
                         finalized = True
                     except BaseException as outcome_exc:
                         persistence_error = outcome_exc
-                try:
-                    self.diagnostics.emit('mutation_unknown', error=exc,
-                                          operation=receipt.authorization_id)
-                    self.diagnostics.ensure_healthy()
-                except BaseException:
-                    # Durable outcome has priority; unhealthy diagnostics still
-                    # leave the executor held and runtime authority revoked.
-                    pass
+                if self.failed:
+                    try:
+                        self.diagnostics.emit('mutation_unknown', error=exc,
+                                              operation=receipt.authorization_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        # Durable outcome has priority; unhealthy diagnostics still
+                        # leave the executor held and runtime authority revoked.
+                        pass
                 if persistence_error is not None:
                     raise persistence_error from exc
                 raise
@@ -786,6 +874,9 @@ class InjectedExecutor:
                 batch, before_invoke=before_invoke)
             completed = True
             return result
+        except CommandDenied:
+            completed = not self.failed
+            raise
         finally:
             if self.after_outcome is not None and (completed or self.failed or self.writer.failed):
                 notification = self.after_outcome()
@@ -828,8 +919,20 @@ class InjectedExecutor:
                 if (self.writer.revision != send.writer_revision
                         or not self.writer.entry_accounting_current(batch)
                         or self.validate_proof('batch_create', requests) is not True):
-                    await self._retain(self.writer.record_batch_outcome(batch, None, self.now()))
+                    aborted, outcome_cancelled = await self._retain(
+                        self.writer.abort_sending_batch_before_submission(batch, self))
+                    if aborted.blockers != ('not_submitted_aborted',):
+                        raise InvalidData('proven-unsent batch abort was not committed')
                     finalized = True
+                    self.failed = False
+                    try:
+                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        self.failed = True
+                        raise
+                    if outcome_cancelled:
+                        raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
                 if tuple(encoded_request(row) for row in requests) != tuple(
                         receipt.request_json for receipt in batch.receipts):
@@ -843,6 +946,20 @@ class InjectedExecutor:
                 if (not self.writer.entry_accounting_current(batch)
                         or self.writer.revision != send.writer_revision
                         or self.validate_proof('batch_create', requests) is not True):
+                    aborted, outcome_cancelled = await self._retain(
+                        self.writer.abort_sending_batch_before_submission(batch, self))
+                    if aborted.blockers != ('not_submitted_aborted',):
+                        raise InvalidData('proven-unsent batch abort was not committed')
+                    finalized = True
+                    self.failed = False
+                    try:
+                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        self.failed = True
+                        raise
+                    if outcome_cancelled:
+                        raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
                 async with asyncio.timeout(self.timeout):
                     reply = await invoke_batch(requests)
@@ -855,11 +972,12 @@ class InjectedExecutor:
                         finalized = True
                     except BaseException as persistence_error:
                         raise persistence_error from exc
-                try:
-                    self.diagnostics.emit('mutation_unknown', error=exc,
-                                          operation=batch.batch_id)
-                except BaseException:
-                    pass
+                if self.failed:
+                    try:
+                        self.diagnostics.emit('mutation_unknown', error=exc,
+                                              operation=batch.batch_id)
+                    except BaseException:
+                        pass
                 raise
             try:
                 persisted, cancelled = await self._retain(

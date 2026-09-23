@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from kalshi_bot.config import BotConfig
 from kalshi_bot.account import normalize_snapshot
+from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.dispatch import (ENTRY_PAIR, EntryPairCandidate,
                                  MutationDispatcher)
 from kalshi_bot.execution import InjectedExecutor
@@ -122,6 +123,32 @@ class EntryPairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status.buckets[1][1], 100)
         self.assertEqual({row['phase'] for row in await self.writer.mutations()},
                          {'ACK'})
+
+    async def test_batch_proof_change_before_transport_aborts_both_commands(self):
+        prepared = await self.reserve()
+        wire = BatchWire()
+        original = self.writer.begin_batch_send
+
+        async def begin_then_change(batch):
+            result = await original(batch)
+            await self.writer.observe(NOW)
+            return result
+
+        self.writer.begin_batch_send = begin_then_change
+        executor = InjectedExecutor(self.writer, invoke=wire,
+            validate_proof=lambda *_: True, offline_fixture=True, now=lambda: NOW)
+        with self.assertRaises(CommandDenied) as denied:
+            await executor.execute_prepared_batch(prepared.batch)
+        self.assertEqual(denied.exception.blockers,
+                         ('proof_changed_before_submission',))
+        self.assertEqual(wire.calls, [])
+        self.assertEqual({row['phase'] for row in await self.writer.mutations()},
+                         {'NOT_SENT'})
+        self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
+        capacity = await self.writer.command_capacity()
+        self.assertEqual((capacity.mutation_held, capacity.intent_held,
+                          capacity.order_held), (0, 0, 0))
+        self.assertFalse(executor.failed)
 
     async def test_partial_batch_fails_closed_and_never_retries(self):
         reply = {'orders': [dict(order_id='order-ask',

@@ -137,11 +137,12 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.f.writer.begin_batch_send = revoke_after_sending
         self.dispatcher.submit('A', ENTRY_PAIR)
-        with self.assertRaises(CommandDenied):
-            await self.dispatcher.run_one()
+        result = await self.dispatcher.run_one()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('proof_changed_before_submission',)))
         self.assertFalse(self.calls)
         self.assertEqual({row['phase'] for row in await self.f.writer.mutations()},
-                         {'UNKNOWN'})
+                         {'NOT_SENT'})
 
     async def test_entry_selection_expiry_after_reservation_never_reaches_transport(self):
         original = self.f.writer.reserve_entry_pair

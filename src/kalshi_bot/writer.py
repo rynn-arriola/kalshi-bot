@@ -356,6 +356,24 @@ class LedgerWriter:
             raise InvalidData('typed prepared batch required')
         return await self._wait(self._submit('abort_batch', batch))
 
+    async def abort_sending_before_submission(self, receipt, owner):
+        if not isinstance(receipt, PreparedMutation):
+            raise InvalidData('typed prepared mutation required')
+        with self._lock:
+            if self._executor_owner is not owner:
+                raise InvalidData('only the active mutation executor may prove no submission')
+        return await self._wait(
+            self._submit('abort_sending_before_submission', receipt))
+
+    async def abort_sending_batch_before_submission(self, batch, owner):
+        if not isinstance(batch, PreparedBatch):
+            raise InvalidData('typed prepared batch required')
+        with self._lock:
+            if self._executor_owner is not owner:
+                raise InvalidData('only the active mutation executor may prove no submission')
+        return await self._wait(
+            self._submit('abort_sending_batch_before_submission', batch))
+
     async def record_outcome(self, operation, receipt, document, now):
         if operation not in {'unknown', 'ack'} or not isinstance(receipt, PreparedMutation):
             raise InvalidData('invalid typed mutation outcome')
@@ -730,6 +748,18 @@ class LedgerWriter:
             with ledger.transaction():
                 return abort_batch(ledger, args[0], writer_epoch=self.epoch,
                     writer_revision=self._revision, post_revision=self._revision+1)
+        if command == 'abort_sending_before_submission':
+            from .execution import abort_sending_before_submission
+            with ledger.transaction():
+                return abort_sending_before_submission(ledger, args[0],
+                    writer_epoch=self.epoch, writer_revision=self._revision,
+                    post_revision=self._revision+1)
+        if command == 'abort_sending_batch_before_submission':
+            from .execution import abort_sending_batch_before_submission
+            with ledger.transaction():
+                return abort_sending_batch_before_submission(ledger, args[0],
+                    writer_epoch=self.epoch, writer_revision=self._revision,
+                    post_revision=self._revision+1)
         if command == 'mutation_outcome':
             from .execution import record_outcome
             with ledger.transaction():
@@ -925,13 +955,17 @@ class LedgerWriter:
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',
                                      'abort_prepared', 'abort_batch',
+                                     'abort_sending_before_submission',
+                                     'abort_sending_batch_before_submission',
                                      'capture_accounting', 'release_accounting'}
                     # External evidence writes revoke authority even when a
                     # caller bypasses coordinator ingress. Local reservation /
                     # send steps retain the lease but recompute obligations.
                     if command not in read_only | {'reserve_entry', 'reserve_entry_pair',
                             'prepare_cancel', 'prepare_reduction', 'begin_send',
-                            'begin_batch_send', 'abort_prepared', 'abort_batch'}:
+                            'begin_batch_send', 'abort_prepared', 'abort_batch',
+                            'abort_sending_before_submission',
+                            'abort_sending_batch_before_submission'}:
                         self._accounting_lease = None
                         self._accounting_prepared = None
                     if command not in read_only and command not in post_revision:
@@ -942,7 +976,9 @@ class LedgerWriter:
                                    'release_accounting'}:
                         self._revision += 1
                     elif command in {'begin_send', 'begin_batch_send',
-                                     'abort_prepared', 'abort_batch'} and result.writer_revision == self._revision+1:
+                                     'abort_prepared', 'abort_batch',
+                                     'abort_sending_before_submission',
+                                     'abort_sending_batch_before_submission'} and result.writer_revision == self._revision+1:
                         self._revision += 1
                 except Exception as exc:
                     if command in {'fill', 'apply_pending', 'recover_fills', 'order',

@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 132. SENDING preceded transport and created false cancellation uncertainty — 2026-09-22
+
+VERIFIED LIVE/CODE: the two remaining `UNKNOWN` ledger rows are cancels created
+at 01:58:46.915618Z and 02:20:03.490654Z. The only matching retained
+`mutation_unknown` events occur milliseconds later and contain `CommandDenied`
+at the old `execution._execute_prepared` line 715, the explicit
+`proof_changed_before_submission` branch. Both still correspond to the two saved
+resting orders; no position is saved and no transport call is recorded.
+
+VERIFIED CODE/SYNTHETIC: D-089 moves only that proven pre-invoke branch to
+transactional `NOT_SENT`/`ABORTED`, preserves true UNKNOWN outcomes after invoke,
+and re-signals recovery. Single and batch regressions cover ownership, atomicity,
+capacity and zero transport. [Build](docs/BUILD_PRETRANSPORT_ABORT.md).
+
 ## 131. Successful safety cancels consumed the failure budget — 2026-09-22
 
 VERIFIED LIVE/CODE: the authorized stop acknowledged two cancels before one stale

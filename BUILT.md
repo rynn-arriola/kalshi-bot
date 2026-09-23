@@ -1,5 +1,14 @@
 # What exists
 
+## D-089 proven pre-transport abort — 2026-09-22
+
+[Pre-transport outcome handling](docs/BUILD_PRETRANSPORT_ABORT.md) distinguishes
+durable handoff from actual transport invocation. A final proof change before
+invoke becomes transactional `NOT_SENT`/`ABORTED`; true transport uncertainty
+remains UNKNOWN. The claimed executor is the only caller and batch release is
+all-or-none. The full suite passes 1,481 tests with one expected Windows
+privilege skip. Controlled deployment and live recovery remain pending.
+
 ## D-088 progress-aware graceful drain — 2026-09-22
 
 [Drain recovery](docs/BUILD_GRACEFUL_DRAIN_RECOVERY.md) keeps the three-attempt

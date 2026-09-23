@@ -256,7 +256,7 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_writer_change_after_begin_send_prevents_gateway_call(self):
         receipt = (await self.reserve()).receipt
-        calls = []
+        calls, notices = [], []
         original = self.writer.begin_send
 
         async def begin_then_change(value):
@@ -268,12 +268,31 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
         async def invoke(*_):
             calls.append(1)
         executor = InjectedExecutor(self.writer, invoke=invoke,
-            validate_proof=lambda *_: True, offline_fixture=True)
+            validate_proof=lambda *_: True, offline_fixture=True,
+            after_outcome=lambda: notices.append('changed'))
         with self.assertRaises(CommandDenied) as denied:
             await executor.execute_prepared(receipt)
         self.assertEqual(denied.exception.blockers, ("proof_changed_before_submission",))
         self.assertEqual(calls, [])
-        self.assertEqual((await self.writer.mutations())[0]["phase"], "UNKNOWN")
+        self.assertEqual((await self.writer.mutations())[0]["phase"], "NOT_SENT")
+        self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
+        capacity = await self.writer.command_capacity()
+        self.assertEqual((capacity.mutation_held, capacity.intent_held,
+                          capacity.order_held), (0, 0, 0))
+        self.assertFalse(executor.failed)
+        self.assertEqual(notices, ['changed'])
+
+    async def test_only_active_executor_can_record_proven_unsent_after_sending(self):
+        receipt = (await self.reserve()).receipt
+        executor = InjectedExecutor(self.writer, invoke=lambda *_: None,
+            validate_proof=lambda *_: True, offline_fixture=True)
+        self.assertTrue((await self.writer.begin_send(receipt)).dispatch_allowed)
+        with self.assertRaisesRegex(
+                InvalidData, 'only the active mutation executor'):
+            await self.writer.abort_sending_before_submission(receipt, object())
+        self.assertEqual((await self.writer.mutations())[0]['phase'], 'SENDING')
+        await self.writer.abort_sending_before_submission(receipt, executor)
+        self.assertEqual((await self.writer.mutations())[0]['phase'], 'NOT_SENT')
 
     async def test_proof_mutation_cannot_change_dispatched_terms(self):
         receipt = (await self.reserve()).receipt

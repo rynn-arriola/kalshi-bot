@@ -46,6 +46,7 @@ EVENTS = {
     'writer_failed': ('ERROR', 'writer'), 'writer_overflow': ('ERROR', 'writer'),
     'mutation_prepared': ('INFO', 'execution'), 'mutation_sending': ('INFO', 'execution'),
     'mutation_ack': ('INFO', 'execution'), 'mutation_unknown': ('ERROR', 'execution'),
+    'mutation_not_submitted': ('INFO', 'execution'),
     'mutation_failed': ('ERROR', 'execution'), 'inventory_plan_changed': ('INFO', 'inventory'),
     'selection_inputs_rejected': ('WARNING', 'selection'),
     'candidate_scope_prepared': ('INFO', 'selection'),

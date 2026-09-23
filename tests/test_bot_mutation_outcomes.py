@@ -169,9 +169,10 @@ class OutcomeTests(unittest.IsolatedAsyncioTestCase):
             self.f.runtime._revoke()
             return result
         self.f.writer.begin_send = sending
-        with self.assertRaises(InvalidData):
-            await self.f.run_priority()
-        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        result = await self.f.run_priority()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('proof_changed_before_submission',)))
+        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertTrue(self.f.runtime.recovery_requested.is_set())
         self.assertFalse(self.f.calls)
 

@@ -1,14 +1,16 @@
 # Active work queue
 
-## Current: publish D-088, recover flat, then restart
+## Current: publish D-089, recover the final two orders, then restart
 
-1. Complete the full suite and exact diff review; publish and deploy D-088.
-2. Start the supervisor in recovery-only mode. Verify all retained orders and
-   any naturally observed fills/positions reconcile to `STOPPED_FLAT`.
-3. Only after verified flatness, use the already authorized normal live start and
+1. Publish and deploy the verified D-089 pre-transport abort fix.
+2. Clear only the stale dead-child control owner. With parent, child and account
+   leases held, back up the ledger and transactionally correct exactly the two
+   retained cancel rows whose timestamps/stacks prove the old pre-transport
+   branch. Audit both identities and capacity; never generalize to other UNKNOWNs.
+3. Start recovery-only and verify both retained orders plus any naturally
+   observed fills/positions reconcile to `STOPPED_FLAT`.
+4. Only after verified flatness, use the already authorized normal live start and
    confirm current catalog, books, lifecycle, account and admission status.
-4. Preserve the shutdown-timeout evidence; do not force or manually relabel any
-   mutation outcome.
 
 ## Current: publish D-087 and reference-price verification
 

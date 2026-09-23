@@ -6,6 +6,24 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-22 — pre-transport proof change falsely became UNKNOWN
+
+**Symptom.** Two recovery cancellations never reached transport but were marked
+`UNKNOWN`, blocking safe cancellation reauthorization and leaving two orders.
+
+**Mechanism.** The executor treated durable `SENDING` as the network uncertainty
+boundary even though final source/account/revision checks still preceded the
+injected transport call.
+
+**Fix.** D-089 adds a sole-executor, transactional, all-or-none proven-unsent
+transition to `NOT_SENT`/`ABORTED`, releases applicable intent capacity and
+re-signals recovery. Post-invocation failures remain UNKNOWN.
+
+**Verification.** Single/batch races assert zero transport calls, exact capacity
+release, ownership and recovery signaling. The complete suite passes 1,481 tests
+with one expected Windows privilege skip. Historical live-row correction and
+recovery remain separate operations. [Report](docs/BUILD_PRETRANSPORT_ABORT.md).
+
 ## 2026-09-22 — graceful drain exhausted after three successful cancellations
 
 **Symptom.** An authorized stop reduced 14 resting entries to 9, then remained

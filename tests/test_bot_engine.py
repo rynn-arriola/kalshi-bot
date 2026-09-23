@@ -549,7 +549,8 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.executor.validate_proof = lambda *_: next(checks)
         with self.assertRaises(CommandDenied): await self.executor.execute_prepared(await self.prepare())
         self.assertFalse(self.calls)
-        self.assertEqual((await self.writer.mutations())[0]["phase"], "UNKNOWN")
+        self.assertEqual((await self.writer.mutations())[0]["phase"], "NOT_SENT")
+        self.assertFalse(self.executor.failed)
 
     async def test_restart_retains_ack_and_unresolved_reservation(self):
         await self.executor.execute_prepared(await self.prepare())

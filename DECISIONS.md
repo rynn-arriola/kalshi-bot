@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-089 — Correct proven pre-transport cancellation outcomes before restart
+
+- **Status:** ACCEPTED implementation and controlled recovery, 2026-09-22 Eastern.
+- **Decision owner:** Operator: “Also fix this issue before restart,” followed by
+  “Continue working,” after two cancellations remained blocked by the same
+  pre-transport proof-change path.
+- **Scope:** When the sole executor has advanced a command to `SENDING` but an
+  explicit final proof check fails before transport invocation, atomically record
+  `NOT_SENT`/`ABORTED`, release applicable capacity and request fresh recovery.
+- **Boundary:** Any exception at or after transport invocation remains UNKNOWN.
+  Do not infer safety from a timeout, HTTP error or missing acknowledgement. The
+  two historical rows may be corrected only from exact stopped-owner ledger and
+  retained diagnostic evidence, with a verified backup. Normal entries still
+  require recovery-only verified flatness.
+
 ### D-088 — Repair progress-aware graceful drain before restart
 
 - **Status:** ACCEPTED implementation and controlled restart, 2026-09-22 Eastern.

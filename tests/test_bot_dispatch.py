@@ -168,15 +168,17 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.invoked)
         self.assertEqual(self.budget.status(now=budget_now(self.clock)).outstanding, 0)
 
-    async def test_post_sending_proof_loss_latches_failed_with_unknown(self):
+    async def test_post_sending_proof_loss_aborts_proven_unsent_command(self):
         await self.working_order()
         checks = iter((True, False))
         self.executor.validate_proof = lambda *_: next(checks)
         self.dispatcher.submit('A', SAFETY_CANCEL)
-        with self.assertRaises(CommandDenied):
-            await self.dispatcher.run_one()
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
-        self.assertTrue(self.dispatcher.status().failed)
+        result = await self.dispatcher.run_one()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('proof_changed_before_submission',)))
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertFalse(self.executor.failed)
         self.assertFalse(self.invoked)
 
     async def test_quota_expiry_during_prepare_aborts(self):

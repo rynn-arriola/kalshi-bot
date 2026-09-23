@@ -251,9 +251,10 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
             self.runtime.engine.public[name].append(('unprocessed', 0, 1))
             return result
         self.writer.begin_send = changed
-        with self.assertRaises(CommandDenied):
-            await self.run_priority()
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        result = await self.run_priority()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('proof_changed_before_submission',)))
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.calls)
 
     async def test_account_change_in_sync_quota_hook_is_rechecked(self):
@@ -263,9 +264,10 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
             original(*args, **kwargs)
             self.runtime._revoke()
         self.budget.consume = changed
-        with self.assertRaises(CommandDenied):
-            await self.run_priority()
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        result = await self.run_priority()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('proof_changed_before_submission',)))
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.calls)
 
     async def test_passive_deadline_crossing_revokes_still_fresh_plan(self):

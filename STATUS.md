@@ -1,5 +1,24 @@
 # Current status
 
+## Pre-transport cancellation fix verified; exact live recovery pending — 2026-09-22
+
+D-088 successfully continued the recovery drain beyond three progress-making
+passes, reducing the saved live state from nine to two resting orders with no
+positions. The final two are each blocked by an `UNKNOWN` cancel row. Their
+creation timestamps exactly match the only two retained `mutation_unknown`
+events whose stacks end at the old `proof_changed_before_submission` branch;
+no transport invocation is recorded. No bot process is currently active. The
+supervisor control record is stale, stop-latched and saved-snapshot-only.
+
+[D-089](docs/BUILD_PRETRANSPORT_ABORT.md) now records such future proof failures
+as transactional `NOT_SENT`/`ABORTED` before transport, with sole-executor
+ownership, all-or-none batch behavior, capacity release and recovery signaling.
+Real post-invocation uncertainty remains `UNKNOWN`. Focused verification passes;
+the complete suite passes **1,481 tests with one expected Windows privilege
+skip**. Publication, controlled deployment, exact backed-up correction of only
+the two retained pre-transport rows, recovery-only flatness and then the already
+authorized normal restart remain pending.
+
 ## Graceful-drain defect fixed offline; live recovery pending — 2026-09-22
 
 The authorized stop exposed D-088: acknowledged safety cancellations were

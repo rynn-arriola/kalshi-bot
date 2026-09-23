@@ -199,7 +199,7 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.f.calls)
         self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'NOT_SENT')
 
-    async def test_stop_during_sending_holds_unknown_without_transport(self):
+    async def test_stop_during_sending_aborts_proven_unsent_without_transport(self):
         task = await self.start(runtime=True)
         original = self.f.writer.begin_send
         async def sending(*args):
@@ -208,10 +208,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.f.writer.begin_send = sending
         self.request()
-        with self.assertRaises(InvalidData):
-            await task
+        await task
         self.assertFalse(self.f.calls)
-        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'NOT_SENT')
 
     async def test_stop_during_outcome_commit_keeps_writer_open(self):
         task = await self.start(runtime=True)
