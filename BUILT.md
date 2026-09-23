@@ -1,5 +1,16 @@
 # What exists
 
+## Market-coverage diagnostic expanded — 2026-09-22
+
+`scripts/diagnose_selection_breadth.py` now has six credential-free checks.
+The new composed discovery/partial-admission reproduction demonstrates a repeated
+state with 332/1,024 candidates never subscribed. It characterizes an unresolved
+bug, not production readiness. [Investigation](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md).
+
+Correction to the D-090 entry below: 5,018/5,060 were REST incentive catalog
+counts, not measured lifecycle frame counts. Queue overflow is verified;
+its burst size and initial-snapshot explanation were not measured.
+
 ## D-090 bounded lifecycle snapshot capacity — 2026-09-22
 
 [Lifecycle snapshot buffering](docs/BUILD_LIFECYCLE_SNAPSHOT_BUFFER.md) gives

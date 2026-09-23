@@ -12,6 +12,7 @@ import inspect
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from kalshi_bot.writer import LedgerWriter
 from kalshi_bot.discovery_candidates import CandidateDiscovery
 from kalshi_bot.incentive_discovery import IncentiveCatalog
 from kalshi_bot.selection_runtime import ProgramObservation
+from kalshi_bot.admission import MarketAdmission
 
 
 def evidence(name, **values):
@@ -32,6 +34,73 @@ def evidence(name, **values):
 
 
 class BreadthDiagnostics(unittest.IsolatedAsyncioTestCase):
+    async def test_discovery_cursor_can_skip_candidates_after_partial_admission(self):
+        """Characterization, NOT desired behavior: remove after repairing coverage.
+
+        Real discovery and admission selection arithmetic; immediate successful
+        synthetic joins replace account/metadata/transport checks. Frozen inputs
+        isolate coverage from freshness, venue activity and economic filtering.
+        """
+        from test_bot_discovery_candidates import catalog, NOW
+        data = catalog(1024)
+        discovery = CandidateDiscovery()
+        tickers = sorted(data.observations)
+        protected = tuple(tickers[:14])
+        engine = SimpleNamespace(
+            shards={name: SimpleNamespace(tickers=frozenset(tickers[start:start+64]))
+                    for name, start in (('b0', 0), ('b1', 64))},
+            market_shard={t: 'b'+str(i//64) for i, t in enumerate(tickers[:128])})
+
+        async def choose():
+            return discovery.choose(data, now=NOW, budget=128, protected=protected)
+
+        runtime = SimpleNamespace(engine=engine,
+            selection=SimpleNamespace(discovery_candidates=choose),
+            writer=SimpleNamespace(market_capacity=128),
+            reader_states={'b0': 'subscribed', 'b1': 'subscribed'},
+            reader_failures={'b0': 0, 'b1': 0}, attempt_limit=3,
+            metadata_scheduler=None)
+        admission = object.__new__(MarketAdmission)
+        admission.runtime = runtime
+        admission.cursor = admission.completed = admission.deferred = 0
+        admission.pending = None
+        admission._ready = lambda: True
+
+        async def removable(change):
+            return True
+
+        admission.removable = removable
+        seen = set(engine.market_shard)
+
+        def joined():
+            change = admission.pending
+            self.assertLessEqual(len(set(change.after)-change.before), 16)
+            engine.shards[change.name].tickers = frozenset(change.after)
+            engine.market_shard = {t: n for n, shard in engine.shards.items()
+                                   for t in shard.tickers}
+            self.assertTrue(set(protected) <= set(engine.market_shard))
+            seen.update(engine.market_shard)
+            change.result.set_result(True)
+
+        admission.signals = {n: SimpleNamespace(set=joined) for n in engine.shards}
+        states = {}
+        for cycle in range(1001):
+            state = (discovery.cursor, admission.cursor,
+                     tuple((n, tuple(sorted(s.tickers))) for n, s in engine.shards.items()))
+            if state in states:
+                break
+            states[state] = cycle
+            await admission._cycle()
+        else:
+            self.fail('expected a repeated frozen-input exploration state')
+        missing = set(tickers)-seen
+        self.assertEqual(len(missing), 332)
+        self.assertEqual(len(seen), 692)
+        evidence('partial_admission_coverage_cycle', synthetic_candidates=1024,
+            protected_markets=14, distinct_admitted=len(seen), never_admitted=len(missing),
+            repeated_state_at_cycle=cycle, first_seen_at_cycle=states[state],
+            venue_requests=0, production_cause_proven=False)
+
     async def test_catalog_timeouts_remove_selection_source_and_exhaust(self):
         f = incentive_fixture.DiscoveryTests()
         await f.asyncSetUp()

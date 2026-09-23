@@ -1,5 +1,40 @@
 # Findings — kalshi-bot
 
+## 135. Partial admission loses exploration coverage — 2026-09-22
+
+VERIFIED CODE/SYNTHETIC: discovery advances across its proposed tail while
+admission subscribes at most 16 additions. A composed frozen-input reproduction
+with 1,024 programs, two shards and 14 protected markets visits 692, permanently
+missing 332; full state repeats at cycles 119/189. Candidate-only coverage tests
+missed this consumer mismatch. Six offline breadth diagnostics pass, including
+this expected-bug characterization; production repair remains pending.
+
+VERIFIED LOCAL: 128 seeds and two completed rotations bound the final live run
+to at most 160 distinct subscriptions. The earlier 50 $2+ candidates were found
+across 1,024, not the same live scope. UNKNOWN: exact historical last-pair blocker;
+per-stage exclusions and the earlier per-ticker scan were not retained/located.
+The operator prioritizes this coverage investigation. [Detailed evidence and
+first repair](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md#priority-1-candidate-coverage-before-ranking).
+
+## 134. Saved healthy state outlived the process; final-pair reasons unretained — 2026-09-22
+
+VERIFIED: production parent/child are absent and the last heartbeat/runtime file
+froze at 23:22:32 Eastern. Neither run recorded a terminal shutdown result.
+The operator reports manual cancellation of all orders; current venue state was
+not independently checked. Foreground process-tree loss is a possible cause,
+not an established termination trigger. Saved status does not check liveness.
+
+VERIFIED SYNTHETIC: selector and writer permit 28-to-30 entries. VERIFIED LEDGER:
+28 ACK creates, four NOT_SENT creates, and no later create attempt after 23:18:10.
+Repeated account refresh is observed, but per-entry rejection causes are lost
+when dispatch status advances to IDLE. The exact plateau cause remains UNKNOWN.
+The native parent-death test expects child exit, not continuous unattended
+operation. Forty-eight existing focused tests and synthetic capacity checks pass.
+
+CORRECTION: section 133's 5,018/5,060 counts came from the REST incentive catalog,
+not captured lifecycle frames. Queue overflow is verified; snapshot size/cause
+is not. [Evidence and repair priorities](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md).
+
 ## 133. Lifecycle reconnect loop was a deterministic 256-row overflow — 2026-09-22
 
 VERIFIED LIVE/CODE: the normal post-D-089 restart reached 14 resting orders and

@@ -8,6 +8,11 @@ entry states whether orders, positions or exposure were observed.
 
 ## 2026-09-22 — lifecycle snapshot permanently overflowed its reader queue
 
+**Evidence correction:** the 5,018/5,060 counts below came from the REST incentive
+catalog, not measured lifecycle frames. Queue overflow was verified, but the
+burst size and snapshot/replay explanation were not. See the
+[investigation](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md#earlier-eligibility-and-lifecycle-claims).
+
 **Symptom.** The normal live restart repeatedly moved the lifecycle reader from
 subscribed to retry wait, paused new entries and never completed current market
 admission. Four retries ended at `transport._receive` queue overflow. Fourteen

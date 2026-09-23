@@ -1,6 +1,27 @@
 # Current status
 
-## D-090 deployed and live accepted — 2026-09-22
+## Stopped; market-coverage defect reproduced, repair pending — 2026-09-22
+
+The final supervisor/child are absent; runtime status froze at 23:22:32 Eastern.
+The operator reports manually canceling all orders. Current venue flatness has
+not been independently checked. No restart or production mutation was performed
+during this investigation. Historical `healthy` snapshots below are not current.
+
+[Investigation](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md) now prioritizes market
+coverage. Live watches 128 of 1,024 reviewed candidates; two completed rotations
+could cover at most 160 distinct markets. Discovery advances beyond candidates
+that its partial admission consumer has not subscribed. The composed frozen-input
+reproduction permanently misses 332/1,024 candidates with 14 protected markets.
+Fix coverage/refill and retain exclusion reasons first; no production fix yet.
+
+The precise historical 28-order blocker and process termination trigger remain
+unknown. Selector/writer fixtures permit 30 orders. Six breadth diagnostics,
+47 selector tests and one native parent-death test pass; diagnostic success
+includes reproducing the coverage bug, not fixing it. Hosting/liveness remains
+a separate pre-restart concern. The earlier 5,060 count was the reward catalog,
+not a measured lifecycle snapshot.
+
+## Historical D-090 observation — superseded by process-loss finding above
 
 D-089 was published and deployed. The two retained proof-before-transport
 cancels were corrected only after exact ledger/log matching and backup; a

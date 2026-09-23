@@ -1,14 +1,24 @@
 # Active work queue
 
-## Current: observe the accepted D-090 live run
+## Current priority: market coverage and fewer-than-expected candidates
 
-1. Preserve the active supervised child and collect normal reward/fill evidence.
-2. Treat any new lifecycle overflow/reconnect as a measured incident; stop flat
-   before changing capacity again.
-3. Continue existing profitability validation. D-090 fixes source convergence;
-   it does not prove reward payment or profitable fills.
+The bot is stopped and the operator reports all orders manually canceled.
+See the [read-only investigation](docs/INVESTIGATION_LIVE_EXIT_2026-09-22.md).
 
-## Current: publish D-089, recover the final two orders, then restart
+1. Repair the reproduced discovery/admission cursor mismatch: only consume
+   exploration progress actually admitted; preserve pending candidates across
+   partial/deferred joins. Verify full coverage with protected owners and two
+   shards. The frozen-input reproduction misses 332/1,024 candidates indefinitely.
+2. Decouple bounded refill progress from the 300-second catalog interval; retain
+   per-stage exclusion reasons. Verify a viable fifteenth market initially outside
+   the seed scope reaches the full entry path under realistic refresh timing.
+3. Separately establish/test process-host continuity and truthful liveness status.
+4. Before a separately authorized live restart, reconcile manual cancellations
+   and any fills using actual venue evidence. Do not treat stale saved state as
+   current or mark local orders canceled without evidence.
+
+## Historical completed D-089 publication/recovery checklist
+
 
 1. Publish and deploy the verified D-089 pre-transport abort fix.
 2. Clear only the stale dead-child control owner. With parent, child and account
