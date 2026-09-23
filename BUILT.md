@@ -1,5 +1,12 @@
 # What exists
 
+## Fresh reward API audit — 2026-09-22
+
+[Re-audit](docs/REWARD_API_REAUDIT_2026-09-22.md) records current schema coverage,
+source hashes, existing-code gaps and one bounded public catalog measurement.
+It supplements the dated full API/reward references without replacing them or
+claiming a runtime fix. Larger pages and WS snapshot refresh remain unimplemented.
+
 ## Offline selection-breadth diagnostic — 2026-09-22
 
 `scripts/diagnose_selection_breadth.py` characterizes five current limitations/

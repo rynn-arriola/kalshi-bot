@@ -1,5 +1,11 @@
 # Kalshi liquidity-reward research and API audit
 
+Current implementation-focused follow-up:
+[September 22 reward API re-audit](REWARD_API_REAUDIT_2026-09-22.md).
+It confirms the existing larger-page contract, measures a five-page public
+catalog read, and identifies unused WebSocket snapshot refresh. Historical
+samples and planning constraints below retain their original date/scope.
+
 Research date: **September 19, 2026**. Public API observation: **22:52:11-22:52:39 UTC (6:52pm EDT)**.
 
 Scope: current rules, all publicly documented reward interfaces, a complete active-program inventory, and a one-time 40-book inspection. This is research, **not a trading bot, paper run, or profitability test**. No keys or private account data were accessed. No orders, cancellations, transfers, or deployments occurred.

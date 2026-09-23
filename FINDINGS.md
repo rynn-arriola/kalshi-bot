@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 126. Reward endpoint is correct; page size and WS refresh are underused — 2026-09-22
+
+VERIFIED DOCS/CODE: [fresh reward API audit](docs/REWARD_API_REAUDIT_2026-09-22.md)
+searches all 191 published REST operations and both WS schemas. There is still one
+dedicated incentive-definition endpoint and no documented personal reward ledger.
+Its 10,000-row maximum was already recorded September 19, while runtime and
+preparation explicitly selected 100 rows per request. Roughly 50 sequential pages
+inside 30 seconds is unnecessary overhead; exact production latency attribution
+remains unmeasured. The existing read client caps each response at 2 MiB.
+
+MEASURED: a bounded unauthenticated research read with 1,000-row pages retrieved
+4,981 active liquidity programs in five pages / 1.986 seconds at 20:37:59 Eastern.
+It used 1,894,742 total wire bytes, did not load keys or modify the live catalog,
+and was not measured under production account/metadata contention. Recommend
+testing 1,000-row pages first, preserving the existing resource/freshness contract;
+do not assume a maximum-size request always fits or that this fixes every blocker.
+
+VERIFIED DOCS/CODE: `update_subscription` supports `get_snapshot` without reader
+replacement. Our reader currently only sends initial subscriptions. Optional own
+order annotations also exist in book deltas, but are not full ownership/earnings
+proof. These are implementation opportunities, not authority to relax freshness
+or remove reflection/recovery checks. The $1 threshold remains per program.
+This task changed documentation only; the fixes remain pending.
+
 ## 125. Low order breadth: catalog timeout plus freshness/discovery limits — 2026-09-22
 
 VERIFIED LIVE: the unchanged normal run grew from 10 to 14 resting orders.

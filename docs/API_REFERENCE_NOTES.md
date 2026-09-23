@@ -1,3 +1,13 @@
+### Reward API recheck — September 22, 2026
+
+[Re-audit](REWARD_API_REAUDIT_2026-09-22.md): fresh public specifications still
+expose one dedicated reward-definition operation, `GET /incentive_programs`.
+Its 10,000 maximum page size and response schemas are unchanged from the saved
+reference. Our 100-row runtime setting underuses that contract; a research-only
+1,000-row enumeration retrieved 4,981 programs in five pages / 1.986 seconds.
+Documented WS `get_snapshot` is another unused implementation option. No personal
+reward-credit API or reward stream was found. No runtime change is included.
+
 ### Dated contract update — September 21, 2026
 
 The current official [historical fills operation](https://docs.kalshi.com/api-reference/historical/get-historical-fills)

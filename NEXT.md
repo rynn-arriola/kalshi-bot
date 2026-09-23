@@ -5,11 +5,15 @@
 Diagnosis is recorded in FINDINGS section 125; implementation is not yet done.
 
 1. Resolve full-catalog refresh timeouts under real page-count/shared-read load.
+   The [reward API re-audit](docs/REWARD_API_REAUDIT_2026-09-22.md) measured 1,000-row
+   pages: five requests / 1.986 seconds versus roughly 50 at our current size.
+   Test this bounded page-size change before considering broader redesign.
    Preserve complete/fresh reward proof; do not bypass exhaustion or use an
    expired catalog to place entries. Verify the proposed repair offline before
    any separately approved live deployment/restart.
-2. Address quiet-book freshness and metadata-to-book timing with a bounded,
-   source-verified refresh design, not a blind extension of stale-data limits.
+2. Address quiet-book freshness and metadata-to-book timing with the documented
+   WS `get_snapshot` capability, subject to bounded request/response and sequence
+   tests; not a blind extension of stale-data limits or per-market REST polling.
 3. Evaluate the existing 128-market/16-per-cycle/300-second discovery path and
    add bounded per-stage exclusion evidence. Prove current capacity can fill
    when qualifying markets exist before considering wider subscriptions.

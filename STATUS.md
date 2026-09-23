@@ -1,5 +1,15 @@
 # Current status
 
+## Reward API re-audit completed; repair not implemented — 2026-09-22
+
+[Fresh audit](docs/REWARD_API_REAUDIT_2026-09-22.md): our current 100-row incentive
+pages underuse the documented maximum of 10,000. A separate public-only read
+with 1,000-row pages retrieved 4,981 programs in five requests / 1.986 seconds.
+Documented WS `get_snapshot` can refresh quiet books without reconnecting and is
+not yet wired into our reader. No replacement personal-reward API was found.
+These findings narrow the proposed repair; no live code, filter, retry hold or
+process was changed. The live observation below remains timestamped history.
+
 ## Breadth diagnosis: 14 orders; fresh reward catalog unavailable — 2026-09-22
 
 At 20:30:30 Eastern the existing child 46576 remained healthy/account-current,
