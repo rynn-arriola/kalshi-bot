@@ -1,5 +1,14 @@
 # What exists
 
+## D-094 independent host and truthful status — 2026-09-23
+
+[Implementation and account evidence](docs/BUILD_HOST_CONTINUITY.md): fixed
+on-demand Windows launch with correlated acknowledgment, protected-role liveness
+inspection and native launcher/job-death regression. No service or autostart.
+The existing exact terminal-order validator reconciled 28 manually canceled
+orders under stopped-owner leases and backups; risk history stayed unchanged.
+Final verification is owned by STATUS; no live restart occurred.
+
 ## D-093 broad reviewed discovery — 2026-09-23
 
 [Build and acceptance](docs/BUILD_BROAD_DISCOVERY.md): broad public book scope,

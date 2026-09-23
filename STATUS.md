@@ -1,5 +1,36 @@
 # Current status
 
+## D-094 host/account blockers repaired; bot stays stopped — 2026-09-23
+
+[Repair and evidence](docs/BUILD_HOST_CONTINUITY.md): the default explicit live
+launcher now starts the supervisor independently of its terminal/job, with a
+correlated startup receipt. Native inert job-teardown/shutdown acceptance passes.
+Status reports current protected-role presence separately from historical data;
+it no longer presents saved healthy state as proof that the bot is running.
+
+GET-only evidence at **05:01:38 UTC / 01:01 Eastern** confirmed all 28 outstanding
+local orders canceled with zero fills, zero account resting orders and zero
+nonzero-position rows. After consistent ledger/control backups, the existing
+validator imported those terminal records and cleared the dead child reservation.
+All 68 owned orders are terminal; 10 prior intents remain aborted. Financial,
+risk and history tables were verified unchanged. Supervisor is disarmed and
+stop-latched with no child; current process-role checks report **STOPPED**.
+Private evidence/backups remain ignored. No venue mutations or live restart.
+
+Verification: full suite **1,531 run / 1,530 passed / one expected Windows
+privilege skip**, 238.277s. After final receipt-cleanup/bounded-status changes,
+**66 focused tests run / 65 passed / the same expected skip**, 46.945s, including
+all 14 new host regressions and existing production/native/review-fix suites.
+Actual diff/security review found no blocking issue; PowerShell parsing and
+the missing-`-Live` refusal check pass. Relative documentation links and
+`git diff --check` pass. No remaining development blocker in this repair unit.
+
+Next is a **separately authorized** launch with refreshed reviewed inputs and
+normal readiness checks, then live acceptance of D-093 market breadth. Dated
+flat-account evidence is not current stream continuity or profitability proof.
+
+## Historical D-093 handoff — its two blockers are resolved above
+
 ## D-093 broad discovery verified; bot remains stopped — 2026-09-23
 
 [Integration and evidence](docs/BUILD_BROAD_DISCOVERY.md): next normal launch

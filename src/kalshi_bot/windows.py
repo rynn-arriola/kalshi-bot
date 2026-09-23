@@ -457,6 +457,28 @@ class WindowsControlMutex:
         self.handle = None
 
 
+def role_present(scope_id, role, *, user_sid):
+    """Read-only protected lease presence; no PID lookup or lease creation.
+
+    Presence is not a health proof. Access/security failures are unknown, never
+    absence. The short-lived inspection handle is closed before returning.
+    """
+    api = _native_api()
+    api.OpenMutexW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    api.OpenMutexW.restype = wintypes.HANDLE
+    handle = api.OpenMutexW(READ_CONTROL | SYNCHRONIZE, False,
+                            role_object_name(scope_id, role))
+    if not handle:
+        if ctypes.get_last_error() == ERROR_FILE_NOT_FOUND:
+            return False
+        raise InvalidData("Windows role presence unavailable")
+    try:
+        _validate_handle_security(handle, user_sid, access_mask=0x1f0001)
+        return True
+    finally:
+        _close_handle(handle)
+
+
 class WindowsStopLatch:
     """Protected S2 stop event with explicit create/open ownership modes."""
     def __init__(self, scope_id, *, user_sid=None, create=True, reject_existing=True):

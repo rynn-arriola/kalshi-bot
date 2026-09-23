@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-094 [independent Windows hosting](BUILD_HOST_CONTINUITY.md) separates the
+on-demand supervisor from the launching terminal/job. The existing exact child,
+recovery fences and single account writer remain unchanged. Local status probes
+protected process-role presence; saved snapshots are not liveness/account proof.
+
 D-093 [broad reviewed discovery](BUILD_BROAD_DISCOVERY.md) supersedes normal
 live subscription rotation below: up to 1,024 books on two shards, shared bulk
 missing-field metadata and one bounded ranked-entry handoff. Trading/account

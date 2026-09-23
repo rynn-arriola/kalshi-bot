@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-094 — Repair host continuity and verify stopped-account recovery
+
+- **Status:** ACCEPTED implementation/verification, 2026-09-23 Eastern.
+- **Decision owner:** Operator: “Ok fix that too,” following the remaining
+  host-continuity and manual-cancellation reconciliation blockers.
+- **Scope:** Independent on-demand Windows supervisor launch, truthful liveness
+  inspection, inert process-lifetime tests and GET-only account reconciliation
+  evidence. Preserve exact order/fill recovery and all existing restrictions.
+- **Boundary:** No live restart or order actions; no persistent service, startup
+  task or power changes. Any local evidence import requires stopped-owner leases
+  and a consistent backup; never infer canceled orders from absence or reset risk.
+
 ### D-093 — Adopt broad reviewed books and shared bulk metadata
 
 - **Status:** ACCEPTED implementation, 2026-09-23 Eastern.

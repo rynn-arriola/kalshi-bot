@@ -6,6 +6,22 @@ entry states whether orders, positions or exposure were observed.
 
 ---
 
+## 2026-09-23 — terminal-dependent host and misleading saved health
+
+**Mechanism.** The foreground launcher coupled supervisor life to its terminal;
+the status command returned old healthy control/runtime snapshots without a
+current presence check. The earlier actual process-exit cause remains unknown.
+
+**Fix.** D-094 separates the on-demand host from the console/job, fails visibly
+if the OS denies independence, correlates startup receipts and never equates
+startup with trading readiness. Protected-role probes label historical health
+as historical and expose stopped/unknown process state without PID adoption.
+
+**Verification.** Native inert launcher/job exit, controlled shutdown, failure
+and stale-status regressions pass; [details](docs/BUILD_HOST_CONTINUITY.md).
+Separately, GET evidence confirmed 28 manual cancellations with zero fills;
+those local records were repaired, with no orders sent or bot restart.
+
 ## 2026-09-23 — normal discovery tied book coverage to rotating admission
 
 **Mechanism.** Watching 128 books with 16-market replacements delayed discovery

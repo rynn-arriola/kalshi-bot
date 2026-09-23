@@ -1,6 +1,18 @@
 # Active work queue
 
-## After D-093 implementation — 2026-09-23
+## After D-094 host/account repair — 2026-09-23
+
+[Host continuity and manual-cancellation reconciliation](docs/BUILD_HOST_CONTINUITY.md)
+are complete. Bot remains stopped, supervisor disarmed and account observed flat.
+Next: obtain explicit restart authority, refresh/revalidate reviewed inputs and
+run the normal readiness path. Inspect live broad-book freshness, metadata
+retries, exclusions and actual selected/placed counts before judging capacity.
+No further implementation is required by this repair unit; actual live acceptance
+and profitability remain unverified.
+
+## Historical pre-D-094 queue — completed blockers retained below
+
+### After D-093 implementation — 2026-09-23
 
 [Broad discovery](docs/BUILD_BROAD_DISCOVERY.md) is implemented and verified.
 Retain the existing pre-restart order below. Do not restart implicitly.

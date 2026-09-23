@@ -1,9 +1,10 @@
-# Supervised liquidity runtime: foreground operation
+# Supervised liquidity runtime: Windows operation
 
 D-081 places the D-077 runtime behind the native Windows process supervisor.
 Native Windows only, canonical checkout `C:/Users/rynna/Bots/kalshi`. The
-supervisor and its exact child remain in the foreground; no service, scheduled
-task, startup entry, model switch or worker is installed.
+supervisor now uses D-094's [independent on-demand host](BUILD_HOST_CONTINUITY.md).
+No service, scheduled task or startup entry is installed. `-Foreground` retains
+terminal-bound diagnostic operation; keep that terminal open when using it.
 
 ## Current state
 
@@ -140,14 +141,17 @@ test is not independent permission to trade, cancel, stop or restart.
 # A later explicit run preserves the same baseline, ledger, fills and risk.
 .\scripts\Start-LiquidityBot.ps1 -Live
 
-# Local saved status; does not contact Kalshi or restart anything.
+# Local process presence plus historical status; no Kalshi calls or restart.
 .\scripts\Get-LiquidityBotStatus.ps1
 
 # Request drain, not a force-kill or a claim that the account is flat.
 .\scripts\Stop-LiquidityBot.ps1
 ```
 
-One account-scoped Windows lease prevents competing copies of this launcher.
+The account-scoped Windows leases prevent competing supervisor/runtime owners.
+`HOST_STARTED` is only a startup acknowledgment; inspect current status and
+readiness afterward. A timed-out acknowledgment is unknown, not permission to
+launch another copy. See [host semantics](BUILD_HOST_CONTINUITY.md).
 `-Initialize` creates a ledger only when none exists. Under D-084, its explicit
 supervised profile may resume an existing unapproved checkpoint only after a
 fresh matching inspection; it never recreates the ledger or opening boundary.

@@ -1,5 +1,18 @@
 # Findings — kalshi-bot
 
+## 140. Host lifetime verified independently; manual cancellations reconciled — 2026-09-23
+
+VERIFIED: [D-094 evidence](docs/BUILD_HOST_CONTINUITY.md) demonstrates inert
+supervisor survival after launcher/job teardown and normal controlled shutdown.
+Protected role absence correctly overrides old saved health. The cause of the
+previous production disappearance remains inferred, not proved.
+
+VERIFIED at 05:01:38 UTC: 28 exact canceled orders, zero fills in the bounded
+history interval, zero resting orders and zero nonzero-position rows. Existing
+order validators imported the terminal evidence after consistent backups;
+financial/risk/history tables stayed unchanged. Bot remains stopped/disarmed.
+These dated reads do not replace fresh startup/private-stream proof.
+
 ## 139. Integrated broad books and bulk metadata reduce census cost — 2026-09-23
 
 MEASURED: [D-093 acceptance](docs/BUILD_BROAD_DISCOVERY.md) examines 1,013 markets
