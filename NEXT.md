@@ -1,5 +1,18 @@
 # Active work queue
 
+## D-101 — stopped; prepare the next restart bundle
+
+1. Publish the verified/reviewed
+   [actual-order repricing and final-drain fixes](docs/BUILD_REPRICING_SOURCE_JOIN.md)
+   with remote parity. Full suite and baseline-reversal checks are complete.
+   Do not restart the bot.
+2. On separate restart instruction, clear the verified dead native reservation
+   through the supported supervisor path, deploy reviewed source, reconcile the
+   preserved account/ledger in recovery-only mode and require flat/disarmed
+   evidence before normal entry. Do not reset the ledger or bypass control.
+3. Observe real reference-drift completion and current reward-source coverage
+   after that launch. Offline tests cannot prove future live execution or payout.
+
 ## After D-100 live acceptance — 2026-09-23
 
 The reviewed [maintenance reliability repair](docs/BUILD_LIVE_MAINTENANCE_RELIABILITY.md)

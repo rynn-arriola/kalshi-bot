@@ -1,5 +1,26 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — current queue evidence discarded and post-drain recovery stranded
+
+**Mechanism:** Queue reflection unnecessarily depended on current market plans
+at publication; transient plan/metadata gaps (including a status inspection)
+deleted its separate account-bound proof. Incumbent drift could therefore fail
+to accumulate even with unchanged orders. During rapid paused cancellation,
+account repair could exhaust before the queue finished, without a final wake.
+
+**Fix:** Publish bounded queue identity from the exact complete account report;
+consume it only with fresh matching owned inventory, book and reward terms.
+Temporary market gaps invalidate sampled rates without renewing or deleting a
+still-current queue lease. Account/epoch invalidation, changed quantity/price,
+and the original five-second expiry still defeat use. Superseded reads have a
+separate counter; real failures emit bounded stack-only diagnostics. A durable
+paused-cancel outcome requests one bounded post-drain reconciliation when both
+dispatch and any in-flight repair are idle; no new outcome means no new retry.
+
+**Verification:** Regression and full-suite evidence, review and deployment
+limits are recorded in [D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md). No live
+acceptance of this repair is claimed; the operator-requested stop is complete.
+
 ## 2026-09-23 — history receipt capacity killed the writer
 
 **Mechanism:** Recovery appended one immutable enumeration receipt about every

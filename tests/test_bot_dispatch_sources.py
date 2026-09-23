@@ -243,6 +243,32 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
                          {'first-order', 'second-order'})
         self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
 
+    async def test_final_paused_cancel_wakes_exhausted_recovery_once_when_idle(self):
+        from types import SimpleNamespace
+        await self.test_paused_drain_cancels_all_exact_entries_without_recovery_between()
+        self.assertTrue(self.runtime._post_drain_recovery_pending)
+        self.runtime.dispatch_supervisor = SimpleNamespace(dispatcher=self.dispatcher)
+        self.runtime.recovery_state = 'blocked_retry_exhausted'
+        self.runtime.recovery_requested.clear()
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        self.assertFalse(self.runtime._request_post_drain_recovery())
+        await self.dispatcher.run_one()  # No further eligible cancel.
+        self.assertTrue(self.runtime._request_post_drain_recovery())
+        self.assertTrue(self.runtime.recovery_requested.is_set())
+        self.runtime.recovery_requested.clear()
+        self.assertFalse(self.runtime._request_post_drain_recovery())
+        self.assertFalse(self.runtime.recovery_requested.is_set())
+
+    async def test_post_drain_wake_waits_for_inflight_recovery(self):
+        from types import SimpleNamespace
+        await self.test_paused_drain_cancels_all_exact_entries_without_recovery_between()
+        self.runtime.dispatch_supervisor = SimpleNamespace(dispatcher=self.dispatcher)
+        self.runtime.recovery_state = 'recovering'
+        self.assertFalse(self.runtime._request_post_drain_recovery())
+        self.assertTrue(self.runtime._post_drain_recovery_pending)
+        self.runtime.recovery_state = 'blocked_retry_exhausted'
+        self.assertTrue(self.runtime._request_post_drain_recovery())
+
     async def test_missing_account_terms_and_wrong_priority_block(self):
         await self.opening()
         self.assertIsNone(await self.source.refresh('A', PASSIVE_REDUCER))

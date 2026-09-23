@@ -124,6 +124,7 @@ class RecoveryRuntime:
         self._run_cancelled = False
         self._shutdown_task = None
         self.dispatch_supervisor = None  # Explicit offline attachment only.
+        self._post_drain_recovery_pending = False
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
@@ -475,6 +476,27 @@ class RecoveryRuntime:
         self.last_reports = None
         self._refresh_continuity()
         self.recovery_requested.set()  # Coalesced, never a task per market/event.
+
+    def _request_post_drain_recovery(self):
+        """One bounded reconciliation after new durable paused-cancel outcomes.
+
+        A recovery pass may exhaust while the rapid cancel queue is changing
+        its snapshot. Once that queue drains, these new outcomes justify one
+        new pass, not an unlimited retry or a claim that the account is flat.
+        """
+        if (not self._post_drain_recovery_pending or not self.entry_pause_active
+                or self.stop_requested.is_set() or self.writer.failed or self.engine.failed
+                or self.recovery_lock.locked() or self.recovery_state == 'recovering'):
+            return False
+        owner = self.dispatch_supervisor
+        if owner is None:
+            return False
+        state = owner.dispatcher.status()
+        if state.active is not None or state.queued or state.failed or state.stopping:
+            return False
+        self._post_drain_recovery_pending = False
+        self.request_recovery()
+        return True
 
     def _revoke(self):
         self.ingress_revision += 1
@@ -1056,6 +1078,7 @@ class RecoveryRuntime:
         finished and its short-lived report is expiring. Never reset exhaustion.
         """
         while not self.stop_requested.is_set():
+            self._request_post_drain_recovery()
             if (self.account_subscribed and self.recovery_state == 'repaired_entries_blocked'
                     and not self.recovery_requested.is_set()
                     and (self.dispatch_supervisor is None

@@ -475,6 +475,69 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await self.rewards.reflect_once(),1)
         self.assertFalse(self.rewards._reflection)
 
+    async def test_queue_join_precedes_dirty_management_refresh(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        self.r.management.invalidate('A')
+        # Recovery has a complete account report, but broad discovery has not
+        # evaluated this owner yet. Queue identity must not depend on its book.
+        self.assertEqual(await self.rewards.reflect_once(),1)
+        self.assertIsNone(self.rewards.reflected_quotes('A'))
+        await self.r._evaluate('A',None,0)
+        self.assertIsNotNone(self.rewards.reflected_quotes('A'))
+
+    async def test_temporary_plan_gap_does_not_destroy_current_queue_identity(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.reflect_once()
+        self.r.management.invalidate('A')
+        self.rewards.refresh('A')
+        self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
+        await self.r._evaluate('A',None,0)
+        self.assertIsNotNone(self.rewards.reflected_quotes('A'))
+        # Reusing queue identity must never refresh its original five-second TTL.
+        self.f.now += timedelta(seconds=6)
+        self.f.mono += 6
+        self.rewards.refresh('A')
+        self.assertIsNone(self.rewards.reflected_quotes('A'))
+        self.assertNotIn('A',self.rewards._reflection)
+
+    async def test_queue_identity_never_survives_changed_account_or_order_signature(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.reflect_once()
+        plan = self.r.management._plans['A']
+        receipt = plan.inventory.orders[0]
+        changed = replace(receipt,order=replace(receipt.order,remaining=D(9)))
+        self.r.management._plans['A'] = replace(plan,inventory=replace(
+            plan.inventory,orders=(changed,)))
+        self.assertIsNone(self.rewards.reflected_quotes('A'))
+        self.r.management._plans['A'] = plan
+        self.r.account._invalidate()
+        self.rewards.refresh('A')
+        self.assertNotIn('A',self.rewards._reflection)
+        self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
+
+    async def test_superseded_reflection_is_deferred_not_venue_failure(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        async def changed(): self.r.account._invalidate()
+        self.r.reads.before = changed
+        await self.rewards._reflect()
+        self.assertEqual(self.rewards.reflection_superseded,1)
+        self.assertEqual(self.rewards.reflection_failures,0)
+        self.assertFalse(self.rewards._reflection)
+
+    async def test_real_reflection_failures_emit_bounded_safe_diagnostics(self):
+        await self.owned()
+        self.r.reads = QueueReads([])  # Disagrees with complete owned account.
+        with patch.object(self.r.diagnostics,'emit') as emit:
+            for _ in range(5): await self.rewards._reflect()
+        self.assertEqual(self.rewards.reflection_failures,5)
+        self.assertEqual(emit.call_count,3)  # attempts 1, 2, 4
+        self.assertTrue(all(c.args == ('reward_reflection_failed',) for c in emit.call_args_list))
+        self.assertTrue(all(set(c.kwargs) == {'error'} for c in emit.call_args_list))
+
     async def test_queue_mismatch_duplicate_and_bad_quantity_fail_closed(self):
         await self.owned()
         invalid = ([],

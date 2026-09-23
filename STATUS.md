@@ -1,5 +1,26 @@
 # Current status
 
+## Stopped flat; D-101 next-restart repair verified — 2026-09-23
+
+The operator explicitly requested stop and cancellation. Generation 66 recorded
+29 cancellation ACKs in approximately nine seconds but stalled in final
+reconciliation. A separate complete GET-only venue check at **16:35:52 UTC**
+verified **0 resting orders and 0 nonzero positions**. Only correlated parent
+47516 and child 24180 were terminated after that check. Native presence at
+16:36:11 confirmed both absent. The stop latch remains set; no restart occurred.
+Saved runtime `DRAINING` is historical, not current process presence.
+
+The canonical checkout remains `dbbc4dd`; the live source was not edited.
+[D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md) is verified in the isolated
+`fix/order-maintenance` checkout. It addresses the actual repricing/source-join
+failure and the final-drain wake, not reward-chasing replacement. Existing
+qualifying markets remain protected. No strategy, risk, size or freshness
+threshold changed. Complete suite: **1,620 run, 1,619 passed, one expected
+Windows privilege skip**, no failures, 276.362 seconds. Three focused baseline
+reversals detect the original defects. Exact diff review, 421 local-document
+links and whitespace checks pass. Publication is the final release step;
+deployment and live acceptance remain pending a separate restart instruction.
+
 ## D-100 deployed; generation 66 live acceptance — 2026-09-23
 
 Canonical source `dddc1eb` is deployed with the preserved production ledger and

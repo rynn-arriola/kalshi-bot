@@ -87,6 +87,7 @@ class InventoryDispatchSource:
             # refresh owner starts a full REST pass.
             self.runtime.last_reports = None
             self.runtime._refresh_continuity()
+            self.runtime._post_drain_recovery_pending = True
             owner = self.runtime.dispatch_supervisor
             if owner is not None and owner.running and not owner.stopping:
                 owner.request(ticker, SAFETY_CANCEL)

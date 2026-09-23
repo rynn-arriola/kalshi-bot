@@ -4,6 +4,7 @@ from datetime import timedelta
 from decimal import Decimal as D
 from types import SimpleNamespace
 import unittest
+from test_bot_reward_tracker import QueueReads
 
 from kalshi_bot.config import BotConfig
 from kalshi_bot.dispatch import QUOTE_CANCEL, ENTRY_PAIR, SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
@@ -181,6 +182,39 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({(v['side'], D(v['price'])) for v in candidate.requests},
                          {('bid', D('.54')), ('ask', D('.6'))})
         self.assertTrue(all(D(v['count']) == 10 and v['post_only'] for v in candidate.requests))
+
+    async def test_terminal_first_leg_after_lease_expiry_completes_reprice(self):
+        await self.drift()
+        first = await self.f.run_priority(QUOTE_CANCEL)
+        self.assertEqual(first.state, 'ACK')
+        canceled = self.f.calls[-1][1]['order_id']
+        old = next(o for o in self.orders if o.order_id == canceled)
+        await self.f.writer.order(replace(old, remaining=D(0), status='canceled', version_us=2), self.f.now)
+        self.orders.remove(old)
+        await self.sample(6, drift=True)
+        self.assertIsNotNone(self.m.cycle)
+        second = await self.f.run_priority(QUOTE_CANCEL)
+        self.assertEqual(second.state, 'ACK')
+        old = self.orders.pop()
+        self.assertEqual(self.f.calls[-1][1]['order_id'],old.order_id)
+        await self.f.writer.order(replace(old, remaining=D(0), status='canceled', version_us=2), self.f.now)
+        await self.sample(6, drift=True)
+        candidate = await self.f.source.refresh('A', ENTRY_PAIR)
+        self.assertIsNotNone(candidate, self.f.source.last_entry_block)
+
+    async def test_real_queue_proof_reprices_across_recovery_plan_gaps(self):
+        # No test-only reflection injection: reproduce recovery publishing its
+        # queue join before dirty-market management catches up.
+        for _ in range(9):
+            await self.sample(6, drift=True, reflection=False)
+            self.r.management.invalidate('A')
+            self.r.reads = QueueReads([dict(order_id=o.order_id,
+                market_ticker='A',queue_position_fp='0') for o in self.orders])
+            self.assertEqual(await self.rewards.reflect_once(),1)
+            await self.r._evaluate('A',None,0)
+        self.assertIsNotNone(self.m.cycle,self.m.status())
+        self.assertEqual(self.m.cycle.reason,'restore_reference_pair')
+        self.assertIsNotNone(await self.f.source.refresh('A',QUOTE_CANCEL))
 
     async def test_partial_fill_hands_back_to_inventory_and_no_new_pair(self):
         from kalshi_bot.ledger import Fill

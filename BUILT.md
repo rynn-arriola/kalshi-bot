@@ -1,5 +1,14 @@
 # What exists
 
+## D-101 actual-order queue joins and post-drain recovery — 2026-09-23
+
+[Repair bundle](docs/BUILD_REPRICING_SOURCE_JOIN.md): separate account-bound
+queue evidence from temporary market-plan gaps, preserve original leases and
+exact consumer checks, classify superseded reads, log bounded real failures,
+and reconcile once after new durable paused-cancel outcomes finish draining.
+Synthetic regressions cover actual production-proof repricing and sequential
+two-leg terminal reconciliation. Publication/deployment state belongs in STATUS.
+
 ## Bounded exact history-receipt archival — 2026-09-23
 
 When the 4,096-row hot enumeration set fills, the serial ledger owner now moves

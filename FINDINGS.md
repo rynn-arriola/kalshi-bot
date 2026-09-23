@@ -1,5 +1,31 @@
 # Findings — kalshi-bot
 
+## 155. Generation 66 repricing stalled; final drain also lost its wake — 2026-09-23
+
+VERIFIED from local ledger/status: 30 entries acknowledged after 15:23 UTC,
+one maintenance cancellation at 15:30:17, no replacement through the later
+stop. Ten samples at 16:24:44–16:25:29 retained 29 entries and no maintenance
+cycle; most reward joins were unknown. The public census examined 1,024 markets
+at 16:23:56–16:25:39: 181 passed $1, 20 passed $2. All 15 incumbent markets
+passed at hypothetical reference quotes, four were $2-priority; four actual
+orders lagged the sampled reference. This was not a lack of available markets.
+Sequential public samples include our aggregate liquidity and are not owner-
+adjusted simultaneous rankings, actual earnings or account admission proof.
+
+REPRODUCED: queue proofs were published only if an independently refreshed
+management plan already existed; temporary source loss and even status reads
+could then delete the still-current queue proof. Three focused reversal checks
+detect the old queue-join, proof-retention and final-drain behavior. Details and
+verification: [D-101](docs/BUILD_REPRICING_SOURCE_JOIN.md).
+
+On explicit stop, 29 exact cancellation ACKs were recorded in an approximately
+nine-second drain. Recovery exhausted while those outcomes changed its account
+snapshot; the paused-cancel path never requested the final reconciliation.
+A separate complete authenticated GET enumeration verified **zero venue orders
+and positions at 16:35:52 UTC**. Only the correlated parent/child were then
+terminated; native presence confirmed both absent at 16:36:11. No fill or pending
+fill was recorded in this generation. No restart occurred.
+
 ## 154. D-100 archives the live history boundary and restarts normally — 2026-09-23
 
 VERIFIED LIVE: after complete GET-only evidence showed zero venue orders and

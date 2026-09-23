@@ -21,6 +21,10 @@ class ReflectionProof:
     valid_until: datetime
 
 
+class ReflectionSuperseded(InvalidData):
+    """A valid read was overtaken by account publication, not bad venue data."""
+
+
 class RuntimeRewards:
     def __init__(self, runtime, *, scope, offline_fixture=False, checkpoint_path=None,
                  reflection_interval=4, checkpoint_interval=60):
@@ -44,6 +48,7 @@ class RuntimeRewards:
         self.reflection_requested = False
         self.reflection_attempts = self.reflection_completed = self.reflection_failures = 0
         self.reflection_deferred = 0
+        self.reflection_superseded = 0
         self.checkpoint_saves = self.checkpoint_failures = 0
         self.last_reflection_at = self.last_checkpoint_at = None
         self.last_reflection_error = self.last_checkpoint_error = None
@@ -54,8 +59,24 @@ class RuntimeRewards:
 
     def invalidate(self, ticker):
         self._reflection.pop(ticker,None)
+        self._invalidate_sample(ticker)
+
+    def _invalidate_sample(self, ticker):
+        # Market/plan freshness and the account-wide queue identity have
+        # separate leases. A temporary book/metadata gap revokes the rate, not
+        # still-current queue evidence. Explicit epoch invalidation clears both.
         self._proofs.pop(ticker,None)
         self.tracker.invalidate(ticker)
+
+    def _queue_identity_current(self, ticker):
+        proof = self._reflection.get(ticker)
+        r, now = self.runtime, utc(self.runtime.now())
+        return (isinstance(proof, ReflectionProof)
+                and not self.stopping and not self.failed and self.blocker is None
+                and proof.report is r.account.current_report(now)
+                and (proof.account_generation, proof.account_revision) ==
+                    (r.account.generation, r.account.revision)
+                and now < proof.valid_until)
 
     def _invalidate_all(self):
         self._reflection.clear()
@@ -202,20 +223,21 @@ class RuntimeRewards:
         current = r.account.current_report(r.now())
         if (self.stopping or current is not report or (generation,revision) !=
                 (r.account.generation,r.account.revision)):
-            raise InvalidData('private account source changed during reflection')
+            raise ReflectionSuperseded('private account source changed during reflection')
         if actual != expected:
             raise InvalidData('queue positions disagree with complete resting-order snapshot')
         now = utc(r.now())
         valid_until = min(now+timedelta(seconds=5),report.observed_at+timedelta(seconds=5))
         if valid_until <= now:
-            raise InvalidData('reflection source expired')
+            raise ReflectionSuperseded('reflection source expired')
         proofs = {}
         for ticker in sorted(set(expected.values())):
-            source = self._sources(ticker)
-            signature = None if source is None else self._signature(source[0])
-            if (source is None or source[2] is not report or signature is None
-                    or signature != self._snapshot_signature(report,ticker)):
+            if ticker not in r.engine.market_shard:
                 continue
+            # Recovery dirties every management plan. Bind queue identity to the
+            # complete account snapshot now; the consumer still requires fresh
+            # owned inventory, exact terms/signature, book and reward metadata.
+            signature = self._snapshot_signature(report,ticker)
             proofs[ticker] = ReflectionProof(report,generation,revision,signature,valid_until)
         published = tuple(proofs)
         self._reflection = proofs
@@ -250,7 +272,10 @@ class RuntimeRewards:
         r = self.runtime
         source = self._sources(ticker)
         if source is None:
-            self.invalidate(ticker)
+            if self._queue_identity_current(ticker):
+                self._invalidate_sample(ticker)
+            else:
+                self.invalidate(ticker)
             return
         plan, observation, report, book = source
         quotes = self._orders(plan)
@@ -294,7 +319,10 @@ class RuntimeRewards:
             return False
         source = self._sources(ticker)
         if source is None:
-            self.invalidate(ticker)
+            if self._queue_identity_current(ticker):
+                self._invalidate_sample(ticker)
+            else:
+                self.invalidate(ticker)
             return False
         proof = self._proofs.get(ticker)
         return proof is not None and all(a is b for a,b in zip(proof,source[:3]))
@@ -337,10 +365,17 @@ class RuntimeRewards:
             await self.reflect_once()
             self.reflection_completed += 1
             self.last_reflection_error = None
+        except ReflectionSuperseded:
+            self.reflection_superseded += 1
+            self._invalidate_all()
         except (InvalidData,QuotaUnavailable,TimeoutError,OSError) as exc:
             self.reflection_failures += 1
             self.last_reflection_error = type(exc).__name__
             self._invalidate_all()
+            # Emit a bounded stack-only diagnostic, never response/error text.
+            # Power-of-two sampling retains repeated failures without a flood.
+            if self.reflection_failures & (self.reflection_failures-1) == 0:
+                self.runtime.diagnostics.emit('reward_reflection_failed', error=exc)
 
     def stop(self):
         self.stopping = True
@@ -427,6 +462,7 @@ class RuntimeRewards:
                     reflection_completed=self.reflection_completed,
                     reflection_failures=self.reflection_failures,
                     reflection_deferred=self.reflection_deferred,
+                    reflection_superseded=self.reflection_superseded,
                     reflection_requested=self.reflection_requested,
                     checkpoint_configured=self.checkpoint is not None,
                     checkpoint_saves=self.checkpoint_saves,

@@ -50,6 +50,7 @@ EVENTS = {
     'mutation_not_submitted': ('INFO', 'execution'),
     'mutation_failed': ('ERROR', 'execution'), 'inventory_plan_changed': ('INFO', 'inventory'),
     'selection_inputs_rejected': ('WARNING', 'selection'),
+    'reward_reflection_failed': ('WARNING', 'rewards'),
     'candidate_scope_prepared': ('INFO', 'selection'),
     'incentives_retry': ('WARNING', 'selection'),
     'incentives_exhausted': ('ERROR', 'selection'),
