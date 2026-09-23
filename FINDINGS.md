@@ -1,5 +1,21 @@
 # Findings — kalshi-bot
 
+## 157. Initial books are fast; 512-market freshness fails on two shards — 2026-09-23
+
+VERIFIED READ-ONLY: the production transport/parser received all initial books
+in 0.34 seconds at 128 markets, 0.56 seconds at 256 and 0.45 seconds at 512.
+CPU remained below 4% of one core, memory below 66 MB and p99 ingress latency
+below 34 ms. At 512, however, five-second fresh coverage temporarily fell to
+61.1%, below the 99% target, so the bounded probe did not proceed to 1,024.
+The likely next comparison is refresh scheduling with two versus four shards;
+initial WebSocket delivery itself is not the demonstrated bottleneck.
+
+An unrelated live ask filled 0.27 seconds before the probe began. The probe made
+no account/order request. The fill left a -10 KXONPOS lot; three passive
+reduce-only bids were rejected with HTTP 400. Safety stop canceled the other 29
+entries, leaving zero resting orders while the protected inventory manager and
+position remain. This is not flatness and needs an operator exit-policy choice.
+
 ## 156. Generation 68 live-verifies owner-bound reference repair — 2026-09-23
 
 VERIFIED LIVE: reviewed D-101 source reached 30 resting orders across 15 markets

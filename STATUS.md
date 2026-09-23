@@ -1,5 +1,31 @@
 # Current status
 
+## Safety-stopped with one open position — 2026-09-23
+
+A read-only WebSocket capacity probe began at 17:18:01.897 UTC. The venue fill
+preceded it at **17:18:01.626 UTC**, so the probe did not cause the fill and made
+no account or order request. The owned ask in `KXONPOS-26OCT03-T109` filled 10
+contracts at 81 cents, leaving a locally reconciled **-10 YES-equivalent** lot.
+The opposite entry was canceled. A passive reduce-only bid at 73 cents received
+HTTP 400; account recovery then exhausted with 29 unrelated resting entries.
+
+The supported safety stop was invoked. It acknowledged all 29 remaining entry
+cancels from 17:22:47–17:22:56 UTC. Current account evidence now reports **zero
+resting orders**, the same -10 lot, no pending fill and no additional fill. Two
+more passive reduce-only bids at 73 cents were rejected with HTTP 400. Protected
+parent/child processes remain present to manage inventory, but control reports
+`attention_required/shutdown_timeout` because the account is not flat. No manual
+IOC, account-wide cancel, ledger reset or process termination was performed.
+
+The capacity probe completed 128 and 256 markets and reached initial snapshot
+coverage in 0.34 and 0.56 seconds with 100% and 99.6% minimum steady freshness.
+At 512 markets, both current book sockets received all 512 initial snapshots in
+0.45 seconds, but five-second fresh coverage fell to 61.1%; the probe stopped
+before 1,024 as designed. Initial delivery is not the bottleneck. Refresh cadence
+or shard count must be compared in an order-disabled probe before changing the
+production topology. Artifact:
+`data/book-capacity/d6e3efe0165341fcb5645c419f3bd6fe/result.json` (ignored).
+
 ## D-101 deployed; generation 68 live acceptance — 2026-09-23
 
 The operator authorized restart after the verified generation-66 stop. Canonical

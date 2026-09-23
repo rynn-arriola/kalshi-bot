@@ -1,5 +1,20 @@
 # Active work queue
 
+## Immediate operator decision — one open KXONPOS position
+
+The safety stop canceled every resting entry, but a -10 YES-equivalent KXONPOS
+lot remains. Three passive reduce-only 73-cent bids were rejected with HTTP 400.
+The existing six-hour exit policy has not authorized an immediate marketable
+IOC. Obtain the operator's explicit choice: keep the existing timed exit policy,
+or authorize an immediate bounded IOC close. Do not restart entries, reset the
+ledger, kill the inventory manager or assume flatness.
+
+After the position is resolved and flatness is verified, build an order-disabled
+initial-ranking probe that compares two versus four book shards. Require full
+per-market outcome accounting and test shorter checkpoints. The existing probe
+proved fast initial snapshots but inadequate five-second freshness at 512 on
+two shards; do not infer that extra sockets alone solve metadata/ranking coverage.
+
 ## After D-101 live acceptance — generation 68 running
 
 The [verified/reviewed repair](docs/BUILD_REPRICING_SOURCE_JOIN.md) is deployed.
