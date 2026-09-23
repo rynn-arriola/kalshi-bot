@@ -88,4 +88,5 @@ scale run committed 4,097 receipts in 2.175 seconds, leaving one hot receipt and
 one exact 4,096-receipt archive of 88,318 bytes with no active coverage gap.
 No live database was modified or copied. Final complete suite: **1,610 tests
 passed, one expected Windows privilege skip**, 267.084 seconds. Publication and
-deployment state remain owned by STATUS.
+deployment state remain owned by STATUS. The reviewed implementation was
+published as `5df66f7`; the active production checkout was not changed.

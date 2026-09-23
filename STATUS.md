@@ -31,7 +31,9 @@ these now retry/defer without spending market failure attempts or claiming a
 failed dependency. Its readers, engine, dispatcher and logging remain alive,
 but recovery is blocked until a reviewed deployment/restart. Final verification:
 **1,610 tests passed, one expected Windows privilege skip**, 267.084 seconds.
-Publication and remote parity remain pending below.
+Reviewed implementation commit `5df66f7` is published to `origin/master`.
+The isolated checkout and remote contain that commit; the canonical live checkout
+deliberately remains on `ad96429`, so publication is not deployment.
 
 ## D-099 deployed and live restart accepted — 2026-09-23
 
