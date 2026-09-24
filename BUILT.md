@@ -1,5 +1,12 @@
 # What exists
 
+## Entry/advisory scheduling ownership — 2026-09-24
+
+The active entry source owns its market's advisory plan across awaits; background
+publication yields to that ownership, including an already-started inventory
+read. Results requeue deferred evaluation. Finding 177 documents failing-before
+regressions and preserved real-source rejection. See STATUS for deployment.
+
 ## Bounded direct drain scheduling and shared order classification — 2026-09-24
 
 `request_entry_drain` supplies only owned-order market keys to the existing

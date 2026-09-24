@@ -432,6 +432,7 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         await self.publish('A')
         self.r._entry_dirty = False
         self.r.dispatch_supervisor = AsyncMock()
+        self.r.dispatch_supervisor.dispatcher = NS(status=lambda: NS(active=None))
         await self.publish('C',pool=1)
         self.assertTrue(self.r._entry_dirty)
         self.assertTrue(self.s.initial_ranking_ready())

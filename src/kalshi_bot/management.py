@@ -111,7 +111,7 @@ class InventoryManager:
                              current_writer_revision=revision,
                              require_market=require_market)
 
-    async def refresh(self, ticker):
+    async def refresh(self, ticker, *, background=False):
         runtime, account = self.runtime, self.runtime.account
         if ticker not in runtime.engine.market_shard:
             if len(self.unmanaged) < runtime.writer.market_capacity:
@@ -138,6 +138,11 @@ class InventoryManager:
                     and version == (inventory.writer_epoch, inventory.writer_revision, account.subaccount)
                     and version == (runtime.writer.epoch, runtime.writer.revision, account.subaccount)):
                 self._inventory_cache[ticker] = inventory
+        # An advisory read can start before dispatch and complete after it has
+        # pinned its own plan. Only the dispatch source may replace that plan;
+        # real source changes remain visible to its unchanged final fences.
+        if background and runtime.entry_dispatch_active(ticker):
+            return None
         new_shard, new_book = self._book(ticker)
         if ((generation, revision) != (account.generation, account.revision) or not account.connected
                 or (inventory.writer_epoch, inventory.writer_revision) !=

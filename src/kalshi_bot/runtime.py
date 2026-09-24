@@ -315,7 +315,16 @@ class RecoveryRuntime:
             if ticker in self.engine.market_shard:
                 owner.request(ticker, SAFETY_CANCEL)
 
+    def entry_dispatch_active(self, ticker):
+        owner = self.dispatch_supervisor
+        from .dispatch import ENTRY_PAIR
+        return owner is not None and owner.dispatcher.status().active == (ticker, ENTRY_PAIR)
+
     async def _evaluate(self, ticker, book, generation):
+        # The entry source owns this ticker's advisory plan until its result.
+        # Ingestion and deadlines still invalidate actual source changes.
+        if self.entry_dispatch_active(ticker):
+            return
         scope = self._current_steady_account_scope()
         if scope is not None and ticker not in scope:
             # At the exact resting-entry cap, existing rewarded owners are
@@ -326,7 +335,9 @@ class RecoveryRuntime:
             # this hint and all owned markets remain on the normal path.
             self.suppressed_market_evaluations += 1
             return
-        await self.management.refresh(ticker)
+        await self.management.refresh(ticker, background=True)
+        if self.entry_dispatch_active(ticker):
+            return  # Dispatch may have started during the inventory read.
         self._request_inventory_dispatch(ticker)
         if self.selection is not None:
             self.selection.refresh(ticker)

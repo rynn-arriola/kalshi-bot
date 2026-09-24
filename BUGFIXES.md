@@ -1,5 +1,14 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — background evaluation invalidated unchanged entry proof
+
+Finding 177 reproduces three dispatch/advisory races. Background evaluation now
+defers only for the currently active entry market, including inventory reads
+already in flight. Every entry result wakes deferred advisory work. Changed
+book/account/metadata evidence and safety timers still invalidate dispatch.
+The production-mode synthetic entry suite passes 44 tests, including changed-book
+rejection and result wake-up. Final release/live evidence belongs in STATUS.
+
 ## 2026-09-24 — slow cancel scheduling and repeated historical-order scans
 
 Stop now queues known owned-entry markets straight to the existing paused-cancel

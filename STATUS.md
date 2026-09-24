@@ -1,5 +1,21 @@
 # Current status
 
+## Entry/advisory race repair verified; restart pending — 2026-09-24
+
+Finding 177 is fixed in source and passes all 44 production-mode synthetic entry
+tests. Three race reproductions failed before their corresponding fixes. The
+first complete gate ran 1,702 tests and exposed two outdated mocks (async status
+and the new background keyword); both fixtures were corrected and their 30/49
+test suites pass. The final complete gate passed 1,702 tests in 216.744 seconds,
+with no failures and one expected Windows symlink-privilege skip. The fast gate
+passed 285 tests before the final in-flight-read regression; that regression is
+included in the final full run. Actual source/test diff review and whitespace
+checks passed. No changed build has been deployed yet.
+Generation 139 is no longer present: its last saved snapshot at 19:26:00 ET had
+22 entries, zero positions. The supported stop at 19:31:34 latched/disarmed control
+but had no child to signal. Do not treat absent processes as canceled orders.
+The authorized restart must reconcile and drain through recovery-only first.
+
 ## Stop/recovery latency repair deployed; refill still slow — 2026-09-24
 
 Release `1c9c326` is published and running as generation 139, PID 50452, following

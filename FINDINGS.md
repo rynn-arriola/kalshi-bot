@@ -1,5 +1,30 @@
 # Findings — kalshi-bot
 
+## 177. Background advisory replacement races entry dispatch — 2026-09-24
+
+**VERIFIED offline:** With unchanged account, book, program and metadata, an
+engine evaluation during the dispatcher's risk-view await replaced its pinned
+management/selection objects. The actual entry graph then returned
+`current_candidate_missing`. Repeating evaluation after writer preparation
+returned `risk_account_book_proof_stale`. A third regression reproduced an
+advisory inventory read begun before dispatch but completed during that await.
+These artificial invalidations contribute to live refill deferrals; they are
+not evidence of changed prices or insufficient rewarded markets.
+
+Only background evaluation for the exact active entry ticker is deferred.
+The inventory manager rechecks that ownership after an awaited read, preventing
+late publication. The dispatch result requeues the market even after a blocked
+attempt. Private ingestion, book application, metadata invalidation, deadlines,
+other markets and final send fences remain active. A real changed book still
+blocks transport; no source timestamp or monetary rule is relaxed.
+
+Generation 139's saved status stopped updating at 19:26:00 ET and both managed
+processes were absent when checked before the 19:31 stop request. The last
+snapshot had 22 entries and zero positions, not a flat shutdown. Windows recorded
+an application event from `CodexSandboxService.OpenAI.Codex` at 19:26:02, coincident
+with the last heartbeat. Causation is unproved; no bot exception/clean shutdown
+was logged. Restart must reconcile durable state, not assume venue cancellation.
+
 ## 176. Historical order classification dominates recovery latency — 2026-09-24
 
 **MEASURED on an isolated copy of the stopped production ledger.** Enumerating

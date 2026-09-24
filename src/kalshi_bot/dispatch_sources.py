@@ -71,6 +71,11 @@ class InventoryDispatchSource:
         selection = self.runtime.selection
         if selection is not None and result.priority == ENTRY_PAIR:
             selection.record_dispatch_result(result)
+            # Resume advisory work deferred while this exact entry was active,
+            # even on a blocked attempt and without requiring another book tick.
+            if result.ticker in self.runtime.engine.market_shard:
+                self.runtime.engine.dirty.mark(result.ticker)
+                self.runtime.engine.wake.set()
 
     def _mutation_observed(self, notice=None):
         paused_cancel = isinstance(self._proof, _PausedCancelProof)

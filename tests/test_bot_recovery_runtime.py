@@ -169,7 +169,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         runtime.management.refresh.assert_not_awaited()
         self.assertEqual((self.evaluated, runtime.suppressed_market_evaluations), ([], 1))
         await runtime._evaluate('A', object(), 1)
-        runtime.management.refresh.assert_awaited_once_with('A')
+        runtime.management.refresh.assert_awaited_once_with('A', background=True)
         self.assertEqual(self.evaluated, ['A'])
         runtime.request_recovery()
         await runtime._evaluate('B', object(), 1)

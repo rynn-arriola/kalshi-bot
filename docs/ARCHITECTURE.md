@@ -1,5 +1,10 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+The sole dispatcher's active entry key temporarily owns that ticker's advisory
+publication. Background evaluation and in-flight inventory reads defer publication
+until its result requeues the market. This does not pause book/private ingestion,
+metadata invalidation or safety deadlines and grants no stale-proof tolerance.
+
 Paused stop scheduling queues owned-entry keys directly to the existing cancel
 dispatcher without requiring a management plan. Keys grant no mutation authority;
 the writer still validates each exact order. Bulk order enumeration obtains one

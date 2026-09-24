@@ -19,6 +19,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   schedule owned-entry drains, overlap independent final recovery reads, and
   let the stop supervisor consume a fresh flat report before renewing it.
   Finish the already-authorized restart after release verification.
+- **Follow-up:** Operator “But why partially cant u fixed it fully” and
+  “Continue” directs completion of remaining lifecycle/refill latency repairs.
+  Prevent background advisory replacement racing an active entry, while
+  preserving live source invalidation and final send checks.
 - **Boundary:** Preserve exact cancellation ownership, source freshness,
   accounting/risk checks, single-writer authority and D-112 process scope.
   No broader trading policy, longer proof lease or live ledger migration.

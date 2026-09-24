@@ -1,6 +1,17 @@
 # Active work queue
 
-## After the deployed stop/recovery latency repair
+## Finish the entry/advisory race repair
+
+1. Complete the one full release gate for Finding 177, publish the reviewed
+   changes, then use the authorized supported restart. Generation 139 exited
+   unexpectedly and its saved orders are not current venue proof.
+2. Verify recovery-only drains/reconciles, then normal ranked refill reaches
+   currently available capacity without the reproduced advisory race. Record
+   actual durations and ownership/account/logging state, not just process start.
+3. Record remaining environment-exit uncertainty separately; no persistent
+   service, startup entry, machine setting or broad process termination is approved.
+
+## Earlier deployed stop/recovery latency repair
 
 1. Finding 176's integrated drain/recovery correction is verified, published and
    running on generation 139. Do not repeat its completed release tests/restart.

@@ -122,6 +122,92 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(evidence[0]['client_order_ids']),2)
         self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
 
+    async def test_background_evaluation_during_entry_risk_read_keeps_exact_proof(self):
+        original = self.runtime.risk_view
+        async def with_background_evaluation():
+            result = await original()
+            name = self.runtime.engine.market_shard['A']
+            shard = self.runtime.engine.shards[name]
+            await self.runtime._evaluate('A', shard.books['A'], shard.generation)
+            return result
+        with patch.object(self.runtime, 'risk_view', with_background_evaluation):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_background_evaluation_after_prepare_keeps_exact_proof(self):
+        original = self.f.writer.reserve_entry_pair
+        async def with_background_evaluation(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            name = self.runtime.engine.market_shard['A']
+            shard = self.runtime.engine.shards[name]
+            await self.runtime._evaluate('A', shard.books['A'], shard.generation)
+            return result
+        with patch.object(self.f.writer, 'reserve_entry_pair', with_background_evaluation):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_already_waiting_background_read_cannot_replace_entry_plan(self):
+        entered, resume = asyncio.Event(), asyncio.Event()
+        original_inventory = self.f.writer.market_inventory
+        original_risk = self.runtime.risk_view
+        first = True
+        async def delayed_inventory(*args, **kwargs):
+            nonlocal first
+            result = await original_inventory(*args, **kwargs)
+            if first:
+                first = False
+                entered.set()
+                await resume.wait()
+            return result
+        async def with_background_completion():
+            result = await original_risk()
+            resume.set()
+            await background
+            return result
+        name = self.runtime.engine.market_shard['A']
+        shard = self.runtime.engine.shards[name]
+        with (patch.object(self.f.writer, 'market_inventory', delayed_inventory),
+              patch.object(self.runtime, 'risk_view', with_background_completion)):
+            background = asyncio.create_task(self.runtime._evaluate(
+                'A', shard.books['A'], shard.generation))
+            try:
+                await asyncio.wait_for(entered.wait(), 2)
+                self.dispatcher.submit('A', ENTRY_PAIR)
+                result = await self.dispatcher.run_one()
+                self.assertEqual(result.state, 'ACK', result.blockers)
+                self.assertEqual(len(self.calls), 1)
+            finally:
+                resume.set()
+                await background
+
+    async def test_active_entry_still_rejects_changed_book_after_prepare(self):
+        original = self.f.writer.reserve_entry_pair
+        async def change_book(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            name = self.runtime.engine.market_shard['A']
+            shard = self.runtime.engine.shards[name]
+            shard.books['A'].revision += 1
+            await self.runtime._evaluate('A', shard.books['A'], shard.generation)
+            return result
+        with patch.object(self.f.writer, 'reserve_entry_pair', change_book):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertTrue(self.runtime.engine.wake.is_set())
+
+    async def test_entry_result_requeues_deferred_advisory_work(self):
+        self.runtime.engine.dirty.take(1024)
+        self.runtime.engine.wake.clear()
+        self.source._dispatch_result(SimpleNamespace(priority=ENTRY_PAIR,
+            ticker='A', attempt_id=None))
+        self.assertTrue(self.runtime.engine.wake.is_set())
+        self.assertIn('A', self.runtime.engine.dirty.take(1024))
+
     async def test_reward_revocation_after_reservation_never_reaches_transport(self):
         original = self.f.writer.reserve_entry_pair
         async def revoke_after_reservation(*args, **kwargs):
