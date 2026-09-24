@@ -1,5 +1,21 @@
 # Active work queue
 
+## After accounting release-freshness repair — current priority
+
+1. Generation 116 remains degraded with 28 live resting entries and zero
+   reported positions. Do not represent those orders as currently maintained or
+   reward-qualified; the loaded child cannot hot-load the verified source fix.
+2. On an explicit supported restart, require owned-order cleanup and current
+   flat/inventory proof before the published build starts normally. Never start
+   a second bot or bypass the existing stop/recovery path.
+3. Verify the new generation releases accounting without
+   `accounting_history_interval_gap` or `accounting_history_receipt_invalid`,
+   refills through ordinary ranking, and reaches current maintenance/reward
+   evidence with all readers and logging healthy.
+4. Measure full-recovery duration and receipt growth after deployment. The
+   repair adds one bounded history/account recapture to full accounting recovery,
+   not to the steady full-cap refresh path.
+
 ## After generation 116 reducer-drain deployment
 
 1. Leave generation 116 under its supervisor and monitor natural fills, passive

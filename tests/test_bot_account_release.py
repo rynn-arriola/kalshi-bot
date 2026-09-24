@@ -555,6 +555,44 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(runtime.accounting_result.released)
         self.assertFalse(runtime.entry_allowed)
 
+    async def test_runtime_recaptures_history_after_slow_repair_before_release(self):
+        from kalshi_bot.runtime import RecoveryRuntime
+        class RuntimeReads(Reads):
+            async def read(inner, name, **kwargs):
+                if name == 'cutoff':
+                    return ReadResult(dict(trades_created_ts=BOUNDARY.isoformat()), 1)
+                return await super().read(name, **kwargs)
+            async def collect(inner, name, **kwargs):
+                if name in {'orders', 'positions', 'fills', 'historical_fills'}:
+                    return PageSet((), 1, 20)
+                return await super().collect(name, **kwargs)
+        async def no_op(*args):
+            pass
+        runtime = RecoveryRuntime(self.writer, RuntimeReads(), lambda spec: None,
+            tickers=('A',), subaccount=0, history_start=BOUNDARY, now=lambda: self.now,
+            evaluate=no_op, deadline_handler=no_op, lifecycle_handler=no_op,
+            accounting_boundary=BOUNDARY)
+        runtime.account = self.account
+        runtime._epoch = self.epoch
+        runtime._persisted_epoch_gaps = 0
+        runtime.account_subscribed = True
+        runtime.engine.begin_private_epoch()
+        original = self.account.reconcile
+        calls = 0
+        async def delayed_final_snapshot(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                # The first history receipt is now too old for release even
+                # though this final account snapshot remains current.
+                self.now += timedelta(seconds=6)
+            return await original(*args, **kwargs)
+        self.account.reconcile = delayed_final_snapshot
+        self.assertTrue(await runtime.recover_once())
+        self.assertEqual(calls, 3)
+        self.assertTrue(runtime.accounting_result.released,
+                        runtime.accounting_result.blockers)
+
     async def test_approved_baseline_keeps_cancel_and_reducer_available_without_lease(self):
         await self.ready()
         prepared = (await self.reserve()).receipt

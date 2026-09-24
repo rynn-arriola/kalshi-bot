@@ -1134,6 +1134,28 @@ class RecoveryRuntime:
             self._request_inventory_dispatch(ticker)
         if self.account.report is not final or generation != self.account.generation:
             return False
+        if self.accounting_boundary is not None:
+            # Inventory/order refresh can legitimately consume most of the
+            # five-second accounting evidence lease.  Re-enumerate history and
+            # the account only after that work, then release immediately from
+            # this fresh pair.  Do not widen the lease or reuse an older proof.
+            prior_signature = self._snapshot_signature(final)
+            history_ingress = self.ingress_revision
+            history = await self.account.recover_history(
+                reads, start=self.history_start, end=self.now(), now=self.now)
+            if history is None:
+                return False
+            final = await self.account.reconcile(reads, now=self.now)
+            if (final is None or generation != self.account.generation
+                    or self.account.report is not final or not self.account.connected
+                    or self.engine.private or self.account._processing):
+                return False
+            remaining = await self.writer.pending_fills(self.account.subaccount)
+            self.last_reports = (history, final)
+            self.history_ingress_revision = history_ingress
+            if self._snapshot_signature(final) != prior_signature:
+                self._refresh_continuity()
+                return False
         # Exact local agreement is necessary, never complete venue/history proof.
         repaired = (not remaining and not history.missing_fill_keys
                 and history.enumeration is not None and not history.enumeration.omitted_rows

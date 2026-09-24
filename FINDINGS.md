@@ -1,5 +1,24 @@
 # Findings — kalshi-bot
 
+## 173. Full recovery can outlive an individual five-second proof — 2026-09-24
+
+VERIFIED LIVE from generation 116's retained receipts and diagnostics and
+VERIFIED offline by a wall-clock regression. Each failing pass enumerated
+history from the approved opening boundary, then spent enough time on later
+order-management work that the receipt was about nine seconds old at release.
+The final account report itself was current. Operational release therefore
+correctly emitted `accounting_history_receipt_invalid` and
+`accounting_history_interval_gap`; the problem was capture order, not missing
+venue history, a damaged ledger, reader loss or a reason to enlarge freshness.
+
+The safe ordering is repair/import, management refresh, fresh history, fresh
+account snapshot, then immediate release. The early pass remains necessary to
+discover and import missed fills before management. The final pair cannot be
+reused if its account signature changes, and all existing five-second and
+source-revision checks remain intact. This costs one extra bounded history and
+account enumeration only during full accounting recovery. Steady full-cap
+refresh is unchanged.
+
 ## 172. Paused entry draining must hand off to reducer cleanup — 2026-09-24
 
 VERIFIED LIVE from generation 113/114 diagnostics and VERIFIED offline by a

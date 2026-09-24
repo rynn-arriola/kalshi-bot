@@ -1,5 +1,27 @@
 # Current status
 
+## Generation 116 degraded by expired release evidence; source repair verified — 2026-09-24
+
+Generation 116 remains present and was not stopped, restarted or otherwise
+mutated by this repair. At 15:06 ET its parent and child PID 50360 were alive,
+all six readers were subscribed, logging/engine/dispatch were running, and the
+account reported zero positions and 28 resting entries. It is not operating
+normally: account authority is stale, recovery is `blocked_retry_exhausted`,
+and refill/repricing is blocked by `accounting_history_interval_gap` and
+`accounting_history_receipt_invalid`. Existing orders remain live but their
+current reward/reference qualification is unknown.
+
+The failure was a five-second proof-ordering race. Full recovery collected its
+history receipt before refreshing management for active orders, so the receipt
+could expire while the later account snapshot remained current. Source now
+performs all repair/management work first, then captures a fresh history/account
+pair immediately before accounting release. Any changed account signature
+causes another recovery pass; no freshness bound is widened. A six-second
+regression reproduces the prior failure. Focused account/recovery tests, the
+263-test fast gate and complete 1,672-test suite pass with one expected Windows
+privilege skip. The running generation cannot hot-load the repair; deployment
+requires a separately authorized supported restart.
+
 ## Generation 116 live on paused-reducer repair — 2026-09-24
 
 The old generation became flat and exited naturally before the separately
