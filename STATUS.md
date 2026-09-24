@@ -18,8 +18,8 @@ and permits only the exact null-to-pre-boundary-finalized lifecycle enrichment
 of an approved applied deposit. Missing rows, later finalization, new activity,
 changed economics/status and incomplete sources still block. Focused, fast,
 native-supervisor and complete verification pass: 1,667 tests, with one expected
-Windows symlink-privilege skip. The repaired source is not loaded by the old
-child and no restart has occurred yet.
+Windows symlink-privilege skip. The repair is published at `ba3c19c`, but it is
+not loaded by the old child and no restart has occurred yet.
 
 ## Generation 108 running on D-110; unattended-recovery release accepted live — 2026-09-23
 

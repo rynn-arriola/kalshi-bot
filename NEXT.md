@@ -2,14 +2,13 @@
 
 ## After the generation-108 funding-finalization incident — current priority
 
-1. Publish the reviewed and fully verified accounting repair.
-2. With explicit authority for process termination, identify and terminate only
+1. With explicit authority for process termination, identify and terminate only
    the exact retained generation-108 child after rechecking its PID, child ID,
    generation and flat account evidence. Never target unrelated Python work.
-3. Start through the supported supervisor path. Require a recovery-only exact
+2. Start through the supported supervisor path. Require a recovery-only exact
    release and clean flat disarm if retained state requires it, then start a
    fresh normal child. Do not bypass the accounting hold or supervisor state.
-4. Accept the restart only after current account proof, all six readers, complete
+3. Accept the restart only after current account proof, all six readers, complete
    ranking, healthy logging/dispatch and the intended 30 resting entries are
    observed with no persistent risk, accounting or supervisor blocker.
 
