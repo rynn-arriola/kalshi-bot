@@ -18,9 +18,12 @@ exceed the existing 20-second whole-pass deadline. The child remained flat and
 recovery-only while transient retries continued.
 
 The efficient proof keeps the early complete pass, then enumerates only the
-elapsed tail from its exact eligible right edge. Release uses both receipts as
-one gap-free interval, validates every receipt's provenance and omissions, and
-requires the tail's right edge to be fresh for the final account observation.
+elapsed tail from its exact eligible right edge concurrently with the final
+account snapshot. An empty omission-free completion does not advance authority;
+any new or omitted fill rejects the shortcut and returns to full recovery.
+Release uses both receipts as one gap-free interval, validates every receipt's
+provenance and omissions, and requires the tail's right edge to be fresh for the
+final account observation.
 The final pair cannot be reused if its account signature changes. Existing
 five-second freshness, source-revision and whole-pass limits remain intact;
 steady full-cap refresh is unchanged.

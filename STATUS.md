@@ -13,12 +13,15 @@ opening-to-now history scan makes each recovery exceed the unchanged 20-second
 whole-pass deadline. The child is retrying transiently rather than releasing.
 
 Source now preserves the first complete history proof and, after management,
-enumerates only the elapsed tail from that receipt's exact eligible right edge.
+enumerates only the elapsed tail from that receipt's exact eligible right edge
+concurrently with the final account snapshot.
 Operational release accepts the chained receipts only when their union has no
 gap, every receipt has matching provenance and no omission, and a receipt with
 a right edge inside the existing five-second window reaches the final account
-observation. The account signature is rechecked and no freshness, timeout,
-ownership, source or mutation fence is widened. Focused account/recovery tests,
+observation. An empty omission-free tail does not invalidate the concurrent
+snapshot; any new or omitted fill rejects the shortcut and requires another
+ordinary full recovery. The account signature is rechecked and no freshness,
+timeout, ownership, source or mutation fence is widened. Focused tests,
 the 263-test fast gate and complete 1,672-test suite pass with one expected
 Windows privilege skip. Generation 119 cannot hot-load this final repair and
 must be replaced through the already authorized supported restart operation.

@@ -472,6 +472,43 @@ class AccountCoordinator:
                 self._invalidate()
             raise
 
+    async def extend_empty_history(self, reads: RestReads, *, start, end, now):
+        """Append a source-fenced empty tail without invalidating account proof.
+
+        A nonempty tail is never imported on this concurrent shortcut.  It
+        returns incomplete so the next ordinary full recovery can bind orders
+        and import fills before any accounting release.
+        """
+        self._check_owner()
+        started_at = utc(now())
+        generation, revision = self.generation, self.revision
+        if not self.connected or self._processing or self.writer.failed:
+            return None
+        evidence = await fetch_history(reads, start=start, end=end,
+                                       subaccount=self.subaccount)
+        if (evidence.records or not self.connected or self._processing
+                or (generation, revision) != (self.generation, self.revision)):
+            return None
+        staged = await self.writer.audit_history(
+            evidence, now(), read_started_at=started_at,
+            generation=generation, source_revision=revision)
+        if (not self.connected or self._processing
+                or (generation, revision) != (self.generation, self.revision)):
+            return None
+        blockers = ["history_pages_not_atomic_account_proof",
+                    "starting_basis_and_coverage_not_proven",
+                    "settlement_and_correction_reconciliation_not_complete",
+                    "live_activation_not_authorized"]
+        if staged.enumeration.omitted_rows:
+            blockers.append('previously_observed_fills_omitted')
+        report = RecoveryReport(0, 0, 0, (), tuple(blockers),
+            start_us=evidence.start_us, end_us=evidence.end_us,
+            cutoff_us=evidence.cutoff_us, subaccount=evidence.subaccount,
+            generation=generation, revision=revision,
+            enumeration=staged.enumeration)
+        self.history_report = report
+        return report
+
     async def _bind_history_order(self, reads, record, token, now, archives, targets):
         """Only actual matching durable intent terms can establish ownership."""
         fill = record.fill

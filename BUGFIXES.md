@@ -18,8 +18,11 @@ transiently; it did not release accounting or place an entry.
 
 **Final fix:** Preserve the early complete history pass for missing-fill/order
 repair. After management, enumerate only the elapsed tail beginning at the
-first receipt's exact eligible right edge, then capture the final account
-snapshot. Release checks the union for continuous opening-to-current coverage,
+first receipt's exact eligible right edge while capturing the final account
+snapshot concurrently. An empty omission-free completion receipt is neutral to
+the writer authority revision; any new fill, omission or changed account source
+rejects this shortcut and requires the next ordinary full recovery. Release
+checks the union for continuous opening-to-current coverage,
 requires exact provenance and no omissions on every receipt, and requires a
 provenance-valid receipt whose right edge reaches the final account observation's
 existing five-second window. If the account signature changes, recovery returns

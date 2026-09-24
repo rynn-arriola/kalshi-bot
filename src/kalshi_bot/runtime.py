@@ -1137,10 +1137,10 @@ class RecoveryRuntime:
         if self.account.report is not final or generation != self.account.generation:
             return False
         if self.accounting_boundary is not None:
-            # Inventory/order refresh can legitimately consume most of the
-            # five-second accounting evidence lease.  Re-enumerate history and
-            # the account only after that work, then release immediately from
-            # this fresh pair.  Do not widen the lease or reuse an older proof.
+            # Inventory/order refresh can consume the five-second evidence
+            # lease.  Enumerate only the elapsed empty tail concurrently with
+            # the final account snapshot.  A new fill rejects this shortcut and
+            # is imported by the next full pass.  Do not widen either lease.
             prior_signature = self._snapshot_signature(final)
             history_ingress = self.ingress_revision
             end = utc(self.now())
@@ -1149,13 +1149,14 @@ class RecoveryRuntime:
             if end_us > start_us:
                 start = datetime.fromtimestamp(start_us//1_000_000,
                     tz=timezone.utc).replace(microsecond=start_us%1_000_000)
-                history = await self.account.recover_history(
-                    reads, start=start, end=end, now=self.now)
+                history, final = await asyncio.gather(
+                    self.account.extend_empty_history(
+                        reads, start=start, end=end, now=self.now),
+                    self.account.reconcile(reads, now=self.now))
                 if history is None:
                     return False
                 history_reports.append(history)
                 release_receipt_ids += (history.enumeration.receipt_id,)
-                final = await self.account.reconcile(reads, now=self.now)
             if (final is None or generation != self.account.generation
                     or self.account.report is not final or not self.account.connected
                     or self.engine.private or self.account._processing):

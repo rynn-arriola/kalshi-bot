@@ -12,8 +12,8 @@
    refill and current reference/reward maintenance with all readers and logging
    healthy. Neither process exit nor order count alone is acceptance.
 4. Measure full-recovery duration and chained receipt count after deployment.
-   The repair adds a short elapsed-tail history read only during full accounting
-   recovery; steady full-cap refresh is unchanged.
+   The repair overlaps the short elapsed-tail read with the final account
+   snapshot only during full accounting recovery; steady refresh is unchanged.
 
 ## After generation 116 reducer-drain deployment
 

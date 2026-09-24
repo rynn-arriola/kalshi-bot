@@ -274,7 +274,9 @@ class WriterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.writer.inventory()).positions, ())
 
     async def test_read_only_inspection_does_not_revoke_writer_revision(self):
+        before = self.writer.revision
         await self.writer.audit_history(evidence(), NOW)
+        self.assertEqual(self.writer.revision, before)
         revision = self.writer.revision
         await self.inspect()
         self.assertEqual(self.writer.revision, revision)
@@ -412,6 +414,8 @@ class WriterTests(unittest.IsolatedAsyncioTestCase):
             def emit(self, name, **fields): events.append((name, fields))
         self.writer.diagnostics = Diagnostics()
         await self.writer.audit_history(evidence(rows=1), NOW)
+        before_omission = self.writer.revision
         await self.writer.audit_history(evidence(), NOW)
+        self.assertGreater(self.writer.revision, before_omission)
         self.assertIn(('history_omission', {'blocker_count': 1}), events)
         self.assertTrue(all(set(fields) == {'blocker_count'} for _, fields in events))

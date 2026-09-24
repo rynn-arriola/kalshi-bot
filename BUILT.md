@@ -4,7 +4,9 @@
 
 Accounting-enabled full recovery preserves its early complete execution-history
 pass for repair, completes active-market management, and then captures only the
-elapsed history tail plus a final account snapshot. Operational release combines
+elapsed history tail concurrently with a final account snapshot. An empty,
+omission-free tail is authority-neutral; any fill, omission or changed source
+returns incomplete for ordinary full recovery. Operational release combines
 the receipts only when their exact intervals are gap-free, every receipt has
 matching provenance and no omission, and the final right edge is inside the
 existing freshness window. A changed account signature returns incomplete

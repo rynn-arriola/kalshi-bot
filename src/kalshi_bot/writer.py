@@ -499,8 +499,11 @@ class LedgerWriter:
         if generation is not None:
             integer(generation, 1, 2**63-1)
             integer(source_revision, 0, 2**63-1)
-        recorded, missing, blockers = 0, [], []
-        for offset in range(0, max(1, len(evidence.records)), 256):
+        recorded, missing = 0, []
+        blockers = ["history_pages_not_atomic_account_proof",
+                    "settlements_and_corrections_not_replayed",
+                    "ledger_execution_time_coverage_not_proven"]
+        for offset in range(0, len(evidence.records), 256):
             chunk = replace(evidence, records=evidence.records[offset:offset+256])
             result = await self._wait(self._submit("history", chunk, now))
             recorded += result.already_recorded
@@ -1011,7 +1014,8 @@ class LedgerWriter:
                                      'abort_prepared', 'abort_batch',
                                      'abort_sending_before_submission',
                                      'abort_sending_batch_before_submission',
-                                     'capture_accounting', 'release_accounting'}
+                                     'capture_accounting', 'release_accounting',
+                                     'history_complete'}
                     # External evidence writes revoke authority even when a
                     # caller bypasses coordinator ingress. Local reservation /
                     # send steps retain the lease but recompute obligations.
@@ -1028,6 +1032,10 @@ class LedgerWriter:
                     if command in {'reserve_entry', 'reserve_entry_pair', 'prepare_cancel',
                                    'prepare_reduction', 'capture_accounting',
                                    'release_accounting'}:
+                        self._revision += 1
+                    elif command == 'history_complete' and result.omitted_rows:
+                        # A complete empty interval is authority-neutral.  An
+                        # omission is adverse evidence and must revoke sources.
                         self._revision += 1
                     elif command in {'begin_send', 'begin_batch_send',
                                      'abort_prepared', 'abort_batch',
