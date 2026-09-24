@@ -1,26 +1,27 @@
 # Current status
 
-## Generation 116 degraded by expired release evidence; source repair verified — 2026-09-24
+## Generation 119 flat in recovery-only; incremental release proof verified — 2026-09-24
 
-Generation 116 remains present and was not stopped, restarted or otherwise
-mutated by this repair. At 15:06 ET its parent and child PID 50360 were alive,
-all six readers were subscribed, logging/engine/dispatch were running, and the
-account reported zero positions and 28 resting entries. It is not operating
-normally: account authority is stale, recovery is `blocked_retry_exhausted`,
-and refill/repricing is blocked by `accounting_history_interval_gap` and
-`accounting_history_receipt_invalid`. Existing orders remain live but their
-current reward/reference qualification is unknown.
+The authorized supported restart canceled all 28 generation-116 entries and
+verified zero positions. The old loaded child could not complete its final flat
+proof before `shutdown_timeout`; D-112 identity, generation, scope, stop-latch,
+command line and current zero-order/zero-position checks were repeated, then
+only exact child PID 50360 was terminated. Its parent exited and the supported
+launcher started generation 119 in recovery-only mode. It remains flat with no
+resting orders and cannot place entries, but the first repair's second complete
+opening-to-now history scan makes each recovery exceed the unchanged 20-second
+whole-pass deadline. The child is retrying transiently rather than releasing.
 
-The failure was a five-second proof-ordering race. Full recovery collected its
-history receipt before refreshing management for active orders, so the receipt
-could expire while the later account snapshot remained current. Source now
-performs all repair/management work first, then captures a fresh history/account
-pair immediately before accounting release. Any changed account signature
-causes another recovery pass; no freshness bound is widened. A six-second
-regression reproduces the prior failure. Focused account/recovery tests, the
-263-test fast gate and complete 1,672-test suite pass with one expected Windows
-privilege skip. The running generation cannot hot-load the repair; deployment
-requires a separately authorized supported restart.
+Source now preserves the first complete history proof and, after management,
+enumerates only the elapsed tail from that receipt's exact eligible right edge.
+Operational release accepts the chained receipts only when their union has no
+gap, every receipt has matching provenance and no omission, and a receipt with
+a right edge inside the existing five-second window reaches the final account
+observation. The account signature is rechecked and no freshness, timeout,
+ownership, source or mutation fence is widened. Focused account/recovery tests,
+the 263-test fast gate and complete 1,672-test suite pass with one expected
+Windows privilege skip. Generation 119 cannot hot-load this final repair and
+must be replaced through the already authorized supported restart operation.
 
 ## Generation 116 live on paused-reducer repair — 2026-09-24
 

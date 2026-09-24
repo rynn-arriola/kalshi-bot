@@ -467,6 +467,8 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
     if len(continuity.receipt_ids) > 4096:
         raise InvalidData('accounting receipt scope exceeded')
     spans = []
+    fresh_right = None
+    release_us = timestamp_us(utc(now).isoformat())
     for receipt_id in continuity.receipt_ids:
         row = conn.execute('SELECT payload FROM history_enumerations WHERE id=?', (receipt_id,)).fetchone()
         if not row:
@@ -474,20 +476,26 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
             continue
         item = json.loads(row[0])
         spans.append((item['start_us'], min(item['end_us'], item['read_started_us'])))
-        if (item['writer_epoch'] != epoch or item['generation'] != fence.generation
+        provenance_invalid = (item['writer_epoch'] != epoch or item['generation'] != fence.generation
                 or item['subaccount'] != 0 or item['remembered_count'] != item['row_count']
                 or item['source_revision'] != fence.revision
-                or (private and item['read_started_us'] < timestamp_us(private['opened_at']))
-                or not 0 <= timestamp_us(utc(now).isoformat())-item['observed_us'] <= 5_000_000):
+                or (private and item['read_started_us'] < timestamp_us(private['opened_at'])))
+        if provenance_invalid:
             blockers.append('accounting_history_receipt_invalid')
+        elif 0 <= release_us-item['observed_us'] <= 5_000_000:
+            fresh_right = (spans[-1][1] if fresh_right is None
+                           else max(fresh_right, spans[-1][1]))
     if opening:
         cursor = timestamp_us(opening['boundary'])
         for left, right in sorted(spans):
             if left > cursor:
                 break
             cursor = max(cursor, right)
+        required_right = timestamp_us(report.observed_at.isoformat())-5_000_000
+        if fresh_right is None or fresh_right < required_right:
+            blockers.append('accounting_history_receipt_invalid')
         if (continuity.interval_gaps or not spans
-                or cursor < timestamp_us(report.observed_at.isoformat())-5_000_000):
+                or cursor < required_right):
             blockers.append('accounting_history_interval_gap')
         if conn.execute('SELECT 1 FROM recovery_fills r LEFT JOIN fills f ON f.id=r.id '
                 'WHERE r.subaccount=0 AND r.executed_us>=? AND f.id IS NULL LIMIT 1',

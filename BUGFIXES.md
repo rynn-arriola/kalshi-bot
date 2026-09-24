@@ -1,6 +1,6 @@
 # Bugfixes — kalshi-bot
 
-## 2026-09-24 — management work expired accounting history before release
+## 2026-09-24 — fresh full-history recapture exceeded recovery deadline
 
 **Mechanism:** Full recovery captured execution history before refreshing every
 active order/inventory market. That later work could consume more than the
@@ -10,19 +10,28 @@ still current, but operational release correctly rejected the old history with
 Three such deterministic failures exhausted the non-transient recovery budget,
 leaving generation 116 alive with 28 orders but unable to maintain or refill.
 
-**Fix:** Preserve the early history pass for missing-fill/order repair. After
-management refresh, accounting-enabled recovery now captures a second bounded
-history pass followed by a fresh account snapshot and proceeds directly to
-release. If the account signature changes across that boundary, recovery returns
-incomplete and retries. The five-second leases, source revisions, ownership
-checks, mutation fences and 20-second whole-pass bound are unchanged.
+**Initial correction and live finding:** Repeating the complete opening-to-now
+history enumeration after management produced fresh evidence, but generation
+119 showed that two complete scans plus account reconciliation exceed the
+unchanged 20-second whole-pass deadline. Recovery-only remained flat and retried
+transiently; it did not release accounting or place an entry.
+
+**Final fix:** Preserve the early complete history pass for missing-fill/order
+repair. After management, enumerate only the elapsed tail beginning at the
+first receipt's exact eligible right edge, then capture the final account
+snapshot. Release checks the union for continuous opening-to-current coverage,
+requires exact provenance and no omissions on every receipt, and requires a
+provenance-valid receipt whose right edge reaches the final account observation's
+existing five-second window. If the account signature changes, recovery returns
+incomplete and retries. Freshness, source revisions, ownership checks, mutation
+fences and the 20-second whole-pass bound are unchanged.
 
 **Verification:** A regression advances wall time six seconds between the early
-history and final snapshot; the fresh pair now releases where the old sequence
-returned both blockers. The 38-test account-release and 49-test recovery-runtime
-suites pass, as do the 263-test fast gate and complete 1,672-test suite with one
-expected Windows privilege skip. Generation 116 remains on the old build until
-an explicitly authorized supported restart.
+history and final snapshot; the stale complete receipt plus fresh tail receipt
+now release where the old ordering returned both blockers. The 38-test
+account-release and 49-test recovery-runtime suites pass, as do the 263-test
+fast gate and complete 1,672-test suite with one expected Windows privilege
+skip. Live acceptance of the final source remains pending deployment.
 
 ## 2026-09-24 — paused cleanup could strand an aged passive reducer
 

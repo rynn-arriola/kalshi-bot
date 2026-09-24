@@ -1,20 +1,19 @@
 # Active work queue
 
-## After accounting release-freshness repair — current priority
+## After incremental accounting-release proof repair — current priority
 
-1. Generation 116 remains degraded with 28 live resting entries and zero
-   reported positions. Do not represent those orders as currently maintained or
-   reward-qualified; the loaded child cannot hot-load the verified source fix.
-2. On an explicit supported restart, require owned-order cleanup and current
-   flat/inventory proof before the published build starts normally. Never start
-   a second bot or bypass the existing stop/recovery path.
-3. Verify the new generation releases accounting without
-   `accounting_history_interval_gap` or `accounting_history_receipt_invalid`,
-   refills through ordinary ranking, and reaches current maintenance/reward
-   evidence with all readers and logging healthy.
-4. Measure full-recovery duration and receipt growth after deployment. The
-   repair adds one bounded history/account recapture to full accounting recovery,
-   not to the steady full-cap refresh path.
+1. Publish the verified chained-receipt repair, then finish the operator's
+   authorized supported restart. Generation 119 is recovery-only, flat and has
+   no resting orders; never start a second child beside it.
+2. Require recovery-only to release accounting within the existing 20-second
+   whole-pass bound, prove current zero orders/positions, and stop flat. The
+   armed supervisor may then launch one fresh normal child under D-110.
+3. Verify the normal child reaches complete four-shard ranking, ordinary ranked
+   refill and current reference/reward maintenance with all readers and logging
+   healthy. Neither process exit nor order count alone is acceptance.
+4. Measure full-recovery duration and chained receipt count after deployment.
+   The repair adds a short elapsed-tail history read only during full accounting
+   recovery; steady full-cap refresh is unchanged.
 
 ## After generation 116 reducer-drain deployment
 

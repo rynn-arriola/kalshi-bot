@@ -1,15 +1,18 @@
 # What exists
 
-## Fresh final accounting-release evidence — 2026-09-24
+## Chained final accounting-release evidence — 2026-09-24
 
-Accounting-enabled full recovery now preserves its early execution-history pass
-for repair, completes active-market management, and then captures a fresh
-history/account pair immediately before operational release. A changed account
-signature returns incomplete instead of granting authority. No five-second
-freshness, ownership, source-revision, mutation or whole-pass bound was widened.
-The focused account/recovery suites, 263-test fast gate and complete 1,672-test
-release gate pass with one expected Windows privilege skip. Deployment state
-belongs in `STATUS.md`.
+Accounting-enabled full recovery preserves its early complete execution-history
+pass for repair, completes active-market management, and then captures only the
+elapsed history tail plus a final account snapshot. Operational release combines
+the receipts only when their exact intervals are gap-free, every receipt has
+matching provenance and no omission, and the final right edge is inside the
+existing freshness window. A changed account signature returns incomplete
+instead of granting authority. No five-second freshness, ownership,
+source-revision, mutation or whole-pass bound was widened. The focused
+account/recovery suites, 263-test fast gate and complete 1,672-test release gate
+pass with one expected Windows privilege skip. Deployment state belongs in
+`STATUS.md`.
 
 ## Paused drain handoff to passive-reducer exit — 2026-09-24
 

@@ -5,8 +5,8 @@ GET reads, single-use reader factories, UTC clock and history scope. The owner
 must close the writer after run() returns so accepted writes finish draining.
 """
 import asyncio
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 import random
 import time
 from uuid import uuid4
@@ -1096,6 +1096,8 @@ class RecoveryRuntime:
                                                     end=self.now(), now=self.now)
         if history is None:
             return False
+        history_reports = [history]
+        release_receipt_ids = (history.enumeration.receipt_id,)
         pending = await self.writer.pending_fills(self.account.subaccount)
         attempted = set()
         for item in pending:
@@ -1141,11 +1143,19 @@ class RecoveryRuntime:
             # this fresh pair.  Do not widen the lease or reuse an older proof.
             prior_signature = self._snapshot_signature(final)
             history_ingress = self.ingress_revision
-            history = await self.account.recover_history(
-                reads, start=self.history_start, end=self.now(), now=self.now)
-            if history is None:
-                return False
-            final = await self.account.reconcile(reads, now=self.now)
+            end = utc(self.now())
+            start_us = history.enumeration.eligible_end_us
+            end_us = int(end.timestamp()*1_000_000)
+            if end_us > start_us:
+                start = datetime.fromtimestamp(start_us//1_000_000,
+                    tz=timezone.utc).replace(microsecond=start_us%1_000_000)
+                history = await self.account.recover_history(
+                    reads, start=start, end=end, now=self.now)
+                if history is None:
+                    return False
+                history_reports.append(history)
+                release_receipt_ids += (history.enumeration.receipt_id,)
+                final = await self.account.reconcile(reads, now=self.now)
             if (final is None or generation != self.account.generation
                     or self.account.report is not final or not self.account.connected
                     or self.engine.private or self.account._processing):
@@ -1157,8 +1167,9 @@ class RecoveryRuntime:
                 self._refresh_continuity()
                 return False
         # Exact local agreement is necessary, never complete venue/history proof.
-        repaired = (not remaining and not history.missing_fill_keys
-                and history.enumeration is not None and not history.enumeration.omitted_rows
+        repaired = (not remaining
+                and all(not item.missing_fill_keys and item.enumeration is not None
+                        and not item.enumeration.omitted_rows for item in history_reports)
                 and self.account.current_report(self.now()) is final and final.audit.consistent
                 and not self._epoch_ambiguous
                 and history_ingress == self.ingress_revision
@@ -1167,12 +1178,15 @@ class RecoveryRuntime:
         self.recovery_passes += int(repaired)
         self._refresh_continuity()
         if repaired and self.accounting_boundary is not None:
+            release_continuity = replace(
+                self._refresh_continuity(operational=True),
+                receipt_ids=tuple(dict.fromkeys(release_receipt_ids)))
             if self.opening_reference is not None:
                 status = await self.writer.accounting_status()
                 if 'operator_boundary_not_approved' in status.blockers:
                     captured = await self.account.reconcile_accounting(
                         reads, proposed_boundary=self.accounting_boundary,
-                        continuity=self._refresh_continuity(operational=True), now=self.now)
+                        continuity=release_continuity, now=self.now)
                     await self.writer.approve_opening(
                         checkpoint_digest=captured.status.checkpoint_digest,
                         captured_digest=captured.captured_digest,
@@ -1183,7 +1197,7 @@ class RecoveryRuntime:
                     return False
             self.accounting_result = await self.account.reconcile_accounting(
                 reads, proposed_boundary=self.accounting_boundary,
-                continuity=self._refresh_continuity(operational=True), now=self.now, release=True)
+                continuity=release_continuity, now=self.now, release=True)
             repaired = self.accounting_result.released
         return repaired
 
