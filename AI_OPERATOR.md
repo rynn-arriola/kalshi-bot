@@ -178,6 +178,14 @@ Before ending a material work session:
 7. Run relevant verification and report what was not run.
 8. Check `git diff` for secrets and unrelated operator work.
 
+Use proportionate test tiers to avoid repeating the slow complete suite. During
+implementation and review, run the affected tests and
+`scripts/Test-Bot.ps1 -Fast`; add `-NativeSupervisor` only when native process,
+IPC or supervisor lifecycle code changed. Run the complete `Test-Bot.ps1` once
+before publishing a meaningful live-money release, not after every edit or
+documentation-only update. A focused failure still blocks publication, and the
+complete suite remains mandatory before a changed build is deployed live.
+
 D-065: when a work unit is complete and verified, review the exact staged
 scope, commit it, push to the canonical branch and verify local/remote parity.
 Do not stage unrelated or private files, force-push, or publish a failed or

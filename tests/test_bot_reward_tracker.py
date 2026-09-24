@@ -465,7 +465,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.rewards.status()['production_reflection_available'])
         self.assertFalse(self.rewards.status()['paid_rewards_verified'])
 
-    async def test_normal_account_refresh_gap_preserves_only_bounded_continuity(self):
+    async def test_account_event_revision_change_breaks_bounded_continuity(self):
         await self.owned()
         self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
         await self.rewards.start()
@@ -473,9 +473,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         report = self.r.account.report
         sample = self.rewards.tracker.records['P'].sample
 
-        # Normal reconciliation removes the current report before publishing a
-        # replacement.  The old rate is not current during that gap, but its
-        # still-bounded endpoint must remain available for a safe overlap join.
+        # A private account event changes the revision. Its old endpoint may be
+        # retained for reporting, but cannot bridge to the new account epoch.
         self.r.account._invalidate()
         self.assertFalse(self.rewards.current('A'))
         self.assertIs(self.rewards.tracker.records['P'].sample, sample)
@@ -488,8 +487,70 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.r.management.refresh('A')
         await self.rewards.reflect_once()
         progress = self.rewards.progress('P')
+        self.assertEqual(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 1)
+
+    async def test_normal_reconciliation_gap_samples_only_old_bounded_lease(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        report = self.r.account.report
+
+        self.r.account.begin_reconciliation(self.f.now)
+        self.f.now += timedelta(seconds=4)
+        self.f.mono += 4
+        self.rewards.refresh('A')
+        progress = self.rewards.progress('P')
         self.assertGreater(progress.sampled_gross_usd, 0)
         self.assertEqual(progress.unknown_seconds, 0)
+        self.assertIsNone(progress.current_hourly_usd)
+        self.assertIn('A', self.rewards._reflection)
+        self.assertNotIn('A', self.rewards._proofs)
+
+        await self.r.account.finish_reconciliation(
+            self.r.account._token, report.snapshot, self.f.now)
+        await self.r.management.refresh('A')
+        await self.rewards.reflect_once()
+        self.assertEqual(self.rewards.progress('P').unknown_seconds, 0)
+
+    async def test_deferred_reflection_samples_proven_reconciliation_gap(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        self.r.account.begin_reconciliation(self.f.now)
+        self.f.now += timedelta(seconds=4)
+        self.f.mono += 4
+
+        task = asyncio.create_task(self.rewards.run())
+        await until(lambda:self.rewards.reflection_deferred == 1)
+        progress = self.rewards.progress('P')
+        self.assertGreater(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 0)
+        self.assertIsNone(progress.current_hourly_usd)
+        self.rewards.stop()
+        await task
+
+    async def test_expired_normal_reconciliation_gap_is_unknown(self):
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.start()
+        await self.rewards.reflect_once()
+        report = self.r.account.report
+        self.r.account.begin_reconciliation(self.f.now)
+        self.f.now += timedelta(seconds=6)
+        self.f.mono += 6
+
+        self.rewards.refresh('A')
+        self.assertNotIn('A', self.rewards._reflection)
+        token = self.r.account.begin_reconciliation(self.f.now)
+        await self.r.account.finish_reconciliation(token, report.snapshot, self.f.now)
+        await self.r.management.refresh('A')
+        await self.rewards.reflect_once()
+        progress = self.rewards.progress('P')
+        self.assertEqual(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 6)
 
     async def test_account_refresh_past_old_lease_books_unknown_not_credit(self):
         await self.owned()

@@ -24,6 +24,9 @@ or live-ready trader. No paper trading, live launch or exchange writes occurred.
 ```powershell
 .\.venv\Scripts\python.exe -B -m kalshi_bot policy
 .\scripts\Get-BotPreflight.ps1
+.\scripts\Test-Bot.ps1 -Fast
+# Add -NativeSupervisor only for supervisor/IPC changes.
+# The default command is the final meaningful live-release gate.
 .\scripts\Test-Bot.ps1
 ```
 

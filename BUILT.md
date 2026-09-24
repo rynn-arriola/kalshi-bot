@@ -1,5 +1,25 @@
 # What exists
 
+## Cleanup-generation and bounded reward-gap repair — 2026-09-23
+
+The production child now distinguishes its exact parent/child/native binding
+from the control generation that STOP advances. Only cleanup-only control can
+survive that authority fence; admission and trading authority remain rejected.
+The parent rereads durable control before applying a latch-derived STOP, avoiding
+the ordinary external-controller double transition.
+
+Reward telemetry can use the remainder of an existing queue proof during one
+exact account reconciliation token when every account, writer, owned-order,
+plan, book and program source remains unchanged. The five-second proof is never
+extended and the sample is never published as current operational proof.
+Account revision changes and expiry remain UNKNOWN. Deployment and live
+acceptance belong in `STATUS.md`.
+
+`scripts/Test-Bot.ps1 -Fast` is the maintained iterative live-path suite;
+`-NativeSupervisor` adds the slow real child-process cases only when relevant.
+The unchanged default command remains the complete release gate. This removes
+repeated full-suite waits without weakening the final pre-live check.
+
 ## Bounded release of uneconomic one-sided incumbents — 2026-09-23
 
 Incumbent maintenance now distinguishes a qualifying incomplete pair from an

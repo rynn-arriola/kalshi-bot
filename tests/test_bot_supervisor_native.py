@@ -159,12 +159,14 @@ class NativeHostTests(unittest.IsolatedAsyncioTestCase):
         await self.eventually(lambda: host.controller_state is not None
                               and host.controller_state.state == SupervisorState.HEALTHY)
         pid = host.child.process.pid
+        generation = host.controller_state.generation
         receipt, signaled = await controller.stop()
         self.assertTrue(signaled)
         self.assertEqual(receipt.state.state, SupervisorState.STOPPING)
         await asyncio.wait_for(task, 10)
         final = await controller.inspect()
         self.assertEqual(final.state.state, SupervisorState.DISARMED)
+        self.assertEqual(final.state.generation, generation+1)
         self.assertEqual(final.native.stage, "exited")
         self.assertIsNone(final.state.child_id)
         self.assertIsInstance(pid, int)

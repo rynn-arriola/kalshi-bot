@@ -1,5 +1,31 @@
 # Findings — kalshi-bot
 
+## 166. Generation 97 exposed two cadence/control defects — 2026-09-23
+
+MEASURED LIVE before the supported stop: generation 97 was stable at 30 resting
+orders with no position, but a 30-second sample observed only 10.606 of 183.601
+aggregate active-program seconds (5.78%). Reward reflections succeeded; the
+dominant mechanism was timing. Account proof is refreshed at about three
+seconds, a pass takes about three seconds, and reward queue proof expires at
+five seconds. Consecutive complete joins therefore arrive around six seconds
+apart, so retaining an endpoint alone cannot bridge them.
+
+VERIFIED from durable supervisor events and child diagnostics: external STOP
+advanced generation 97 to 98 and signaled the latch. A stale parent snapshot
+then applied STOP again, advancing to 99. The exact child remained bound to
+generation 97, reached `STOPPED_FLAT`, but classified its cleanup control as
+revoked because control generation no longer equaled child generation. Its exit
+was consequently recorded as unexpected rather than clean. This was a control-
+plane classification failure after flat runtime shutdown, not evidence of a
+remaining order or position.
+
+The source repair keeps STOP's generation fence but treats it as authority
+revocation rather than child-identity revocation for cleanup-only traffic.
+Telemetry separately uses only the unexpired prior queue lease during an exact
+normal reconciliation; it never grants current authority or extends freshness.
+Both repairs are offline-verified. Live reward coverage and a production clean
+stop remain unverified until a separately authorized deployment.
+
 ## 165. An uneconomic orphan had no maintenance transition — 2026-09-23
 
 VERIFIED from generation-92 ledger/status evidence and reproduced synthetically.

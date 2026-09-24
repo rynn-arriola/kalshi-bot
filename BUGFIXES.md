@@ -1,5 +1,45 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — STOP generation fence broke clean child completion
+
+**Mechanism:** Durable STOP correctly advanced the control generation and
+revoked trading authority. The production child also treated that expected
+generation difference as loss of its exact identity, so a cleanup-only parent
+message raised `child admission revoked` after the runtime was already
+`STOPPED_FLAT`. The latch path could additionally apply a second STOP from a
+stale parent snapshot.
+
+**Fix:** Exact parent session, child ID/generation and native binding still fence
+identity. Control-generation change now revokes all non-cleanup authority while
+allowing only `PULSE`, `STOP_HINT` and exact `FENCE_ACK`. The parent rereads the
+durable state before a latch-derived STOP, making the normal external stop one
+generation transition.
+
+**Verification:** Unit coverage exercises generation mismatch with cleanup
+traffic and rejects `ADMIT`; the native process test proves one generation
+advance and clean disarm. Broader focused supervisor/runtime verification
+passes, followed by the 1,650-test complete suite with one expected privilege
+skip.
+
+## 2026-09-23 — retained reward endpoints still missed the reconciliation cadence
+
+**Mechanism:** Account refresh starts around report age three seconds and may
+complete around age six, beyond the five-second queue-proof lease. The earlier
+repair retained an endpoint but did not observe the still-valid portion while
+the report was temporarily absent, leaving live measured coverage at 5.78%.
+
+**Fix:** Telemetry alone can sample during an exact in-progress reconciliation
+while the old proof remains unexpired and account generation/revision, writer,
+owned-order signature, plan, book and program terms are unchanged. The sample
+cannot satisfy `current()`, reflected quotes, selection, maintenance or
+dispatch. It cannot extend the lease. Account revision is included in
+continuity, and expired/changed evidence remains UNKNOWN.
+
+**Verification:** Regressions cover direct and service-loop gap sampling, hard
+account-revision invalidation, unchanged post-refresh bridging and a six-second
+expired gap recorded wholly UNKNOWN. Focused reward/account/runtime verification
+and the 1,650-test complete suite pass.
+
 ## 2026-09-23 — one-sided full-weight incumbent could retain a slot forever
 
 **Mechanism:** An acknowledged cancellation left one owned entry resting. Its

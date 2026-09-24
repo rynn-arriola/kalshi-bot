@@ -212,24 +212,24 @@ def _run_admitted(args, scope, profile, endpoint, power, diagnostics):
 def _admission_revoked(args, message, state, native, *, stop_signaled,
                        parent_signaled):
     """Keep identity binding strict while allowing terminal fence completion."""
+    cleanup_only = message.kind in {MessageKind.PULSE, MessageKind.STOP_HINT,
+                                    MessageKind.FENCE_ACK}
     binding_revoked = (
-        state.generation != args.child_generation
-        or state.child_id != args.child_id
+        state.child_id != args.child_id
         or state.child_generation != args.child_generation
         or native.parent_session != args.parent_session
         or native.child_id != args.child_id
         or native.child_generation != args.child_generation
         or native.stage != "bound"
         or parent_signaled)
-    authority_revoked = state.stop_latched or not state.desired_armed or stop_signaled
+    authority_revoked = (state.generation != args.child_generation
+                         or state.stop_latched or not state.desired_armed
+                         or stop_signaled)
     # A stopped child retains no trading authority. It must still accept
     # liveness-only pulses and the exact terminal recovery-fence acknowledgement
     # so an in-flight parent pulse cannot turn verified-flat cleanup into a
     # false shutdown failure.
-    return (binding_revoked or
-        (message.kind not in {MessageKind.PULSE, MessageKind.STOP_HINT,
-                              MessageKind.FENCE_ACK}
-         and authority_revoked))
+    return binding_revoked or (not cleanup_only and authority_revoked)
 
 
 async def _send_result(args, endpoint, diagnostics, *, outcome,

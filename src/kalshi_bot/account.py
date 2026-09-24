@@ -515,6 +515,19 @@ class AccountCoordinator:
         self._token = ReconcileToken(self.generation, self.revision, utc(now), self.clock())
         return self._token
 
+    def current_reconciliation(self, now):
+        """Return the exact bounded token for a normal report-refresh gap.
+
+        This is informational evidence only.  It never restores an account
+        report or grants accounting, dispatch, or entry authority.
+        """
+        token = self._token
+        now = utc(now)
+        if (token is None or self.report is not None or not self._current(token)
+                or not token.started_at <= now <= token.started_at+timedelta(seconds=5)):
+            return None
+        return token
+
     def _current(self, token):
         return (isinstance(token, ReconcileToken) and token is self._token and self.connected and not self._processing
                 and token.generation == self.generation and token.revision == self.revision

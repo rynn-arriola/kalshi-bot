@@ -551,7 +551,15 @@ class SupervisorHost:
                 next_tick = now+1
             if self.child is not None:
                 if self._stop_latch.requested and not self.controller_state.stop_latched:
-                    await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
+                    # The external controller durably applies STOP before it
+                    # signals the Windows latch. Refresh that committed state
+                    # before deciding whether this parent must apply its own
+                    # STOP; a stale local snapshot otherwise advances the
+                    # control generation a second time during one shutdown.
+                    current = await self.owner.submit("read")
+                    self.controller_state = current.state
+                    if not current.state.stop_latched:
+                        await self._apply(SupervisorEvent(EventKind.STOP, time.time()))
                 if self.controller_state.stop_latched and not self.child.stop_hint_sent:
                     try:
                         self.child.endpoint.send_control(self._outbound(

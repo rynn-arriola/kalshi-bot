@@ -117,6 +117,44 @@ class RuntimeRewards:
         if book is None: return None
         return plan, observation, report, book
 
+    def _bounded_gap_sources(self, ticker):
+        """Telemetry-only sources during one proven account refresh gap.
+
+        The prior queue join remains bounded by its original five-second lease.
+        Exact account, writer, order, plan, book and reward-program continuity
+        are required.  This helper is never used by ``current`` authority,
+        reflected quotes, maintenance, selection, or dispatch.
+        """
+        r = self.runtime
+        proof = self._reflection.get(ticker)
+        now = utc(r.now())
+        token = r.account.current_reconciliation(now)
+        if (not isinstance(proof, ReflectionProof) or token is None
+                or now >= proof.valid_until
+                or (token.generation, token.revision) !=
+                    (proof.account_generation, proof.account_revision)
+                or (r.account.generation, r.account.revision) !=
+                    (proof.account_generation, proof.account_revision)
+                or proof.report.audit is None or proof.report.audit.blockers
+                or not proof.report.positions_match
+                or (proof.report.audit.writer_epoch,
+                    proof.report.audit.writer_revision) !=
+                    (r.writer.epoch, r.writer.revision)
+                or ticker not in r.engine.market_shard
+                or not r.selection._available()):
+            return None
+        plan = r.management.current(ticker)
+        observation = r.selection._observation(ticker)
+        if (plan is None or plan.terms is None or observation is None
+                or not observation.observed_at <= now < observation.valid_until
+                or plan.inventory.blockers
+                or self._signature(plan) != proof.signature):
+            return None
+        _, book = r.management._book(ticker)
+        if book is None:
+            return None
+        return plan, observation, proof.report, book
+
     @staticmethod
     def _orders(plan):
         receipts = plan.inventory.orders
@@ -288,6 +326,10 @@ class RuntimeRewards:
     def _refresh(self, ticker):
         r = self.runtime
         source = self._sources(ticker)
+        telemetry_gap = False
+        if source is None:
+            source = self._bounded_gap_sources(ticker)
+            telemetry_gap = source is not None
         if source is None:
             if self._queue_identity_current(ticker):
                 self._suspend_sample(ticker, keep_queue_identity=True)
@@ -305,7 +347,8 @@ class RuntimeRewards:
             ticker,source,signature,now)
         ownership = repr(tuple(sorted((o.order.order_id,o.order.side,str(o.order.yes_price),
                                       str(o.order.remaining)) for o in plan.inventory.orders)))
-        continuity = (r.writer.epoch,plan.generation,plan.book_generation,
+        continuity = (r.writer.epoch,plan.generation,plan.account_revision,
+                      plan.book_generation,
                       hashlib.sha256(ownership.encode()).hexdigest())
         until = min(now+timedelta(seconds=5),observation.valid_until,plan.terms.valid_until,
                     report.observed_at+timedelta(seconds=5))
@@ -331,14 +374,21 @@ class RuntimeRewards:
             for program in programs:
                 self.tracker.record(program,at=now,valid_until=until,rate=None,
                                     reason='source_unverified')
-        self._proofs[ticker] = source[:3]
+        if telemetry_gap:
+            # A gap sample is historical telemetry only.  Never make it satisfy
+            # current() or any operational consumer.
+            self._proofs.pop(ticker, None)
+        else:
+            self._proofs[ticker] = source[:3]
 
     def current(self, ticker):
         if self.blocker is not None:
             return False
         source = self._sources(ticker)
         if source is None:
-            if self._queue_identity_current(ticker):
+            if self._bounded_gap_sources(ticker) is not None:
+                self._proofs.pop(ticker, None)
+            elif self._queue_identity_current(ticker):
                 self._suspend_sample(ticker, keep_queue_identity=True)
             else:
                 self._suspend_sample(ticker)
@@ -452,7 +502,12 @@ class RuntimeRewards:
                         # count a local no-report check as a failed reflection or
                         # destroy a still-bounded interpolation endpoint.
                         self.reflection_deferred += 1
-                        self._suspend_all()
+                        # Sample only the remainder of an already-proven queue
+                        # lease during an exact normal reconciliation. This does
+                        # not make the source current and never extends the lease.
+                        for ticker in tuple(self._reflection):
+                            self.refresh(ticker)
+                        self._proofs.clear()
                     next_reflection = self.runtime.clock()+self.reflection_interval
                 if self.checkpoint is not None and self.runtime.clock() >= next_checkpoint:
                     await self._save()

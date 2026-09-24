@@ -1,5 +1,39 @@
 # Current status
 
+## Generation 97 stopped flat; shutdown and reward-gap repairs verified offline — 2026-09-23
+
+Generation 97 completed 1,024/1,024 initial ranking, subscribed all four book
+shards plus account and lifecycle, reached 30 resting entry orders, and reported
+no position or current risk/accounting blocker. The 96 MiB diagnostic bound was
+active. A stable 30-second sample nevertheless observed only 10.606 of 183.601
+aggregate program-seconds (5.78%); frequent three-second account reconciliation
+still consumed nearly every five-second reward proof despite the earlier
+endpoint-retention repair.
+
+The supported stop canceled all 30 entries and the last runtime published
+`STOPPED_FLAT` with zero orders, zero positions and zero exposure. The parent and
+child are now absent. The supervisor incorrectly retained
+`attention_required/unknown_failure`: STOP advanced the durable control
+generation, then the exact still-bound child rejected its cleanup-only control
+message as an identity loss before publishing a clean result.
+
+Source now keeps the generation fence as revoked trading authority while
+allowing only exact bound `PULSE`, `STOP_HINT` and `FENCE_ACK` cleanup traffic;
+the parent also refreshes the durable state before applying a redundant local
+STOP. Reward telemetry may sample the unexpired remainder of a prior queue proof
+only during an exact normal reconciliation token with unchanged account
+generation/revision, writer state, order signature, plan, book and reward terms.
+It never restores current reward, selection, maintenance or dispatch authority,
+never extends the five-second lease, and records expired or changed evidence as
+UNKNOWN. Account revision is now part of tracker continuity.
+
+Focused account, runtime, reward and supervisor verification passes **376
+tests** with one expected Windows privilege skip. The complete suite passes
+**1,650 tests** in 292.702 seconds with the same expected skip; compile and
+whitespace checks pass. The bot remains stopped; this repair is offline
+verified but not deployed, and live reward coverage improvement remains
+unverified.
+
 ## One-sided incumbent release repaired offline — 2026-09-23
 
 Generation 92 exposed one 10-contract entry orphan that remained for more than

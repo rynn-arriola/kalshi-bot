@@ -1,5 +1,15 @@
 # Active work queue
 
+## After generation 97 log audit
+
+1. Keep the bot stopped until a separate supported restart is authorized. On
+   the next restart, require recovery-only clean disarm before normal launch if
+   the historical attention state demands it.
+2. In the next normal generation, remeasure observed versus unknown reward
+   seconds over a stable 30–60 second 30-order window. Verify clean supervisor
+   terminal handling when the next operational stop occurs. Estimates still do
+   not prove venue payout or profitability.
+
 ## After one-sided incumbent repair
 
 1. Publish the reviewed repair, then use the authorized supported stop/restart

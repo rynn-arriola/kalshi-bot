@@ -39,6 +39,9 @@ class TerminalFenceAdmissionTests(unittest.TestCase):
 
     def test_cleanup_messages_survive_stop_latch_but_no_trading_authority(self):
         args, state, native = self.values()
+        # STOP advances the durable control generation while the exact bound
+        # child still owns cleanup. That fence revokes authority, not identity.
+        state.generation += 1
         fence_ack = NS(kind=MessageKind.FENCE_ACK)
         self.assertFalse(child._admission_revoked(args, fence_ack, state, native,
             stop_signaled=True, parent_signaled=False))
