@@ -1,5 +1,79 @@
 # Findings — kalshi-bot
 
+## 169. Unattended reward-uptime review: recovery does not imply quote resumption — 2026-09-23
+
+VERIFIED against `79a4b1d` (runtime source `b75ea57`), with fake readers,
+disposable SQLite and pure supervisor transitions. Review only: no production
+code/configuration, orders, database contents or process state changed.
+
+Priority findings, not authorization to remove safety gates:
+
+1. **P1 — account/book readers can retire for the remainder of a runtime.**
+   `runtime.py:818-849,1046-1052,1380-1400`: unlike lifecycle, these readers get
+   one three-attempt round. Successful subscriptions/long healthy connections
+   do not reset that round. After three disconnects, the reader returns normally
+   and the main runtime continues without it. Offline reproduction observed
+   three account attempts, `retry_exhausted`, and a still-running runtime task.
+   Add classified transient recovery with bounded cooldown rounds and genuine
+   healthy-state criteria; never reset on ACK alone or retry integrity ambiguity.
+   `supervised_live_child.py:82-95` only projects accounting/risk blocker arrays:
+   a synthetic exhausted reader/recovery with those arrays empty is labeled
+   healthy. Report persistent reader/recovery failure separately from ordinary
+   short reconciliation gaps, and make it actionable rather than heartbeat-only.
+2. **P1 — a transient account-repair outage can remain latched after recovery.**
+   `runtime.py:1228-1234,1265-1285`: three failed passes clear the request and
+   enter `blocked_retry_exhausted`; periodic live refresh only services the
+   repaired state. A fake OSError on three passes followed by a restored source
+   produced no further calls absent a new external recovery trigger. Some events
+   can request recovery, but restored network availability alone is insufficient.
+   Distinguish transient transport/quota failures from ownership/economic
+   conflicts; add a supervised cooldown retry only for the former. Test this
+   while flat with resting orders and with no intervening stream event.
+3. **P1 capability/policy gap — crash recovery does not automatically rebuild.**
+   `supervisor_launch.py:111-112`, `supervision.py:703-705,749-752`: unexpected
+   death produces a recovery-only replacement; successful CLEAN recovery
+   disarms it. A pure-policy crash/recovery reproduction confirmed this exact
+   sequence. This is the existing intentional safety contract, not an accidental
+   regression. Unattended quote resumption needs an explicitly accepted policy
+   and tests: original arm authority remains valid, exact recovery completes,
+   all current account/risk/market checks pass, then rebuild through the existing
+   ranked dispatcher. Manual stop, loss/integrity holds and ambiguous orders
+   must never be automatically cleared.
+4. **P2 — compressed retention postpones, but does not eliminate saturation.**
+   `accounting.py:25,127-131`: 64 archives is a hard ceiling; the next required
+   archive raises `InvalidData` demanding external archival. A disposable fixture
+   with the limit scaled to one confirmed that the second archive refuses.
+   The immediate D-109 hot-journal repair is valid, but continuous service needs
+   measured capacity alerts and a supported, audited retention/rollover path.
+   No time-to-full estimate is established; never delete economic evidence or
+   enlarge limits blindly as a substitute for a lifecycle.
+
+MEASURED LIVE: generation 106 at 22:33:51 ET had 30 resting orders, zero
+positions, current account proof, six subscribed readers, no accounting/risk
+blockers and 154 completed steady refreshes. At 22:37:06 ET it still had 30
+orders/zero positions and six readers; refresh 204 was in flight (203 complete),
+so `account_current=false` in that snapshot is not evidence of persistent failure.
+The scanned generation log contained 11,453 events, no ERROR/CRITICAL records,
+19 startup REST retries and one reward-reflection `QuotaUnavailable` warning.
+Later mutation ACKs exist, but they alone do not prove every refill/exit path.
+
+Non-finding clarified: D-109's light reconciliation revokes/expires the entry
+lease at full capacity. That is not itself a refill defect: maintenance cancels
+use their own current proof; mutations/vacancies invalidate the steady scope and
+request full recovery before new entries. Do not renew authority merely to make
+`entry_allowed` green. Existing tests cover exact-scope and changed-snapshot
+escalation, not an uninterrupted multi-hour production guarantee.
+
+Verification: `scripts/Test-Bot.ps1 -Fast` **257 passed**; durable-accounting
+suite **26 passed**. Ignored local `data/review-uptime/probe.py` reproduced the
+two parked recovery paths, crash-to-disarmed policy, archive ceiling and health
+projection. No live fault injection, restart, full-suite rerun or long soak was
+performed. Passing tests affirm existing behavior, not the desired new uptime
+contract. Proposed acceptance: repeated healthy/disconnect rounds, temporary
+REST outage/restore, child crash to verified recovery to ranked refill, manual
+stop/ambiguous-outcome non-resumption, fill/exit/vacancy refill and compressed
+retention rollover, all with synthetic sources before an authorized deployment.
+
 ## 168. D-109 recovered the full journal; Kalshi persistence remains heavier than Poly — 2026-09-23
 
 MEASURED LIVE on the operator-authorized generation-102 to generation-106

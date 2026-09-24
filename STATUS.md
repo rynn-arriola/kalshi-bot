@@ -1,5 +1,18 @@
 # Current status
 
+## Uptime review complete; unattended recovery gaps remain — 2026-09-23
+
+Generation 106 remains running unchanged: at 22:37 ET, 30 resting orders,
+zero positions and all six readers subscribed. This review did not restart,
+stop or mutate the bot. [Finding 169](FINDINGS.md) records four priorities:
+finite account/book retry rounds, transient account repair that can remain
+blocked, intentional crash-recovery-to-disarmed policy, and finite archive
+capacity. Healthy process heartbeats alone do not establish recovery/refill
+readiness. Offline reproductions confirmed these paths; 257 fast tests and
+26 durable-accounting tests passed. Fixes/automatic rearm policy are not yet
+implemented or authorized by this review, and long unattended uptime is not
+certified. Current short reconciliation gaps are distinct from persistent faults.
+
 ## Generation 106 running on D-109; journal recovery accepted live — 2026-09-23
 
 The operator-authorized restart first canceled all 30 generation-102 entries.
