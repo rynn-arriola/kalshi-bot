@@ -1,5 +1,21 @@
 # Active work queue
 
+## After generation 102 steady-state repair
+
+1. Generation 102 is live but account-blocked with 30 resting orders. A
+   supported restart/deployment requires separate operator authorization; do not
+   clear the database hold, cancel orders or replace the child ad hoc.
+2. On an authorized restart, require the normal recovery path to archive the
+   superseded journal evidence, clear only the capacity hold through a successful
+   exact release, and report current account proof before any new entry.
+3. Measure full-recovery cadence, REST spend, process CPU, steady-refresh
+   counters and reward observed/unknown seconds over 30–60 stable seconds. Verify
+   a synthetic or natural vacancy/fill immediately escalates to full recovery.
+4. The broad-discovery functional checks pass, but two runs missed its 100 ms
+   p99 loop-lag threshold at 117–121 ms. Investigate that separate timing gate
+   before claiming broad-discovery performance acceptance; it does not invalidate
+   the exact full-cap benchmark or the 1,657-test functional release gate.
+
 ## After generation 97 log audit
 
 1. Keep the bot stopped until a separate supported restart is authorized. On

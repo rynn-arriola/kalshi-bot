@@ -1,5 +1,30 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — repeated full recovery filled the journal and starved reward proof
+
+**Mechanism:** At the exact 30-order/flat steady state, every expiring three-
+second account report launched the full history/opening-account recovery. Each
+pass took about three seconds, dirtied all 1,024 markets, expired most five-
+second reward proofs and appended a new inspection, cash observation and
+operational release. The 64 MiB hot journal eventually latched
+`accounting_journal_full` and recovery exhausted.
+
+**Fix:** A successful full recovery may establish a scheduling-only scope only
+when ranking coverage is complete, all 30 venue orders exactly join to owned
+non-reducing entries, the account is flat and all source/dispatcher/window gates
+are current. That scope uses one exact account snapshot refresh and owner-only
+deep evaluation while preserving all WebSocket ingestion. Any difference or
+failure returns to full recovery. Superseded steady observations are atomically
+compressed into bounded hash-verified archives; economic evidence is never
+archived and archive identities remain deduplicated.
+
+**Verification:** Real account/writer integration, changed-state escalation,
+owner-only scheduling, archive/reopen/deduplication and capacity-hold regressions
+pass. The maintained fast suite passes 257 tests; the complete suite passes
+1,657 tests with one expected Windows privilege skip. The 1,024-market steady
+benchmark processed every decision with a 0.0714 CPU ratio. No live process,
+order or database was changed.
+
 ## 2026-09-23 — STOP generation fence broke clean child completion
 
 **Mechanism:** Durable STOP correctly advanced the control generation and

@@ -1,5 +1,28 @@
 # Findings — kalshi-bot
 
+## 167. Full recovery cadence exhausted the accounting journal — 2026-09-23
+
+MEASURED LIVE on generation 102 using read-only status, logs and SQLite. The
+three-second account refresh initiated a complete recovery about every 5.56
+seconds; each pass took roughly 3.15 seconds median, reread account/history/cash
+sources and dirtied all 1,024 markets. The process consumed about 90.9% of one
+CPU core while applying roughly 370 book events and 494 decisions per second.
+A stable reward sample observed 39 of 275 program-seconds (14.18%).
+
+At 21:29 ET, the 64 MiB hot accounting limit latched. SQLite integrity remained
+OK and exact counters matched 23,975 rows / 67,101,670 payload bytes. The journal
+contained 8,051 inspections, 8,054 cash observations and 7,867 operational
+releases, versus three other records. This proves repetitive recovery evidence,
+not a new fill or position, caused saturation. The runtime correctly disabled
+entry, but the 30 resting orders remained under a stale account proof.
+
+The offline repair uses a narrow exact account refresh only at the proven flat
+30-order cap, suppresses optional deep work for the 1,009 unowned markets while
+still applying every WebSocket delta, and archives only superseded steady-state
+observations into bounded exact audit blobs. Any changed economic/source state
+falls back to full recovery. Live effectiveness is not claimed before an
+authorized supported restart.
+
 ## 166. Generation 97 exposed two cadence/control defects — 2026-09-23
 
 MEASURED LIVE before the supported stop: generation 97 was stable at 30 resting

@@ -1,5 +1,32 @@
 # Current status
 
+## Generation 102 degraded; bounded steady-state repair verified offline — 2026-09-23
+
+Generation 102 still runs deployed source `fb5dc68`. Its parent and child remain
+present with all six readers subscribed, 30 resting entry orders, zero positions
+and about $142.70 exposure. Dispatch, reward tracking and logging remain alive,
+but account authority is blocked: repeated full recovery filled the 64 MiB hot
+accounting journal at 21:29 ET, latching `accounting_journal_full` and
+`blocked_retry_exhausted`. Read-only SQLite validation reports `quick_check=ok`;
+23,972 of 23,975 journal rows are repetitive inspection, cash and operational-
+release observations, not new fills or positions. The running generation has not
+been restarted, canceled or modified.
+
+Offline source now uses one exact account snapshot refresh when the account is
+flat and at its 30-order cap, retains full WebSocket ingestion, and performs deep
+market work only for the 15 exact owner markets until any source/state change
+forces ordinary full recovery. Superseded recovery observations are moved
+atomically into compressed, hash-verified audit archives; economic events remain
+hot and archived event identities still prevent duplicates. A synthetic 1,024-
+market benchmark processed all decisions while suppressing optional work for
+1,009 unowned markets and used 7.14% of baseline CPU. The fast suite passes 257
+tests and the complete suite passes 1,657 tests with one expected Windows
+privilege skip. Deployment and supported restart remain separate operator
+decisions; live recovery, CPU and reward-coverage improvement are unverified.
+The separate broad-discovery benchmark completed all functional checks twice
+but missed its existing 100 ms p99 loop-lag target at 117–121 ms; that timing
+follow-up is recorded rather than represented as a passing acceptance result.
+
 ## Generation 97 stopped flat; shutdown and reward-gap repairs verified offline — 2026-09-23
 
 Generation 97 completed 1,024/1,024 initial ranking, subscribed all four book

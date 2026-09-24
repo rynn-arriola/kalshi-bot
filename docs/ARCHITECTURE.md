@@ -1,5 +1,14 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-109 bounds steady full-cap work without weakening recovery. Only an exact
+flat account at the resting-order cap, with complete ranking and exact owned-
+order joins, may use the light account-snapshot refresh and owner-only deep
+evaluation scope. All WebSocket events are still applied. Any account, writer,
+ingress, dispatch, window or economic change drops the scope and invokes the
+ordinary full recovery. Superseded non-economic recovery observations use a
+bounded exact compressed archive; current operational and economic evidence
+remains in the hot journal.
+
 D-104 separates book transport scale from metadata scheduling. Broad discovery
 uses four bounded shared metadata workers, with due inventory/order/maintenance
 owners ahead of optional candidates; narrow and recovery modes retain two. This

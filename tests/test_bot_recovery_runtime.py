@@ -5,8 +5,9 @@ from datetime import timedelta
 from decimal import Decimal as D
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from kalshi_bot.ledger import Fill, Ledger
 from kalshi_bot.orders import parse_order
@@ -28,6 +29,7 @@ class AccountReads(Reads):
     def __init__(self, *args, quantity="0", **kwargs):
         super().__init__(*args, **kwargs)
         self.quantity = quantity
+        self.resting_orders = ()
         self.before_collect = None
 
     async def read(self, name, **kwargs):
@@ -41,7 +43,7 @@ class AccountReads(Reads):
             await self.before_collect(name)
         if name in {"orders", "positions"}:
             self.calls.append((name, kwargs))
-            rows = ()
+            rows = self.resting_orders if name == "orders" else ()
             if name == "positions" and self.quantity != "0":
                 rows = (dict(ticker="A", position_fp=self.quantity,
                              market_exposure_dollars=str(abs(D(self.quantity))*D(".5")), exchange_index=0),)
@@ -135,6 +137,133 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.tasks.append(task)
         await self.eventually(lambda: self.runtime.account_subscribed)
         return task
+
+    async def steady_scope(self):
+        """Install exact synthetic full-cap/flat evidence; grants no authority."""
+        await self.connected()
+        runtime = self.runtime
+        runtime.broad_discovery = True
+        gate = SimpleNamespace(reason='coverage_complete')
+        runtime.selection = SimpleNamespace(initial_ranking=gate, refresh=Mock())
+        order = SimpleNamespace(order_id='o', client_id='c', ticker='A',
+            exchange_index=0, book_side='bid', yes_price=D('.5'), remaining=D(10))
+        snapshot = SimpleNamespace(positions=(), orders=(order,),
+            available_balance=D(500), balance_updated_ts=1, subaccount=0)
+        audit = SimpleNamespace(blockers=(), consistent=True)
+        report = SimpleNamespace(snapshot=snapshot, audit=audit,
+            positions_match=True, unresolved_intents=1, observed_at=NOW)
+        current = [report]
+        runtime.account.current_report = lambda _now: current[0]
+        runtime.current_entry_orders = lambda: current[0].snapshot.orders
+        runtime.accounting_result = SimpleNamespace(window=SimpleNamespace(
+            start=NOW-timedelta(hours=1), end=NOW+timedelta(hours=1), held=False, cap=1))
+        runtime._refresh_continuity = Mock()
+        self.assertEqual(runtime._record_steady_account_scope(report), frozenset(('A',)))
+        return current, report
+
+    async def test_full_cap_scope_suppresses_optional_market_evaluation(self):
+        await self.steady_scope()
+        runtime = self.runtime
+        runtime.management.refresh = AsyncMock(return_value=None)
+        await runtime._evaluate('B', object(), 1)
+        runtime.management.refresh.assert_not_awaited()
+        self.assertEqual((self.evaluated, runtime.suppressed_market_evaluations), ([], 1))
+        await runtime._evaluate('A', object(), 1)
+        runtime.management.refresh.assert_awaited_once_with('A')
+        self.assertEqual(self.evaluated, ['A'])
+        runtime.request_recovery()
+        await runtime._evaluate('B', object(), 1)
+        self.assertEqual(self.evaluated, ['A', 'B'])
+
+    async def test_steady_scope_requires_full_cap_and_exact_source_revision(self):
+        current, report = await self.steady_scope()
+        runtime = self.runtime
+        runtime.accounting_result.window.cap = 2
+        self.assertIsNone(runtime._record_steady_account_scope(report))
+        runtime.accounting_result.window.cap = 1
+        self.assertEqual(runtime._record_steady_account_scope(report), frozenset(('A',)))
+        await runtime.writer.observe(NOW)
+        self.assertIsNone(runtime._current_steady_account_scope())
+        self.assertIs(current[0], report)
+
+    async def test_successful_full_recovery_marks_only_proven_owner_scope_at_cap(self):
+        await self.steady_scope()
+        runtime = self.runtime
+        runtime.recover_once = AsyncMock(return_value=True)
+        runtime.request_recovery()
+        task = asyncio.create_task(runtime._recover())
+        self.tasks.append(task)
+        await self.eventually(lambda: runtime.recovery_state == 'repaired_entries_blocked')
+        self.assertEqual(runtime.engine.dirty._dirty, {'A'})
+        self.assertEqual(runtime._current_steady_account_scope(), frozenset(('A',)))
+
+    async def test_steady_refresh_uses_one_snapshot_and_only_owned_scope(self):
+        current, prior = await self.steady_scope()
+        runtime = self.runtime
+        refreshed_snapshot = SimpleNamespace(positions=prior.snapshot.positions,
+            orders=prior.snapshot.orders, available_balance=prior.snapshot.available_balance,
+            balance_updated_ts=2, subaccount=prior.snapshot.subaccount)
+        refreshed = SimpleNamespace(snapshot=refreshed_snapshot, audit=prior.audit,
+            positions_match=True, unresolved_intents=0, observed_at=NOW)
+        async def reconcile(*_args, **_kwargs):
+            current[0] = refreshed
+            return refreshed
+        runtime.account.reconcile = AsyncMock(side_effect=reconcile)
+        runtime.management.refresh = AsyncMock(return_value=None)
+        runtime.last_reports = ('history', prior)
+        runtime.rewards = SimpleNamespace(refresh=Mock(), request_reflection=Mock())
+        self.assertTrue(await runtime._refresh_steady_account())
+        runtime.account.reconcile.assert_awaited_once()
+        runtime.management.refresh.assert_awaited_once_with('A')
+        runtime.selection.refresh.assert_called_once_with('A')
+        runtime.rewards.refresh.assert_called_once_with('A')
+        runtime.rewards.request_reflection.assert_called_once_with()
+        self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertEqual((runtime.steady_refresh_attempts,
+                          runtime.steady_refresh_completed,
+                          runtime.steady_refresh_escalations), (1, 1, 0))
+        self.assertIs(runtime.last_reports[1], refreshed)
+
+    async def test_steady_refresh_changed_snapshot_escalates_to_full_recovery(self):
+        current, prior = await self.steady_scope()
+        runtime = self.runtime
+        changed_snapshot = SimpleNamespace(positions=(), orders=(),
+            available_balance=D(499), balance_updated_ts=2, subaccount=0)
+        changed = SimpleNamespace(snapshot=changed_snapshot, audit=prior.audit,
+            positions_match=True, unresolved_intents=0, observed_at=NOW)
+        async def reconcile(*_args, **_kwargs):
+            current[0] = changed
+            return changed
+        runtime.account.reconcile = AsyncMock(side_effect=reconcile)
+        self.assertFalse(await runtime._refresh_steady_account())
+        self.assertTrue(runtime.recovery_requested.is_set())
+        self.assertIsNone(runtime._steady_account_scope)
+        self.assertEqual((runtime.steady_refresh_attempts,
+                          runtime.steady_refresh_completed,
+                          runtime.steady_refresh_escalations), (1, 0, 1))
+
+    async def test_steady_refresh_with_real_account_and_writer_keeps_exact_scope(self):
+        await self.connected()
+        runtime = self.runtime
+        row = wire_order('steady', fill_count_fp='0', remaining_count_fp='10',
+                         status='resting', last_update_time=NOW.isoformat())
+        await self.writer.reserve_intent('c-steady', dict(ticker='A', side='bid',
+            price='0.5', count='10', subaccount=0, exchange_index=0), EXEC)
+        await self.writer.transition_intent('c-steady', 'SENDING')
+        await self.writer.order(parse_order(row), NOW)
+        self.reads.resting_orders = (row,)
+        report = await runtime.account.reconcile(self.reads, now=lambda: NOW)
+        self.assertIsNotNone(report)
+        runtime.broad_discovery = True
+        runtime.selection = SimpleNamespace(
+            initial_ranking=SimpleNamespace(reason='coverage_complete'), refresh=Mock())
+        runtime.accounting_result = SimpleNamespace(window=SimpleNamespace(
+            start=NOW-timedelta(hours=1), end=NOW+timedelta(hours=1), held=False, cap=1))
+        runtime.management.refresh = AsyncMock(return_value=None)
+        self.assertEqual(runtime._record_steady_account_scope(report), frozenset(('A',)))
+        self.assertTrue(await runtime._refresh_steady_account())
+        self.assertEqual(runtime._current_steady_account_scope(), frozenset(('A',)))
+        self.assertEqual(runtime.steady_refresh_completed, 1)
 
     async def test_unbound_fill_is_durable_and_later_recovered_via_order(self):
         row = await self.reserve()

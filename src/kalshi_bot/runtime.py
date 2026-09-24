@@ -5,7 +5,8 @@ GET reads, single-use reader factories, UTC clock and history scope. The owner
 must close the writer after run() returns so accepted writes finish draining.
 """
 import asyncio
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 import random
 import time
 from uuid import uuid4
@@ -22,6 +23,23 @@ from .quota import QuotaUnavailable
 from .observability import NO_LOG
 from .transport import WebSocketReaders, topology
 from .values import InvalidData, integer, utc
+
+
+@dataclass(frozen=True)
+class _SteadyAccountScope:
+    """Exact full-cap/flat snapshot allowed to suppress optional discovery work.
+
+    This is scheduling evidence only.  It never substitutes for a current
+    account report, accounting lease, selection proof or dispatch authority.
+    """
+    account_generation: int
+    account_revision: int
+    writer_epoch: str
+    writer_revision: int
+    ingress_revision: int
+    window_end: datetime
+    snapshot_signature: tuple
+    tickers: frozenset[str]
 
 
 def readonly_reader_factory(signer, *, connector=None):
@@ -127,6 +145,11 @@ class RecoveryRuntime:
         self.dispatch_supervisor = None  # Explicit offline attachment only.
         self._post_drain_recovery_pending = False
         self._safety_recovery_retries = set()
+        self._steady_account_scope = None
+        self.steady_refresh_attempts = 0
+        self.steady_refresh_completed = 0
+        self.steady_refresh_escalations = 0
+        self.suppressed_market_evaluations = 0
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
@@ -249,6 +272,16 @@ class RecoveryRuntime:
         return self.dispatch_supervisor.request(ticker, priority)
 
     async def _evaluate(self, ticker, book, generation):
+        scope = self._current_steady_account_scope()
+        if scope is not None and ticker not in scope:
+            # At the exact resting-entry cap, existing rewarded owners are
+            # retained rather than displaced for rank.  Continue applying every
+            # WebSocket delta, but avoid rebuilding empty-market inventory and
+            # ranking plans until a vacancy or conflicting account evidence
+            # clears this scheduling hint.  Safety/authority consumers never use
+            # this hint and all owned markets remain on the normal path.
+            self.suppressed_market_evaluations += 1
+            return
         await self.management.refresh(ticker)
         self._request_inventory_dispatch(ticker)
         if self.selection is not None:
@@ -505,6 +538,7 @@ class RecoveryRuntime:
         return permits(self.live_session, self.writer)
 
     def request_recovery(self):
+        self._steady_account_scope = None
         self.last_reports = None
         self._refresh_continuity()
         self.recovery_requested.set()  # Coalesced, never a task per market/event.
@@ -531,12 +565,124 @@ class RecoveryRuntime:
         return True
 
     def _revoke(self):
+        self._steady_account_scope = None
         self.ingress_revision += 1
         self.last_reports = None
         self.account._invalidate()
         for ticker in self.engine.market_shard:
             self._invalidate_market(ticker)
         self._refresh_continuity()
+
+    @staticmethod
+    def _snapshot_signature(report):
+        snapshot = report.snapshot
+        return (snapshot.positions, snapshot.orders, snapshot.available_balance,
+                snapshot.subaccount)
+
+    def _current_steady_account_scope(self):
+        """Return an exact scheduling scope, never live/account authority."""
+        value = self._steady_account_scope
+        if value is None:
+            return None
+        gate = self.selection.initial_ranking if self.selection is not None else None
+        now = utc(self.now())
+        if (not self.broad_discovery or gate is None or gate.reason != 'coverage_complete'
+                or not self.account.connected or self.engine.stopped or self.engine.failed
+                or self.writer.failed or self.stop_requested.is_set()
+                or now >= value.window_end
+                or (self.account.generation, self.account.revision) !=
+                   (value.account_generation, value.account_revision)
+                or (self.writer.epoch, self.writer.revision) !=
+                   (value.writer_epoch, value.writer_revision)
+                or self.ingress_revision != value.ingress_revision):
+            self._steady_account_scope = None
+            return None
+        return value.tickers
+
+    def _record_steady_account_scope(self, report, *, expected_signature=None):
+        """Remember exact full-cap/flat state only to bound optional CPU work."""
+        self._steady_account_scope = None
+        gate = self.selection.initial_ranking if self.selection is not None else None
+        window = getattr(self.accounting_result, 'window', None)
+        now = utc(self.now())
+        dispatcher = self.dispatch_supervisor.dispatcher.status() if self.dispatch_supervisor else None
+        signature = self._snapshot_signature(report)
+        rows = self.current_entry_orders()
+        if (not self.broad_discovery or gate is None or gate.reason != 'coverage_complete'
+                or report is not self.account.current_report(now)
+                or not self.account.connected or self.engine.stopped or self.engine.failed
+                or self.writer.failed or self.stop_requested.is_set()
+                or report.audit is None or report.audit.blockers or not report.audit.consistent
+                or not report.positions_match
+                or report.snapshot.positions or rows is None
+                or len(rows) != len(report.snapshot.orders)
+                or window is None or window.held or not window.start <= now < window.end
+                or window.cap <= 0 or len(rows) != window.cap
+                or (expected_signature is not None and signature != expected_signature)
+                or (dispatcher is not None and (dispatcher.active is not None or dispatcher.queued
+                    or dispatcher.stopping or dispatcher.failed))):
+            return None
+        value = _SteadyAccountScope(self.account.generation, self.account.revision,
+            self.writer.epoch, self.writer.revision, self.ingress_revision, window.end,
+            signature, frozenset(row.ticker for row in rows))
+        self._steady_account_scope = value
+        return value.tickers
+
+    async def _refresh_steady_account(self):
+        """Refresh a proven full-cap/flat snapshot without a full history pass.
+
+        The account REST enumeration remains exact and source-fenced.  Any
+        changed economic/account state or concurrent full-recovery request drops
+        this optimization and queues the ordinary recovery owner.
+        """
+        scope = self._current_steady_account_scope()
+        if scope is None or self.recovery_requested.is_set() or self.recovery_lock.locked():
+            return False
+        owner = self.dispatch_supervisor
+        if owner is not None:
+            state = owner.dispatcher.status()
+            if state.active is not None or state.queued or state.stopping or state.failed:
+                return False
+        async with self.recovery_lock:
+            scope = self._current_steady_account_scope()
+            if scope is None or self.recovery_requested.is_set():
+                return False
+            prior = self._steady_account_scope
+            self.steady_refresh_attempts += 1
+            try:
+                async with asyncio.timeout(20):
+                    report = await self.account.reconcile(RecoveryReads(self.reads), now=self.now)
+            except (InvalidData, QuotaUnavailable, TimeoutError, OSError):
+                report = None
+            if (report is None or self.recovery_requested.is_set()
+                    or (self.account.generation, self.account.revision, self.ingress_revision) !=
+                       (prior.account_generation, prior.account_revision, prior.ingress_revision)):
+                self.steady_refresh_escalations += 1
+                self.request_recovery()
+                return False
+            refreshed = self._record_steady_account_scope(
+                report, expected_signature=prior.snapshot_signature)
+            if refreshed != scope:
+                self.steady_refresh_escalations += 1
+                self.request_recovery()
+                return False
+            if self.last_reports is not None:
+                self.last_reports = (self.last_reports[0], report)
+            self._refresh_continuity()
+            for ticker in sorted(scope):
+                await self.management.refresh(ticker)
+                self._request_inventory_dispatch(ticker)
+                if self.selection is not None:
+                    self.selection.refresh(ticker)
+                if self.rewards is not None:
+                    self.rewards.refresh(ticker)
+                if self.maintenance is not None:
+                    self.maintenance.refresh(ticker)
+                    self._request_quote_dispatch(ticker)
+            if self.rewards is not None:
+                self.rewards.request_reflection()
+            self.steady_refresh_completed += 1
+            return True
 
     async def _stage(self, event):
         msg = event["msg"]
@@ -1046,7 +1192,14 @@ class RecoveryRuntime:
                     self.recovery_state = "repaired_entries_blocked"
                     if self.rewards is not None:
                         self.rewards.request_reflection()
-                    for ticker in self.engine.market_shard:
+                    # A full-cap/flat runtime has no available entry slot and
+                    # D-098 retains qualifying owners.  Refresh those exact
+                    # owners after recovery; a vacancy or any source change
+                    # clears the hint and restores complete-universe work.
+                    account = self.account.current_report(self.now())
+                    scope = (self._record_steady_account_scope(account)
+                             if account is not None else None)
+                    for ticker in scope or self.engine.market_shard:
                         self.engine.dirty.mark(ticker)
                     self.engine.wake.set()
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation)
@@ -1106,8 +1259,9 @@ class RecoveryRuntime:
     async def _live_refresh(self):
         """Cash/account completeness has no full WS snapshot: refresh centrally.
 
-        Reuse the single recovery worker/budget, only when the previous pass
-        finished and its short-lived report is expiring. Never reset exhaustion.
+        A proven full-cap/flat account needs one exact snapshot refresh for
+        incumbent monitoring, not repeated history/cash-boundary reconstruction.
+        Every other state reuses the full recovery worker and its bounded budget.
         """
         while not self.stop_requested.is_set():
             self._request_post_drain_recovery()
@@ -1122,7 +1276,13 @@ class RecoveryRuntime:
                 # every outcome already requests authoritative recovery.
                 report = self.account.current_report(self.now())
                 if report is None or (utc(self.now())-report.observed_at).total_seconds() >= 3:
-                    self.request_recovery()
+                    if self._current_steady_account_scope() is not None and report is not None:
+                        refreshed = await self._refresh_steady_account()
+                        if (not refreshed and self._current_steady_account_scope() is None
+                                and not self.recovery_requested.is_set()):
+                            self.request_recovery()
+                    else:
+                        self.request_recovery()
             try:
                 await asyncio.wait_for(self.stop_requested.wait(), .5)
             except TimeoutError:
@@ -1286,7 +1446,14 @@ class RecoveryRuntime:
         return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
-            completed_repair_passes=self.recovery_passes, readers=dict(self.reader_states),
+            completed_repair_passes=self.recovery_passes,
+            steady_account_refresh=dict(attempts=self.steady_refresh_attempts,
+                completed=self.steady_refresh_completed,
+                escalations=self.steady_refresh_escalations,
+                scoped_markets=(len(self._current_steady_account_scope() or ())),
+                suppressed_market_evaluations=self.suppressed_market_evaluations,
+                grants_authority=False),
+            readers=dict(self.reader_states),
             connection_attempts=dict(self.connection_attempts),
             reader_retry_rounds=dict(self.reader_retry_rounds), engine=self.engine.status(),
             account_verification=self.verification_status(), logging=self.diagnostics.status(),

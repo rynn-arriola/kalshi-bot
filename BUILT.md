@@ -1,5 +1,23 @@
 # What exists
 
+## Exact steady full-cap refresh and accounting archive — 2026-09-23
+
+The runtime can retain an exact, scheduling-only full-cap/flat scope after a
+successful complete recovery. It continues to ingest and apply every WebSocket
+event, but avoids optional inventory/ranking/reward recomputation for unowned
+markets and replaces repeated history/opening-account passes with one exact
+account snapshot read. Changed orders, positions, cash, source revisions,
+dispatcher activity, a vacancy or an error immediately requests the existing
+full recovery. Status exposes attempts, completions, escalations and suppressed
+evaluations; none of these fields grants authority.
+
+The schema also adds bounded exact compressed archives for superseded
+`inspection`, `cash` and `operational_release` observations. Current rows needed
+for operation and all economic/conflict evidence stay hot. Archive payloads and
+membership are hash-checked on cold open, and archived event identities remain
+deduplicated. The 257-test fast gate and 1,657-test complete gate pass; the new
+steady benchmark passes. Deployment state belongs in `STATUS.md`.
+
 ## Cleanup-generation and bounded reward-gap repair — 2026-09-23
 
 The production child now distinguishes its exact parent/child/native binding

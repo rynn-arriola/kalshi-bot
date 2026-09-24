@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-109 — Bound steady full-cap recovery and accounting retention
+
+- **Status:** ACCEPTED and implemented offline; deployment/restart not authorized,
+  2026-09-23.
+- **Decision owner:** Operator directed the measured generation-102 recovery,
+  CPU, reward-coverage and accounting-capacity issues to be addressed.
+- **Scope:** At an exact full-cap, flat, fully ranked account, refresh the exact
+  account snapshot without repeating history/opening-account reconstruction,
+  keep full WebSocket ingestion while limiting optional deep evaluation to the
+  owned markets, and losslessly archive superseded recovery observations before
+  the durable accounting journal reaches its hot limit.
+- **Boundary:** Any fill, position, order, cash, account/source revision,
+  dispatcher work, vacancy, window change or failed refresh returns to the
+  existing full recovery. The optimization grants no trading authority and does
+  not change limits, ranking, quote prices, exits, deployment or live orders.
+
 ### D-108 — Reconcile the explicit manual close and resume the preserved account
 
 - **Status:** ACCEPTED, implemented, published and deployed, 2026-09-23.

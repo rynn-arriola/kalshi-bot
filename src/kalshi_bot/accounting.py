@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from hashlib import sha256
 import json
+import zlib
 
 from .opening_account import OpeningAccountEvidence, assess_opening_accounting
 from .values import InvalidData, identity, utc
@@ -17,6 +18,14 @@ from .values import InvalidData, identity, utc
 MAX_ROWS = 65536
 MAX_BYTES = 64 * 1024 * 1024
 MAX_PAYLOAD = 1024 * 1024
+ARCHIVE_TRIGGER_ROWS = 49152
+ARCHIVE_TRIGGER_BYTES = 48 * 1024 * 1024
+ARCHIVE_BATCH_ROWS = 2048
+ARCHIVE_RETAIN_PER_KIND = 64
+MAX_ARCHIVES = 64
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_COMPRESSED_BYTES = 16 * 1024 * 1024
+ARCHIVABLE_KINDS = ('inspection', 'cash', 'operational_release')
 HOLD_CODES = frozenset({
     'opening_proof_unresolved', 'opening_source_stale', 'opening_local_state_changed',
     'opening_ledger_not_empty', 'opening_boundary_changed', 'account_scope_conflict',
@@ -84,12 +93,24 @@ def _append(ledger, kind, key, payload, at):
     """Capacity failure commits a restriction; it must not roll back the pause."""
     fingerprint = digest(encode([kind, key, payload]))
     conn = ledger.connection
-    if conn.execute('SELECT 1 FROM accounting_events WHERE digest=?', (fingerprint,)).fetchone():
+    if (conn.execute('SELECT 1 FROM accounting_events WHERE digest=?', (fingerprint,)).fetchone()
+            or conn.execute('SELECT 1 FROM accounting_event_archive_members WHERE digest=?',
+                            (fingerprint,)).fetchone()):
         return fingerprint, False
     size = len(payload.encode())
     row = conn.execute('SELECT rows,bytes FROM accounting_state WHERE id=1').fetchone()
     if row is None:
         raise InvalidData('accounting counters missing')
+    archived = False
+    if conn.execute('SELECT 1 FROM accounting_baseline WHERE id=1').fetchone():
+        while (row[0] >= ARCHIVE_TRIGGER_ROWS
+                or row[1] + size > ARCHIVE_TRIGGER_BYTES):
+            if not _archive_superseded(ledger):
+                break
+            archived = True
+            row = conn.execute('SELECT rows,bytes FROM accounting_state WHERE id=1').fetchone()
+        if archived and row[0] < MAX_ROWS and row[1] + size <= MAX_BYTES:
+            conn.execute("DELETE FROM accounting_holds WHERE code='accounting_journal_full'")
     if row[0] >= MAX_ROWS or row[1] + size > MAX_BYTES:
         _hold(ledger, 'accounting_journal_full', fingerprint, at)
         return fingerprint, False
@@ -101,6 +122,112 @@ def _append(ledger, kind, key, payload, at):
                  (fingerprint, kind, key, payload, utc(at).isoformat()))
     conn.execute('UPDATE accounting_state SET rows=rows+1,bytes=bytes+? WHERE id=1', (size,))
     return fingerprint, True
+
+
+def _archive_superseded(ledger):
+    """Move superseded steady-state observations into exact compressed audit storage."""
+    conn = ledger.connection
+    if conn.execute('SELECT COUNT(*) FROM accounting_event_archives').fetchone()[0] >= MAX_ARCHIVES:
+        raise InvalidData('accounting archive capacity reached; external archival required')
+    cutoffs = []
+    for kind in ARCHIVABLE_KINDS:
+        recent = conn.execute(
+            'SELECT rowid FROM accounting_events WHERE kind=? ORDER BY rowid DESC LIMIT ?',
+            (kind, ARCHIVE_RETAIN_PER_KIND)).fetchall()
+        if len(recent) == ARCHIVE_RETAIN_PER_KIND:
+            cutoffs.append((kind, min(row[0] for row in recent)))
+    if not cutoffs:
+        return False
+    predicate = ' OR '.join('(kind=? AND rowid<?)' for _ in cutoffs)
+    parameters = tuple(value for pair in cutoffs for value in pair) + (ARCHIVE_BATCH_ROWS,)
+    rows = conn.execute(
+        'SELECT digest,kind,event_key,payload,first_seen_at FROM accounting_events WHERE '
+        f'({predicate}) ORDER BY rowid LIMIT ?', parameters).fetchall()
+    if not rows:
+        return False
+    exact = [[row['digest'], row['kind'], row['event_key'], row['payload'], row['first_seen_at']]
+             for row in rows]
+    encoded = json.dumps({'version': 1, 'events': exact},
+                         sort_keys=True, separators=(',', ':')).encode('utf-8')
+    if len(encoded) > MAX_ARCHIVE_BYTES:
+        raise InvalidData('accounting archive exceeds byte capacity')
+    archive_id = sha256(b'kalshi-accounting-archive-v1\0' + encoded).hexdigest()
+    compressed = zlib.compress(encoded, level=6)
+    if len(compressed) > MAX_ARCHIVE_COMPRESSED_BYTES:
+        raise InvalidData('compressed accounting archive exceeds byte capacity')
+    payload_bytes = sum(len(row['payload'].encode()) for row in rows)
+    first_seen = min(row['first_seen_at'] for row in rows)
+    last_seen = max(row['first_seen_at'] for row in rows)
+    conn.execute('INSERT INTO accounting_event_archives VALUES (?,?,?,?,?,?)',
+                 (archive_id, len(rows), payload_bytes, first_seen, last_seen, compressed))
+    conn.executemany('INSERT INTO accounting_event_archive_members VALUES (?,?)',
+                     ((row['digest'], archive_id) for row in rows))
+    conn.executemany('DELETE FROM accounting_events WHERE digest=?',
+                     ((row['digest'],) for row in rows))
+    conn.execute('UPDATE accounting_state SET rows=rows-?,bytes=bytes-? WHERE id=1',
+                 (len(rows), payload_bytes))
+    state = conn.execute('SELECT rows,bytes FROM accounting_state WHERE id=1').fetchone()
+    if state[0] < 0 or state[1] < 0:
+        raise InvalidData('accounting archive counter underflow')
+    return True
+
+
+def _decode_archive(blob):
+    if not isinstance(blob, bytes) or len(blob) > MAX_ARCHIVE_COMPRESSED_BYTES:
+        raise InvalidData('accounting archive compressed size invalid')
+    decoder = zlib.decompressobj()
+    encoded = decoder.decompress(blob, MAX_ARCHIVE_BYTES + 1)
+    if (len(encoded) > MAX_ARCHIVE_BYTES or decoder.unconsumed_tail
+            or not decoder.eof or decoder.unused_data):
+        raise InvalidData('accounting archive compression invalid')
+    try:
+        source = json.loads(encoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise InvalidData('accounting archive payload invalid') from exc
+    if (not isinstance(source, dict) or source.get('version') != 1
+            or not isinstance(source.get('events'), list)):
+        raise InvalidData('accounting archive schema invalid')
+    return encoded, source['events']
+
+
+def _validate_archives(conn):
+    archives = conn.execute('SELECT * FROM accounting_event_archives ORDER BY rowid').fetchall()
+    if len(archives) > MAX_ARCHIVES:
+        raise InvalidData('accounting archive capacity invalid')
+    members = conn.execute(
+        'SELECT digest,archive_id FROM accounting_event_archive_members').fetchall()
+    if len(members) > MAX_ARCHIVES * ARCHIVE_BATCH_ROWS:
+        raise InvalidData('accounting archive member capacity invalid')
+    indexed = {row['digest']: row['archive_id'] for row in members}
+    if len(indexed) != len(members):
+        raise InvalidData('accounting archive member identity invalid')
+    seen = set()
+    for archive in archives:
+        encoded, events = _decode_archive(archive['payload'])
+        expected_id = sha256(b'kalshi-accounting-archive-v1\0' + encoded).hexdigest()
+        if expected_id != archive['id'] or not 0 < len(events) <= ARCHIVE_BATCH_ROWS:
+            raise InvalidData('accounting archive digest or count invalid')
+        payload_bytes, observed = 0, []
+        for event in events:
+            if (not isinstance(event, list) or len(event) != 5
+                    or any(not isinstance(value, str) for value in event)):
+                raise InvalidData('accounting archived event invalid')
+            fingerprint, kind, key, payload, first_seen = event
+            if (kind not in ARCHIVABLE_KINDS
+                    or digest(encode([kind, key, payload])) != fingerprint
+                    or fingerprint in seen or indexed.get(fingerprint) != archive['id']):
+                raise InvalidData('accounting archived event digest invalid')
+            seen.add(fingerprint)
+            payload_bytes += len(payload.encode())
+            observed.append(first_seen)
+        if (archive['event_count'] != len(events)
+                or archive['payload_bytes'] != payload_bytes
+                or archive['first_seen_at'] != min(observed)
+                or archive['last_seen_at'] != max(observed)):
+            raise InvalidData('accounting archive metadata invalid')
+    if set(indexed) != seen:
+        raise InvalidData('accounting archive member index invalid')
+    return seen
 
 
 def _cash_activity_rows(evidence):
@@ -143,6 +270,7 @@ def validate_accounting(ledger):
     if (counter is None or tuple(counter) != tuple(actual)
             or not 0 <= actual[0] <= MAX_ROWS or not 0 <= actual[1] <= MAX_BYTES):
         raise InvalidData('accounting journal counters or capacity invalid')
+    archived = _validate_archives(conn)
     holds = conn.execute('SELECT code FROM accounting_holds LIMIT 32').fetchall()
     if any(row[0] not in HOLD_CODES for row in holds) or len(holds) > len(HOLD_CODES):
         raise InvalidData('accounting restrictions invalid')
@@ -159,7 +287,8 @@ def validate_accounting(ledger):
     if (actual[0] or opening is not None) and not holds and not released:
         raise InvalidData('accounting evidence lost its entry restrictions')
     for row in conn.execute('SELECT digest,kind,event_key,payload FROM accounting_events'):
-        if digest(encode([row['kind'], row['event_key'], row['payload']])) != row['digest']:
+        if (row['digest'] in archived
+                or digest(encode([row['kind'], row['event_key'], row['payload']])) != row['digest']):
             raise InvalidData('accounting observation digest invalid')
 
 

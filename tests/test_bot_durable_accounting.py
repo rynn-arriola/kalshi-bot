@@ -268,6 +268,61 @@ class DurableAccountingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('accounting_journal_full', result.status.holds)
         self.assertIn('settlement_reconciliation_required', result.status.holds)
 
+    async def test_approved_journal_archives_exact_superseded_recovery_evidence(self):
+        captured = await self.capture()
+        self.assertTrue(await self.writer.approve_opening(
+            checkpoint_digest=captured.status.checkpoint_digest,
+            captured_digest=captured.captured_digest,
+            reference='synthetic-archive-baseline', now=NOW))
+        await self.writer.close()
+        first = None
+        with closing(Ledger(self.path)) as ledger:
+            with (patch.object(accounting, 'ARCHIVE_TRIGGER_ROWS', 8),
+                  patch.object(accounting, 'ARCHIVE_BATCH_ROWS', 3),
+                  patch.object(accounting, 'ARCHIVE_RETAIN_PER_KIND', 1)):
+                with ledger.transaction():
+                    for index in range(18):
+                        key, payload = f'inspection-{index}', json.dumps({'index': index})
+                        fingerprint, inserted = accounting._append(
+                            ledger, 'inspection', key, payload,
+                            NOW+timedelta(seconds=index+1))
+                        self.assertTrue(inserted)
+                        if index == 0:
+                            first = fingerprint, key, payload
+                    ledger.connection.execute(
+                        "INSERT OR REPLACE INTO accounting_holds VALUES "
+                        "('accounting_journal_full','synthetic',?)", (NOW.isoformat(),))
+                    before = ledger.connection.execute(
+                        'SELECT rows FROM accounting_state WHERE id=1').fetchone()[0]
+                    with patch.object(accounting, 'ARCHIVE_TRIGGER_ROWS', before):
+                        fingerprint, inserted = accounting._append(
+                            ledger, 'inspection', 'final', '{"final":true}',
+                            NOW+timedelta(minutes=1))
+                    self.assertTrue(inserted)
+                    self.assertIsNotNone(fingerprint)
+                    self.assertFalse(ledger.connection.execute(
+                        "SELECT 1 FROM accounting_holds WHERE code='accounting_journal_full'").fetchone())
+                    self.assertLess(ledger.connection.execute(
+                        'SELECT rows FROM accounting_state WHERE id=1').fetchone()[0], before+1)
+                self.assertGreater(ledger.connection.execute(
+                    'SELECT COUNT(*) FROM accounting_event_archives').fetchone()[0], 0)
+                self.assertEqual(ledger.connection.execute(
+                    'SELECT COUNT(*) FROM accounting_event_archive_members').fetchone()[0],
+                    sum(row[0] for row in ledger.connection.execute(
+                        'SELECT event_count FROM accounting_event_archives')))
+                archived_before = ledger.connection.execute(
+                    'SELECT COUNT(*) FROM accounting_event_archive_members').fetchone()[0]
+                with ledger.transaction():
+                    duplicate, inserted = accounting._append(
+                        ledger, 'inspection', first[1], first[2], NOW+timedelta(minutes=2))
+                self.assertEqual(duplicate, first[0])
+                self.assertFalse(inserted)
+                self.assertEqual(ledger.connection.execute(
+                    'SELECT COUNT(*) FROM accounting_event_archive_members').fetchone()[0],
+                    archived_before)
+        # Cold validation verifies every compressed archive and its member index.
+        self.writer = await LedgerWriter(self.path).start()
+
     async def test_review_acknowledgement_cannot_clear_unresolved_economics(self):
         result = await self.capture(settlements=(settlement(),))
         reviewed = await self.writer.record_accounting_review(reference='operator-review-1',

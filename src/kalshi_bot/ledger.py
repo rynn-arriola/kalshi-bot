@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS accounting_events (
   payload TEXT NOT NULL, first_seen_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS accounting_event_key ON accounting_events(kind,event_key);
 CREATE INDEX IF NOT EXISTS accounting_event_kind ON accounting_events(kind);
+CREATE TABLE IF NOT EXISTS accounting_event_archives (
+  id TEXT PRIMARY KEY, event_count INTEGER NOT NULL, payload_bytes INTEGER NOT NULL,
+  first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS accounting_event_archive_members (
+  digest TEXT PRIMARY KEY, archive_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS accounting_archive_members_archive
+  ON accounting_event_archive_members(archive_id);
 CREATE TABLE IF NOT EXISTS accounting_holds (
   code TEXT PRIMARY KEY, evidence_digest TEXT NOT NULL, first_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS accounting_baseline (
