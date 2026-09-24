@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-115 — Close the remaining position immediately, then restart
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator: “Close this position now, then restart,” accepting
+  execution at the available market price and resulting trading gain/loss/fees.
+- **Scope:** Exactly the remaining 10 NO contracts in `KXTOKENUSE-26SEP28-T138`;
+  reconcile/cancel its passive reducer, close only remaining inventory through
+  the existing reduce-only IOC and accounting path, verify flat, then restart.
+- **Boundary:** One-time immediate flatten deadline, not a permanent exit-policy
+  change. Preserve single ownership, fresh book/account proof and exact remaining
+  quantity. No new position, larger size, unrelated cancellation or ledger edit.
+- **Follow-up:** Operator: “I can close it.” Automated close is paused to avoid
+  competing execution. The exact timed-out generation 141 child was terminated
+  under D-112; no one-off close mutation was sent. Await manual-close confirmation
+  and fresh reconciliation before restart.
+
 ### D-114 — Repair measured cancellation and recovery latency
 
 - **Status:** ACCEPTED, 2026-09-24; verification/deployment state is in STATUS.

@@ -1,6 +1,42 @@
 # Current status
 
-## Entry/advisory race repair verified; restart pending — 2026-09-24
+## Stopped for operator manual close — 2026-09-24 19:49 ET
+
+The operator elected manual close after D-115. No one-off close was executed.
+Exact generation 141/PID 44492 was reverified against scope, process identity,
+timeout and stop latch, then terminated under D-112. Both managed processes are
+absent; control generation 143 is stopped/disarmed with recovery required.
+Last runtime evidence at 19:49:30 ET showed -10 contracts in
+`KXTOKENUSE-26SEP28-T138` and zero entry orders. This is historical, not fresh
+venue proof. The passive exit can remain after process termination; cancel it
+before manual close. Await operator confirmation, then reconcile actual fills
+and fees and verify flat before the authorized restart. No competing close.
+
+Release `c9dce41` is published and fully tested. Normal refill acceptance remains
+pending. Earlier running/draining statements below are historical.
+
+## Race repair deployed; entries canceled, inventory drain active — 2026-09-24
+
+Release `c9dce41` is published with local/remote parity. The first supported
+start released the dead generation-139 ownership record. The next start launched
+generation 141, PID 44492; the supported stop was delivered during startup so
+normal entries stayed paused while it reconciled/canceled old orders. This was
+a normal child explicitly stop-latched, not a recovery-only child as anticipated.
+
+Live log `7d8e6d36360145d1844e91e6295d0691` records 21 cancel ACKs between
+19:40:56.212 and 19:41:03.563 ET (7.351 seconds first-to-last ACK; approximately
+7.5 seconds first-send-to-last-ACK). Resting entry count is zero. Reconciliation
+found one -10-contract `KXTOKENUSE-26SEP28-T138` position from an earlier entry;
+the bot acknowledged its passive reducer and remains `DRAINING`. Its current
+first-seen clock is 19:41:06 ET, so the existing 15-minute timed-exit policy is
+due around 19:56:06 ET if it has not closed sooner. The supervisor shutdown
+timeout does not kill this inventory owner. No force termination was performed.
+
+The open position, not entry cancellation latency, now delays flat restart.
+Keep the approved exit policy unless the operator separately authorizes an
+immediate close. Final normal-run refill acceptance remains pending.
+
+### Release verification
 
 Finding 177 is fixed in source and passes all 44 production-mode synthetic entry
 tests. Three race reproductions failed before their corresponding fixes. The

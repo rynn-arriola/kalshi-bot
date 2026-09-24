@@ -1,5 +1,15 @@
 # Findings — kalshi-bot
 
+### D-115 manual-close handoff — 2026-09-24 19:49 ET
+
+No one-off IOC was submitted. Exact generation 141/PID 44492 was reverified
+immediately before D-112 termination. Subsequent status showed both managed
+processes absent, control generation 143 stopped/disarmed and recovery required.
+The last runtime still showed the -10-contract position and zero entries; venue
+exit/position state must be reconciled after the operator's manual close.
+Ignored `data/close_D115.py` was import/deadline-adapter checked only, not run
+against the venue and is not a supported operating command.
+
 ## 177. Background advisory replacement races entry dispatch — 2026-09-24
 
 **VERIFIED offline:** With unchanged account, book, program and metadata, an
@@ -24,6 +34,14 @@ snapshot had 22 entries and zero positions, not a flat shutdown. Windows recorde
 an application event from `CodexSandboxService.OpenAI.Codex` at 19:26:02, coincident
 with the last heartbeat. Causation is unproved; no bot exception/clean shutdown
 was logged. Restart must reconcile durable state, not assume venue cancellation.
+
+**MEASURED live cancellation:** After the dead-owner record was released,
+generation 141 was explicitly stop-latched during startup. It obtained 21 cancel
+ACKs in 7.351 seconds first-to-last (19:40:56.212–19:41:03.563 ET), with zero
+resting entries afterward. One earlier entry had filled; a -10-contract position
+remained under the existing passive/timed exit policy. That inventory wait must
+not be presented as slow cancellation. The normal refill fix still needs a
+post-drain live acceptance run; synthetic tests do not establish that result.
 
 ## 176. Historical order classification dominates recovery latency — 2026-09-24
 

@@ -2,14 +2,18 @@
 
 ## Finish the entry/advisory race repair
 
-1. Complete the one full release gate for Finding 177, publish the reviewed
-   changes, then use the authorized supported restart. Generation 139 exited
-   unexpectedly and its saved orders are not current venue proof.
-2. Verify recovery-only drains/reconciles, then normal ranked refill reaches
-   currently available capacity without the reproduced advisory race. Record
-   actual durations and ownership/account/logging state, not just process start.
+1. Finding 177 passed the full 1,702-test gate and is published as `c9dce41`.
+   Generation 141 canceled all entries and was exactly terminated under D-112.
+   Await the operator's manual-close confirmation, reconcile its real fills/fees
+   and any remaining exit, then verify flat. Do not send a competing close.
+2. After verified flat shutdown, finish the authorized normal restart and
+   measure ranked refill without the reproduced advisory race. Record actual
+   durations and ownership/account/logging state, not just process start.
 3. Record remaining environment-exit uncertainty separately; no persistent
    service, startup entry, machine setting or broad process termination is approved.
+4. Operator requested a simpler emergency close-all/restart path. Define explicit
+   flattening distinct from normal restart, through the current owner and exact
+   reduce-only exits. Do not change the ordinary stop policy implicitly.
 
 ## Earlier deployed stop/recovery latency repair
 
