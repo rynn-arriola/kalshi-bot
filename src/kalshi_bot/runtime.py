@@ -672,16 +672,20 @@ class RecoveryRuntime:
                     reads = RecoveryReads(self.reads)
                     # Join both requests even if one fails; no orphaned read
                     # may race the fallback recovery owner.
-                    history, report = await asyncio.gather(
+                    history, reconciled = await asyncio.gather(
                         self.account.extend_empty_history(reads, start=start, end=end, now=self.now),
                         self.account.reconcile(reads, now=self.now,
-                            expected_writer_source=(proof.source[2], proof.source[3])),
+                            expected_writer_source=(proof.source[2], proof.source[3]),
+                            prepare_accounting_boundary=self.accounting_boundary),
                         return_exceptions=True)
                     self.routine_refresh_phase_ms['snapshot_and_tail'] = max(
                         0, int((self.clock()-started)*1000))
-                    for value in (history, report):
+                    for value in (history, reconciled):
                         if isinstance(value, BaseException):
                             raise value
+                    if reconciled is None:
+                        return False
+                    report, prepared = reconciled
                     if (history is None or report is None
                             or history.enumeration.omitted_rows
                             or self._routine_account_proof is not proof
@@ -697,9 +701,8 @@ class RecoveryRuntime:
                     continuity = replace(self._refresh_continuity(operational=True), receipt_ids=ids)
                     self.routine_refresh_phase = 'accounting_release'
                     release_started = self.clock()
-                    self.accounting_result = await self.account.reconcile_accounting(
-                        reads, proposed_boundary=self.accounting_boundary,
-                        continuity=continuity, now=self.now, release=True)
+                    self.accounting_result = await self.account.release_prepared_accounting(
+                        prepared, continuity=continuity, now=self.now)
                     self.routine_refresh_phase_ms['accounting_release'] = max(
                         0, int((self.clock()-release_started)*1000))
                     # Release advances writer revision itself. The account owner

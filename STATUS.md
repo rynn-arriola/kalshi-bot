@@ -1,5 +1,22 @@
 # Current status
 
+## D-113 concurrent renewal correction verified; restart pending — 2026-09-24
+
+The first generation-133 deployment proved that advisory ranking can complete
+1,024/1,024 markets during account recovery, but routine renewal intermittently
+spent approximately 4.0–4.4 seconds on its snapshot/tail and another 0.6–0.9
+seconds on serial financial reads. The unchanged five-second fence therefore
+expired, full recovery retried, and refill stalled at two resting entries.
+
+The corrected path collects independent snapshot and financial documents
+concurrently under the same original source fence and reuses the fresh account
+balance. Exact source, writer, history, cancellation and economic checks remain.
+Focused account/recovery tests pass, the fast gate passes 277 tests, and the
+complete gate passes 1,691 tests with one expected Windows symlink-privilege
+skip. The authorized stop canceled the two entries, verified zero positions,
+and exact-child timeout handling left the managed bot fully stopped. Commit,
+push and live startup acceptance are pending.
+
 ## D-113 verified source repair; not deployed — 2026-09-24
 
 Routine startup/refill renewal now obtains fresh account and financial evidence

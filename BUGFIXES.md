@@ -28,7 +28,15 @@ a concurrent private event cannot waste the bounded retry budget on that lock.
 0/2/28 resting orders, early/full ranking, writer/private/cash races, new funding,
 tail failures, cancellation, stop and 17-second timing cases. Separate tests
 prove advisory coverage cannot dispatch and recovery does not defer metadata.
-The final 1,690-test suite passes with one expected Windows privilege skip.
+The first live deployment exposed a remaining serial-latency defect: the fresh
+financial reads began only after the account snapshot, intermittently consuming
+more than the unchanged five-second source fence and leaving refill at two
+orders. Renewal now starts the independent snapshot and financial reads together
+under one fence, reuses the same fresh balance document, and releases only after
+all sources and the history tail pass the existing exact source checks. A new
+regression proves all eight reads start concurrently and only one balance read
+is made. The final 1,691-test suite passes with one expected Windows privilege
+skip.
 Two negative controls detect disabled fixes; a supplemental mocked pair reaches
 two durable ACKs after renewal. Deployment status is recorded in `STATUS.md`.
 

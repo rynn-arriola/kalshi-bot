@@ -4,14 +4,17 @@
 
 The runtime now renews pre-cap accounting through a bounded empty-tail history
 chain, one exact source-checked snapshot and existing financial evidence/release
-checks. It retains full recovery for changed or incomplete proof, caps history
+checks. Independent financial documents are collected concurrently inside the
+same snapshot fence, and the snapshot balance is reused as cash evidence; no
+freshness bound is widened. It retains full recovery for changed or incomplete proof, caps history
 memory at 128 receipts and preserves D-109's full-cap scheduling optimization.
 Status exposes renewal attempts/completions/escalations, phase timings and
 recovery trigger; completed full recoveries log elapsed milliseconds.
 Metadata scheduling and market-only ranking can progress during full recovery;
 advisory rows have no executable source proof. The fast gate now includes
 `test_bot_routine_refresh.py`. Tests use temporary ledgers and synthetic reads;
-current release verification and live deployment are owned by `STATUS.md`.
+The fast gate passes 277 tests and the complete gate passes 1,691 tests with one
+expected Windows privilege skip. Live deployment is owned by `STATUS.md`.
 
 ## Semantic reward-catalog identity for startup ranking — 2026-09-24
 

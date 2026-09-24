@@ -3,8 +3,10 @@
 D-113 separates routine startup/refill renewal from full recovery. After a
 successful operational release, a process-local anchor retains exact source
 versions, account signature and at most 128 history receipt IDs. Renewal joins
-one fresh snapshot with an empty elapsed history tail, then runs the existing
-cash/funding/settlement inspection and writer-owned accounting release. It never
+one fresh snapshot with an empty elapsed history tail. Independent cash,
+funding and settlement documents are collected concurrently inside that same
+snapshot fence and passed to the writer-owned accounting release. The account
+balance snapshot is reused as cash evidence rather than fetched serially. It never
 refreshes a lease by copying timestamps. Any changed source/economics, missing
 proof, nonempty/omitted tail, timeout or bounded-chain exhaustion falls back to
 full recovery. D-109's full-cap snapshot-only scheduling optimization retains

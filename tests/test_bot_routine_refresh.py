@@ -77,6 +77,40 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(runtime._routine_account_proof.receipt_ids), len(first.receipt_ids)+3)
         self.assertTrue((await self.reserve('refill')).reserved)
 
+    async def test_snapshot_and_accounting_sources_start_concurrently(self):
+        runtime = await self.runtime()
+        self.advance()
+        expected = {'orders', 'positions', 'balance', 'settlements',
+                    'subaccount_transfers', 'intra_exchange_transfers',
+                    'deposits', 'withdrawals'}
+        started = set()
+        starts = {}
+        all_started = asyncio.Event()
+        original_read, original_collect = runtime.reads.read, runtime.reads.collect
+
+        async def wait_for_peers(name, invoke, **kwargs):
+            if name in expected:
+                started.add(name)
+                starts[name] = starts.get(name, 0)+1
+                if expected <= started:
+                    all_started.set()
+                await all_started.wait()
+            return await invoke(name, **kwargs)
+
+        async def read(name, **kwargs):
+            return await wait_for_peers(name, original_read, **kwargs)
+
+        async def collect(name, **kwargs):
+            return await wait_for_peers(name, original_collect, **kwargs)
+
+        runtime.reads.read, runtime.reads.collect = read, collect
+        self.assertTrue(await asyncio.wait_for(runtime._refresh_routine_account(), 2))
+        self.assertEqual(started, expected)
+        # The account balance is also the cash snapshot; do not spend a second
+        # serialized request after the source-fenced snapshot completes.
+        self.assertEqual(starts['balance'], 1)
+        self.assertFalse(runtime.recovery_requested.is_set())
+
     async def test_changed_cash_private_revision_or_writer_escalates(self):
         runtime = await self.runtime()
         for kind in ('cash', 'private', 'writer'):

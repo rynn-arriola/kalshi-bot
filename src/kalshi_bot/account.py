@@ -127,6 +127,24 @@ class ReconciliationReport:
 
 
 @dataclass(frozen=True)
+class PreparedAccounting:
+    """Financial documents collected inside one account snapshot fence."""
+    report: ReconciliationReport
+    boundary: datetime
+    generation: int
+    revision: int
+    writer_epoch: str
+    writer_revision: int
+    started_monotonic: float
+    cash_document: dict
+    settlements: object
+    subaccount_transfers: object
+    intra_exchange_transfers: object
+    deposits: object
+    withdrawals: object
+
+
+@dataclass(frozen=True)
 class ArchiveRecoveryReport:
     seen: int
     owned: int
@@ -633,7 +651,8 @@ class AccountCoordinator:
             return None
         return result
 
-    async def reconcile(self, reads: RestReads, *, now, expected_writer_source=None) -> ReconciliationReport | None:
+    async def reconcile(self, reads: RestReads, *, now, expected_writer_source=None,
+                        prepare_accounting_boundary=None):
         """One explicit bounded bootstrap/recovery read, never a polling loop."""
         # Routine renewal permits only this invocation's known writer commands.
         # Any competing write, even one preceding the final audit, rejects the
@@ -649,12 +668,35 @@ class AccountCoordinator:
             return None
         token = self.begin_reconciliation(now())
         try:
-            orders, positions, balance = await asyncio.gather(
+            jobs = [
                 reads.collect("orders", reason="reconcile", status="resting", subaccount=self.subaccount,
                               max_rows=4096),
                 reads.collect("positions", reason="reconcile", count_filter="position",
                               subaccount=self.subaccount, max_rows=self.capacity),
-                reads.read("balance", reason="reconcile", subaccount=self.subaccount))
+                reads.read("balance", reason="reconcile", subaccount=self.subaccount)]
+            boundary = None
+            if prepare_accounting_boundary is not None:
+                boundary = utc(prepare_accounting_boundary)
+                if boundary > token.started_at:
+                    raise InvalidData('past accounting boundary required')
+                minimum = max(0, int(boundary.timestamp())-1)
+                # These sources are independent of the order/position snapshot.
+                # Collect them in the same five-second source fence instead of
+                # serially spending a second lease after the snapshot returns.
+                jobs.extend((
+                    reads.collect('settlements', reason='cash', subaccount=self.subaccount,
+                                  min_ts=minimum, max_rows=10000),
+                    reads.collect('subaccount_transfers', reason='cash', max_rows=10000),
+                    reads.collect('intra_exchange_transfers', reason='cash', max_rows=10000),
+                    reads.collect('deposits', reason='cash', max_rows=10000),
+                    reads.collect('withdrawals', reason='cash', max_rows=10000)))
+            results = await asyncio.gather(*jobs, return_exceptions=True)
+            # Join every request before surfacing an error. A failed page set
+            # cannot leave sibling pagination running behind recovery.
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
+            orders, positions, balance = results[:3]
             snapshot = normalize_snapshot(orders.rows, positions.rows, balance.payload,
                                           subaccount=self.subaccount, capacity=self.capacity)
             if not self._current(token) or not writer_current():
@@ -676,10 +718,112 @@ class AccountCoordinator:
             for receipt in persisted:
                 self._store_order(receipt)
             result = await self.finish_reconciliation(token, snapshot, now())
-            return result if writer_current(1) else None
+            if result is None or not writer_current(1):
+                return None
+            if boundary is None:
+                return result
+            settlements, subaccount_transfers, intra_transfers, deposits, withdrawals = results[3:]
+            prepared = PreparedAccounting(result, boundary, self.generation, self.revision,
+                self.writer.epoch, self.writer.revision, token.started_monotonic,
+                balance.payload, settlements, subaccount_transfers, intra_transfers,
+                deposits, withdrawals)
+            return result, prepared
         except BaseException:
             if token is self._token:
                 self._invalidate()
+            raise
+
+    async def release_prepared_accounting(self, prepared, *, continuity, now):
+        """Release documents collected concurrently with their exact snapshot."""
+        self._check_owner()
+        if self._opening_task is not None:
+            raise InvalidData('opening inspection already active')
+        if not isinstance(prepared, PreparedAccounting):
+            raise InvalidData('prepared accounting sources required')
+        self.writer.claim_accounting_owner(self)
+        self.revoke_accounting()
+        from threading import Event
+        cancelled = Event()
+        task = asyncio.create_task(self._release_prepared_accounting(
+            prepared, continuity=continuity, now=now, cancelled=cancelled),
+            name='kalshi-prepared-accounting-release')
+        self._opening_task = task
+        def completed(result):
+            if self._opening_task is result:
+                self._opening_task = None
+            if not result.cancelled():
+                result.exception()
+        task.add_done_callback(completed)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled.set()
+            self.revoke_accounting()
+            raise
+
+    async def _release_prepared_accounting(self, prepared, *, continuity, now, cancelled):
+        from .account_release import ReleaseResult, SourceFence
+        from .opening_account import build_opening_evidence_async
+        report = prepared.report
+        source = (prepared.generation, prepared.revision,
+                  prepared.writer_epoch, prepared.writer_revision)
+        try:
+            current = utc(now())
+            if (continuity is None or continuity.generation != self.generation
+                    or self._report_monotonic != prepared.started_monotonic
+                    or self.current_report(current) is not report
+                    or source != (self.generation, self.revision,
+                                  self.writer.epoch, self.writer.revision)):
+                raise InvalidData('prepared accounting source is stale')
+            evidence = await build_opening_evidence_async(
+                report=report, continuity=continuity,
+                proposed_boundary=prepared.boundary, subaccount=self.subaccount,
+                writer_epoch=prepared.writer_epoch,
+                writer_revision=prepared.writer_revision,
+                cash_document=prepared.cash_document,
+                settlements=prepared.settlements,
+                subaccount_transfers=prepared.subaccount_transfers,
+                intra_exchange_transfers=prepared.intra_exchange_transfers,
+                deposits=prepared.deposits, withdrawals=prepared.withdrawals,
+                observed_at=current)
+            source_current = (not cancelled.is_set()
+                and self._report_monotonic == prepared.started_monotonic
+                and 0 <= self.clock()-prepared.started_monotonic <= 5
+                and self.current_report(utc(now())) is report
+                and source == (self.generation, self.revision,
+                               self.writer.epoch, self.writer.revision))
+            if not source_current:
+                await self.writer.capture_accounting(evidence, report, source_current=False)
+                return ReleaseResult(False, ('accounting_source_stale',))
+            fence = SourceFence(generation=prepared.generation,
+                revision=prepared.revision, observed_at=report.observed_at,
+                clock=self.clock, now=now, started=prepared.started_monotonic,
+                revoked=cancelled)
+            self._accounting_fence = fence
+            receipt = await self.writer.release_accounting(self, evidence, report,
+                continuity, fence, now=utc(now()))
+            if not receipt.released:
+                fence.revoked.set()
+            elif (self.report is report and prepared.generation == self.generation
+                    and prepared.revision == self.revision and fence.current()
+                    and receipt.audit is not None and receipt.audit.consistent
+                    and (receipt.audit.writer_epoch, receipt.audit.writer_revision) ==
+                        (self.writer.epoch, self.writer.revision)):
+                self.report = replace(report, audit=receipt.audit)
+            else:
+                fence.revoked.set()
+            if ((prepared.generation, prepared.revision) !=
+                    (self.generation, self.revision)
+                    or (receipt.released and
+                        (not fence.current() or self.writer._accounting_lease is None))):
+                self.revoke_accounting()
+                await self.writer.accounting_source_failed()
+                return ReleaseResult(False, ('accounting_source_stale',))
+            return receipt
+        except BaseException:
+            self.revoke_accounting()
+            if not self.writer.failed:
+                await self.writer.accounting_source_failed()
             raise
 
     async def inspect_opening_account(self, reads: RestReads, *, proposed_boundary,
