@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 174. Observation timestamps are not reward-universe identities — 2026-09-24
+
+VERIFIED LIVE from generation 125 and VERIFIED offline. The loaded checkpoint
+included `catalog.observed_mono` in its source identity. Periodic refreshes of
+unchanged active reward programs therefore cleared all accumulated startup
+coverage. Current scan speed exceeded the five-minute refresh interval; eight
+resets occurred while the bot stayed flat and retained only non-authoritative
+priority hints. The original recovery timeout was already repaired and was not
+the cause of this ranking loop.
+
+The stable identity is the catalog's semantic content: program and market
+identity, exact reward terms, eligibility interval, payout state and exclusions.
+Refreshing observation age alone must re-age selection evidence but need not
+erase historical proof that each market was examined under the same semantic
+universe. A changed semantic digest still resets coverage, and a missing catalog
+still blocks selection entirely.
+
 ## 173. Full recovery can outlive an individual five-second proof — 2026-09-24
 
 VERIFIED LIVE from generation 116's retained receipts and diagnostics and

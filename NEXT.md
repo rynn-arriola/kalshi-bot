@@ -1,5 +1,18 @@
 # Active work queue
 
+## After semantic reward-catalog ranking identity repair — current priority
+
+1. Publish the verified catalog-content identity repair, then finish the
+   operator's authorized restart. Generation 125 is flat with zero orders;
+   never start a second child beside it.
+2. Verify the new normal child preserves coverage across an unchanged periodic
+   catalog refresh, reaches 1,024/1,024 current ranking, and refills through the
+   existing $2-priority/$1-fallback policy without bypassing source checks.
+3. Require current account proof, zero positions, all six readers, healthy
+   logging/dispatch and no persistent recovery or supervisor hold at acceptance.
+4. Continue measuring actual paid rewards, fees and settled trading loss;
+   semantic catalog identity changes startup continuity, not profitability.
+
 ## After incremental accounting-release proof repair — current priority
 
 1. Publish the verified chained-receipt repair, then finish the operator's

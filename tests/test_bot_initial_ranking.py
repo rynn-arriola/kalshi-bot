@@ -4,6 +4,7 @@ from datetime import timedelta
 from decimal import Decimal as D
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -171,6 +172,20 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
 
     async def proposal(self):
         return await self.s.propose(window=self.window,free_cash=D(500))
+
+    async def test_identical_catalog_refresh_preserves_initial_coverage(self):
+        catalog = NS(content_digest='a'*64)
+        self.r.incentives = NS(current=lambda: catalog)
+        self.s._initial_progress('A')
+        catalog = NS(content_digest='a'*64)
+        self.s._initial_progress()
+        self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 1)
+        self.assertEqual(self.s.initial_ranking.status()['source_resets'], 0)
+        catalog = NS(content_digest='b'*64)
+        self.s._initial_progress()
+        self.assertEqual(self.s.initial_ranking.status()['source_resets'], 1)
+        self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 0)
+        self.r.incentives = None
 
     async def test_later_priority_market_beats_early_fallback_after_combined_coverage(self):
         self.assertEqual(len(self.r.engine.shards), 2)
@@ -345,7 +360,8 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.s.refresh('A')
         self.s.refresh('C')
         self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'],0)
-        catalog = NS(observations={},generation=1,observed_mono=100.)
+        catalog = NS(observations={},generation=1,observed_mono=100.,
+                     content_digest='0'*64)
         self.r.incentives.current = lambda:catalog
         self.s.refresh('A')
         self.s.refresh('C')

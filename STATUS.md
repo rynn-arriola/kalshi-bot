@@ -1,5 +1,27 @@
 # Current status
 
+## Generation 125 flat in semantic-blind ranking reset loop; repair verified — 2026-09-24
+
+The final accounting-recovery repair deployed successfully: recovery-only
+completed on its first pass, cleared both history blockers, proved zero orders
+and positions, reached `STOPPED_FLAT`, and handed off to normal generation 125.
+All six readers subscribed and the normal child remains supervisor/logging
+healthy with zero dropped logs and no position. Its ranking cannot finish on the
+loaded build because every periodic reward-catalog observation timestamp is
+treated as a changed reward universe. By 16:18 ET it had reset eight times,
+retained 34 historical $2+ candidate hints, held zero orders and was evaluating
+319/1,024 markets in the latest generation. Hints do not authorize entries.
+
+Source now identifies a reward catalog by a deterministic digest of its active
+program identities, markets, exact economic terms, start/end, payout state and
+excluded markets. A refresh with identical semantics preserves initial-ranking
+coverage; a semantic change still resets it. A missing/revoked catalog grants no
+authority and does not erase coverage before its replacement can be compared.
+Affected discovery/ranking tests, the 263-test fast gate and complete 1,674-test
+suite pass with one expected Windows privilege skip. Generation 125 cannot
+hot-load the repair and remains flat pending replacement under the authorized
+restart operation.
+
 ## Generation 119 flat in recovery-only; incremental release proof verified — 2026-09-24
 
 The authorized supported restart canceled all 28 generation-116 entries and

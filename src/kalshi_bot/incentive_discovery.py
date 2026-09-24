@@ -2,6 +2,8 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import hashlib
+import json
 import math
 from types import MappingProxyType
 from typing import Mapping
@@ -21,6 +23,7 @@ class IncentiveCatalog:
     generation: int
     observations: Mapping[str, ProgramObservation]
     excluded: frozenset[str]
+    content_digest: str
     observed_at: datetime
     valid_until: datetime
     observed_mono: float
@@ -28,6 +31,17 @@ class IncentiveCatalog:
     pages: int
     rows: int
     wire_bytes: int
+
+
+def _content_digest(observations, excluded):
+    programs = []
+    for ticker, observation in sorted(observations.items()):
+        programs.append((ticker, tuple(sorted((p.program_id, p.start.isoformat(), p.end.isoformat(),
+            str(p.target), p.discount_bps, p.pool_centicents, p.paid_out,
+            p.max_reward_centicents) for p in observation.programs))))
+    payload = json.dumps((programs, tuple(sorted(excluded))), separators=(',', ':'),
+                         ensure_ascii=True, allow_nan=False)
+    return hashlib.sha256(payload.encode('ascii')).hexdigest()
 
 
 class IncentiveDiscovery:
@@ -176,8 +190,10 @@ class IncentiveDiscovery:
                 return None
             if self.quota is not None and not self.quota.poll():
                 raise QuotaUnavailable('incentive_quota_unavailable')
-            return IncentiveCatalog(generation, MappingProxyType(observations), frozenset(excluded),
-                observed, until, mono, mono+self.interval, pages.pages, len(pages.rows), pages.wire_bytes)
+            excluded = frozenset(excluded)
+            return IncentiveCatalog(generation, MappingProxyType(observations), excluded,
+                _content_digest(observations, excluded), observed, until, mono,
+                mono+self.interval, pages.pages, len(pages.rows), pages.wire_bytes)
 
     def step(self):
         """Bounded scheduling turn, deterministic with fixture clocks."""

@@ -79,10 +79,14 @@ class RuntimeSelection:
             return
         r = self.runtime
         catalog = r.incentives.current() if r.incentives is not None else None
+        # A temporarily revoked catalog grants no selection authority, but it
+        # also must not erase coverage before the replacement can be compared.
+        if r.incentives is not None and catalog is None:
+            return
         gate.sync((tuple((name, shard.generation, shard.failed)
                          for name, shard in r.engine.shards.items()),
                    r.market_inputs.generation if r.market_inputs is not None else None,
-                   (catalog.generation, catalog.observed_mono) if catalog is not None else None))
+                   catalog.content_digest if catalog is not None else None))
         if ticker is not None:
             gate.observe(ticker)
 

@@ -19,7 +19,7 @@ def catalog(count=50):
         ticker = f'M{i:03}'
         p = program(ticker=ticker,program_id=f'p{i}',pool_centicents=1000000-i)
         observations[ticker] = ProgramObservation((p,),NOW,NOW+timedelta(seconds=60))
-    return IncentiveCatalog(1,MappingProxyType(observations),frozenset(),NOW,
+    return IncentiveCatalog(1,MappingProxyType(observations),frozenset(),'0'*64,NOW,
                             NOW+timedelta(seconds=60),100,160,1,count,100)
 
 

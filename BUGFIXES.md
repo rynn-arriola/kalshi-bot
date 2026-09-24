@@ -1,5 +1,26 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — unchanged reward refresh repeatedly reset startup ranking
+
+**Mechanism:** Initial ranking bound coverage to the catalog's observation
+timestamp. The reward source refreshes every five minutes, so an otherwise
+identical catalog cleared all evaluated markets. Generation 125 needed longer
+than one refresh interval under current REST/recovery load and therefore reached
+eight resets without completing 1,024-market coverage or placing an order.
+
+**Fix:** The catalog now carries a deterministic digest over active program IDs,
+market bindings, exact reward economics, start/end, payout state and exclusions.
+The ranking checkpoint uses that semantic identity. Identical refreshes preserve
+coverage; any semantic change still resets it. Temporary catalog revocation
+remains unavailable for selection but does not erase coverage until the
+replacement's digest can be compared.
+
+**Verification:** Tests prove observation-time-only refreshes keep the same
+digest and coverage, changed reward terms change the digest and reset coverage,
+and a missing catalog remains fail-closed. The 263-test fast gate and complete
+1,674-test suite pass with one expected Windows privilege skip. Live deployment
+acceptance is pending replacement of generation 125.
+
 ## 2026-09-24 — fresh full-history recapture exceeded recovery deadline
 
 **Mechanism:** Full recovery captured execution history before refreshing every

@@ -1,5 +1,15 @@
 # What exists
 
+## Semantic reward-catalog identity for startup ranking — 2026-09-24
+
+Each complete reward catalog now carries a deterministic digest over active
+program identities, market bindings, exact economic terms, start/end, payout
+state and excluded markets. Initial ranking preserves coverage across an
+identical periodic refresh and resets on any semantic change. Temporary catalog
+absence still blocks selection. Focused discovery/ranking tests, the 263-test
+fast gate and complete 1,674-test suite pass with one expected Windows privilege
+skip. Deployment state belongs in `STATUS.md`.
+
 ## Chained final accounting-release evidence — 2026-09-24
 
 Accounting-enabled full recovery preserves its early complete execution-history
