@@ -245,6 +245,7 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         await self.refresh()
         second = self.d.current()
         self.assertEqual(first.content_digest, second.content_digest)
+        self.assertEqual(first.market_digests, second.market_digests)
         self.assertNotEqual(first.observed_mono, second.observed_mono)
         self.pages[0]['incentive_programs'] = [row('A','a',period_reward=5000001),
                                                row('B','b')]
@@ -252,6 +253,8 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.advance(1)
         await self.refresh()
         self.assertNotEqual(second.content_digest, self.d.current().content_digest)
+        self.assertNotEqual(second.market_digests['A'], self.d.current().market_digests['A'])
+        self.assertEqual(second.market_digests['B'], self.d.current().market_digests['B'])
 
     async def test_quota_loss_before_publication_or_consumption_revokes(self):
         class Guard:

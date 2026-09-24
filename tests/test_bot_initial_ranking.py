@@ -174,16 +174,20 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         return await self.s.propose(window=self.window,free_cash=D(500))
 
     async def test_identical_catalog_refresh_preserves_initial_coverage(self):
-        catalog = NS(content_digest='a'*64)
+        catalog = NS(content_digest='a'*64,market_digests={'A':'a','C':'c'})
         self.r.incentives = NS(current=lambda: catalog)
         self.s._initial_progress('A')
-        catalog = NS(content_digest='a'*64)
+        catalog = NS(content_digest='a'*64,market_digests={'A':'a','C':'c'})
         self.s._initial_progress()
         self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 1)
         self.assertEqual(self.s.initial_ranking.status()['source_resets'], 0)
-        catalog = NS(content_digest='b'*64)
+        catalog = NS(content_digest='b'*64,market_digests={'A':'a','C':'changed'})
         self.s._initial_progress()
         self.assertEqual(self.s.initial_ranking.status()['source_resets'], 1)
+        self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 1)
+        catalog = NS(content_digest='c'*64,market_digests={'A':'changed','C':'changed'})
+        self.s._initial_progress()
+        self.assertEqual(self.s.initial_ranking.status()['source_resets'], 2)
         self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 0)
         self.r.incentives = None
 

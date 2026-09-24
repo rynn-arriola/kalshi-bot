@@ -83,10 +83,16 @@ class RuntimeSelection:
         # also must not erase coverage before the replacement can be compared.
         if r.incentives is not None and catalog is None:
             return
-        gate.sync((tuple((name, shard.generation, shard.failed)
-                         for name, shard in r.engine.shards.items()),
-                   r.market_inputs.generation if r.market_inputs is not None else None,
-                   catalog.content_digest if catalog is not None else None))
+        global_versions = (tuple((name, shard.generation, shard.failed)
+                                 for name, shard in r.engine.shards.items()),
+                           r.market_inputs.generation if r.market_inputs is not None else None)
+        market_versions = (getattr(catalog, 'market_digests', None)
+                           if catalog is not None else None)
+        # Older injected fixtures have no per-market digest. Keep their
+        # conservative whole-catalog invalidation without weakening live use.
+        if catalog is not None and market_versions is None:
+            global_versions += (catalog.content_digest,)
+        gate.sync(global_versions, market_versions)
         if ticker is not None:
             gate.observe(ticker)
 

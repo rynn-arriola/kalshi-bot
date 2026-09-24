@@ -15,6 +15,7 @@ class InitialRankingCheckpoint:
         self.reason = None
         self.release_reason = None
         self.versions = None
+        self.market_versions = None
         self.evaluated = set()
         self.resets = 0
 
@@ -30,7 +31,7 @@ class InitialRankingCheckpoint:
         if self.started_at is None:
             self.started_at = self._time()
 
-    def sync(self, versions):
+    def sync(self, versions, market_versions=None):
         # A reconnect/source epoch cannot contribute stale initial coverage.
         # Do not extend the deadline; an initial-only barrier never re-arms.
         if self.reason == 'coverage_complete':
@@ -38,7 +39,17 @@ class InitialRankingCheckpoint:
         if self.versions is not None and versions != self.versions:
             self.evaluated.clear()
             self.resets += 1
+        elif self.market_versions is not None and market_versions is not None:
+            changed = {ticker for ticker in self.scope
+                       if self.market_versions.get(ticker) != market_versions.get(ticker)}
+            if changed:
+                # A reward refresh only invalidates coverage whose economics
+                # changed. Unrelated markets retain their completed ranking.
+                self.evaluated.difference_update(changed)
+                self.resets += 1
         self.versions = versions
+        self.market_versions = (None if market_versions is None else
+                                {ticker: market_versions.get(ticker) for ticker in self.scope})
 
     def observe(self, ticker):
         if ticker not in self.scope:

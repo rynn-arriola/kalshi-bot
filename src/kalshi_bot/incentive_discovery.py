@@ -31,6 +31,7 @@ class IncentiveCatalog:
     pages: int
     rows: int
     wire_bytes: int
+    market_digests: Mapping[str, str] | None = None
 
 
 def _content_digest(observations, excluded):
@@ -42,6 +43,21 @@ def _content_digest(observations, excluded):
     payload = json.dumps((programs, tuple(sorted(excluded))), separators=(',', ':'),
                          ensure_ascii=True, allow_nan=False)
     return hashlib.sha256(payload.encode('ascii')).hexdigest()
+
+
+def _market_digests(observations, excluded):
+    """Return stable per-market semantics for incremental ranking invalidation."""
+    digests = {}
+    for ticker in sorted(set(observations) | set(excluded)):
+        observation = observations.get(ticker)
+        programs = (() if observation is None else tuple(sorted((p.program_id,
+            p.start.isoformat(), p.end.isoformat(), str(p.target), p.discount_bps,
+            p.pool_centicents, p.paid_out, p.max_reward_centicents)
+            for p in observation.programs)))
+        payload = json.dumps((ticker, ticker in excluded, programs), separators=(',', ':'),
+                             ensure_ascii=True, allow_nan=False)
+        digests[ticker] = hashlib.sha256(payload.encode('ascii')).hexdigest()
+    return MappingProxyType(digests)
 
 
 class IncentiveDiscovery:
@@ -193,7 +209,8 @@ class IncentiveDiscovery:
             excluded = frozenset(excluded)
             return IncentiveCatalog(generation, MappingProxyType(observations), excluded,
                 _content_digest(observations, excluded), observed, until, mono,
-                mono+self.interval, pages.pages, len(pages.rows), pages.wire_bytes)
+                mono+self.interval, pages.pages, len(pages.rows), pages.wire_bytes,
+                _market_digests(observations, excluded))
 
     def step(self):
         """Bounded scheduling turn, deterministic with fixture clocks."""
