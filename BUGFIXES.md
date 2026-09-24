@@ -1,5 +1,21 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — slow cancel scheduling and repeated historical-order scans
+
+Stop now queues known owned-entry markets straight to the existing paused-cancel
+dispatcher; its durable ownership checks still authorize every send. It no
+longer waits for a current market/account plan to schedule cancellation.
+Bulk order settlement shares one reducer-classification query within its writer
+transaction instead of scanning command history for every retained order.
+Full recovery joins financial reads with its final snapshot, and paused refresh
+leaves the ordinary fresh-report interval for the supervisor's flat check.
+
+Finding 176 records the production-copy profile: 935 identical order receipts,
+including 37 reducers, with the measured pass falling from 2.427 seconds to
+0.146–0.281 seconds. Tests cover stale-account cancellation, coalesced stop
+wakes, full recovery using prepared financial sources, paused flat acceptance,
+exact reducer classification and one shared authorization scan.
+
 ## 2026-09-24 — routine freshness repeatedly replayed full startup recovery
 
 **Mechanism:** The three-second refresh timer could avoid full recovery only

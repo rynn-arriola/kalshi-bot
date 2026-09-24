@@ -1,5 +1,14 @@
 # What exists
 
+## Bounded direct drain scheduling and shared order classification — 2026-09-24
+
+`request_entry_drain` supplies only owned-order market keys to the existing
+dispatcher; current durable cancellation evidence remains mandatory. The writer
+shares reducer classification across one bounded order enumeration. Full repair
+uses concurrent financial sources at the final snapshot and paused renewal
+preserves the supervisor's opportunity to consume a current flat report. See
+Finding 176 for measured offline performance and `STATUS.md` for acceptance.
+
 ## D-113 routine account renewal and independent advisory coverage — 2026-09-24
 
 The runtime now renews pre-cap accounting through a bounded empty-tail history

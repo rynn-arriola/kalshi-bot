@@ -957,11 +957,12 @@ class LedgerWriter:
             row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?", args).fetchone()
             return OrderUpdate.decode(row[0]) if row else None
         if command == "orders":
+            from .orders import settle_orders
             rows = ledger.connection.execute("SELECT order_id FROM order_evidence LIMIT 4097").fetchall()
             if len(rows) > 4096:
                 raise InvalidData("order evidence exceeds bounded capacity")
             with ledger.transaction():
-                return tuple(settle_order(ledger, r[0]) for r in rows)
+                return settle_orders(ledger, (r[0] for r in rows))
         if command == "inventory":
             rows = ledger.connection.execute(
                 "SELECT DISTINCT ticker FROM lots LIMIT ?", (self.market_capacity+1,)).fetchall()

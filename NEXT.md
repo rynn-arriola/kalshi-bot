@@ -1,6 +1,17 @@
 # Active work queue
 
-## D-113 deployment acceptance — current priority
+## Complete the authorized stop/recovery repair and restart
+
+1. Verify and publish Finding 176's integrated drain/recovery correction.
+2. Use the existing operator-authorized restart; generation 136 has exited flat.
+   Confirm recovery duration, routine renewal, full ranking and ranked refill
+   beyond the first pair. Record measured results, including any blocker.
+3. No extra restart is required solely to manufacture a cancellation test.
+   Check live stop-to-cancel and stop-to-exit timing at the next requested stop.
+
+## Historical queues — superseded by the priority above
+
+### Earlier D-113 deployment checklist
 
 1. The D-113 source repair and final release verification/review are finished.
    The operator approved implementation; this turn does not authorize restart.
@@ -13,8 +24,6 @@
    latency or proof of 30 economically eligible orders. Investigate any remaining
    measured bottleneck rather than increasing freshness windows or book shards.
 3. Continue measuring actual rewards, fees and settled trading loss separately.
-
-## Historical queues — superseded by the priority above
 
 The semantic ranking and subsequent priority-revalidation changes are already
 published through `6db4d6e` and generation 131 is running. Do not execute old

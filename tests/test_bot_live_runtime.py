@@ -354,6 +354,33 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertEqual(self.f.calls[0][0], 'cancel')
 
+    async def test_stop_queues_owned_cancel_during_account_recovery(self):
+        await self.f.ready(filled='0', remaining='10')
+        runtime = self.f.runtime
+        runtime.live_session = SimpleNamespace(entries_paused=True)
+        runtime.account.report = None
+        runtime.request_recovery()
+        with patch.object(runtime.management, 'refresh',
+                          AsyncMock(side_effect=AssertionError('cancel waited for plan'))):
+            runtime.request_entry_drain()
+            self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+            self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(self.f.calls[0][0], 'cancel')
+        self.assertIsNone(runtime.account.report)
+        self.assertTrue(runtime.recovery_requested.is_set())
+
+    async def test_entry_drain_needs_pause_and_coalesces_repeated_wakes(self):
+        await self.f.ready(filled='0', remaining='10')
+        runtime = self.f.runtime
+        runtime.request_entry_drain()
+        self.assertEqual(self.f.dispatcher.status().queued, ())
+        runtime.live_session = SimpleNamespace(entries_paused=True)
+        for _ in range(10):
+            runtime.request_entry_drain()
+        self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(len(self.f.calls), 1)
+
     async def test_hard_loss_hold_queues_flat_entry_cancel(self):
         await self.f.ready(filled='0', remaining='10')
         held = WindowState(*window_bounds(self.f.now), D(-25), 0, True, self.f.now)

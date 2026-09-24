@@ -189,6 +189,39 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(runtime._live_refresh(), 2)
             refresh.assert_awaited_once()
 
+    async def test_paused_slow_recovery_leaves_flat_report_for_supervisor(self):
+        from kalshi_bot.live import verified_flat
+        runtime = await self.runtime()
+        runtime.live_session = SimpleNamespace(entries_paused=True)
+        runtime.account._report_monotonic = self.tick-4.5
+        task = asyncio.create_task(runtime._live_refresh())
+        try:
+            await asyncio.sleep(.02)
+            self.assertEqual(runtime.routine_refresh_attempts, 0)
+            self.assertFalse(runtime.recovery_requested.is_set())
+            self.assertTrue(await verified_flat(runtime))
+        finally:
+            runtime.stop_requested.set()
+            await task
+
+    async def test_full_recovery_collects_financial_sources_with_final_snapshot(self):
+        runtime = await self.runtime()
+        original = runtime.account.reconcile
+        calls = 0
+        async def snapshot(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            # Time advances through the first repair stages so the elapsed
+            # tail and final source refresh are required, as in production.
+            self.advance(.1)
+            return await original(*args, **kwargs)
+        with (patch.object(runtime.account, 'reconcile', snapshot),
+              patch.object(runtime.account, 'reconcile_accounting',
+                  AsyncMock(side_effect=AssertionError('serial financial reads')))):
+            self.assertTrue(await runtime.recover_once())
+        self.assertEqual(calls, 3)
+        self.assertTrue(runtime.accounting_result.released)
+
     async def test_slow_snapshot_fails_freshness_without_widening_lease(self):
         runtime = await self.runtime()
         self.advance()

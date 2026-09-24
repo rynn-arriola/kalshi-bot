@@ -338,6 +338,7 @@ async def supervise(runtime, *, stop, publish, interval=1):
             if stop():
                 runtime.live_session.entries_paused = True
             if runtime.entry_pause_active:
+                runtime.request_entry_drain()
                 for ticker in runtime.engine.market_shard:
                     runtime.engine.dirty.mark(ticker)
                 runtime.engine.wake.set()

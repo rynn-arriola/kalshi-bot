@@ -10,9 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-114 — Repair measured cancellation and recovery latency
+
+- **Status:** ACCEPTED, 2026-09-24; verification/deployment state is in STATUS.
+- **Decision owner:** Operator: “Why it take so long to cancel? Fix this” and
+  “The whole process is really slow it should not be like that.”
+- **Scope:** Remove repeated historical-order classification scans, directly
+  schedule owned-entry drains, overlap independent final recovery reads, and
+  let the stop supervisor consume a fresh flat report before renewing it.
+  Finish the already-authorized restart after release verification.
+- **Boundary:** Preserve exact cancellation ownership, source freshness,
+  accounting/risk checks, single-writer authority and D-112 process scope.
+  No broader trading policy, longer proof lease or live ledger migration.
+
 ### D-113 — Separate routine freshness from full startup/refill recovery
 
-- **Status:** ACCEPTED, implemented and verified, 2026-09-24; not deployed.
+- **Status:** ACCEPTED, implemented and verified, 2026-09-24; subsequent
+  deployment evidence and remaining latency repairs are owned by STATUS.
 - **Decision owner:** Operator: “Ok lets do it,” accepting Finding 175's repair.
 - **Scope:** Renew account/accounting evidence using a bounded empty-history
   tail after a successful full proof, independently of order occupancy or ranking

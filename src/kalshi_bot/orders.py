@@ -98,6 +98,18 @@ class OrderReceipt:
 
 
 def settle_order(ledger, order_id: str) -> OrderReceipt | None:
+    return _settle_order(ledger, order_id)
+
+
+def settle_orders(ledger, order_ids):
+    """Share the reducer classification scan within one writer transaction."""
+    managed_exits = frozenset(r[0] for r in ledger.connection.execute(
+        "SELECT subject_id FROM command_authorizations WHERE kind='create' "
+        "AND json_extract(proof,'$.type')='managed_exit'"))
+    return tuple(_settle_order(ledger, order_id, managed_exits) for order_id in order_ids)
+
+
+def _settle_order(ledger, order_id, managed_exits=None):
     row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?", (order_id,)).fetchone()
     if row is None:
         return None
@@ -122,10 +134,10 @@ def settle_order(ledger, order_id: str) -> OrderReceipt | None:
     # Retain classification of legacy reducer intents already written with the
     # former venue flag while new passive reducers use managed-exit proof.
     reducing = (json.loads(intent[1]).get("reduce_only") is True
-        or ledger.connection.execute(
+        or (update.client_id in managed_exits if managed_exits is not None else ledger.connection.execute(
         "SELECT 1 FROM command_authorizations WHERE kind='create' AND subject_id=? "
         "AND json_extract(proof,'$.type')='managed_exit' LIMIT 1",
-        (update.client_id,)).fetchone() is not None)
+        (update.client_id,)).fetchone() is not None))
     return OrderReceipt(update, True, True, waiting, state, reducing)
 
 

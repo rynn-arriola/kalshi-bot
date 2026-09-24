@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 176. Historical order classification dominates recovery latency — 2026-09-24
+
+**MEASURED on an isolated copy of the stopped production ledger.** Enumerating
+935 retained orders called `settle_order` 935 times. Each non-legacy reducer
+classification scanned `command_authorizations` for the same `managed_exit`
+proof type. Profiling measured 2.427 seconds per enumeration, including 2.200
+seconds inside SQLite execute calls. Full recovery repeats this enumeration.
+The earlier explanation attributing the whole delay to API latency was
+incomplete: serial local database work is a measured major contributor.
+
+A shared classification query inside the existing writer transaction reduced
+the same pass to 0.146 seconds; a second run with exact old/new comparison took
+0.281 seconds and returned identical receipts, including all 37 reducers.
+These are offline timings, not a promise about venue response or total restart
+latency. The live database was opened read-only for the snapshot and was not
+modified by profiling. No schema migration or evidence deletion is needed.
+
+Stop scheduling also waited for a current management plan even though the
+existing paused cancel sender can validate exact durable ownership independently.
+The repair queues known owned-entry market keys directly on stop, retains final
+writer validation, shares financial collection with full recovery's final
+snapshot, and leaves a fresh flat report available to shutdown before renewing
+an unnecessary entry lease. Live acceptance belongs in `STATUS.md`.
+
 ## 175. Routine freshness recovery starves startup and refill — 2026-09-24
 
 **Repair follow-up:** D-113 is implemented in source, not yet deployed. Routine

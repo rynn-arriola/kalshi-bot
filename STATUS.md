@@ -1,5 +1,23 @@
 # Current status
 
+## Stop/recovery latency repair verified; restart pending — 2026-09-24
+
+Generation 136 canceled its two entries and eventually reached `STOPPED_FLAT`
+at 18:58:43 ET. Both managed processes have exited; no forced termination was
+performed on that generation. The prior supervisor timeout remains historical.
+Live refill on `63302b4` was not accepted: ranking completed but recovery after
+the first pair still repeatedly approached/exceeded 20 seconds.
+
+Finding 176 identifies a local database bottleneck omitted from the initial
+API-latency diagnosis. The correction shares order classification, schedules
+paused cancels immediately, overlaps final recovery financial reads and avoids
+premature renewal during flat shutdown. Focused regressions and same-ledger
+offline timing checks pass. The complete release suite ran 1,697 tests in
+318.963 seconds with no failures and one expected Windows symlink-privilege
+skip; the fast gate passed 281 tests. Source/test diff review and whitespace
+checks passed. Publication and the previously authorized restart remain pending;
+offline speedup is not yet live refill or cancellation-latency acceptance.
+
 ## D-113 concurrent renewal correction verified; restart pending — 2026-09-24
 
 The first generation-133 deployment proved that advisory ranking can complete

@@ -297,6 +297,24 @@ class RecoveryRuntime:
             raise InvalidData('offline dispatch not attached')
         return self.dispatch_supervisor.request(ticker, priority)
 
+    def request_entry_drain(self):
+        """Wake exact owned-entry cancellation without waiting for a plan.
+
+        The account cache only supplies scheduling keys. The dispatcher still
+        obtains current durable cancel evidence before preparing each command.
+        """
+        if not self.entry_pause_active or self.stop_requested.is_set():
+            return
+        owner = self.dispatch_supervisor
+        if owner is None or owner.stopping:
+            return
+        from .dispatch import SAFETY_CANCEL
+        tickers = {r.order.ticker for r in self.account.order_states.values()
+                   if r.owned and not r.reducing and not r.order.terminal}
+        for ticker in sorted(tickers):
+            if ticker in self.engine.market_shard:
+                owner.request(ticker, SAFETY_CANCEL)
+
     async def _evaluate(self, ticker, book, generation):
         scope = self._current_steady_account_scope()
         if scope is not None and ticker not in scope:
@@ -1283,6 +1301,7 @@ class RecoveryRuntime:
             self._request_inventory_dispatch(ticker)
         if self.account.report is not final or generation != self.account.generation:
             return False
+        prepared_accounting = None
         if self.accounting_boundary is not None:
             # Inventory/order refresh can consume the five-second evidence
             # lease.  Enumerate only the elapsed empty tail concurrently with
@@ -1296,12 +1315,18 @@ class RecoveryRuntime:
             if end_us > start_us:
                 start = datetime.fromtimestamp(start_us//1_000_000,
                     tz=timezone.utc).replace(microsecond=start_us%1_000_000)
-                history, final = await asyncio.gather(
+                history, reconciled = await asyncio.gather(
                     self.account.extend_empty_history(
                         reads, start=start, end=end, now=self.now),
-                    self.account.reconcile(reads, now=self.now))
-                if history is None:
+                    self.account.reconcile(reads, now=self.now,
+                        prepare_accounting_boundary=self.accounting_boundary),
+                    return_exceptions=True)
+                for value in (history, reconciled):
+                    if isinstance(value, BaseException):
+                        raise value
+                if history is None or reconciled is None:
                     return False
+                final, prepared_accounting = reconciled
                 history_reports.append(history)
                 release_receipt_ids += (history.enumeration.receipt_id,)
             if (final is None or generation != self.account.generation
@@ -1349,9 +1374,13 @@ class RecoveryRuntime:
                     # source-fenced report before granting a dispatch lease.
                     self.request_recovery()
                     return False
-            self.accounting_result = await self.account.reconcile_accounting(
-                reads, proposed_boundary=self.accounting_boundary,
-                continuity=release_continuity, now=self.now, release=True)
+            if prepared_accounting is not None:
+                self.accounting_result = await self.account.release_prepared_accounting(
+                    prepared_accounting, continuity=release_continuity, now=self.now)
+            else:
+                self.accounting_result = await self.account.reconcile_accounting(
+                    reads, proposed_boundary=self.accounting_boundary,
+                    continuity=release_continuity, now=self.now, release=True)
             repaired = self.accounting_result.released
             if repaired:
                 self._record_routine_proof(release_receipt_ids, history)
@@ -1518,7 +1547,11 @@ class RecoveryRuntime:
                 # every outcome already requests authoritative recovery.
                 report = self.account.current_report(self.now())
                 snapshot_started = self.account._report_monotonic
-                renewal_due = (self._current_routine_proof() is not None
+                # A paused runtime needs a current flat snapshot for shutdown,
+                # not another entry lease. Give the supervisor the normal
+                # report interval to consume it after a slow recovery pass.
+                renewal_due = (not self.entry_pause_active
+                    and self._current_routine_proof() is not None
                     and snapshot_started is not None and self.clock()-snapshot_started >= 3)
                 if (report is None or renewal_due
                         or (utc(self.now())-report.observed_at).total_seconds() >= 3):

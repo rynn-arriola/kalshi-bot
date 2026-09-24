@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
@@ -11,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from kalshi_bot.account import AccountCoordinator, normalize_snapshot
 from kalshi_bot.ledger import Fill, Ledger
 from kalshi_bot.orders import (OrderReceipt, OrderUpdate, inventory_plan, parse_order,
-                               record_order, timestamp_us)
+                               record_order, settle_order, settle_orders, timestamp_us)
 from kalshi_bot.recovery import (HistoricalFill, HistoryEvidence, fetch_history,
                                  parse_history_fill, stage_history)
 from kalshi_bot.rest import PageSet, ReadResult, RestReads, TokenBudget, request_path
@@ -129,6 +130,46 @@ class OrderTests(unittest.TestCase):
     def test_duplicate_is_idempotent(self):
         record_order(self.db, update(), NOW)
         self.assertFalse(record_order(self.db, update(), NOW).applied)
+
+    def test_bulk_order_settlement_shares_one_classification_scan(self):
+        ids = []
+        for i in range(64):
+            client, order_id = f'bulk-client-{i}', f'bulk-order-{i}'
+            self.db.reserve_intent(client, payload(reduce_only=i == 1), NOW)
+            self.db.transition_intent(client, 'SENDING')
+            record_order(self.db, update(client_id=client, order_id=order_id,
+                status='canceled' if i % 2 else 'resting',
+                remaining=D(0) if i % 2 else D(10)), NOW)
+            ids.append(order_id)
+        expected = tuple(settle_order(self.db, order_id) for order_id in ids)
+        queries = []
+        self.db.connection.set_trace_callback(queries.append)
+        try:
+            with self.db.transaction():
+                actual = settle_orders(self.db, ids)
+        finally:
+            self.db.connection.set_trace_callback(None)
+        self.assertEqual(actual, expected)
+        self.assertTrue(actual[1].reducing)
+        scans = [q for q in queries if 'FROM command_authorizations' in q]
+        self.assertEqual(len(scans), 1)
+
+    def test_bulk_classification_matches_managed_and_ordinary_authorizations(self):
+        record_order(self.db, update(), NOW)
+        for kind, proof_type, expected in (
+                ('cancel', 'managed_exit', False),
+                ('create', 'ordinary_entry', False),
+                ('create', 'managed_exit', True)):
+            key = kind+'-'+proof_type
+            self.db.connection.execute('INSERT INTO mutation_attempts VALUES (?,?,?,?,?,?)',
+                (key, kind, '{}', 'ACK', '{}', NOW.isoformat()))
+            self.db.connection.execute('INSERT INTO command_authorizations VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                (key, key, 'fixture', 1, kind, 'client-1', 'episode', '{}',
+                 json.dumps({'type':proof_type}), 'ACK', NOW.isoformat()))
+            with self.db.transaction():
+                result = settle_orders(self.db, ('order-1',))
+            self.assertEqual(result, (settle_order(self.db, 'order-1'),))
+            self.assertEqual(result[0].reducing, expected)
 
     def test_terminal_waits_for_fill_accounting(self):
         receipt = record_order(self.db, update(status="executed", filled=D(10), remaining=D(0)), NOW)

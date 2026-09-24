@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+Paused stop scheduling queues owned-entry keys directly to the existing cancel
+dispatcher without requiring a management plan. Keys grant no mutation authority;
+the writer still validates each exact order. Bulk order enumeration obtains one
+transaction-local managed-exit classification set, preserving all individual
+order, fill and intent checks. Full recovery collects financial documents with
+its final snapshot; paused refresh gives the supervisor the normal fresh-report
+interval to finish its flat check before any further renewal.
+
 D-113 separates routine startup/refill renewal from full recovery. After a
 successful operational release, a process-local anchor retains exact source
 versions, account signature and at most 128 history receipt IDs. Renewal joins
