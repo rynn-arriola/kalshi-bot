@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 172. Paused entry draining must hand off to reducer cleanup — 2026-09-24
+
+VERIFIED LIVE from generation 113/114 diagnostics and VERIFIED offline by a
+focused regression. Recovery canceled all 26 stale entry orders, but retained
+one owned passive reducer for the 10-contract short position in
+`KXCTMFPERMITS-27MAY03-T4000`. The paused fast path then repeatedly reported
+`current_candidate_missing`: its selector deliberately excludes reducers, and
+the empty result prevented the normal source-verified plan from issuing the
+already-due cancel-before-IOC operation.
+
+The repair makes an empty fast-path result continue to the existing account and
+management plan. It does not classify reducers as entries, bypass current venue
+evidence, weaken cancellation identity checks or create new trading authority.
+The old child remains stop-latched and cannot load source changes in place.
+
 ## 171. A zero-revenue settlement can describe a market already closed by fills — 2026-09-24
 
 VERIFIED LIVE from generation 111's retained account evidence and VERIFIED

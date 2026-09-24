@@ -177,17 +177,21 @@ class InventoryDispatchSource:
             if priority == SAFETY_CANCEL and runtime.entry_pause_active:
                 evidence = await runtime.writer.next_entry_cancel_evidence(
                     ticker, subaccount=runtime.account.subaccount)
-                if (evidence is None or generation != self._generation
-                        or not self._available() or not runtime.entry_pause_active):
+                if (generation != self._generation or not self._available()
+                        or not runtime.entry_pause_active):
                     return None
-                request = dict(order_id=evidence.order_id, market_ticker=ticker,
-                    subaccount=evidence.subaccount,
-                    exchange_index=evidence.exchange_index)
-                candidate = DispatchCandidate(ticker, priority, str(uuid4()),
-                    request, evidence, evidence.exchange_index)
-                self._proof = _PausedCancelProof(runtime.writer.epoch,
-                    evidence.writer_revision, encoded_request(request))
-                return candidate
+                if evidence is not None:
+                    request = dict(order_id=evidence.order_id, market_ticker=ticker,
+                        subaccount=evidence.subaccount,
+                        exchange_index=evidence.exchange_index)
+                    candidate = DispatchCandidate(ticker, priority, str(uuid4()),
+                        request, evidence, evidence.exchange_index)
+                    self._proof = _PausedCancelProof(runtime.writer.epoch,
+                        evidence.writer_revision, encoded_request(request))
+                    return candidate
+                # The pause-only fast path deliberately selects entry orders.
+                # Once none remain, continue through the source-verified plan
+                # below so an aged passive reducer can be canceled before IOC.
             report = runtime.account.current_report(runtime.now())
             if report is None:
                 return blocked('entry_account_report_unavailable')

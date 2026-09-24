@@ -243,6 +243,29 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
                          {'first-order', 'second-order'})
         self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
 
+    async def test_paused_drain_falls_through_to_cancel_due_passive_reducer(self):
+        await self.ready()
+        self.assertEqual((await self.run_priority(PASSIVE_REDUCER)).state, 'ACK')
+        request = self.calls[-1][1]
+        reducer = OrderUpdate('reducer-order', request['client_order_id'], 'A',
+            request['side'], D(request['price']), D(request['count']), D(0),
+            D(request['count']), 'resting', 0, request['exchange_index'], 2)
+        receipt = await self.writer.order(reducer, self.now)
+        self.assertTrue(receipt.reducing)
+        self.runtime.account._store_order(receipt)
+        self.now += timedelta(seconds=900)
+        self.mono += 900
+        await self.books()
+        await self.report('10', (reducer,))
+        self.runtime.live_session = type('Paused', (), {'entries_paused': True})()
+        plan = await self.runtime.management.refresh('A')
+        self.assertEqual(plan.exit.mode, 'cancel_before_ioc')
+
+        self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
+        self.assertEqual(self.calls[-1], ('cancel', {
+            'order_id': reducer.order_id, 'market_ticker': 'A',
+            'subaccount': 0, 'exchange_index': 0}))
+
     async def test_final_paused_cancel_wakes_exhausted_recovery_once_when_idle(self):
         from types import SimpleNamespace
         await self.test_paused_drain_cancels_all_exact_entries_without_recovery_between()

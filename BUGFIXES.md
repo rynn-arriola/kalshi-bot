@@ -1,5 +1,25 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — paused cleanup could strand an aged passive reducer
+
+**Mechanism:** The paused `SAFETY_CANCEL` dispatch path intentionally searched
+only for entry orders. After startup recovery canceled all 26 stale entries, it
+returned no candidate instead of continuing through the normal source-verified
+inventory plan. The remaining passive reducer therefore could not advance to
+its existing cancel-before-IOC exit path, leaving a 10-contract short position
+and causing the supported stop to reach `shutdown_timeout`.
+
+**Fix:** Retain the bounded entry-cancel fast path while entries exist. When it
+is empty, fall through to the existing current-account and inventory-plan path;
+all generation, availability, pause, evidence, writer and dispatch fences remain
+unchanged. No new order authority or exit policy was added.
+
+**Verification:** A regression reproduces the paused aged-reducer handoff and
+proves the exact reducer cancel request. The 263-test fast gate and complete
+1,671-test release suite pass, with one expected Windows privilege skip. The
+published repair still requires a new process; the stop-latched old generation
+cannot hot-load it.
+
 ## 2026-09-24 — a fully closed market settlement permanently blocked refill
 
 **Mechanism:** Settlement capture conservatively installed

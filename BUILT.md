@@ -1,5 +1,15 @@
 # What exists
 
+## Paused drain handoff to passive-reducer exit — 2026-09-24
+
+After paused recovery drains all entry orders, `SAFETY_CANCEL` now falls through
+to the ordinary source-verified inventory plan instead of stopping at an empty
+entry-only selector. This lets an aged passive reducer use the existing
+cancel-before-IOC sequence while preserving current account evidence, exact
+order identity, generation, writer and dispatch fences. The fast gate passes
+263 tests and the complete release gate passes 1,671 tests with one expected
+Windows privilege skip. Live deployment state belongs in `STATUS.md`.
+
 ## Exact fully-closed settlement release — 2026-09-24
 
 Operational accounting can now distinguish one narrow already-booked settlement

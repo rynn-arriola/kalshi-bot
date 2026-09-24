@@ -1,5 +1,21 @@
 # Current status
 
+## Generation 114 stop-latched on old reducer path; repair verified — 2026-09-24
+
+The supported restart entered recovery and canceled all 26 stale entry orders,
+but the old loaded child retained one owned passive reducer and a 10-contract
+short position in `KXCTMFPERMITS-27MAY03-T4000`. A supported stop is latched;
+the supervisor and child remain present in `attention_required` with
+`shutdown_timeout`, entries paused and no entry orders. All six readers and
+logging remain healthy. The status field `resting_entries: 0` counts entries and
+does not imply that the reducer is absent.
+
+The source repair permits the empty paused entry-drain path to continue through
+the existing source-verified reducer cancel-before-IOC plan. Its regression, the
+263-test fast gate and the complete 1,671-test suite pass with one expected
+Windows privilege skip. The current process cannot hot-load this repair. No
+force termination, direct venue mutation, database edit or second bot was used.
+
 ## Generation 111 blocked by closed-market settlement; source repair verified — 2026-09-24
 
 Generation 111 remains present under its supervisor with 28 resting orders,
