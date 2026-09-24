@@ -1,5 +1,26 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — an unchanged approved deposit could acquire a false cash hold
+
+**Mechanism:** The approved $500 ACH row originally had no `finalized_ts` and
+was retained as boundary-relevant evidence. Kalshi later populated that field
+with the original pre-boundary creation time. The relevance filter correctly
+dropped the now fully pre-boundary row, but exact baseline matching mistook its
+absence for unattributed cash activity even though its identity and economics
+were unchanged.
+
+**Fix:** Keep a separate bounded complete funding history from the same
+cursor-exhausted source. A missing relevant approved row matches only when the
+complete source proves the same applied deposit and all fields are identical
+except for a null-to-integer finalization timestamp strictly before the boundary.
+The complete history is non-authorizing. Omission, new activity, changed fields,
+non-applied status and finalization at or after the boundary still block.
+
+**Verification:** The focused opening/account-release tests, 274-test fast plus
+native-supervisor gate and complete 1,667-test suite pass; the complete suite has
+one expected Windows symlink-privilege skip. Live loading/restart is recorded
+separately in [STATUS](STATUS.md).
+
 ## 2026-09-23 — transient failures could leave a healthy-looking bot unable to refill
 
 **Mechanism:** Account/book readers retired after one three-attempt round while

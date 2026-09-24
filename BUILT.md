@@ -1,5 +1,17 @@
 # What exists
 
+## Complete funding-history lifecycle proof — 2026-09-24
+
+Opening-account evidence now carries both the existing boundary-relevant funding
+set and a bounded complete funding history from the same cursor-exhausted source.
+The complete set grants no authority; it can prove that one previously approved,
+applied deposit merely gained a finalization timestamp strictly before the
+accounting boundary. Every identity/economic/status change, omission, new event
+or later finalization remains fail-closed. Regression tests cover the accepted
+enrichment, omission and changed-economics cases. The complete suite passes
+1,667 tests with one expected Windows privilege skip. Deployment state belongs
+in `STATUS.md`.
+
 ## Persistent transient recovery and fresh post-crash rebuild — 2026-09-23
 
 D-110 keeps all WebSocket reader owners alive across bounded/capped retry rounds,

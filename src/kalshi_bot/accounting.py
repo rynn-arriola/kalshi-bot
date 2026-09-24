@@ -305,22 +305,58 @@ def _cash_activity_rows(evidence):
 
 
 def cash_activity_matches_baseline(ledger, evidence):
-    """Prove current, retained and explicitly attributed cash events are exact."""
+    """Prove approved activity, including narrow lifecycle enrichment.
+
+    Kalshi may later add ``finalized_ts`` to an already-approved, applied
+    pre-boundary deposit. Such a row then leaves the relevant interval, but the
+    complete exhausted funding source still proves its identity and economics.
+    No other changed field, status, record, later timestamp or omission passes.
+    """
     baseline = ledger.connection.execute(
         'SELECT payload FROM accounting_baseline WHERE id=1').fetchone()
     if baseline is None:
         return False
     approved = json.loads(baseline['payload']).get('attributed_cash_activity', ())
-    approved = tuple(sorted((row.get('kind'), row.get('digest')) for row in approved))
-    if not approved or any(kind not in {
-            'funding', 'intra_exchange_transfer'} for kind, _ in approved):
+    approved = tuple((row.get('kind'), row.get('digest')) for row in approved)
+    if (not approved or len(set(approved)) != len(approved)
+            or any(kind not in {'funding', 'intra_exchange_transfer'}
+                   for kind, _ in approved)):
         return False
-    current = tuple(sorted((kind, fingerprint)
-                           for kind, _, _, fingerprint in _cash_activity_rows(evidence)))
-    retained = tuple(sorted(tuple(row) for row in ledger.connection.execute(
-        "SELECT kind,digest FROM accounting_events WHERE kind IN "
-        "('funding','intra_exchange_transfer','subaccount_transfer')")))
-    return current == approved == retained
+    retained = {row['digest']: row for row in ledger.connection.execute(
+        "SELECT digest,kind,event_key,payload FROM accounting_events WHERE kind IN "
+        "('funding','intra_exchange_transfer','subaccount_transfer')")}
+    if any(fingerprint not in retained or retained[fingerprint]['kind'] != kind
+           for kind, fingerprint in approved):
+        return False
+    expected = {(kind, retained[fingerprint]['event_key']):
+                (fingerprint, retained[fingerprint]['payload'])
+                for kind, fingerprint in approved}
+    if len(expected) != len(approved):
+        return False
+    cash_rows = tuple(_cash_activity_rows(evidence))
+    current = {(kind, key): (fingerprint, payload)
+               for kind, key, payload, fingerprint in cash_rows}
+    if len(current) != len(cash_rows) or set(current)-set(expected):
+        return False
+    history = {('funding', encode([row.kind, row.record_id])): json.loads(encode(row))
+               for row in evidence.funding_history}
+    cutoff = int(utc(evidence.proposed_boundary).timestamp())
+    for key, (fingerprint, old_payload) in expected.items():
+        observed = current.get(key)
+        if observed is not None:
+            if observed[0] != fingerprint:
+                return False
+            continue
+        if key[0] != 'funding' or key not in history:
+            return False
+        old, new = json.loads(old_payload), history[key]
+        old_finalized = old.pop('finalized_ts', None)
+        new_finalized = new.pop('finalized_ts', None)
+        if (old != new or old_finalized is not None
+                or type(new_finalized) is not int or new_finalized >= cutoff
+                or new.get('kind') != 'deposit' or new.get('status') != 'applied'):
+            return False
+    return True
 
 
 def validate_accounting(ledger):
@@ -405,8 +441,9 @@ def capture(ledger, evidence, report, *, writer_epoch, writer_revision,
         sources=evidence.sources, blockers=evidence.blockers)
     # Bind every normalized observation without retaining a second large array.
     observations_hash = sha256()
+    funding_source = evidence.funding_history or evidence.funding
     for rows in ((evidence.cash,), evidence.settlements, evidence.subaccount_transfers,
-                 evidence.intra_exchange_transfers, evidence.funding):
+                 evidence.intra_exchange_transfers, funding_source):
         observations_hash.update(str(len(rows)).encode() + b':')
         for row in rows:
             observations_hash.update(digest(encode(row)).encode())

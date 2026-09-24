@@ -1,5 +1,26 @@
 # Current status
 
+## Generation 108 fenced flat; funding-finalization repair verified offline — 2026-09-24
+
+Generation 108 stopped trading after Kalshi enriched the already approved $500
+ACH deposit with a `finalized_ts` equal to its original pre-boundary creation
+time. The deposit identity, status, amount, fee and method did not change, but
+the old relevance filter then omitted the row and incorrectly latched
+`cash_activity_unattributed`. The supported stop canceled every resting order.
+The last runtime report has zero orders, zero positions and zero exposure, with
+entry authority disabled.
+
+The parent and exact generation-108 child are still present after a bounded
+shutdown timeout, so the supervisor truthfully reports `RUNNING_UNVERIFIED` /
+`attention_required`; this is not a clean stopped-process claim. Source now
+retains the complete cursor-exhausted funding history as non-authorizing proof
+and permits only the exact null-to-pre-boundary-finalized lifecycle enrichment
+of an approved applied deposit. Missing rows, later finalization, new activity,
+changed economics/status and incomplete sources still block. Focused, fast,
+native-supervisor and complete verification pass: 1,667 tests, with one expected
+Windows symlink-privilege skip. The repaired source is not loaded by the old
+child and no restart has occurred yet.
+
 ## Generation 108 running on D-110; unattended-recovery release accepted live — 2026-09-23
 
 All four Finding-169 gaps now have code and focused offline regressions: persistent

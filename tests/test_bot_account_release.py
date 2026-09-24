@@ -161,6 +161,31 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.released)
         self.assertIn('cash_activity_unattributed', result.blockers)
 
+    async def test_approved_deposit_finalization_enrichment_releases(self):
+        await self.refresh()
+        finalized = self.deposit | dict(finalized_ts=self.deposit['created_ts'])
+        result = await self.release(reads=Reads(self.cash,
+            deposits=(finalized,), intra_transfers=(self.transfer,)))
+        self.assertTrue(result.released, result.blockers)
+        self.assertNotIn('cash_activity_unattributed',
+                         (await self.writer.accounting_status()).holds)
+
+    async def test_approved_deposit_omission_remains_blocked(self):
+        await self.refresh()
+        result = await self.release(reads=Reads(self.cash,
+            deposits=(), intra_transfers=(self.transfer,)))
+        self.assertFalse(result.released)
+        self.assertIn('cash_activity_unattributed', result.blockers)
+
+    async def test_finalized_deposit_economic_change_remains_blocked(self):
+        await self.refresh()
+        changed = self.deposit | dict(finalized_ts=self.deposit['created_ts'],
+                                      amount_cents=self.deposit['amount_cents']+1)
+        result = await self.release(reads=Reads(self.cash,
+            deposits=(changed,), intra_transfers=(self.transfer,)))
+        self.assertFalse(result.released)
+        self.assertIn('cash_activity_unattributed', result.blockers)
+
     async def test_later_unchanged_balance_timestamp_releases(self):
         self.cash = self.cash | dict(updated_ts=2)
         await self.refresh()

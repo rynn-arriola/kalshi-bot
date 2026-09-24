@@ -206,6 +206,9 @@ class OpeningAccountEvidence:
     sources: tuple[SourcePageEvidence, ...]
     blockers: tuple[str, ...]
     snapshot_observed_at: datetime
+    # Complete cursor-exhausted funding source, including fully finalized
+    # pre-boundary rows. It proves lifecycle enrichment but grants no authority.
+    funding_history: tuple[FundingObservation, ...] = ()
     approved: bool = False
     ready_for_entry: bool = False
 
@@ -224,6 +227,7 @@ class OpeningAccountEvidence:
                 (self.subaccount_transfers, SubaccountTransfer, 10000),
                 (self.intra_exchange_transfers, IntraExchangeTransfer, 10000),
                 (self.funding, FundingObservation, 20000),
+                (self.funding_history, FundingObservation, 20000),
                 (self.sources, SourcePageEvidence, 8)):
             if (type(values) is not tuple or len(values) > limit
                     or any(not isinstance(value, cls) for value in values)):
@@ -408,8 +412,10 @@ def parse_intra_exchange_transfers(rows, *, boundary, observed_at=None):
     return _unique(values, lambda row: row.transfer_id, 'intra-exchange transfer')
 
 
-def parse_funding(rows, *, kind, boundary, observed_at=None):
-    minimum, values = int(utc(boundary).timestamp()), []
+def parse_funding_history(rows, *, kind, boundary, observed_at=None):
+    """Normalize the complete funding source without assigning relevance."""
+    utc(boundary)
+    values = []
     maximum = int(utc(observed_at).timestamp()) if observed_at is not None else None
     try:
         for row in rows:
@@ -419,12 +425,19 @@ def parse_funding(rows, *, kind, boundary, observed_at=None):
             if (maximum is not None and (item.created_ts > maximum
                     or (item.finalized_ts is not None and item.finalized_ts > maximum))):
                 raise InvalidData('funding observation is later than account snapshot')
-            if (item.created_ts >= minimum or item.status == 'pending'
-                    or item.finalized_ts is None or item.finalized_ts >= minimum):
-                values.append(item)
+            values.append(item)
     except (KeyError, TypeError) as exc:
         raise InvalidData('incomplete funding observation') from exc
     return _unique(values, lambda row: (row.kind, row.record_id), 'funding observation')
+
+
+def parse_funding(rows, *, kind, boundary, observed_at=None):
+    """Return only funding whose completion can affect the opening boundary."""
+    minimum = int(utc(boundary).timestamp())
+    return tuple(item for item in parse_funding_history(rows, kind=kind,
+        boundary=boundary, observed_at=observed_at)
+        if (item.created_ts >= minimum or item.status == 'pending'
+            or item.finalized_ts is None or item.finalized_ts >= minimum))
 
 
 def _prepare_opening_evidence(*, report, continuity, proposed_boundary, subaccount,
@@ -505,12 +518,17 @@ def _prepare_opening_evidence(*, report, continuity, proposed_boundary, subaccou
         (parse_funding, deposits.rows, options | dict(kind='deposit'),
          lambda row: (row.kind, row.record_id), 'funding observation'),
         (parse_funding, withdrawals.rows, options | dict(kind='withdrawal'),
-         lambda row: (row.kind, row.record_id), 'funding observation'))
+         lambda row: (row.kind, row.record_id), 'funding observation'),
+        (parse_funding_history, deposits.rows, options | dict(kind='deposit'),
+         lambda row: (row.kind, row.record_id), 'funding history'),
+        (parse_funding_history, withdrawals.rows, options | dict(kind='withdrawal'),
+         lambda row: (row.kind, row.record_id), 'funding history'))
     return base, jobs
 
 
 def _assemble_opening_evidence(base, normalized):
-    settlement_rows, scoped_transfers, shard_transfers, deposits, withdrawals = normalized
+    (settlement_rows, scoped_transfers, shard_transfers, deposits, withdrawals,
+     deposit_history, withdrawal_history) = normalized
     funding = deposits + withdrawals
     blockers = list(base.blockers)
     if scoped_transfers or shard_transfers or funding:
@@ -526,7 +544,8 @@ def _assemble_opening_evidence(base, normalized):
         blockers.append('intra_exchange_transfer_completion_time_unproven')
     return replace(base, settlements=settlement_rows,
         subaccount_transfers=scoped_transfers, intra_exchange_transfers=shard_transfers,
-        funding=funding, blockers=tuple(dict.fromkeys(blockers)))
+        funding=funding, funding_history=deposit_history+withdrawal_history,
+        blockers=tuple(dict.fromkeys(blockers)))
 
 
 def build_opening_evidence(*, report, continuity, proposed_boundary, subaccount,

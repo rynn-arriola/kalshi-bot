@@ -195,6 +195,11 @@ entry gate needs approval, rather than silently deleting the current hold.
 - A pending or unscoped transfer/funding record stays visible and blocks any
   claim that cash has been fully attributed. An absent venue event is not proof
   of no event. A restarted process must not re-arm from a historical flat read.
+- Lifecycle enrichment is narrower than economic reconciliation. A complete,
+  cursor-exhausted funding source may prove that an already approved applied
+  deposit gained only a pre-boundary finalization timestamp. That history grants
+  no authority; missing records, new records, changed identity/economics/status
+  or finalization at/after the boundary remain unexplained activity.
 
 ## Implementation sequence and acceptance
 

@@ -315,6 +315,16 @@ class OpeningEvidenceTests(unittest.IsolatedAsyncioTestCase):
             evidence = self.build(intra_exchange_transfers=self.pages((row,), 'intra_exchange_transfers'))
             self.assertIn('intra_exchange_transfer_completion_time_unproven', evidence.blockers)
 
+    async def test_complete_funding_history_retains_finalized_preboundary_proof(self):
+        old = int((NOW-timedelta(days=1)).timestamp())
+        finalized = dict(id='approved', status='applied', type='ach', amount_cents=50000,
+            fee_cents=0, created_ts=old, finalized_ts=old)
+        evidence = self.build(deposits=self.pages((finalized,), 'deposits'))
+        self.assertEqual(evidence.funding, ())
+        self.assertEqual(len(evidence.funding_history), 1)
+        self.assertEqual(evidence.funding_history[0].record_id, 'approved')
+        self.assertNotIn('cash_activity_requires_operator_attribution', evidence.blockers)
+
     async def test_snapshot_and_inspection_timestamps_are_distinct(self):
         observed = NOW+timedelta(seconds=1)
         evidence = self.build(observed_at=observed)
