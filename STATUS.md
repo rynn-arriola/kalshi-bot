@@ -1,5 +1,25 @@
 # Current status
 
+## Generation 116 live on paused-reducer repair — 2026-09-24
+
+The old generation became flat and exited naturally before the separately
+authorized exact-PID termination ran, so no process was killed. Its final current
+account snapshot had zero positions and `STOPPED_FLAT`. The supported launcher
+then started published commit `f46c23c`; recovery-only proved flat and the
+supervisor launched a fresh normal child with build fingerprint
+`34342a52bac7208a96a2b42361167f773845f704b8895041c5ed0262e3774da4`.
+
+Generation 116 completed current four-shard coverage of 1,024/1,024 markets
+after two source-generation resets and reached the configured cap of 30 resting
+entry orders across 15 markets. Dispatch evidence classifies 14 markets in the
+$2+ projected-reward priority tier and one allowed $1+ fallback at approximately
+$1.47; projected rewards are not verified payouts. Repeated current samples show
+zero positions, all six readers subscribed, no risk/accounting/supervisor hold,
+zero reader/recovery retry rounds, healthy engine/dispatch/logging, and zero
+dropped logs. Both live SQLite databases report `quick_check: ok`. The current
+run has no ERROR/CRITICAL event; 16 handled startup HTTP 429 retries and 17
+temporary recovery-incomplete warnings cleared without an exhausted retry.
+
 ## Generation 114 stop-latched on old reducer path; repair verified — 2026-09-24
 
 The supported restart entered recovery and canceled all 26 stale entry orders,

@@ -116,6 +116,14 @@ The AI must obtain an explicit operator decision before:
 - Modifying the Polymarket reference at `C:/Users/rynna/Bots/liquidity-bot`
   or its historical `D:/polybot/liquidity-bot` location.
 
+D-112 defines an explicit operator command to **restart this Kalshi bot** as
+authorization for the complete supported stop/start operation. If the supported
+stop times out, that same command authorizes termination without another prompt
+only for the exact managed child whose PID, generation, scope and stop latch are
+reverified immediately before termination. It never authorizes a broad process
+kill, an ambiguous target, a second bot, direct venue mutation or bypassing
+recovery and flat-state checks.
+
 An AI recommendation is not approval. Record accepted decisions in
 `DECISIONS.md` before implementing them. In the current phase, live order
 execution is not authorized. D-021 authorizes building only; AI operation does

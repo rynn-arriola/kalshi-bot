@@ -13,7 +13,10 @@ already-due cancel-before-IOC operation.
 The repair makes an empty fast-path result continue to the existing account and
 management plan. It does not classify reducers as entries, bypass current venue
 evidence, weaken cancellation identity checks or create new trading authority.
-The old child remains stop-latched and cannot load source changes in place.
+The old child could not load source changes in place, but it eventually filled
+flat and exited naturally before authorized exact-PID termination was needed.
+Generation 116 then loaded the published repair, completed recovery flat, ranked
+1,024/1,024 markets and rebuilt 30 entries with no position or persistent hold.
 
 ## 171. A zero-revenue settlement can describe a market already closed by fills — 2026-09-24
 

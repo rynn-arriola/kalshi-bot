@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-112 — An explicit restart command covers exact-child timeout recovery
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** The operator directed that future explicit instructions to
+  restart this bot require no second termination prompt.
+- **Scope:** A `restart` command authorizes the supported stop and start. If the
+  supported stop times out, it also authorizes terminating only the exact
+  managed child after immediately rechecking PID, generation, production scope,
+  and stop-latched/disarmed state.
+- **Boundary:** Never kill by process name, terminate unrelated or ambiguously
+  identified processes, start a second bot, mutate venue orders ad hoc, edit the
+  ledger, or bypass recovery/flat-state checks. If the child exits naturally,
+  do not issue the termination.
+
 ### D-111 — Repair the false funding hold and restart through exact recovery
 
 - **Status:** ACCEPTED, implemented, published and live on generation 111,

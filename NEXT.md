@@ -1,19 +1,19 @@
 # Active work queue
 
-## Deploy paused reducer-drain repair
+## After generation 116 reducer-drain deployment
 
-1. Keep the verified repair published and preserve the current stop latch. Do
-   not start a second bot, edit the ledger, or cancel through an ad hoc venue
-   client.
-2. If the old child becomes flat and exits naturally, use the supported live
-   launcher and require the published build fingerprint.
-3. If it remains alive, require separate operator authorization before targeting
-   only the exact verified old child; never terminate unrelated processes.
-4. On the next process, require recovery to cancel the exact reducer, finish the
-   existing exit policy, prove flat, and only then permit normal ranked refill.
-5. Accept live operation only with current account proof, all six readers,
-   healthy logging, no unresolved orders/positions or holds, and a clean SQLite
-   integrity check.
+1. Leave generation 116 under its supervisor and monitor natural fills, passive
+   reducer aging, cancel-before-IOC handoff, reference-price maintenance and
+   vacancy refill. Do not restart merely to manufacture another incident.
+2. Compare actual paid rewards with fees and settled trading loss. Fourteen of
+   the 15 current markets entered through the $2+ projected tier; the remaining
+   allowed fallback projected about $1.47, but neither projection is payout.
+3. Measure the 1,024-market startup duration and catalog-reset count on later
+   restarts. This run remained fail-closed and completed after two resets; only a
+   persistent measured failure warrants changing the coverage policy.
+4. D-112 lets an explicit future `restart` instruction cover exact-child
+   termination after a supported-stop timeout, but all identity, recovery,
+   flat-state and single-process checks remain mandatory.
 
 ## After exact closed-settlement reconciliation repair
 

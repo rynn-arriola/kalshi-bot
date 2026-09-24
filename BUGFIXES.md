@@ -17,8 +17,9 @@ unchanged. No new order authority or exit policy was added.
 **Verification:** A regression reproduces the paused aged-reducer handoff and
 proves the exact reducer cancel request. The 263-test fast gate and complete
 1,671-test release suite pass, with one expected Windows privilege skip. The
-published repair still requires a new process; the stop-latched old generation
-cannot hot-load it.
+old generation could not hot-load the repair, but later became flat and exited
+naturally. The supported generation-116 launch loaded the published build,
+proved flat in recovery, ranked 1,024/1,024 markets and rebuilt 30 entries.
 
 ## 2026-09-24 — a fully closed market settlement permanently blocked refill
 
