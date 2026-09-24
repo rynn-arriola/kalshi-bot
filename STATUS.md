@@ -1,25 +1,27 @@
 # Current status
 
-## Generation 108 fenced flat; funding-finalization repair verified offline — 2026-09-24
+## Generation 111 running after exact funding recovery — 2026-09-24
 
-Generation 108 stopped trading after Kalshi enriched the already approved $500
-ACH deposit with a `finalized_ts` equal to its original pre-boundary creation
-time. The deposit identity, status, amount, fee and method did not change, but
-the old relevance filter then omitted the row and incorrectly latched
-`cash_activity_unattributed`. The supported stop canceled every resting order.
-The last runtime report has zero orders, zero positions and zero exposure, with
-entry authority disabled.
+The repair published at `ba3c19c` is live. After identity, generation and flat-
+state checks, the separately authorized force termination targeted only stale
+generation-108 child PID 22556; its parent exited without intervention. The next
+supported launch retained the unexpected-death/cleanup reasons and ran recovery-
+only. That child cleared the false `cash_activity_unattributed` hold through the
+exact accounting release, proved current zero orders/positions/exposure and
+reached `STOPPED_FLAT`. The supervisor then launched fresh normal generation 111.
 
-The parent and exact generation-108 child are still present after a bounded
-shutdown timeout, so the supervisor truthfully reports `RUNNING_UNVERIFIED` /
-`attention_required`; this is not a clean stopped-process claim. Source now
-retains the complete cursor-exhausted funding history as non-authorizing proof
-and permits only the exact null-to-pre-boundary-finalized lifecycle enrichment
-of an approved applied deposit. Missing rows, later finalization, new activity,
-changed economics/status and incomplete sources still block. Focused, fast,
-native-supervisor and complete verification pass: 1,667 tests, with one expected
-Windows symlink-privilege skip. The repair is published at `ba3c19c`, but it is
-not loaded by the old child and no restart has occurred yet.
+Generation 111 ranked 1,024/1,024 reviewed markets across all four book shards
+before rebuilding. It reached 30 resting entries across 15 markets; all 15 have
+priority-tier dispatch evidence and the minimum projected remaining reward is
+$2.158. Two stable acceptance samples 20 seconds apart show zero positions,
+current account proof, six subscribed readers, no risk/accounting hold, no retry
+round, healthy engine/dispatch/logging and zero dropped logs. Both account and
+supervisor SQLite `quick_check` results are `ok`. Nineteen handled startup HTTP
+429 retries and temporary incomplete-recovery warnings cleared without a lasting
+hold; the acceptance log scan found no ERROR/CRITICAL event. A later one-order
+vacancy returned from 29 to 30 through normal refill and stayed at cap for three
+consecutive current-account samples. Actual reward payout and profitability
+remain unverified.
 
 ## Generation 108 running on D-110; unattended-recovery release accepted live — 2026-09-23
 

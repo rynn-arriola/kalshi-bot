@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-111 — Repair the false funding hold and restart through exact recovery
+
+- **Status:** ACCEPTED, implemented, published and live on generation 111,
+  2026-09-24.
+- **Decision owner:** The operator directed the bot to be fixed and restarted,
+  then explicitly authorized force termination of only the verified retained
+  generation-108 child after the supported stop timed out.
+- **Scope:** Accept only null-to-pre-boundary `finalized_ts` enrichment of the
+  same approved applied deposit when complete cursor-exhausted funding history
+  proves every other field unchanged. Terminate only the exact identified stale
+  child, then use normal recovery-only and fresh-child supervisor behavior.
+- **Boundary:** No accounting hold is manually deleted. Missing/new/changed cash
+  activity, later finalization, incomplete history, risk limits, strategy and
+  market-selection policy remain unchanged and fail-closed.
+- **Live acceptance:** Recovery-only cleared the false hold and proved flat;
+  generation 111 then ranked 1,024/1,024 markets and reached 30 entries across
+  15 $2+ priority markets with zero positions and no persistent blocker.
+
 ### D-110 — Recover transient outages and rebuild fresh quotes after a crash
 
 - **Status:** ACCEPTED, implemented, published and live on generation 108,

@@ -21,6 +21,11 @@ native-supervisor gate and complete 1,667-test suite pass; the complete suite ha
 one expected Windows symlink-privilege skip. Live loading/restart is recorded
 separately in [STATUS](STATUS.md).
 
+**Live acceptance:** The recovery-only child cleared the false hold through an
+exact release and proved flat. Fresh normal generation 111 ranked 1,024/1,024
+markets and reached 30 entries across 15 $2+ priority markets, with zero
+positions, no persistent hold, six subscribed readers and healthy logging.
+
 ## 2026-09-23 — transient failures could leave a healthy-looking bot unable to refill
 
 **Mechanism:** Account/book readers retired after one three-attempt round while

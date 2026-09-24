@@ -1,16 +1,16 @@
 # Active work queue
 
-## After the generation-108 funding-finalization incident — current priority
+## After generation 111 D-111 live acceptance — current priority
 
-1. With explicit authority for process termination, identify and terminate only
-   the exact retained generation-108 child after rechecking its PID, child ID,
-   generation and flat account evidence. Never target unrelated Python work.
-2. Start through the supported supervisor path. Require a recovery-only exact
-   release and clean flat disarm if retained state requires it, then start a
-   fresh normal child. Do not bypass the accounting hold or supervisor state.
-3. Accept the restart only after current account proof, all six readers, complete
-   ranking, healthy logging/dispatch and the intended 30 resting entries are
-   observed with no persistent risk, accounting or supervisor blocker.
+1. Leave generation 111 under its supervisor and monitor natural fills, exits,
+   reference-price maintenance and vacancy refill. Do not restart merely to
+   manufacture more acceptance evidence.
+2. Compare actual paid rewards with trading loss and fees. The 15 current markets
+   passed the $2+ projected-reward priority tier, but projections are not payout.
+3. Investigate only persistent measured failures. The startup 429 retries and
+   temporary incomplete-recovery warnings cleared with zero exhausted rounds.
+4. Continue measuring hot-journal/archive growth and long-duration recovery;
+   this successful incident proves the exact funding path, not every outage.
 
 ## After generation 108 D-110 live acceptance — current priority
 

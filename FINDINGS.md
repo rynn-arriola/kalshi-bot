@@ -1,5 +1,28 @@
 # Findings — kalshi-bot
 
+## 170. Kalshi may enrich an unchanged applied deposit after approval — 2026-09-24
+
+VERIFIED LIVE during the generation-108 incident and generation-111 recovery.
+Kalshi added a `finalized_ts` to the already approved $500 ACH deposit; the new
+timestamp equaled its original pre-boundary creation time, while ID, status,
+method, amount and fee remained unchanged. Boundary-relevant filtering then
+omitted the fully pre-boundary row, so exact matching needs the complete
+cursor-exhausted funding source to distinguish lifecycle enrichment from an
+absent or changed event. This does not justify accepting a new row, changed
+economics/status, later finalization or incomplete history.
+
+The published repair at `ba3c19c` cleared only the false
+`cash_activity_unattributed` hold in a recovery-only child. That child proved
+current flat state and stopped; the supervisor then launched a fresh normal
+child. Generation 111 ranked 1,024/1,024 markets and rebuilt 30 entries across
+15 priority markets with a minimum projected remaining reward of $2.158. Two
+20-second-apart samples had current account proof, zero positions, six subscribed
+readers, no risk/accounting holds, no exhausted retry round and healthy logging.
+Both live SQLite databases passed `quick_check`. Startup 429 retries and temporary
+incomplete-recovery warnings cleared; no ERROR/CRITICAL event was observed. A
+later one-order vacancy refilled normally from 29 to 30 and remained full for
+three consecutive current-account samples.
+
 ## 169. Unattended reward-uptime review: recovery does not imply quote resumption — 2026-09-23
 
 VERIFIED against `79a4b1d` (runtime source `b75ea57`), with fake readers,
