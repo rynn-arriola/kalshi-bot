@@ -10,6 +10,26 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-110 — Recover transient outages and rebuild fresh quotes after a crash
+
+- **Status:** ACCEPTED by the operator and implemented offline, 2026-09-23;
+  deployment/restart separately authorized and pending final release validation.
+- **Decision owner:** After reviewing Finding 169, the operator directed all
+  findings to be fixed and required restart attempts to continue through any
+  diagnosed issue until a healthy restart succeeds.
+- **Scope:** Persist account/book/lifecycle readers through capped retry rounds;
+  retry classified transient account reconciliation after cooldown; report retry
+  states truthfully; after unexpected death only, let verified-flat recovery-only
+  completion start one fresh normal child that re-ranks and rebuilds through the
+  existing dispatcher; roll superseded exact observation archives into a bounded
+  cumulative hash commitment before their finite generation fills.
+- **Boundary:** ACK alone never resets retries. Invalid data, ambiguity, economic
+  or loss holds, uncertain mutations, incomplete cleanup, manual STOP and local
+  integrity failures never auto-resume. No stale order is replayed and no risk,
+  size, selection, reference-price or reward threshold changes. Exact economic
+  rows remain retained; only superseded observation archives become hash-only.
+- **Implementation:** [unattended recovery](docs/BUILD_UNATTENDED_RECOVERY.md).
+
 ### D-109 — Bound steady full-cap recovery and accounting retention
 
 - **Status:** ACCEPTED, implemented, published and live on generation 106,

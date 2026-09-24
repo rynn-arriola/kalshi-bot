@@ -747,6 +747,16 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
         if holds:
             return _attention(bare, event, AttentionReason.RETRY_EXHAUSTED)
         if event.outcome == ChildOutcome.CLEAN:
+            if state.recovery_reasons:
+                # The still-armed parent requested this recovery after an
+                # unexpected death. Exact verified-flat cleanup may now launch
+                # one fresh normal child, which re-ranks current markets and
+                # passes every ordinary entry gate. Manual STOP was handled
+                # above and can never enter this branch.
+                return SupervisorDecision(replace(bare,
+                    state=SupervisorState.BACKOFF, desired_armed=True,
+                    stop_latched=False, next_restart_utc=event.observed_utc,
+                    attention_reason=None, recovery_reasons=()))
             return SupervisorDecision(replace(bare, state=SupervisorState.DISARMED,
                 desired_armed=False, stop_latched=True, next_restart_utc=None,
                 attention_reason=None, recovery_reasons=()))

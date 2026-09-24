@@ -1,21 +1,16 @@
 # Active work queue
 
-## After unattended reward-uptime review — current priority
+## D-110 restart acceptance — current priority
 
-See [Finding 169](FINDINGS.md) for code evidence and offline reproductions.
-No implementation/restart was performed by this review.
-
-1. Fix classified transient reader/account-recovery liveness and health reporting
-   without resetting integrity, ambiguous-order or economic restrictions.
-2. Obtain the operator's automatic quote-resumption policy after verified crash
-   recovery; existing CLEAN recovery intentionally disarms. Reuse the ranked
-   dispatcher and current caps, never blindly replay prior orders.
-3. Add deterministic fault-to-recovery-to-refill acceptance for the above,
-   including stop/loss-hold non-resumption, fills/exits and natural vacancies.
-4. Measure storage growth and implement an approved retention/rollover lifecycle
-   before finite archive capacity is reached. Preserve exact economic evidence.
-5. Deploy/restart only under separate operator authority after relevant release
-   verification. The current live bot is unchanged.
+1. Complete the full release gate, exact-diff review, commit and push.
+2. Use the supported stop/recovery/restart flow already authorized by the
+   operator. Diagnose and fix any concrete failure before retrying; do not bypass
+   account, ambiguity, loss, economic or supervisor gates.
+3. Accept only a new published-build generation with parent/child present, all
+   readers subscribed, current account proof, zero unresolved blockers and a
+   freshly ranked/rebuilt order slate. Record exact live evidence.
+4. Then monitor natural disconnect/fill/vacancy behavior and measured archive
+   growth; live operation cannot prove crash recovery without an actual incident.
 
 ## After generation 106 D-109 live acceptance
 

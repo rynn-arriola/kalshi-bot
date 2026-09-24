@@ -1,5 +1,19 @@
 # Current status
 
+## D-110 release validated; authorized restart in progress — 2026-09-23
+
+All four Finding-169 gaps now have code and focused offline regressions: persistent
+capped reader rounds, classified transient account-repair retries, truthful child
+health, verified-flat crash recovery followed by a fresh ranked normal child, and
+hash-only rollover of superseded observation archives. Manual stop, ambiguous
+orders, incomplete cleanup, loss/economic restrictions and integrity failures
+remain fail-closed. Exact economic rows are not rolled up. The complete release
+gate passed 1,662 tests with one expected Windows privilege skip before the final
+test-only stable-reader regression; that 49-test module and the 274-test fast plus
+native-supervisor gate also pass. Exact-diff review found no remaining release
+blocker. The currently running generation remains the prior build until the
+supported restart completes.
+
 ## Uptime review complete; unattended recovery gaps remain — 2026-09-23
 
 Generation 106 remains running unchanged: at 22:37 ET, 30 resting orders,

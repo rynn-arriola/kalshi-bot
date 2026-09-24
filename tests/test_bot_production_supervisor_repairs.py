@@ -207,6 +207,15 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(phase, 'degraded')
         self.assertEqual(holds, ())
 
+    def test_retrying_and_terminal_runtime_states_are_not_reported_healthy(self):
+        base = dict(entries_paused=False, risk_blockers=[], accounting_blockers=[])
+        retrying = dict(base, runtime=dict(readers={'account': 'retry_wait'},
+            recovery='transient_retry_wait'))
+        terminal = dict(base, runtime=dict(readers={'account': 'retry_exhausted'},
+            recovery='blocked_retry_exhausted'))
+        self.assertEqual(child._status_projection(retrying, False), ('recovering', ()))
+        self.assertEqual(child._status_projection(terminal, False), ('degraded', ()))
+
     def test_expired_unowned_review_is_removed_but_expired_owner_refuses(self):
         with TemporaryDirectory() as folder:
             path = Path(folder)/'inputs.json'

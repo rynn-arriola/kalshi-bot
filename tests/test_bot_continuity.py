@@ -378,9 +378,11 @@ class ReaderEpochTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reader_failure_persists_gap_across_restart(self):
         await self.launch()
+        self.runtime.sleep = lambda _: asyncio.sleep(.001)
         await self.connections['account'][0].queue.put(InvalidData('injected reader failure'))
-        await self.eventually(lambda: self.runtime.reader_states['account'] == 'retry_exhausted')
-        epoch = (await self.runtime.inspect_private_epochs())[0]
+        await self.eventually(lambda: len(self.connections['account']) == 2)
+        epochs = await self.runtime.inspect_private_epochs()
+        epoch = next(row for row in epochs if row.terminal_reason == 'reader_error')
         self.assertEqual(epoch.terminal_reason, 'reader_error')
         self.assertEqual(self.runtime.verification_status()['continuity']['persisted_gap_count'], 1)
         self.runtime.stop()

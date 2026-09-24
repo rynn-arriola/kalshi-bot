@@ -192,6 +192,32 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(dead.state.state, SupervisorState.BACKOFF)
         self.assertGreater(dead.state.next_restart_utc, dead.state.updated_utc)
 
+    def test_verified_flat_crash_recovery_restarts_fresh_normal_child(self):
+        normal = started(start(arm(self.state)), 101)
+        crashed = result(normal, ChildOutcome.UNEXPECTED_DEATH, 102,
+            cleanup_complete=False, unresolved_work=True).state
+        recovery = started(start(crashed, crashed.next_restart_utc), 113)
+        clean = result(recovery, ChildOutcome.CLEAN, 114,
+                       cleanup_complete=True, unresolved_work=False)
+        self.assertEqual(clean.state.state, SupervisorState.BACKOFF)
+        self.assertTrue(clean.state.desired_armed)
+        self.assertFalse(clean.state.stop_latched)
+        self.assertEqual(clean.state.recovery_reasons, ())
+        from kalshi_bot.supervisor_launch import ProductionLaunchProfile
+        self.assertFalse(ProductionLaunchProfile.recovery_only(clean.state))
+        due = decide(clean.state, event(EventKind.TICK, 114), POLICY)
+        self.assertEqual(due.actions, (SupervisorAction.START_DUE,))
+        fresh = start(due.state, 114, child='fresh-normal')
+        self.assertEqual(fresh.state, SupervisorState.STARTING)
+
+    def test_manual_stop_after_crash_prevents_recovery_or_normal_rearm(self):
+        normal = started(start(arm(self.state)), 101)
+        crashed = result(normal, ChildOutcome.UNEXPECTED_DEATH, 102,
+            cleanup_complete=False, unresolved_work=True).state
+        stopped = decide(crashed, event(EventKind.STOP, 103), POLICY).state
+        self.assertEqual(stopped.state, SupervisorState.DISARMED)
+        self.assertFalse(stopped.desired_armed)
+
     def test_failed_spawn_backs_off_without_forgetting_reserved_attempt(self):
         reserved = start(arm(self.state))
         decision = decide(reserved, event(EventKind.SPAWN_FAILED, 101,

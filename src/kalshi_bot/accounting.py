@@ -128,7 +128,7 @@ def _archive_superseded(ledger):
     """Move superseded steady-state observations into exact compressed audit storage."""
     conn = ledger.connection
     if conn.execute('SELECT COUNT(*) FROM accounting_event_archives').fetchone()[0] >= MAX_ARCHIVES:
-        raise InvalidData('accounting archive capacity reached; external archival required')
+        _roll_archives(conn)
     cutoffs = []
     for kind in ARCHIVABLE_KINDS:
         recent = conn.execute(
@@ -170,6 +170,40 @@ def _archive_superseded(ledger):
     if state[0] < 0 or state[1] < 0:
         raise InvalidData('accounting archive counter underflow')
     return True
+
+
+def _roll_archives(conn):
+    """Bound exact snapshot retention with a cumulative hash-only commitment.
+
+    Only already-archived superseded inspection/cash/release observations enter
+    this rollup. Economic events, current hot observations and the next archive
+    generation remain exact. Archive IDs already commit to every exact source
+    byte, so chaining their immutable metadata preserves a corruption-detecting
+    boundary without allowing repetitive snapshots to stop the bot forever.
+    """
+    archives = conn.execute(
+        'SELECT * FROM accounting_event_archives ORDER BY rowid').fetchall()
+    if not archives:
+        raise InvalidData('accounting archive rollover has no source')
+    prior = conn.execute('SELECT * FROM accounting_archive_rollup WHERE id=1').fetchone()
+    prior_root = '0'*64 if prior is None else prior['root']
+    source = [[row['id'], row['event_count'], row['payload_bytes'],
+               row['first_seen_at'], row['last_seen_at']] for row in archives]
+    archive_count = len(archives)+(0 if prior is None else prior['archive_count'])
+    event_count = sum(row['event_count'] for row in archives)+(0 if prior is None else prior['event_count'])
+    payload_bytes = sum(row['payload_bytes'] for row in archives)+(0 if prior is None else prior['payload_bytes'])
+    first_seen = min([row['first_seen_at'] for row in archives]
+        + ([] if prior is None else [prior['first_seen_at']]))
+    last_seen = max([row['last_seen_at'] for row in archives]
+        + ([] if prior is None else [prior['last_seen_at']]))
+    payload = encode(dict(version=1, prior_root=prior_root, archives=source,
+        archive_count=archive_count, event_count=event_count,
+        payload_bytes=payload_bytes, first_seen_at=first_seen, last_seen_at=last_seen))
+    root = digest(payload)
+    conn.execute('INSERT OR REPLACE INTO accounting_archive_rollup VALUES (1,?,?,?,?,?,?,?)',
+                 (root, archive_count, event_count, payload_bytes, first_seen, last_seen, payload))
+    conn.execute('DELETE FROM accounting_event_archive_members')
+    conn.execute('DELETE FROM accounting_event_archives')
 
 
 def _decode_archive(blob):
@@ -227,6 +261,34 @@ def _validate_archives(conn):
             raise InvalidData('accounting archive metadata invalid')
     if set(indexed) != seen:
         raise InvalidData('accounting archive member index invalid')
+    rollups = conn.execute('SELECT * FROM accounting_archive_rollup').fetchall()
+    if len(rollups) > 1:
+        raise InvalidData('accounting archive rollup cardinality invalid')
+    if rollups:
+        rollup = rollups[0]
+        try:
+            int(rollup['root'], 16)
+            source = json.loads(rollup['payload'])
+        except (TypeError, ValueError) as exc:
+            raise InvalidData('accounting archive rollup root invalid') from exc
+        except json.JSONDecodeError as exc:
+            raise InvalidData('accounting archive rollup payload invalid') from exc
+        if (rollup['id'] != 1 or len(rollup['root']) != 64
+                or digest(rollup['payload']) != rollup['root']
+                or min(rollup['archive_count'], rollup['event_count'],
+                       rollup['payload_bytes']) <= 0
+                or rollup['archive_count'] < 1
+                or rollup['event_count'] < rollup['archive_count']
+                or rollup['first_seen_at'] > rollup['last_seen_at']
+                or not isinstance(source, dict) or source.get('version') != 1
+                or source.get('archive_count') != rollup['archive_count']
+                or source.get('event_count') != rollup['event_count']
+                or source.get('payload_bytes') != rollup['payload_bytes']
+                or source.get('first_seen_at') != rollup['first_seen_at']
+                or source.get('last_seen_at') != rollup['last_seen_at']
+                or not isinstance(source.get('archives'), list)
+                or len(source['archives']) < 1):
+            raise InvalidData('accounting archive rollup metadata invalid')
     return seen
 
 

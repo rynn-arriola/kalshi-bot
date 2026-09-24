@@ -339,6 +339,10 @@ class ReadFailure(InvalidData):
         super().__init__(f"read failed with HTTP {status}; no proof obtained")
 
 
+class ReadTransportUnavailable(InvalidData):
+    """Sanitized transient transport failure; never carries its raw cause."""
+
+
 @dataclass(frozen=True)
 class PageSet:
     rows: tuple[dict, ...]
@@ -617,7 +621,8 @@ class RestReads:
                     response = await asyncio.to_thread(self._wire_read, spec, path)
                 except Exception as exc:
                     self.diagnostics.emit('rest_transport_failed', error=exc, endpoint=spec.path, attempt=attempt+1)
-                    raise InvalidData("read transport failed; no proof obtained") from None
+                    raise ReadTransportUnavailable(
+                        "read transport failed; no proof obtained") from None
             delay = 0.5 * 2**attempt + 0.25*self.jitter()
             if isinstance(response, WireResponse) and response.status == 429:
                 # The shared account pause still matters if this caller timed out.

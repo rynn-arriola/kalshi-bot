@@ -323,6 +323,33 @@ class DurableAccountingTests(unittest.IsolatedAsyncioTestCase):
         # Cold validation verifies every compressed archive and its member index.
         self.writer = await LedgerWriter(self.path).start()
 
+    async def test_full_archive_generation_rolls_to_bounded_hash_commitment(self):
+        captured = await self.capture()
+        self.assertTrue(await self.writer.approve_opening(
+            checkpoint_digest=captured.status.checkpoint_digest,
+            captured_digest=captured.captured_digest,
+            reference='synthetic-rollup-baseline', now=NOW))
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            with (patch.object(accounting, 'MAX_ARCHIVES', 2),
+                  patch.object(accounting, 'ARCHIVE_BATCH_ROWS', 1),
+                  patch.object(accounting, 'ARCHIVE_RETAIN_PER_KIND', 1)):
+                with ledger.transaction():
+                    for index in range(4):
+                        accounting._append(ledger, 'inspection', f'roll-{index}',
+                            json.dumps({'roll': index}), NOW+timedelta(seconds=index+1))
+                    self.assertTrue(accounting._archive_superseded(ledger))
+                    self.assertTrue(accounting._archive_superseded(ledger))
+                    self.assertTrue(accounting._archive_superseded(ledger))
+                rollup = ledger.connection.execute(
+                    'SELECT * FROM accounting_archive_rollup WHERE id=1').fetchone()
+                self.assertEqual((rollup['archive_count'], rollup['event_count']), (2, 2))
+                self.assertEqual(len(rollup['root']), 64)
+                self.assertEqual(ledger.connection.execute(
+                    'SELECT COUNT(*) FROM accounting_event_archives').fetchone()[0], 1)
+                accounting.validate_accounting(ledger)
+        self.writer = await LedgerWriter(self.path).start()
+
     async def test_review_acknowledgement_cannot_clear_unresolved_economics(self):
         result = await self.capture(settlements=(settlement(),))
         reviewed = await self.writer.record_accounting_review(reference='operator-review-1',

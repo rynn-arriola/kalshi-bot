@@ -424,7 +424,7 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
             async def run(self, consume): raise OSError(SECRET)
         runtime = self.runtime(BrokenReader)
         spec = next(s for s in runtime.specs if s.name=='account')
-        await runtime._connection(spec)
+        await runtime._connection_round(spec)
         self.assertEqual(runtime.reader_states['account'], 'retry_exhausted')
         self.assertFalse(runtime.account.connected)
         data = await self.data()

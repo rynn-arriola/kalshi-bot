@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from kalshi_bot.ledger import Fill, Ledger
 from kalshi_bot.orders import parse_order
-from kalshi_bot.rest import PageSet, ReadResult
+from kalshi_bot.rest import PageSet, ReadResult, ReadTransportUnavailable
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
@@ -539,16 +539,34 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.recovery_state, "recovering")
         hold.set()
 
-    async def test_connection_attempts_bounded_with_backoff(self):
+    async def test_connection_attempt_rounds_persist_with_capped_backoff(self):
         await self.launch()
         for number in range(3):
             await self.eventually(lambda: len(self.connections["account"]) > number)
             await self.connections["account"][number].queue.put(OSError("offline"))
-        await self.eventually(lambda: self.runtime.reader_states["account"] == "retry_exhausted")
-        self.assertEqual(self.runtime.connection_attempts["account"], 3)
+        await self.eventually(lambda: len(self.connections["account"]) == 4)
+        self.assertGreaterEqual(self.runtime.connection_attempts["account"], 4)
         self.assertIn(1, self.delays)
         self.assertIn(2, self.delays)
-        self.assertFalse(self.runtime.account.connected)
+        self.assertIn(30, self.delays)
+        self.assertEqual(self.runtime.reader_retry_rounds['account'], 1)
+        self.assertTrue(self.runtime.account.connected)
+
+    async def test_only_a_stable_subscription_resets_consecutive_failures(self):
+        task = await self.launch()
+        self.runtime.reader_healthy_seconds = .02
+        self.delays.clear()
+        await asyncio.sleep(.05)
+        await self.connections["account"][0].queue.put(OSError("stable disconnect"))
+        await self.eventually(lambda: len(self.connections["account"]) == 2)
+        await self.connections["account"][1].queue.put(OSError("rapid disconnect 1"))
+        await self.eventually(lambda: len(self.connections["account"]) == 3)
+        await self.connections["account"][2].queue.put(OSError("rapid disconnect 2"))
+        await self.eventually(lambda: len(self.connections["account"]) == 4)
+        self.assertNotIn(30, self.delays)
+        self.assertEqual(self.runtime.reader_retry_rounds["account"], 0)
+        self.runtime.stop()
+        await task
 
     async def test_missing_ack_times_out_and_exhausts_without_recovery_reads(self):
         class Silent(FakeReader):
@@ -568,7 +586,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.runtime.reader_factory = factory
         spec = next(s for s in self.runtime.specs if s.name == "account")
         with patch("kalshi_bot.runtime.asyncio.wait", side_effect=timeout):
-            await self.runtime._connection(spec)
+            await self.runtime._connection_round(spec)
         self.assertEqual(len(readers), 3)
         self.assertTrue(all(r.closed for r in readers))
         self.assertEqual(self.reads.calls, [])
@@ -593,6 +611,24 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.recovery_attempts, 3)
         self.assertEqual(len(await self.writer.pending_fills(0)), 1)
         self.assertEqual(self.delays, [1, 2])
+
+    async def test_transient_recovery_outage_retries_after_cooldown_and_repairs(self):
+        await self.connected()
+        calls = 0
+        async def repair():
+            nonlocal calls
+            calls += 1
+            if calls <= 3:
+                raise ReadTransportUnavailable('synthetic transient outage')
+            return True
+        self.runtime.recover_once = repair
+        self.runtime.request_recovery()
+        task = asyncio.create_task(self.runtime._recover())
+        self.tasks.append(task)
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        self.assertEqual((calls, self.runtime.recovery_attempts), (4, 4))
+        self.assertEqual(self.runtime.recovery_retry_rounds, 0)
+        self.assertIn(30, self.delays)
 
     async def test_successful_drain_progress_gets_a_fresh_failure_budget(self):
         await self.connected()

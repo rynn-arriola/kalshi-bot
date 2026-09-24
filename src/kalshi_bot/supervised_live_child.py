@@ -85,7 +85,18 @@ def _status_projection(status, recovery_only):
         return 'starting', ()
     health = tuple(dict.fromkeys(status.get('risk_blockers', [])
         + status.get('accounting_blockers', [])))[:32]
-    if recovery_only or status.get('entries_paused'):
+    runtime = status.get('runtime') or {}
+    readers = tuple((runtime.get('readers') or {}).values())
+    recovery = runtime.get('recovery')
+    persistent_fault = (any(value in {'retry_exhausted'} for value in readers)
+        or recovery in {'blocked_retry_exhausted', 'blocked_scope_ambiguous',
+                        'durable_or_engine_failure'})
+    recovering = (any(value in {'connecting', 'disconnected', 'retry_wait'} for value in readers)
+        or recovery in {'recovering', 'awaiting_account_stream', 'awaiting_quota',
+                        'progressed_retry_queued', 'transient_retry_wait'})
+    if persistent_fault:
+        phase = 'degraded'
+    elif recovery_only or status.get('entries_paused') or recovering:
         phase = 'recovering'
     elif health:
         phase = 'degraded'

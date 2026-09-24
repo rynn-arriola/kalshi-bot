@@ -182,6 +182,11 @@ CREATE TABLE IF NOT EXISTS accounting_event_archive_members (
   digest TEXT PRIMARY KEY, archive_id TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS accounting_archive_members_archive
   ON accounting_event_archive_members(archive_id);
+CREATE TABLE IF NOT EXISTS accounting_archive_rollup (
+  id INTEGER PRIMARY KEY CHECK(id=1), root TEXT NOT NULL,
+  archive_count INTEGER NOT NULL, event_count INTEGER NOT NULL,
+  payload_bytes INTEGER NOT NULL, first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS accounting_holds (
   code TEXT PRIMARY KEY, evidence_digest TEXT NOT NULL, first_seen_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS accounting_baseline (

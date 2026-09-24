@@ -1,5 +1,19 @@
 # What exists
 
+## Persistent transient recovery and fresh post-crash rebuild — 2026-09-23
+
+D-110 keeps all WebSocket reader owners alive across bounded/capped retry rounds,
+adds classified transient REST-recovery cooldowns, exposes retry state, and keeps
+supervisor health honest. A still-armed unexpected-death incident can proceed
+recovery-only to verified flat and then launch a fresh normal child, which
+re-ranks and rebuilds through existing gates. Manual stop and all integrity,
+ambiguity, loss and economic holds remain non-resumable. Superseded observation
+archives now have a cumulative hash-only rollover; individual identities remain
+exact in the current archive generation, while older generations retain their
+cumulative commitment rather than individual deduplication keys. Exact economic
+data remains.
+See [the implementation contract](docs/BUILD_UNATTENDED_RECOVERY.md).
+
 ## Exact steady full-cap refresh and accounting archive — 2026-09-23
 
 The runtime can retain an exact, scheduling-only full-cap/flat scope after a

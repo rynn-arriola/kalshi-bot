@@ -27,8 +27,12 @@ journal.
 4. Recovery-only sets `entries_paused` before runtime composition. It may
    reconcile, cancel owned entries, and reduce existing inventory, but cannot
    create a new entry.
-5. A recovery child that proves flat returns `clean`; the supervisor disarms.
-   Quoting resumes only after a later explicit operator start.
+5. A recovery child that proves flat after an unexpected child death returns
+   `clean`; the still-armed supervisor spends the existing restart budget to
+   launch one fresh normal child. That child re-runs every startup, account,
+   risk, reward, selection and reference-price gate before creating entries.
+   A manual operator stop still disarms after verified-flat cleanup and never
+   enters this automatic rebuild path.
 6. Startup refusal, integrity uncertainty, retry exhaustion, local control
    failure, power-state change, or exhausted restart budget enters attention
    state and cannot auto-arm.

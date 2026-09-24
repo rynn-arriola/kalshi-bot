@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-110 adds [persistent transient recovery and fresh quote rebuilding](BUILD_UNATTENDED_RECOVERY.md).
+All readers retain one bounded owner across capped retry rounds; classified REST
+transport failures retry after capped cooldowns. Unexpected death still recovers
+flat in recovery-only mode, then the still-armed supervisor launches a fresh
+normal child to re-rank and rebuild through ordinary gates. Manual stops,
+ambiguity and integrity/economic holds never auto-resume. Superseded observation
+archives roll into a cumulative hash commitment; exact economic evidence remains.
+
 D-109 bounds steady full-cap work without weakening recovery. Only an exact
 flat account at the resting-order cap, with complete ranking and exact owned-
 order joins, may use the light account-snapshot refresh and owner-only deep

@@ -1,5 +1,23 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-23 — transient failures could leave a healthy-looking bot unable to refill
+
+**Mechanism:** Account/book readers retired after one three-attempt round while
+the runtime continued. Three temporary account-repair failures cleared their own
+request and parked permanently. Child health ignored both states. An unexpected
+death recovered flat but deliberately disarmed, so orders were not rebuilt.
+Exact compressed observation archives also retained a finite hard ceiling.
+
+**Fix:** D-110 adds capped persistent reader rounds with a 60-second healthy
+reset, classified transient REST repair cooldowns, explicit recovery/degraded
+health projection, verified-flat crash recovery followed by a fresh normal
+ranking/dispatch child, and cumulative hash-only rollover for superseded
+observation archives. Manual stop, ambiguity, unknown mutations, integrity and
+economic/loss holds remain fail-closed. Exact economic evidence is not rolled up.
+
+**Verification:** See [the build record](docs/BUILD_UNATTENDED_RECOVERY.md) and
+the current test/restart evidence in [STATUS](STATUS.md).
+
 ## 2026-09-23 — repeated full recovery filled the journal and starved reward proof
 
 **Mechanism:** At the exact 30-order/flat steady state, every expiring three-

@@ -20,6 +20,7 @@ from .config import BotConfig
 from .management import InventoryManager
 from .metadata_scheduler import MetadataScheduler
 from .quota import QuotaUnavailable
+from .rest import ReadFailure, ReadTransportUnavailable
 from .observability import NO_LOG
 from .transport import WebSocketReaders, topology
 from .values import InvalidData, integer, utc
@@ -79,6 +80,7 @@ class RecoveryRuntime:
                  history_start, now, evaluate, deadline_handler, lifecycle_handler,
                  invalidate=lambda ticker: None, clock=time.monotonic,
                  sleep=asyncio.sleep, jitter=lambda: random.uniform(.8, 1.2), attempts=3,
+                 reader_healthy_seconds=60,
                  diagnostics=NO_LOG, market_inputs=None, quota_supervisor=None,
                  accounting_boundary=None, observation_only=False, opening_reference=None,
                  broad_discovery=False, book_connections=2):
@@ -104,6 +106,11 @@ class RecoveryRuntime:
         if self.history_start >= utc(now()):
             raise InvalidData("explicit nonempty startup history scope required")
         self.attempt_limit = integer(attempts, 1, 8)
+        if (not isinstance(reader_healthy_seconds, (int, float))
+                or isinstance(reader_healthy_seconds, bool)
+                or not 1 <= reader_healthy_seconds <= 3600):
+            raise InvalidData('reader healthy reset must be 1..3600 seconds')
+        self.reader_healthy_seconds = float(reader_healthy_seconds)
         self.specs = topology(tuple(tickers),
                               market_capacity=1024 if broad_discovery else writer.market_capacity,
                               book_connections=book_connections)
@@ -133,6 +140,7 @@ class RecoveryRuntime:
         self.reader_retry_rounds = {s.name: 0 for s in self.specs}
         self.recovery_state = "not_started"
         self.recovery_attempts = 0
+        self.recovery_retry_rounds = 0
         self.recovery_passes = 0
         self.last_reports = None
         self.history_inspection = None
@@ -818,20 +826,21 @@ class RecoveryRuntime:
     async def _connection(self, spec, *, attempt_start=0):
         """Own one reader for the runtime lifetime.
 
-        Account/book exhaustion remains finite because those sources carry
-        financial or sequence authority. Lifecycle is an advisory public input:
-        disconnect revokes its terms, then bounded rounds continue on a capped
-        cooldown so a startup outage cannot retire it forever.
+        Every source gets bounded attempt rounds and a capped inter-round
+        cooldown. Financial/sequence authority stays revoked while disconnected;
+        persistence only prevents a transient outage from silently retiring the
+        reader. A subscription ACK alone never resets failure history: one
+        connection must remain subscribed for the configured healthy interval.
         """
-        if spec.name != 'lifecycle':
-            return await self._connection_round(spec, attempt_start=attempt_start,
-                                                final_exhaustion=True)
         first = attempt_start
         while not self.stop_requested.is_set() and not self.writer.failed and not self.engine.failed:
-            await self._connection_round(spec, attempt_start=first, final_exhaustion=False)
+            stable = await self._connection_round(spec, attempt_start=first,
+                                                  final_exhaustion=False)
             first = 0
             if self.stop_requested.is_set() or self.writer.failed or self.engine.failed:
                 return
+            if stable:
+                self.reader_retry_rounds[spec.name] = 0
             self.reader_retry_rounds[spec.name] += 1
             self.reader_states[spec.name] = 'retry_wait'
             self.diagnostics.emit('reader_retry_wait', stream=spec.name,
@@ -840,7 +849,9 @@ class RecoveryRuntime:
             await self.sleep(min(300, 30*(2**min(rounds-1, 3)))*self.jitter())
 
     async def _connection_round(self, spec, *, attempt_start=0, final_exhaustion=True):
-        for attempt in range(attempt_start,self.attempt_limit):
+        attempt = attempt_start
+        stable_seen = False
+        while attempt < self.attempt_limit:
             if self.stop_requested.is_set() or self.writer.failed or self.engine.failed:
                 return
             self.connection_attempts[spec.name] += 1
@@ -872,6 +883,7 @@ class RecoveryRuntime:
             delivery_idle = asyncio.Event()
             delivery_idle.set()
             epoch_open_confirmed = False
+            subscribed_at = None
             async def consume(name, event):
                 nonlocal delivery_inflight, delivery_failed, epoch_open_confirmed
                 if name != spec.name:
@@ -1005,6 +1017,7 @@ class RecoveryRuntime:
                         raise InvalidData("reader ended before subscription")
                     if handshake not in done:
                         raise InvalidData("subscription acknowledgment timed out")
+                    subscribed_at = self.clock()
                 finally:
                     handshake.cancel()
                     await asyncio.gather(handshake, return_exceptions=True)
@@ -1044,12 +1057,20 @@ class RecoveryRuntime:
                 finalizer.result()
                 if finalizer_cancelled:
                     raise asyncio.CancelledError
-            if attempt+1 < self.attempt_limit and not self.writer.failed and not self.engine.failed:
-                await self.sleep(min(30, 2**attempt)*self.jitter())
+            stable = (subscribed_at is not None
+                      and self.clock()-subscribed_at >= self.reader_healthy_seconds)
+            if stable:
+                stable_seen = True
+                attempt = 0
+            else:
+                attempt += 1
+            if attempt < self.attempt_limit and not self.writer.failed and not self.engine.failed:
+                await self.sleep(min(30, 2**max(0, attempt-1))*self.jitter())
         if final_exhaustion:
             self.reader_states[spec.name] = "retry_exhausted"
             self.diagnostics.emit('reader_exhausted', stream=spec.name,
                                   attempt=self.reader_failures[spec.name])
+        return stable_seen
 
     async def recover_once(self):
         """One attempt; never a proof of complete account history or entry readiness."""
@@ -1148,6 +1169,7 @@ class RecoveryRuntime:
         while not self.stop_requested.is_set():
             await self.recovery_requested.wait()
             attempt = 0
+            transient_failure = False
             while attempt < self.attempt_limit:
                 if self.quota is not None and not self.quota.poll():
                     self.recovery_state = 'awaiting_quota'
@@ -1163,6 +1185,7 @@ class RecoveryRuntime:
                     break
                 self.recovery_state = "recovering"
                 self.recovery_attempts += 1
+                transient_failure = False
                 self.diagnostics.emit('recovery_started', attempt=attempt+1, generation=self.account.generation)
                 completed_before = self.recovery_passes
                 try:
@@ -1183,12 +1206,17 @@ class RecoveryRuntime:
                 except (InvalidData, TimeoutError, OSError) as exc:
                     self.diagnostics.emit('recovery_failed', error=exc, attempt=attempt+1,
                                           generation=self.account.generation)
+                    transient_failure = (isinstance(exc,
+                        (ReadTransportUnavailable, TimeoutError, OSError))
+                        or (isinstance(exc, ReadFailure)
+                            and exc.status in {429, 500, 502, 503, 504}))
                     repaired = False
                 if self.writer.failed or self.engine.failed:
                     self.recovery_state = "durable_or_engine_failure"
                     self._revoke()
                     return
                 if repaired and not self.recovery_requested.is_set():
+                    self.recovery_retry_rounds = 0
                     self.recovery_state = "repaired_entries_blocked"
                     if self.rewards is not None:
                         self.rewards.request_reflection()
@@ -1227,6 +1255,18 @@ class RecoveryRuntime:
                     break
                 self.diagnostics.emit('recovery_incomplete', attempt=attempt+1, generation=self.account.generation)
                 if attempt+1 == self.attempt_limit:
+                    if transient_failure:
+                        self.recovery_retry_rounds += 1
+                        self.recovery_state = 'transient_retry_wait'
+                        self._revoke()
+                        delay = min(300, 30*(2**min(self.recovery_retry_rounds-1, 3)))
+                        self.diagnostics.emit('recovery_retry_wait',
+                            attempt=self.recovery_retry_rounds)
+                        await self.sleep(delay*self.jitter())
+                        if (not self.stop_requested.is_set() and self.account_subscribed
+                                and not self.writer.failed and not self.engine.failed):
+                            self.request_recovery()
+                        break
                     self.recovery_state = "blocked_retry_exhausted"
                     self.recovery_requested.clear()
                     self._revoke()
@@ -1446,6 +1486,7 @@ class RecoveryRuntime:
         return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
+            recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             steady_account_refresh=dict(attempts=self.steady_refresh_attempts,
                 completed=self.steady_refresh_completed,
