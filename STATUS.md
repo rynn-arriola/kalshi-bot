@@ -1,5 +1,31 @@
 # Current status
 
+## Generation 131 running; startup/refill recovery loop diagnosed — 2026-09-24
+
+Latest local runtime observation: 17:52:16 ET, 12 resting entries and zero
+reported positions. All six readers are subscribed; logging is healthy without
+drops. Historical ranking coverage is 959/1,024 with zero source resets and
+`priority_capacity_met`; this is not a current executable slate or full refill
+acceptance. Steady-refresh attempts remain zero. Recovery repeatedly interrupts
+metadata work and current candidate selection.
+
+The source published through `6db4d6e` includes semantic catalog continuity,
+partial reward-change preservation and priority-candidate revalidation. Earlier
+generation-125 deployment tasks below are historical, not pending instructions.
+Generation 131's loaded build fingerprint is
+`f6694d822acb0bc02b847988927e5a46fd2dbf3e41b4178dc1e73a18a6365541`.
+
+[Finding 175](FINDINGS.md#175-routine-freshness-recovery-starves-startup-and-refill--2026-09-24)
+records the confirmed scheduling problem, live measurements, offline
+reproductions and limits of the evidence. Investigation is complete; the
+recommended refresh/ranking repair is not implemented. Four focused offline
+regressions passed. This investigation changed only documentation: no runtime
+configuration, source, orders, processes or live database were modified, and no
+restart was performed. Reported account counts are local telemetry, not a new
+independent venue reconciliation.
+
+## Historical status records
+
 ## Generation 125 flat in semantic-blind ranking reset loop; repair verified — 2026-09-24
 
 The final accounting-recovery repair deployed successfully: recovery-only

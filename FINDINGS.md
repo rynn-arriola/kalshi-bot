@@ -1,5 +1,61 @@
 # Findings — kalshi-bot
 
+## 175. Routine freshness recovery starves startup and refill — 2026-09-24
+
+VERIFIED from generation 131's local telemetry, source tracing and offline
+synthetic fixtures. This is an investigation, not a deployed repair.
+
+`RecoveryRuntime._live_refresh` requests full recovery when an account report
+is missing or three seconds old unless an exact steady-refresh scope exists.
+Both steady-scope methods require `coverage_complete`; recording additionally
+requires a flat account and every resting-entry slot occupied. Consequently
+neither startup/refill nor `priority_capacity_met` can use the shortcut. Full
+recovery rebuilds account/history/accounting evidence and revokes current
+selection evidence. The metadata scheduler defers new jobs during recovery;
+`SelectionRuntime.refresh` also requires a current account report and management
+plan before producing candidates. Reader health cannot overcome these gates.
+
+MEASURED over generation 131 events from 17:17:37 through 17:46:53 ET in
+`data/trader/supervisor/child-logs/events.jsonl` (logging run
+`dcf705aeb2934660807c89a3d9635e4b`): 65 recovery starts and 62 successful repairs
+preceded the first order at 17:39:55. Successful recovery duration had a median
+of 17.4 seconds; the median repair-to-next-start gap was 2.5 seconds. All six
+readers connected once, with no reader reconnect event. The 22 observed REST
+429 retries ended at 17:17:59, so they do not explain the later persistent loop.
+Recovery events lack trigger-reason attribution: these counts do not prove
+every individual recovery had the timer as its cause.
+
+A separate live sample at 17:48 ET showed 12 entries and zero positions
+throughout: metadata activity rose from zero to four after repair, current
+candidates reached 23, then another recovery reduced current candidates to zero
+and deferred new metadata jobs again. This is scheduling starvation, not proof
+that only six markets qualify. Zero metadata retry exhaustion is not evidence
+that all pending markets are in cooldown. Earlier market-shortage/cooldown
+explanations were unproven.
+
+VERIFIED offline: the actual refresh loop requested recovery at report age
+3.0 seconds, but not 2.9 seconds, without a socket event or order change.
+The actual steady-scope recorder accepted full-cap/full-coverage state and
+rejected a vacancy and early priority release. A real account reconciliation
+against synthetic reads revoked a previously current accounting source fence.
+Thus merely widening the steady-scope condition is insufficient: the existing
+snapshot-only shortcut does not renew the entry accounting lease.
+
+Four existing steady-scope/refresh regression tests passed (0.343 seconds).
+All reproductions used synthetic reads and temporary ledgers; no production
+database or venue API was accessed by the investigation. No full-suite or
+post-fix live acceptance is claimed.
+
+RECOMMENDATION, not an accepted design: separate routine bounded account and
+accounting-evidence renewal from full recovery, including startup/refill, and
+allow advisory market discovery/ranking to progress while account checks run.
+Final admission must still require fresh exact account, ownership, book, cash
+and risk evidence; owned-order subtraction cannot use unverified state.
+Preserve full recovery for gaps, unknown/changed economics and invalid proof.
+Test realistic recovery latency across freshness deadlines and account-change
+races. Add trigger/phase timing to distinguish costs before tuning. More book
+shards or enlarged freshness limits do not repair the demonstrated coupling.
+
 ## 174. Observation timestamps are not reward-universe identities — 2026-09-24
 
 VERIFIED LIVE from generation 125 and VERIFIED offline. The loaded checkpoint

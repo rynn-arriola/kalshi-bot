@@ -1,6 +1,32 @@
 # Active work queue
 
-## After semantic reward-catalog ranking identity repair — current priority
+## Startup/refill scheduling repair — current priority
+
+1. Obtain approval for the focused repair direction in
+   [Finding 175](FINDINGS.md#175-routine-freshness-recovery-starves-startup-and-refill--2026-09-24):
+   bounded routine account/accounting renewal during startup/refill and advisory
+   ranking that does not stall behind full recovery. Do not just relax the
+   existing full-cap condition: snapshot refresh revokes the entry lease.
+2. Specify exact continuity, ownership, accounting-lease renewal and escalation
+   rules; preserve final admission freshness and existing risk limits. Add
+   recovery trigger/phase timing, then implement the approved bounded change.
+3. Verify realistic 17-second recoveries across the three-/five-second
+   deadlines, pre-cap and full-cap states, early/full ranking, concurrent fills
+   and source changes. Prove ongoing discovery and actual mocked refill without
+   granting entries from stale advisory evidence. Run affected tests, fast gate,
+   review and the required full suite before a live-money release.
+4. Check/commit/push/parity; deploy only under explicit restart authority.
+   Require measured recovery/refresh behavior and current ranked refill, not
+   merely healthy processes or historical priority hints. Keep actual reward,
+   fee and settled-loss measurement separate from software acceptance.
+
+## Historical queues — superseded by the priority above
+
+The semantic ranking and subsequent priority-revalidation changes are already
+published through `6db4d6e` and generation 131 is running. Do not execute old
+generation-specific restart instructions below as current authorization.
+
+## After semantic reward-catalog ranking identity repair
 
 1. Publish the verified catalog-content identity repair, then finish the
    operator's authorized restart. Generation 125 is flat with zero orders;
