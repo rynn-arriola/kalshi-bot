@@ -1,5 +1,37 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — routine freshness repeatedly replayed full startup recovery
+
+**Mechanism:** The three-second refresh timer could avoid full recovery only
+with complete ranking, zero inventory and every entry slot occupied. During
+startup/refill, repeated approximately 17-second recoveries paused metadata work
+and invalidated executable candidates. See Finding 175 for measured evidence.
+
+**Fix (D-113):** After an actual accounting release, retain an exact process-local
+renewal anchor and at most 128 receipt IDs. Join one fresh account snapshot with
+an empty history tail, then obtain current cash/funding/settlement evidence and
+run the existing writer release. Source or economic changes reject the shortcut;
+the account reader checks each expected writer advance to catch competing
+writes. Refresh scheduling counts time spent reading, not just report age.
+Keep D-109's cheaper full-cap path first. Release no entry authority from an
+anchor, stale receipt, or hypothetical market-only rank.
+
+Metadata can progress during recovery under the existing four-worker quota
+budget; private work retains priority. Advisory ranks advance coverage without
+account proof, but normal selection/dispatch must revalidate all sources.
+Faster metadata exposed a stop during initial opening capture: recovery now
+rejects a stopped/stale/missing candidate before submitting boundary approval.
+Recovery also joins an in-flight refresh before starting its timeout/retry count;
+a concurrent private event cannot waste the bounded retry budget on that lock.
+
+**Verification:** Synthetic real-owner renewal and reservation tests cover
+0/2/28 resting orders, early/full ranking, writer/private/cash races, new funding,
+tail failures, cancellation, stop and 17-second timing cases. Separate tests
+prove advisory coverage cannot dispatch and recovery does not defer metadata.
+The final 1,690-test suite passes with one expected Windows privilege skip.
+Two negative controls detect disabled fixes; a supplemental mocked pair reaches
+two durable ACKs after renewal. Deployment status is recorded in `STATUS.md`.
+
 ## 2026-09-24 — unchanged reward refresh repeatedly reset startup ranking
 
 **Mechanism:** Initial ranking bound coverage to the catalog's observation

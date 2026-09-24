@@ -191,6 +191,27 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 0)
         self.r.incentives = None
 
+    async def test_account_gap_allows_advisory_coverage_but_never_dispatch(self):
+        self.r.account.begin_reconciliation(self.now)
+        self.r.recovery_state = 'recovering'
+        await self.publish('A')
+        await self.publish('C')
+        self.assertEqual(self.s.initial_ranking.status()['evaluated_markets'], 2)
+        self.assertTrue(self.s._priority_hints)
+        self.assertFalse(self.s.current('A'))
+        self.assertFalse(self.s._proofs)
+        self.assertFalse((await self.proposal()).additions)
+        row = self.s.selector.board.markets['A'][0]
+        self.assertIsNone(self.s.capture_dispatch_proof('A',row.program_id,row.valid_until))
+        snap = normalize_snapshot((),(),dict(balance_dollars='500',updated_ts=1),subaccount=0)
+        await self.r.account.finish_reconciliation(
+            self.r.account.begin_reconciliation(self.now),snap,self.now)
+        for ticker in ('A','C'):
+            await self.r.management.refresh(ticker)
+            self.s.refresh(ticker)
+        self.assertTrue(self.s.current('A'))
+        self.assertTrue((await self.proposal()).additions)
+
     async def test_later_priority_market_beats_early_fallback_after_combined_coverage(self):
         self.assertEqual(len(self.r.engine.shards), 2)
         await self.publish('A',pool=3000000)

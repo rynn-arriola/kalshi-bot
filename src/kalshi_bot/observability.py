@@ -72,7 +72,7 @@ EVENTS = {
     'quota_stopped': ('INFO', 'rest'),
     'quota_rollover_deferred': ('INFO', 'rest'),
 }
-NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count',
+NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
                      'market_rows', 'milestone_rows'))
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))

@@ -13,6 +13,7 @@ try {
         $patterns = @(
             'test_bot_live_runtime.py',
             'test_bot_recovery_runtime.py',
+            'test_bot_routine_refresh.py',
             'test_bot_dispatch_sources.py',
             'test_bot_reward_tracker.py',
             'test_bot_production_supervisor_repairs.py',

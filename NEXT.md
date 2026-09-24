@@ -1,24 +1,18 @@
 # Active work queue
 
-## Startup/refill scheduling repair — current priority
+## D-113 deployment acceptance — current priority
 
-1. Obtain approval for the focused repair direction in
-   [Finding 175](FINDINGS.md#175-routine-freshness-recovery-starves-startup-and-refill--2026-09-24):
-   bounded routine account/accounting renewal during startup/refill and advisory
-   ranking that does not stall behind full recovery. Do not just relax the
-   existing full-cap condition: snapshot refresh revokes the entry lease.
-2. Specify exact continuity, ownership, accounting-lease renewal and escalation
-   rules; preserve final admission freshness and existing risk limits. Add
-   recovery trigger/phase timing, then implement the approved bounded change.
-3. Verify realistic 17-second recoveries across the three-/five-second
-   deadlines, pre-cap and full-cap states, early/full ranking, concurrent fills
-   and source changes. Prove ongoing discovery and actual mocked refill without
-   granting entries from stale advisory evidence. Run affected tests, fast gate,
-   review and the required full suite before a live-money release.
-4. Check/commit/push/parity; deploy only under explicit restart authority.
-   Require measured recovery/refresh behavior and current ranked refill, not
-   merely healthy processes or historical priority hints. Keep actual reward,
-   fee and settled-loss measurement separate from software acceptance.
+1. The D-113 source repair and final release verification/review are finished.
+   The operator approved implementation; this turn does not authorize restart.
+   On a separately authorized supported restart, confirm the new child/build
+   uses routine refresh before full occupancy, discovery progresses during
+   recovery, and fresh ranked orders refill without recurrent timer-only full
+   recovery. Preserve the exact-child, flat-recovery and single-writer rules.
+2. Measure renewal phase timings, full-recovery trigger/duration, candidate
+   freshness and order growth. A passing synthetic test is not a promised live
+   latency or proof of 30 economically eligible orders. Investigate any remaining
+   measured bottleneck rather than increasing freshness windows or book shards.
+3. Continue measuring actual rewards, fees and settled trading loss separately.
 
 ## Historical queues — superseded by the priority above
 

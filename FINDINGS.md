@@ -2,8 +2,18 @@
 
 ## 175. Routine freshness recovery starves startup and refill — 2026-09-24
 
+**Repair follow-up:** D-113 is implemented in source, not yet deployed. Routine
+renewal reuses a bounded history chain while acquiring new empty-tail, exact
+snapshot and cash/funding/settlement evidence through existing release checks.
+The real writer is exercised at 0, 2 and 28 orders; successful renewal funds an
+offline entry reservation. Changed economics/source, nonempty/omitted history,
+stop, cancellation and a 17-second stale snapshot reject renewal. A separate
+17-second full-repair fixture verifies that its next routine refresh does not
+replay startup. These are deterministic correctness checks, not a measured
+production speedup. Current verification/deployment state is in `STATUS.md`.
+
 VERIFIED from generation 131's local telemetry, source tracing and offline
-synthetic fixtures. This is an investigation, not a deployed repair.
+synthetic fixtures. The original investigation below preceded D-113.
 
 `RecoveryRuntime._live_refresh` requests full recovery when an account report
 is missing or three seconds old unless an exact steady-refresh scope exists.
@@ -46,7 +56,7 @@ All reproductions used synthetic reads and temporary ledgers; no production
 database or venue API was accessed by the investigation. No full-suite or
 post-fix live acceptance is claimed.
 
-RECOMMENDATION, not an accepted design: separate routine bounded account and
+Original recommendation, now accepted as D-113: separate routine bounded account and
 accounting-evidence renewal from full recovery, including startup/refill, and
 allow advisory market discovery/ranking to progress while account checks run.
 Final admission must still require fresh exact account, ownership, book, cash

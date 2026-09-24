@@ -43,6 +43,16 @@ class _SteadyAccountScope:
     tickers: frozenset[str]
 
 
+@dataclass(frozen=True)
+class _RoutineAccountProof:
+    """Historical renewal anchor, never a current entry/accounting lease."""
+    source: tuple
+    snapshot_signature: tuple
+    receipt_ids: tuple[str, ...]
+    end_us: int
+    window_end: datetime
+
+
 def readonly_reader_factory(signer, *, connector=None):
     """Factory only; does not open sockets or load credentials."""
     def create(spec):
@@ -154,6 +164,14 @@ class RecoveryRuntime:
         self._post_drain_recovery_pending = False
         self._safety_recovery_retries = set()
         self._steady_account_scope = None
+        self._routine_account_proof = None
+        self.routine_refresh_attempts = 0
+        self.routine_refresh_completed = 0
+        self.routine_refresh_escalations = 0
+        self.routine_refresh_phase = 'idle'
+        self.routine_refresh_elapsed_ms = 0
+        self.routine_refresh_phase_ms = {}
+        self._recovery_reason = 'source_change'
         self.steady_refresh_attempts = 0
         self.steady_refresh_completed = 0
         self.steady_refresh_escalations = 0
@@ -184,8 +202,8 @@ class RecoveryRuntime:
         self.metadata_scheduler = (MetadataScheduler(market_inputs, diagnostics=diagnostics,
             concurrency=4 if broad_discovery else 2,
             priority=self._metadata_priority,
-            defer=lambda: bool(self.engine.private or self.account._processing or
-                               self.recovery_state == 'recovering')) if market_inputs is not None else None)
+            defer=lambda: bool(self.engine.private or self.account._processing))
+            if market_inputs is not None else None)
 
     def _metadata_priority(self, ticker):
         """Owned safety first, then remembered priority, then discovery."""
@@ -545,8 +563,10 @@ class RecoveryRuntime:
         from .live_session import permits
         return permits(self.live_session, self.writer)
 
-    def request_recovery(self):
+    def request_recovery(self, reason='source_change'):
         self._steady_account_scope = None
+        self._routine_account_proof = None
+        self._recovery_reason = reason
         self.last_reports = None
         self._refresh_continuity()
         self.recovery_requested.set()  # Coalesced, never a task per market/event.
@@ -574,6 +594,7 @@ class RecoveryRuntime:
 
     def _revoke(self):
         self._steady_account_scope = None
+        self._routine_account_proof = None
         self.ingress_revision += 1
         self.last_reports = None
         self.account._invalidate()
@@ -586,6 +607,129 @@ class RecoveryRuntime:
         snapshot = report.snapshot
         return (snapshot.positions, snapshot.orders, snapshot.available_balance,
                 snapshot.subaccount)
+
+    def _routine_source(self):
+        return (self.account.generation, self.account.revision, self.writer.epoch,
+                self.writer.revision, self.ingress_revision,
+                self._epoch.epoch_id if self._epoch is not None else None)
+
+    def _record_routine_proof(self, receipt_ids, history):
+        self._routine_account_proof = None
+        report = self.account.current_report(self.now())
+        result = self.accounting_result
+        lease = self.writer._accounting_lease
+        if (report is None or result is None or not result.released
+                or result.window is None or result.window.held
+                or lease is None or not lease.fence.current()
+                or self.recovery_requested.is_set() or self.stop_requested.is_set()
+                or history is None or history.enumeration is None
+                or history.enumeration.omitted_rows or not receipt_ids
+                or len(receipt_ids) >= 128):
+            return
+        self._routine_account_proof = _RoutineAccountProof(self._routine_source(),
+            self._snapshot_signature(report), tuple(receipt_ids),
+            history.enumeration.eligible_end_us, result.window.end)
+
+    def _current_routine_proof(self):
+        proof = self._routine_account_proof
+        owner = self.dispatch_supervisor
+        state = owner.dispatcher.status() if owner is not None else None
+        if (proof is None or proof.source != self._routine_source()
+                or utc(self.now()) >= proof.window_end
+                or not self.account_subscribed or not self.account.connected
+                or self.engine.private or self.account._processing or self._epoch_ambiguous
+                or self.writer.failed or self.engine.failed or self.engine.stopped
+                or self.stop_requested.is_set() or self.recovery_requested.is_set()
+                or (state is not None and (state.active is not None or state.queued
+                    or state.stopping or state.failed))):
+            return None
+        return proof
+
+    async def _refresh_routine_account(self):
+        """Renew through existing release checks; never replay full startup work.
+
+        A bounded receipt chain preserves the complete original interval. Every
+        tail is empty, omission-free and checked by the writer at release.
+        Fresh cash/funding/settlement enumeration remains mandatory: unchanged
+        balance alone cannot establish unchanged economics.
+        """
+        proof = self._current_routine_proof()
+        if proof is None or self.recovery_lock.locked():
+            return False
+        started = self.clock()
+        self.routine_refresh_phase_ms = {}
+        self.routine_refresh_attempts += 1
+        succeeded = False
+        async with self.recovery_lock:
+            try:
+                async with asyncio.timeout(20):
+                    self.routine_refresh_phase = 'snapshot_and_tail'
+                    end = utc(self.now())
+                    start = datetime.fromtimestamp(proof.end_us//1_000_000,
+                        tz=timezone.utc).replace(microsecond=proof.end_us%1_000_000)
+                    if end <= start:
+                        return False
+                    reads = RecoveryReads(self.reads)
+                    # Join both requests even if one fails; no orphaned read
+                    # may race the fallback recovery owner.
+                    history, report = await asyncio.gather(
+                        self.account.extend_empty_history(reads, start=start, end=end, now=self.now),
+                        self.account.reconcile(reads, now=self.now,
+                            expected_writer_source=(proof.source[2], proof.source[3])),
+                        return_exceptions=True)
+                    self.routine_refresh_phase_ms['snapshot_and_tail'] = max(
+                        0, int((self.clock()-started)*1000))
+                    for value in (history, report):
+                        if isinstance(value, BaseException):
+                            raise value
+                    if (history is None or report is None
+                            or history.enumeration.omitted_rows
+                            or self._routine_account_proof is not proof
+                            or self.recovery_requested.is_set()
+                            or self._routine_source()[:3]+self._routine_source()[4:] !=
+                               proof.source[:3]+proof.source[4:]
+                            or self.account.current_report(self.now()) is not report
+                            or self._snapshot_signature(report) != proof.snapshot_signature):
+                        return False
+                    self.last_reports = (history, report)
+                    self.history_ingress_revision = self.ingress_revision
+                    ids = proof.receipt_ids+(history.enumeration.receipt_id,)
+                    continuity = replace(self._refresh_continuity(operational=True), receipt_ids=ids)
+                    self.routine_refresh_phase = 'accounting_release'
+                    release_started = self.clock()
+                    self.accounting_result = await self.account.reconcile_accounting(
+                        reads, proposed_boundary=self.accounting_boundary,
+                        continuity=continuity, now=self.now, release=True)
+                    self.routine_refresh_phase_ms['accounting_release'] = max(
+                        0, int((self.clock()-release_started)*1000))
+                    # Release advances writer revision itself. The account owner
+                    # supplies its new audit; never rebase an earlier snapshot.
+                    if (not self.accounting_result.released
+                            or self.recovery_requested.is_set()
+                            or self.account.current_report(self.now()) is None
+                            or self.writer._accounting_lease is None
+                            or not self.writer._accounting_lease.fence.current()):
+                        return False
+                    self._record_routine_proof(ids, history)
+                    report = self.account.current_report(self.now())
+                    scope = self._record_steady_account_scope(report)
+                    for ticker in scope or self.engine.market_shard:
+                        self.engine.dirty.mark(ticker)
+                    self.engine.wake.set()
+                    if self.rewards is not None:
+                        self.rewards.request_reflection()
+                    self.routine_refresh_completed += 1
+                    succeeded = True
+                    return True
+            except (InvalidData, QuotaUnavailable, TimeoutError, OSError):
+                return False
+            finally:
+                self.routine_refresh_elapsed_ms = max(0, int((self.clock()-started)*1000))
+                self.routine_refresh_phase = 'idle'
+                if not succeeded:
+                    self.account.revoke_accounting()
+                    self.routine_refresh_escalations += 1
+                    self.request_recovery('routine_refresh_failed')
 
     def _current_steady_account_scope(self):
         """Return an exact scheduling scope, never live/account authority."""
@@ -1188,6 +1332,12 @@ class RecoveryRuntime:
                     captured = await self.account.reconcile_accounting(
                         reads, proposed_boundary=self.accounting_boundary,
                         continuity=release_continuity, now=self.now)
+                    if (self.stop_requested.is_set() or not self.account.connected
+                            or generation != self.account.generation
+                            or captured.status.checkpoint_digest is None
+                            or {'opening_source_stale', 'opening_local_state_changed'}
+                                .intersection(captured.status.holds)):
+                        return False
                     await self.writer.approve_opening(
                         checkpoint_digest=captured.status.checkpoint_digest,
                         captured_digest=captured.captured_digest,
@@ -1200,6 +1350,8 @@ class RecoveryRuntime:
                 reads, proposed_boundary=self.accounting_boundary,
                 continuity=release_continuity, now=self.now, release=True)
             repaired = self.accounting_result.released
+            if repaired:
+                self._record_routine_proof(release_receipt_ids, history)
         return repaired
 
     async def _recover(self):
@@ -1208,6 +1360,13 @@ class RecoveryRuntime:
             attempt = 0
             transient_failure = False
             while attempt < self.attempt_limit:
+                # A private event may request recovery while routine renewal
+                # still owns this lock. Join it before spending a retry or
+                # starting the whole-pass timeout; never race two owners.
+                async with self.recovery_lock:
+                    pass
+                if self.stop_requested.is_set():
+                    return
                 if self.quota is not None and not self.quota.poll():
                     self.recovery_state = 'awaiting_quota'
                     try:
@@ -1223,7 +1382,9 @@ class RecoveryRuntime:
                 self.recovery_state = "recovering"
                 self.recovery_attempts += 1
                 transient_failure = False
-                self.diagnostics.emit('recovery_started', attempt=attempt+1, generation=self.account.generation)
+                recovery_started = self.clock()
+                self.diagnostics.emit('recovery_started', attempt=attempt+1,
+                    generation=self.account.generation, reason=self._recovery_reason)
                 completed_before = self.recovery_passes
                 try:
                     # Bounds the whole pass; individual account proofs retain 5s.
@@ -1267,7 +1428,8 @@ class RecoveryRuntime:
                     for ticker in scope or self.engine.market_shard:
                         self.engine.dirty.mark(ticker)
                     self.engine.wake.set()
-                    self.diagnostics.emit('recovery_repaired', generation=self.account.generation)
+                    self.diagnostics.emit('recovery_repaired', generation=self.account.generation,
+                        elapsed_ms=max(0, int((self.clock()-recovery_started)*1000)))
                     break
                 if (self.recovery_passes > completed_before
                         and self.recovery_requested.is_set()):
@@ -1336,9 +1498,9 @@ class RecoveryRuntime:
     async def _live_refresh(self):
         """Cash/account completeness has no full WS snapshot: refresh centrally.
 
-        A proven full-cap/flat account needs one exact snapshot refresh for
-        incumbent monitoring, not repeated history/cash-boundary reconstruction.
-        Every other state reuses the full recovery worker and its bounded budget.
+        A successful accounting proof can renew using a bounded empty history
+        tail and fresh account/cash evidence, at any occupancy/ranking state.
+        Otherwise retain the full-cap observation shortcut or ordinary recovery.
         """
         while not self.stop_requested.is_set():
             self._request_post_drain_recovery()
@@ -1352,14 +1514,20 @@ class RecoveryRuntime:
                 # in-flight command. Actual ingress still revokes immediately;
                 # every outcome already requests authoritative recovery.
                 report = self.account.current_report(self.now())
-                if report is None or (utc(self.now())-report.observed_at).total_seconds() >= 3:
+                snapshot_started = self.account._report_monotonic
+                renewal_due = (self._current_routine_proof() is not None
+                    and snapshot_started is not None and self.clock()-snapshot_started >= 3)
+                if (report is None or renewal_due
+                        or (utc(self.now())-report.observed_at).total_seconds() >= 3):
                     if self._current_steady_account_scope() is not None and report is not None:
                         refreshed = await self._refresh_steady_account()
                         if (not refreshed and self._current_steady_account_scope() is None
                                 and not self.recovery_requested.is_set()):
                             self.request_recovery()
+                    elif self._current_routine_proof() is not None:
+                        await self._refresh_routine_account()
                     else:
-                        self.request_recovery()
+                        self.request_recovery('snapshot_freshness')
             try:
                 await asyncio.wait_for(self.stop_requested.wait(), .5)
             except TimeoutError:
@@ -1523,8 +1691,16 @@ class RecoveryRuntime:
         return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
+            recovery_trigger=self._recovery_reason,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
+            routine_account_refresh=dict(attempts=self.routine_refresh_attempts,
+                completed=self.routine_refresh_completed,
+                escalations=self.routine_refresh_escalations,
+                phase=self.routine_refresh_phase, elapsed_ms=self.routine_refresh_elapsed_ms,
+                phase_ms=dict(self.routine_refresh_phase_ms),
+                retained_receipts=(len(self._routine_account_proof.receipt_ids)
+                    if self._routine_account_proof is not None else 0)),
             steady_account_refresh=dict(attempts=self.steady_refresh_attempts,
                 completed=self.steady_refresh_completed,
                 escalations=self.steady_refresh_escalations,

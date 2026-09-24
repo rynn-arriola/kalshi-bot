@@ -398,6 +398,7 @@ class RuntimeSelection:
         if (observation is None or not observation.programs or plan is None or plan.terms is None
                 or report is None or not report.positions_match
                 or not observation.observed_at <= now < observation.valid_until):
+            self._refresh_advisory(ticker, observation, now)
             return
         _, book = r.management._book(ticker)
         if book is None:
@@ -436,6 +437,35 @@ class RuntimeSelection:
         self._rejected.pop(ticker, None)
         self._proofs[ticker] = (plan, observation, report)
         self._resolve_priority(ticker, observation, transient=unresolved)
+        self._initial_progress(ticker)
+
+    def _refresh_advisory(self, ticker, observation, now):
+        """Market-only coverage/hints during account gaps, never dispatch proof.
+
+        Treat inventory as unknown, not flat. A hypothetical empty-account score
+        can schedule revalidation, but cannot be consumed by current()/propose.
+        Own-order subtraction and all executable scores require the normal join.
+        """
+        r = self.runtime
+        terms = r.management.terms.get(ticker)
+        _, book = r.management._book(ticker)
+        if (observation is None or not observation.programs or book is None
+                or terms is None or not terms.observed_at <= now < terms.valid_until
+                or not observation.observed_at <= now < observation.valid_until):
+            return
+        blockers = (() if self.candidate_inputs is None
+                    else self.candidate_inputs.blockers(ticker, now))
+        until = min(observation.valid_until, terms.valid_until, now+timedelta(seconds=5))
+        try:
+            self.selector.update(book, observation.programs, terms=terms,
+                now=now, valid_until=until, blockers=blockers)
+        except InvalidData:
+            self.selector.invalidate(ticker)
+            return
+        # Deliberately do not populate _proofs: these rows are hypothetical,
+        # including when our own resting orders are visible in the public book.
+        self._resolve_priority(ticker, observation,
+            transient=self._priority_resolution_pending(blockers, True))
         self._initial_progress(ticker)
 
     def _clean_priority_memory(self, now):

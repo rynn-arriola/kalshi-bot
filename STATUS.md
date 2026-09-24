@@ -1,5 +1,31 @@
 # Current status
 
+## D-113 verified source repair; not deployed — 2026-09-24
+
+Routine startup/refill renewal now obtains fresh account and financial evidence
+without replaying the full opening-to-now history and management pass. Exact
+writer/source checks, bounded receipt chains and existing five-second release
+fences remain. Metadata and advisory ranking can progress through recovery,
+but advisory rows cannot authorize orders. D-109's full-cap shortcut remains
+first to avoid adding steady-state work. See `BUGFIXES.md` and Finding 175.
+
+The final complete release suite ran 1,690 tests in 291.256 seconds with zero
+failures and one expected Windows symlink-privilege skip. The earlier fast gate
+passed 274 tests; final timer/lock regressions are included in the complete run.
+Focused account-release (38), selection (48), initial-ranking (30) and metadata
+scheduler (32) suites also passed. Negative controls detect disabled renewal
+and advisory coverage. A supplemental temporary-ledger check renewed accounting,
+reserved an actual writer-owned pair, invoked one synthetic batch transport and
+retained two ACKs. No network was involved in these checks. Diff review found no
+remaining blocking issue; full recovery now waits for an in-flight refresh
+instead of spending retries against its lock.
+
+No live restart or venue operation has been performed for D-113; production
+continues to use its previously loaded code. At 18:09:13 ET local telemetry
+reported 14 entries, zero positions, healthy logging and no new renewal counter,
+consistent with the old build. Deployment acceptance and real startup/refill
+latency remain unverified until a separately authorized restart.
+
 ## Generation 131 running; startup/refill recovery loop diagnosed — 2026-09-24
 
 Latest local runtime observation: 17:52:16 ET, 12 resting entries and zero

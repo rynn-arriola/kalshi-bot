@@ -420,6 +420,29 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_recovery_does_not_defer_metadata_but_private_work_does(self):
+        reads = Reads(('A','B'))
+        service = ExitInputService(reads, ('A','B'), now=lambda:NOW, clock=lambda:0, ttl=10)
+        async def noop(*args): pass
+        with TemporaryDirectory() as folder:
+            async with LedgerWriter(Path(folder)/'fixture.db') as writer:
+                runtime = RecoveryRuntime(writer, reads, FakeReader, tickers=('A','B'),
+                    subaccount=0, history_start=NOW-timedelta(hours=1), now=lambda:NOW,
+                    clock=lambda:0, evaluate=noop, deadline_handler=noop,
+                    lifecycle_handler=noop, market_inputs=service, broad_discovery=True)
+                runtime.recovery_state = 'recovering'
+                scheduler = runtime.metadata_scheduler
+                service.begin(1)
+                service.subscribed(1,1)
+                runtime.account._processing = True
+                scheduler.step()
+                self.assertFalse(scheduler.active)
+                runtime.account._processing = False
+                scheduler.step()
+                self.assertEqual(set(scheduler.active), {'A','B'})
+                self.assertEqual(scheduler.concurrency, 4)
+                await scheduler.close()
+
     async def test_runtime_owns_scheduler_bootstrap_and_shutdown(self):
         metadata, account = Reads(('A','B')), AccountReads()
         class Combined:

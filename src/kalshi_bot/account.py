@@ -633,8 +633,20 @@ class AccountCoordinator:
             return None
         return result
 
-    async def reconcile(self, reads: RestReads, *, now) -> ReconciliationReport | None:
+    async def reconcile(self, reads: RestReads, *, now, expected_writer_source=None) -> ReconciliationReport | None:
         """One explicit bounded bootstrap/recovery read, never a polling loop."""
+        # Routine renewal permits only this invocation's known writer commands.
+        # Any competing write, even one preceding the final audit, rejects the
+        # shortcut. Ordinary recovery intentionally retains its repair semantics.
+        expected = expected_writer_source
+        def writer_current(advance=0):
+            nonlocal expected
+            if expected is None:
+                return True
+            expected = (expected[0], expected[1]+advance)
+            return expected == (self.writer.epoch, self.writer.revision)
+        if not writer_current():
+            return None
         token = self.begin_reconciliation(now())
         try:
             orders, positions, balance = await asyncio.gather(
@@ -645,25 +657,26 @@ class AccountCoordinator:
                 reads.read("balance", reason="reconcile", subaccount=self.subaccount))
             snapshot = normalize_snapshot(orders.rows, positions.rows, balance.payload,
                                           subaccount=self.subaccount, capacity=self.capacity)
-            if not self._current(token):
+            if not self._current(token) or not writer_current():
                 return None
             # Bounded batches yield between writes so account events can revoke
             # this generation. Never delete absent durable orders on bootstrap.
             for offset in range(0, len(orders.rows), 32):
-                if not self._current(token):
+                if not self._current(token) or not writer_current():
                     return None
                 updates = tuple(parse_order(row, scope=self.subaccount) for row in orders.rows[offset:offset+32])
                 receipts = await self.writer.order_batch(updates, now())
-                if not self._current(token):
+                if not self._current(token) or not writer_current(1):
                     return None
                 for receipt in receipts:
                     self._store_order(receipt)
             persisted = await self.writer.orders()
-            if not self._current(token):
+            if not self._current(token) or not writer_current(1):
                 return None
             for receipt in persisted:
                 self._store_order(receipt)
-            return await self.finish_reconciliation(token, snapshot, now())
+            result = await self.finish_reconciliation(token, snapshot, now())
+            return result if writer_current(1) else None
         except BaseException:
             if token is self._token:
                 self._invalidate()

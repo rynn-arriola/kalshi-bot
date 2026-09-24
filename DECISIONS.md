@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-113 — Separate routine freshness from full startup/refill recovery
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-24; not deployed.
+- **Decision owner:** Operator: “Ok lets do it,” accepting Finding 175's repair.
+- **Scope:** Renew account/accounting evidence using a bounded empty-history
+  tail after a successful full proof, independently of order occupancy or ranking
+  completion. Let advisory market ranking progress during account recovery.
+- **Boundary:** No larger freshness windows, invented continuity, changed risk
+  or ranking policy. Source/economic changes, nonempty tails and uncertainty
+  require ordinary recovery. Advisory observations never authorize dispatch.
+  This implementation request does not authorize a live restart.
+
 ### D-112 — An explicit restart command covers exact-child timeout recovery
 
 - **Status:** ACCEPTED, 2026-09-24.

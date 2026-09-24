@@ -1,5 +1,22 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-113 separates routine startup/refill renewal from full recovery. After a
+successful operational release, a process-local anchor retains exact source
+versions, account signature and at most 128 history receipt IDs. Renewal joins
+one fresh snapshot with an empty elapsed history tail, then runs the existing
+cash/funding/settlement inspection and writer-owned accounting release. It never
+refreshes a lease by copying timestamps. Any changed source/economics, missing
+proof, nonempty/omitted tail, timeout or bounded-chain exhaustion falls back to
+full recovery. D-109's full-cap snapshot-only scheduling optimization retains
+precedence; no extra financial enumeration is added to that steady path.
+
+Metadata workers no longer defer solely because full recovery is running;
+private ingestion and account-wide quota/safety priority remain intact.
+Market-only observations can advance historical coverage and advisory priority
+hints during account gaps, but carry no dispatch proof. Current ownership,
+inventory, account, book and accounting joins remain mandatory for executable
+selection. No risk, freshness, price or reward threshold is relaxed.
+
 D-110 adds [persistent transient recovery and fresh quote rebuilding](BUILD_UNATTENDED_RECOVERY.md).
 All readers retain one bounded owner across capped retry rounds; classified REST
 transport failures retry after capped cooldowns. Unexpected death still recovers
