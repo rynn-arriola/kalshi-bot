@@ -1,11 +1,14 @@
 # Active work queue
 
-## Complete the authorized stop/recovery repair and restart
+## After the deployed stop/recovery latency repair
 
-1. Verify and publish Finding 176's integrated drain/recovery correction.
-2. Use the existing operator-authorized restart; generation 136 has exited flat.
-   Confirm recovery duration, routine renewal, full ranking and ranked refill
-   beyond the first pair. Record measured results, including any blocker.
+1. Finding 176's integrated drain/recovery correction is verified, published and
+   running on generation 139. Do not repeat its completed release tests/restart.
+2. Profile remaining cold-scan/refill latency: broad ranking took 152.8 seconds,
+   while fresh-source entry deferrals still slowed growth to 12 orders in the
+   observed window. Separate changed-book/metadata evidence from writer delay;
+   do not widen freshness gates or infer that every remembered market is current.
+   Full 30-order refill is not yet verified. Current details belong in STATUS.
 3. No extra restart is required solely to manufacture a cancellation test.
    Check live stop-to-cancel and stop-to-exit timing at the next requested stop.
 

@@ -1,6 +1,28 @@
 # Current status
 
-## Stop/recovery latency repair verified; restart pending — 2026-09-24
+## Stop/recovery latency repair deployed; refill still slow — 2026-09-24
+
+Release `1c9c326` is published and running as generation 139, PID 50452, following
+the authorized start at 19:09:15 ET. At 19:16:39 ET local telemetry showed 12
+resting entries, zero positions, a current account report, no accounting blockers,
+all six readers subscribed and healthy logging without drops/backlog. All six
+acknowledged entry pairs were selected from the $2+ priority tier. This is not
+proof of reward payout or a completed 30-order refill.
+
+Live repair latency across 26 completed passes was 3.165–4.339 seconds
+(mean 3.650), versus the previous repeated approximately 20-second passes.
+72 routine renewals completed with zero escalations; the latest took 1.366
+seconds. Full ranking covered 1,024/1,024 markets in 152.8 seconds. Startup public
+discovery encountered 23 rate-limit retries before completing. Refill progressed
+beyond the old two-order stall, but entry source changes still defer attempts
+and refill is not yet fast; do not call the entire lifecycle optimized.
+There were no ERROR/CRITICAL events in the observed current-run log sample.
+
+Cancellation scheduling is regression-tested during recovery, but live
+stop-to-cancel/exit latency on this build has not been measured. No extra stop
+was issued just to obtain a benchmark. The current bot remains running.
+
+### Release verification and predecessor
 
 Generation 136 canceled its two entries and eventually reached `STOPPED_FLAT`
 at 18:58:43 ET. Both managed processes have exited; no forced termination was
@@ -15,8 +37,8 @@ premature renewal during flat shutdown. Focused regressions and same-ledger
 offline timing checks pass. The complete release suite ran 1,697 tests in
 318.963 seconds with no failures and one expected Windows symlink-privilege
 skip; the fast gate passed 281 tests. Source/test diff review and whitespace
-checks passed. Publication and the previously authorized restart remain pending;
-offline speedup is not yet live refill or cancellation-latency acceptance.
+checks passed. Source publication and the authorized restart are complete;
+the observed refill limitation and unmeasured stop timing are stated above.
 
 ## D-113 concurrent renewal correction verified; restart pending — 2026-09-24
 

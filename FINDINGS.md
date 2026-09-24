@@ -24,6 +24,16 @@ writer validation, shares financial collection with full recovery's final
 snapshot, and leaves a fresh flat report available to shutdown before renewing
 an unnecessary entry lease. Live acceptance belongs in `STATUS.md`.
 
+**MEASURED after deployment:** Generation 139's first 26 completed repair passes
+averaged 3.650 seconds (3.165–4.339 seconds); 72 routine renewals completed with
+zero escalations. The old two-order stall was passed, reaching 12 entries in the
+observed window, all from $2+ selections. Broad ranking still took 152.8 seconds
+and entry evidence changes still deferred refill. This corrects recovery latency,
+not every source of startup/refill delay. A separate profile on the retained
+stopped-generation fixture measured flat portfolio/market reads at approximately
+2/1 ms; that flat fixture does not model the current active-order workload.
+Live cancellation latency has not been benchmarked on this release.
+
 ## 175. Routine freshness recovery starves startup and refill — 2026-09-24
 
 **Repair follow-up:** D-113 is implemented in source, not yet deployed. Routine
