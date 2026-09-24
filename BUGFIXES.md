@@ -25,6 +25,15 @@ pass. The maintained fast suite passes 257 tests; the complete suite passes
 benchmark processed every decision with a 0.0714 CPU ratio. No live process,
 order or database was changed.
 
+**Live acceptance:** The authorized restart exposed the expected old-build
+terminal deadlock after all 30 orders were canceled and the account showed zero
+positions/exposure. After exact-child forced termination was separately
+authorized, the new recovery path archived 8,192 events, cleared the hold only
+through a successful exact release and stopped flat. Normal generation 106 then
+ranked 1,024/1,024 markets and reached 30 resting orders/zero positions. The
+hot journal is below its trigger, SQLite integrity is OK and no accounting hold
+remains. Long-duration finite archive growth remains follow-up work.
+
 ## 2026-09-23 — STOP generation fence broke clean child completion
 
 **Mechanism:** Durable STOP correctly advanced the control generation and

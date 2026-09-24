@@ -1,5 +1,33 @@
 # Findings — kalshi-bot
 
+## 168. D-109 recovered the full journal; Kalshi persistence remains heavier than Poly — 2026-09-23
+
+MEASURED LIVE on the operator-authorized generation-102 to generation-106
+restart. The supported stop canceled all 30 orders and observed zero positions
+and zero exposure. The old loaded child could not append terminal flat proof
+after journal saturation, reached `shutdown_timeout`, and was force-terminated
+only after separate authorization and exact PID/generation verification. The
+next recovery-only generation archived 8,192 superseded events, cleared the
+capacity hold through successful accounting release and stopped flat before the
+normal live generation was launched.
+
+Generation 106 completed 1,024/1,024 initial ranking in 196.08 seconds and
+reached 30 resting orders across 15 markets with zero positions. All six readers
+are subscribed and no accounting hold remains. A later sample recorded 52
+completed bounded steady refreshes, zero escalations and 71,777 suppressed
+optional evaluations. SQLite integrity is OK; 15,977 hot events use 47,656,154
+payload bytes, while four exact archives compress 8,192 older events from
+19,774,412 bytes to 1,040,549 bytes.
+
+VERIFIED FROM CODE: both bots use a single-writer SQLite financial ledger and
+current venue state outranks saved state. Polymarket's execution ledger stores
+normalized orders, fills and positions and keeps account-event payload hashes;
+Kalshi's accounting journal stores fuller exact reconciliation payloads. D-109
+compresses superseded Kalshi evidence but does not make that persistence model
+identical or permanently size-free. Archive growth therefore remains a measured
+follow-up, not a reason to delete financial or conflict evidence from the live
+ledger.
+
 ## 167. Full recovery cadence exhausted the accounting journal — 2026-09-23
 
 MEASURED LIVE on generation 102 using read-only status, logs and SQLite. The

@@ -12,7 +12,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-109 — Bound steady full-cap recovery and accounting retention
 
-- **Status:** ACCEPTED and implemented offline; deployment/restart not authorized,
+- **Status:** ACCEPTED, implemented, published and live on generation 106,
   2026-09-23.
 - **Decision owner:** Operator directed the measured generation-102 recovery,
   CPU, reward-coverage and accounting-capacity issues to be addressed.
@@ -25,6 +25,12 @@ and explicitly withdraws the proposed fixed 60-market pool.
   dispatcher work, vacancy, window change or failed refresh returns to the
   existing full recovery. The optimization grants no trading authority and does
   not change limits, ranking, quote prices, exits, deployment or live orders.
+- **Live acceptance:** The authorized restart canceled 30 old entries and proved
+  zero orders/positions/exposure before one exact-child forced termination was
+  separately authorized for the old build's terminal journal deadlock. Recovery-
+  only then archived 8,192 events, cleared the capacity hold through exact
+  release and stopped flat. Normal generation 106 ranked 1,024/1,024 markets,
+  reached 30 entries/zero positions, and exercised the bounded steady path.
 
 ### D-108 — Reconcile the explicit manual close and resume the preserved account
 

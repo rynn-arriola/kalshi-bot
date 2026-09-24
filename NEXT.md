@@ -1,5 +1,22 @@
 # Active work queue
 
+## After generation 106 D-109 live acceptance
+
+1. Leave generation 106 under its current supervisor and monitor natural fills,
+   exact exits, reference-price maintenance, paid rewards, fees and settled
+   trading loss. Do not infer profitability from projected reward.
+2. Measure hot-event and compressed-archive growth over a longer stable window.
+   The immediate 64 MiB hot-journal failure is repaired, but the exact archive
+   count is deliberately finite. Design a leaner normalized/hash-only account
+   proof format before archive capacity becomes operationally relevant; do not
+   delete economic, conflict, fill or settlement evidence.
+3. Investigate only if the handled startup 429 burst or post-mutation full
+   recovery cadence persists under a stable unchanged 30-order slate. Preserve
+   current source, ownership and entry gates while measuring.
+4. The separate broad-discovery p99 loop-lag timing gate remains open at
+   117–121 ms versus 100 ms. It did not block the 1,024/1,024 live ranking or
+   current order slate.
+
 ## After generation 102 steady-state repair
 
 1. Generation 102 is live but account-blocked with 30 resting orders. A

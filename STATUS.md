@@ -1,5 +1,35 @@
 # Current status
 
+## Generation 106 running on D-109; journal recovery accepted live — 2026-09-23
+
+The operator-authorized restart first canceled all 30 generation-102 entries.
+The account showed zero resting orders, zero positions and zero exposure, but
+the old loaded build could not append the final flat proof after its hot
+accounting journal filled and reached `shutdown_timeout`. With separate operator
+authorization, only the exact generation-102 child PID was force-terminated;
+its parent then exited and no unrelated process was touched.
+
+The next launch correctly ran recovery-only. It archived 8,192 superseded
+accounting events, cleared `accounting_journal_full` only through a successful
+exact accounting release, proved `STOPPED_FLAT`, and disarmed. A second explicit
+launch started normal generation 106 from published commit `b75ea57`. Initial
+ranking covered 1,024/1,024 reviewed markets in 196.08 seconds before entry.
+The latest acceptance sample has all four book shards plus account and lifecycle
+subscribed, 30 resting orders across 15 markets, zero positions, about $137.80
+exposure, healthy supervisor/logging/dispatch, current account evidence and no
+accounting hold. The bounded steady path completed 52 refreshes with zero
+escalations and suppressed 71,777 optional unowned-market evaluations.
+
+Read-only SQLite `quick_check` is `ok`. The hot journal has 15,977 rows and
+47,656,154 payload bytes; four hash-verified compressed archives retain 8,192
+older exact events, reducing 19,774,412 source bytes to 1,040,549 compressed
+bytes. This fixes the immediate hot-journal saturation. Exact cold audit
+archives still grow and have a deliberate finite capacity, so their measured
+growth and a leaner normalized/hash-only persistence follow-up remain open.
+The initial restart also handled 19 HTTP 429 read retries without a component
+failure. Actual paid reward, profitability and long-duration retention remain
+unverified.
+
 ## Generation 102 degraded; bounded steady-state repair verified offline — 2026-09-23
 
 Generation 102 still runs deployed source `fb5dc68`. Its parent and child remain
