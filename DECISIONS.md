@@ -12,8 +12,8 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-110 — Recover transient outages and rebuild fresh quotes after a crash
 
-- **Status:** ACCEPTED by the operator and implemented offline, 2026-09-23;
-  deployment/restart separately authorized and pending final release validation.
+- **Status:** ACCEPTED, implemented, published and live on generation 108,
+  2026-09-23.
 - **Decision owner:** After reviewing Finding 169, the operator directed all
   findings to be fixed and required restart attempts to continue through any
   diagnosed issue until a healthy restart succeeds.
@@ -29,6 +29,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   size, selection, reference-price or reward threshold changes. Exact economic
   rows remain retained; only superseded observation archives become hash-only.
 - **Implementation:** [unattended recovery](docs/BUILD_UNATTENDED_RECOVERY.md).
+- **Live acceptance:** The supported restart stopped generation 106 flat, then
+  generation 108 matched the published production fingerprint, ranked all 1,024
+  markets and rebuilt 30 entries across 15 $2+ priority markets with no position,
+  retry round, risk/accounting hold or supervisor attention state.
 
 ### D-109 — Bound steady full-cap recovery and accounting retention
 

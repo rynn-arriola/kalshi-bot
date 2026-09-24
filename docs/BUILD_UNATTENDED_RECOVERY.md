@@ -48,3 +48,12 @@ non-resumption, archive rollover and cold validation. Windows supervisor and
 complete-suite evidence is recorded in `STATUS.md`. The pre-restart release gate
 passed 1,662 tests with one expected Windows privilege skip; the final 49-test
 reader module and 274-test fast plus native-supervisor gate also pass.
+
+## Live acceptance
+
+The supported generation-106 stop canceled 30 owned orders and reached verified
+flat cleanup before disarming. Generation 108 then loaded the published D-110
+build, ranked 1,024/1,024 markets, and rebuilt 30 orders across 15 $2+ priority
+markets. The stable sample has all readers subscribed, current account proof,
+zero positions, retry rounds or blockers, healthy logging/dispatch and SQLite
+`quick_check=ok`. This verifies startup and rebuild, not an artificial crash.

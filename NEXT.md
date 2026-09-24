@@ -1,16 +1,17 @@
 # Active work queue
 
-## D-110 restart acceptance — current priority
+## After generation 108 D-110 live acceptance — current priority
 
-1. Complete the full release gate, exact-diff review, commit and push.
-2. Use the supported stop/recovery/restart flow already authorized by the
-   operator. Diagnose and fix any concrete failure before retrying; do not bypass
-   account, ambiguity, loss, economic or supervisor gates.
-3. Accept only a new published-build generation with parent/child present, all
-   readers subscribed, current account proof, zero unresolved blockers and a
-   freshly ranked/rebuilt order slate. Record exact live evidence.
-4. Then monitor natural disconnect/fill/vacancy behavior and measured archive
-   growth; live operation cannot prove crash recovery without an actual incident.
+1. Leave generation 108 under its current supervisor and monitor natural
+   disconnect, fill, exit and vacancy behavior. A normal stable run does not by
+   itself prove the unexpected-death recovery path.
+2. Measure paid rewards against trading loss and fees; all 15 current markets
+   entered through the $2+ projected-reward tier, but projections are not payout.
+3. Measure hot-journal/current-archive growth. The immediate journal cap and the
+   future exact-archive ceiling are repaired, but the cumulative rollover has not
+   yet been exercised by live data.
+4. Investigate only persistent measured failures. The ten startup HTTP 429
+   retries recovered normally and no reader or recovery retry round remains.
 
 ## After generation 106 D-109 live acceptance
 

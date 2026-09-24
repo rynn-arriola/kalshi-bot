@@ -178,10 +178,12 @@ ownership proof or reset automatically on process restart. Lower loss-tier caps
 continue to restrict new admission without a newly introduced rotation policy.
 
 An unexpected child exit receives at most the supervisor's bounded retry budget.
-Every replacement child is recovery-only: entries are paused before composition,
-the same financial ledger is opened, and only reconciliation, owned-order
-cancellation and existing-inventory reduction are permitted. Verified flatness
-disarms the supervisor; a later explicit start is required to quote again.
+Its first replacement child is recovery-only: entries are paused before
+composition, the same financial ledger is opened, and only reconciliation,
+owned-order cancellation and existing-inventory reduction are permitted. If that
+child proves flat with no hold, the still-armed supervisor launches one fresh
+normal child, which re-ranks and passes every ordinary entry gate before quoting.
+A manual stop still disarms after verified-flat cleanup and never auto-restarts.
 Startup refusal, unknown/integrity state, local-control failure or exhausted
 retry budget requires attention. Parent loss is not reboot recovery; the optional
 host watchdog remains uninstalled and separately authorized. See the

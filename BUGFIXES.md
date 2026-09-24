@@ -18,6 +18,12 @@ economic/loss holds remain fail-closed. Exact economic evidence is not rolled up
 **Verification:** See [the build record](docs/BUILD_UNATTENDED_RECOVERY.md) and
 the current test/restart evidence in [STATUS](STATUS.md).
 
+**Live acceptance:** Generation 106 stopped flat through the supported path.
+Generation 108 loaded published commit `600b109`, ranked 1,024/1,024 markets and
+rebuilt 30 orders across 15 $2+ priority markets. All readers are subscribed,
+account proof is current, SQLite integrity is OK, and no risk, accounting, retry
+or supervisor hold remains. Ten startup 429s were handled by ordinary retries.
+
 ## 2026-09-23 — repeated full recovery filled the journal and starved reward proof
 
 **Mechanism:** At the exact 30-order/flat steady state, every expiring three-

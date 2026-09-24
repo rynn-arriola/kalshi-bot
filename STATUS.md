@@ -1,6 +1,6 @@
 # Current status
 
-## D-110 release validated; authorized restart in progress — 2026-09-23
+## Generation 108 running on D-110; unattended-recovery release accepted live — 2026-09-23
 
 All four Finding-169 gaps now have code and focused offline regressions: persistent
 capped reader rounds, classified transient account-repair retries, truthful child
@@ -10,9 +10,21 @@ orders, incomplete cleanup, loss/economic restrictions and integrity failures
 remain fail-closed. Exact economic rows are not rolled up. The complete release
 gate passed 1,662 tests with one expected Windows privilege skip before the final
 test-only stable-reader regression; that 49-test module and the 274-test fast plus
-native-supervisor gate also pass. Exact-diff review found no remaining release
-blocker. The currently running generation remains the prior build until the
-supported restart completes.
+native-supervisor gate also pass. Exact-diff review found no release blocker.
+
+The supported restart canceled all 30 generation-106 orders and reached
+`STOPPED_FLAT` with zero orders, positions and exposure before disarming. Published
+commit `600b109` then started generation 108 with the matching production build
+fingerprint. Ranking covered 1,024/1,024 markets across four book shards in
+209.19 seconds and rebuilt 30 resting orders across 15 markets. Every selected
+market was a $2+ projected-reward priority candidate at dispatch. The acceptance
+sample has zero positions, current account proof, all six readers subscribed,
+healthy parent/child, logging and dispatch, zero retry rounds, no risk/accounting/
+supervisor blockers, and 22/22 successful steady account refreshes. SQLite
+`quick_check` is `ok`. Ten handled startup HTTP 429 retries and one transient
+in-flight `SENDING` status snapshot caused no unknown mutation or lasting hold.
+Actual payout, profitability and a natural crash-recovery incident remain
+unverified by this restart.
 
 ## Uptime review complete; unattended recovery gaps remain — 2026-09-23
 
