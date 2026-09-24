@@ -222,6 +222,16 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.initial_ranking.status()['state'],'coverage_complete')
         self.assertEqual(self.s.initial_ranking.status()['release_reason'],'priority_capacity_met')
 
+    async def test_pending_gate_revalidates_remembered_priority_candidates(self):
+        await self.publish('A',pool=3000000)
+        self.s._priority_hints['C'] = PriorityCandidateHint(
+            'C','PROGRAM',self.now,self.now+timedelta(hours=1),D(3),())
+        result = await self.proposal()
+        self.assertEqual(result.blockers,('initial_ranking_pending',))
+        self.assertEqual(self.s.status()['priority_revalidation_pending'],1)
+        self.assertTrue(self.r._metadata_priority('C'))
+        self.assertFalse(await self.writer.mutations())
+
     async def test_invalidated_priority_is_revalidated_before_fallback(self):
         await self.publish('A',pool=3000000)
         await self.publish('C',pool=5000000)

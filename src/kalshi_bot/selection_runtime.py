@@ -506,6 +506,14 @@ class RuntimeSelection:
                           if plan.inventory.position or plan.inventory.orders or plan.inventory.blockers
                           or (plan.inventory.exit_journal is not None and
                               (plan.inventory.exit_journal.unresolved_ioc or plan.inventory.exit_journal.cancel_ids)))
+        available_pairs = max(0, (window.cap-view.entry_count)//2)
+        if not initial_ready:
+            # Bootstrap the early-release proof from remembered $2 candidates.
+            # Waiting until after the gate opens makes revalidation circular:
+            # stale hints cannot open the gate, and the closed gate would never
+            # schedule the refreshes needed to make those hints current.
+            self._request_priority_revalidation(now=utc(r.now()),
+                available_pairs=available_pairs, protected=protected)
         # A caller cannot increase the independently observed cash ceiling.
         cash = min(decimal(free_cash), report.snapshot.available_balance)
         result = self.selector.propose(view=view, window=window, free_cash=cash,
@@ -515,7 +523,6 @@ class RuntimeSelection:
             entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True)
         if not initial_ready:
             config = BotConfig()
-            available_pairs = max(0, (window.cap-view.entry_count)//2)
             priority = sum(row.gross_remaining_usd is not None
                            and row.gross_remaining_usd >= config.priority_projected_reward_usd
                            for row in result.additions)
@@ -530,7 +537,6 @@ class RuntimeSelection:
             # full coverage and never let a later source change turn that proof
             # into permission for a partially ranked $1 fallback.
             result = self._priority_only(result, 'initial_priority_only')
-        available_pairs = max(0, (window.cap-view.entry_count)//2)
         if self._request_priority_revalidation(now=utc(r.now()),
                 available_pairs=available_pairs, protected=protected):
             result = self._priority_only(result, 'priority_revalidation_pending')
