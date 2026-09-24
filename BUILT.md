@@ -1,5 +1,17 @@
 # What exists
 
+## Exact fully-closed settlement release — 2026-09-24
+
+Operational accounting can now distinguish one narrow already-booked settlement
+case from unresolved settlement economics. Exact current account, owned terminal
+orders, retained fills, matched closes, costs, fees and normalized settlement
+evidence are bound into the release proof; no settlement economics are booked a
+second time. Every open, incomplete, uncertain, conflicting or mismatched case
+remains blocked. The complete suite passes 1,670 tests with one expected Windows
+privilege skip, and a read-only copy of the production ledger matches the new
+proof. Deployment state belongs in `STATUS.md`; implementation details are in
+[the build record](docs/BUILD_CLOSED_SETTLEMENT_RECONCILIATION.md).
+
 ## Complete funding-history lifecycle proof — 2026-09-24
 
 Opening-account evidence now carries both the existing boundary-relevant funding

@@ -1,5 +1,19 @@
 # Active work queue
 
+## After exact closed-settlement reconciliation repair
+
+1. Keep generation 111 and its 28 existing orders unchanged until the operator
+   separately authorizes a supported deployment/restart. Do not manually delete
+   the settlement hold or edit the production ledger.
+2. On that restart, require recovery to reproduce the exact two-fill settlement
+   proof, clear only `settlement_reconciliation_required`, and obtain current
+   account/history evidence before a fresh normal child may refill.
+3. Verify zero positions, no settlement conflict, the expected existing-order
+   cleanup/recovery result, all readers, healthy logging, and ordinary ranked
+   refill. Any changed venue settlement economics must remain blocked.
+4. Continue comparing actual paid rewards with trading loss and fees; this
+   accounting repair does not establish profitability.
+
 ## After generation 111 D-111 live acceptance — current priority
 
 1. Leave generation 111 under its supervisor and monitor natural fills, exits,

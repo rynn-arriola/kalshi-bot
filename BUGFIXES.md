@@ -1,5 +1,28 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — a fully closed market settlement permanently blocked refill
+
+**Mechanism:** Settlement capture conservatively installed
+`settlement_reconciliation_required` for every post-boundary row. Operational
+release had no way to distinguish an unexpected open position reaching
+settlement from a market the bot had already opened and fully closed. Generation
+111 therefore remained degraded at 28 resting orders even though its retained
+fills, terminal owned orders, account snapshot and venue settlement all agreed.
+
+**Fix:** Add a bounded exact closed-settlement proof to operational release.
+It requires flat/no-order current venue state, no local or fallback inventory,
+no unresolved activity, exact owned terminal fills, exact YES/NO counts, costs
+and fees, zero settlement revenue, matching realized-close evidence and the
+retained normalized settlement row. The release stores evidence digests and
+clears only the generic settlement hold. It does not book revenue, fees, cash or
+P&L again; every mismatch and `settlement_economics_conflict` remains blocked.
+
+**Verification:** [Build record](docs/BUILD_CLOSED_SETTLEMENT_RECONCILIATION.md).
+The focused 37 tests, 262-test fast gate and complete 1,670-test suite pass with
+one expected Windows privilege skip. A read-only online backup of the actual
+production ledger proves the incident's one settlement from its two retained
+fills. Generation 111 was not changed or restarted.
+
 ## 2026-09-24 — an unchanged approved deposit could acquire a false cash hold
 
 **Mechanism:** The approved $500 ACH row originally had no `finalized_ts` and

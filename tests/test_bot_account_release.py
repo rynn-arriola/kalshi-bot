@@ -122,6 +122,47 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             now=self.now, free_cash=D(999999), account_known=False, offline_fixture=fixture,
             fee_per_contract_bound=fee)
 
+    async def seed_exact_closed_settlement(self):
+        """Install two retained owned fills matching one zero-revenue settlement."""
+        await self.writer.close()
+        opened_at, closed_at = NOW-timedelta(minutes=30), NOW-timedelta(minutes=20)
+        with closing(Ledger(self.path)) as ledger:
+            rows = (
+                ('open-client', 'open-order', 'bid', D('.2'), D(0), opened_at),
+                ('close-client', 'close-order', 'ask', D('.02'), D('.0138'), closed_at),
+            )
+            for client, order_id, side, price, fee, at in rows:
+                intent = request(client) | dict(ticker='SETTLED', client_order_id=client,
+                    side=side, price=str(price), exchange_index=0)
+                ledger.reserve_intent(client, intent, at)
+                ledger.transition_intent(client, 'SENDING')
+                ledger.transition_intent(client, 'ACKNOWLEDGED')
+                ledger.transition_intent(client, 'TERMINAL')
+                order = OrderUpdate(order_id, client, 'SETTLED', side, price,
+                    D(10), D(10), D(0), 'executed', 0, 0,
+                    int(at.timestamp()*1_000_000))
+                with ledger.transaction():
+                    ledger.connection.execute('INSERT INTO order_evidence VALUES (?,?,?,?)',
+                        (order.order_id, order.client_id, order.encode(), at.isoformat()))
+                self.assertTrue(ledger.record_fill(Fill(client+'-fill', order_id, 'SETTLED',
+                    side, D(10), price, fee, int(at.timestamp()*1_000_000), 1), at))
+            self.assertEqual(ledger.position('SETTLED'), 0)
+            self.assertEqual(ledger.realized(BOUNDARY, NOW), D('-1.8138'))
+        self.cash = balance() | dict(balance=49819, balance_dollars='498.1862',
+            portfolio_value=49819, updated_ts=2,
+            balance_breakdown=[dict(exchange_index=0, balance='298.1862'),
+                               dict(exchange_index=1, balance='200')])
+        self.writer = await LedgerWriter(self.path).start()
+        self.account = AccountCoordinator(self.writer, subaccount=0, clock=lambda: self.tick)
+        self.account.connect_generation()
+        await self.open_epoch()
+        await self.refresh()
+        return settlement(ticker='SETTLED', event_ticker='SETTLED-EVENT',
+            market_result='no', yes_count_fp='10', yes_total_cost_dollars='2',
+            no_count_fp='10', no_total_cost_dollars='9.8', revenue=0,
+            fee_cost='.0138', value=0,
+            settled_time=(NOW-timedelta(minutes=10)).isoformat().replace('+00:00', 'Z'))
+
     async def test_positive_release_reserve_send_and_audited_hold_removal(self):
         result = await self.ready()
         prepared = await self.reserve()
@@ -231,6 +272,51 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             checkpoint_digest=self.checkpoint, now=self.now)
         await self.refresh()
         self.assertIn('settlement_reconciliation_required', (await self.release()).blockers)
+
+    async def test_exact_closed_settlement_releases_without_double_booking(self):
+        row = await self.seed_exact_closed_settlement()
+        result = await self.release(reads=Reads(self.cash, settlements=(row,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertTrue(result.released, result.blockers)
+        self.assertNotIn('settlement_reconciliation_required',
+                         (await self.writer.accounting_status()).holds)
+        await self.refresh()
+        repeated = await self.release(reads=Reads(self.cash, settlements=(row,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertTrue(repeated.released, repeated.blockers)
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            self.assertEqual(ledger.realized(BOUNDARY, NOW), D('-1.8138'))
+            self.assertEqual(D(ledger.connection.execute(
+                'SELECT cash FROM accounting_cash WHERE exchange_index=0').fetchone()[0]),
+                D('298.1862'))
+            payload = json.loads(ledger.connection.execute(
+                "SELECT payload FROM accounting_events WHERE kind='operational_release' "
+                'ORDER BY rowid DESC LIMIT 1').fetchone()[0])
+            self.assertEqual(payload['settlements'][0]['ticker'], 'SETTLED')
+            self.assertEqual(payload['settlements'][0]['fill_count'], 2)
+        self.writer = await LedgerWriter(self.path).start()
+
+    async def test_closed_settlement_economics_mismatch_remains_blocked(self):
+        row = await self.seed_exact_closed_settlement()
+        changed = row | dict(yes_total_cost_dollars='2.01')
+        result = await self.release(reads=Reads(self.cash, settlements=(changed,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertFalse(result.released)
+        self.assertIn('settlement_reconciliation_required', result.blockers)
+
+    async def test_settlement_identity_change_after_release_reblocks(self):
+        row = await self.seed_exact_closed_settlement()
+        exact = await self.release(reads=Reads(self.cash, settlements=(row,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertTrue(exact.released, exact.blockers)
+        await self.refresh()
+        changed = row | dict(
+            settled_time=(NOW-timedelta(minutes=5)).isoformat().replace('+00:00', 'Z'))
+        result = await self.release(reads=Reads(self.cash, settlements=(changed,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertFalse(result.released)
+        self.assertIn('settlement_reconciliation_required', result.blockers)
 
     async def test_external_writer_evidence_revokes_lease(self):
         await self.ready()

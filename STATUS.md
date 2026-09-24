@@ -1,5 +1,26 @@
 # Current status
 
+## Generation 111 blocked by closed-market settlement; source repair verified — 2026-09-24
+
+Generation 111 remains present under its supervisor with 28 resting orders,
+zero reported positions and all six readers subscribed. It is degraded and
+cannot refill because `settlement_reconciliation_required` is latched after
+`KXTRUEV-26SEP23-T1258.69` settled. The retained ledger proves that the bot had
+already bought 10 YES at $0.20 and sold 10 YES at $0.02 before settlement,
+leaving no lot; matched-fill accounting already booked `-$1.8138` including
+fees. The venue settlement row exactly reports 10 YES/$2.00, 10 NO/$9.80,
+$0 revenue and $0.0138 fees.
+
+[The source repair](docs/BUILD_CLOSED_SETTLEMENT_RECONCILIATION.md) clears only
+this hold when current venue evidence exactly matches fully closed, owned,
+terminal fills and the account remains flat for the ticker. It never books
+settlement economics twice. Open, missing, external, uncertain or conflicting
+evidence remains blocked. Focused tests, the 262-test fast gate and the complete
+1,670-test suite pass with one expected Windows privilege skip. A read-only
+online copy of the actual production ledger also produces the exact two-fill
+proof. No live process or order was changed; generation 111 still runs the old
+build until a separately authorized supported restart.
+
 ## Generation 111 running after exact funding recovery — 2026-09-24
 
 The repair published at `ba3c19c` is live. After identity, generation and flat-

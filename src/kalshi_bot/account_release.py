@@ -280,6 +280,163 @@ def cash_limit(ledger, cash, exchange_index):
                               local[exchange_index]-held.get(exchange_index, ZERO)))
 
 
+def _closed_settlement_proof(ledger, settlements, snapshot, opening):
+    """Prove that current settlement rows describe already-closed owned fills.
+
+    This is deliberately narrower than general settlement accounting. It never
+    books revenue or P&L: the retained fills already did that. Any missing,
+    external, open, ambiguous, corrected, or economically different evidence
+    leaves the settlement hold in place for operator reconciliation.
+    """
+    if (opening is None or not settlements or len(settlements) > 2048
+            or snapshot.subaccount != 0):
+        return None
+    by_ticker = {}
+    expected_payloads = set()
+    for settlement in settlements:
+        if (settlement.result not in {'yes', 'no'} or settlement.ticker in by_ticker
+                or settlement.revenue_cents != 0
+                or (settlement.value_cents is not None
+                    and settlement.value_cents != (100 if settlement.result == 'yes' else 0))):
+            return None
+        by_ticker[settlement.ticker] = settlement
+        event_key = encode([0, *settlement.key])
+        payload = encode(settlement)
+        expected_payloads.add(payload)
+        if ledger.connection.execute(
+                "SELECT 1 FROM accounting_events WHERE kind='settlement' "
+                "AND event_key=? AND payload=? LIMIT 1", (event_key, payload)).fetchone() is None:
+            return None
+    retained = ledger.connection.execute(
+        "SELECT payload FROM accounting_events WHERE kind='settlement' LIMIT 2049").fetchall()
+    if len(retained) != len(settlements) or {row['payload'] for row in retained} != expected_payloads:
+        return None
+    tickers = tuple(sorted(by_ticker))
+    if (any(position.quantity and position.ticker in by_ticker
+            for position in snapshot.positions)
+            or any(order.ticker in by_ticker for order in snapshot.orders)):
+        return None
+    ticker_scope = json.dumps(tickers, separators=(',', ':'))
+    scope_sql = 'SELECT value FROM json_each(?)'
+    conn = ledger.connection
+    if (conn.execute(f"SELECT 1 FROM lots WHERE ticker IN ({scope_sql}) LIMIT 1",
+                     (ticker_scope,)).fetchone()
+            or conn.execute(f"SELECT 1 FROM position_clocks WHERE ticker IN ({scope_sql}) LIMIT 1",
+                            (ticker_scope,)).fetchone()
+            or conn.execute(f"SELECT 1 FROM pending_fills WHERE "
+                            f"json_extract(payload,'$.ticker') IN ({scope_sql}) LIMIT 1",
+                            (ticker_scope,)).fetchone()
+            or conn.execute(f"SELECT 1 FROM mutation_attempts WHERE phase IN ('SENDING','UNKNOWN') "
+                            f"AND coalesce(json_extract(request,'$.ticker'),"
+                            f"json_extract(request,'$.market_ticker')) IN ({scope_sql}) LIMIT 1",
+                            (ticker_scope,)).fetchone()):
+        return None
+    for row in conn.execute(f"SELECT ticker,exchange_index,quantity,cost FROM venue_costs "
+                            f"WHERE subaccount=0 AND ticker IN ({scope_sql})", (ticker_scope,)):
+        settlement = by_ticker[row['ticker']]
+        if (row['exchange_index'] != settlement.exchange_index
+                or decimal(row['quantity']) != ZERO or decimal(row['cost']) != ZERO):
+            return None
+
+    rows = conn.execute(f"SELECT f.id,f.payload,f.executed_us,o.payload AS owned,"
+        "x.order_payload AS external,x.fill_id AS external_fill_id,"
+        "r.gross_pnl,r.fee AS realized_fee,r.pnl FROM fills f "
+        "LEFT JOIN order_evidence o ON o.order_id=json_extract(f.id,'$[0]') "
+        "LEFT JOIN operator_fill_scopes x ON x.order_id=json_extract(f.id,'$[0]') "
+        "LEFT JOIN realized_events r ON r.fill_id=f.id "
+        f"WHERE json_extract(f.payload,'$[0]') IN ({scope_sql}) ORDER BY f.rowid LIMIT 4097",
+        (ticker_scope,)).fetchall()
+    closes = conn.execute(f"SELECT c.fill_id,c.quantity,c.pnl FROM closes c JOIN fills f "
+        "ON f.id=c.fill_id "
+        f"WHERE json_extract(f.payload,'$[0]') IN ({scope_sql}) ORDER BY c.rowid LIMIT 4097",
+        (ticker_scope,)).fetchall()
+    if not rows or len(rows) > 4096 or len(closes) > 4096:
+        return None
+    close_by_fill = {}
+    for row in closes:
+        if row['fill_id'] in close_by_fill:
+            return None
+        close_by_fill[row['fill_id']] = row
+
+    totals = {ticker: dict(yes_count=ZERO, yes_cost=ZERO, no_count=ZERO,
+                           no_cost=ZERO, fee=ZERO, matched=ZERO, fills=[])
+              for ticker in tickers}
+    order_quantities, orders = {}, {}
+    boundary_us = timestamp_us(opening['boundary'])
+    with localcontext() as ctx:
+        ctx.prec = 40
+        for row in rows:
+            data = json.loads(row['payload'])
+            if (not isinstance(data, list) or len(data) != 5
+                    or (row['owned'] is None) == (row['external'] is None)
+                    or row['executed_us'] is None or row['gross_pnl'] is None
+                    or row['realized_fee'] is None or row['pnl'] is None):
+                return None
+            ticker, side = data[0], data[1]
+            settlement = by_ticker.get(ticker)
+            if settlement is None or side not in {'bid', 'ask'}:
+                return None
+            try:
+                order_id = json.loads(row['id'])[0]
+                quantity, yes_price, fee = map(decimal, data[2:5])
+                order = OrderUpdate.decode(row['owned'] or row['external'])
+            except (InvalidData, ValueError, TypeError, KeyError, IndexError):
+                return None
+            if (row['external'] is not None and row['external_fill_id'] != row['id']
+                    or order.order_id != order_id or order.ticker != ticker
+                    or order.side != side or order.yes_price != yes_price
+                    or order.subaccount != 0 or order.exchange_index != settlement.exchange_index
+                    or not order.terminal or row['executed_us'] < boundary_us
+                    or row['executed_us'] > timestamp_us(settlement.settled_at.isoformat())):
+                return None
+            if row['owned'] is not None:
+                intent = conn.execute('SELECT state FROM intents WHERE client_id=?',
+                                      (order.client_id,)).fetchone()
+                if intent is None or intent[0] != 'TERMINAL':
+                    return None
+            close = close_by_fill.get(row['id'])
+            gross = decimal(close['pnl']) if close is not None else ZERO
+            matched = decimal(close['quantity']) if close is not None else ZERO
+            if (decimal(row['gross_pnl']) != gross or decimal(row['realized_fee']) != fee
+                    or decimal(row['pnl']) != gross-fee):
+                return None
+            prior = orders.get(order_id)
+            if prior is not None and prior != order:
+                return None
+            orders[order_id] = order
+            order_quantities[order_id] = order_quantities.get(order_id, ZERO)+quantity
+            total = totals[ticker]
+            if side == 'bid':
+                total['yes_count'] += quantity
+                total['yes_cost'] += quantity*yes_price
+            else:
+                total['no_count'] += quantity
+                total['no_cost'] += quantity*(1-yes_price)
+            total['fee'] += fee
+            total['matched'] += matched
+            total['fills'].append((row['id'], row['payload'], row['executed_us']))
+        if any(order_quantities[key] != order.filled for key, order in orders.items()):
+            return None
+
+    proof = []
+    for ticker in tickers:
+        settlement, total = by_ticker[ticker], totals[ticker]
+        if (not total['fills'] or total['yes_count'] != total['no_count']
+                or total['matched'] != total['yes_count']
+                or total['yes_count'] != settlement.yes_count
+                or total['yes_cost'] != settlement.yes_cost
+                or total['no_count'] != settlement.no_count
+                or total['no_cost'] != settlement.no_cost
+                or total['fee'] != settlement.fee):
+            return None
+        proof.append(dict(ticker=ticker, exchange_index=settlement.exchange_index,
+            settled_at=settlement.settled_at, result=settlement.result,
+            settlement_digest=digest(encode(settlement)),
+            fills_digest=digest(encode(sorted(total['fills']))),
+            fill_count=len(total['fills'])))
+    return tuple(proof)
+
+
 def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now, capacity):
     from .verification import audit_snapshot
     conn = ledger.connection
@@ -369,7 +526,11 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
     attributed_cash_hold = ({'cash_activity_unattributed'}
         if ('cash_activity_unattributed' in holds
             and cash_activity_matches_baseline(ledger, evidence)) else set())
-    blockers.extend(holds-TRANSIENT-attributed_cash_hold)
+    settlement_proof = (_closed_settlement_proof(ledger, evidence.settlements,
+        report.snapshot, opening) if 'settlement_reconciliation_required' in holds else None)
+    attributed_settlement_hold = ({'settlement_reconciliation_required'}
+        if settlement_proof is not None else set())
+    blockers.extend(holds-TRANSIENT-attributed_cash_hold-attributed_settlement_hold)
     if baseline:
         local = {r[0]: decimal(Decimal(r[1])) for r in conn.execute('SELECT * FROM accounting_cash')}
         venue = {r.exchange_index: r.available for r in evidence.cash.exchange_balances}
@@ -393,7 +554,8 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
         payload = encode(dict(checkpoint=opening['digest'], writer_epoch=epoch,
             writer_revision=revision, generation=fence.generation, source_revision=fence.revision,
             history=continuity.receipt_ids, private_epoch=continuity.stream_epoch_id,
-            resolved=resolved, cash=evidence.cash, at=utc(now), policy='D-068'))
+            resolved=resolved, cash=evidence.cash, settlements=settlement_proof,
+            at=utc(now), policy='D-068'))
         fingerprint, inserted = _append(ledger, 'operational_release', uuid4().hex, payload, now)
         if not inserted:
             return ReleaseResult(False, ('accounting_journal_full',)), None

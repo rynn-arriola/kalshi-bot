@@ -1,5 +1,23 @@
 # Findings — kalshi-bot
 
+## 171. A zero-revenue settlement can describe a market already closed by fills — 2026-09-24
+
+VERIFIED LIVE from generation 111's retained account evidence and VERIFIED
+offline against a read-only SQLite online backup. Kalshi returned one settlement
+for `KXTRUEV-26SEP23-T1258.69`: 10 YES costing $2.00, 10 NO costing $9.80,
+result NO, $0 revenue and $0.0138 fees. The ledger contains exactly two owned
+terminal fills before settlement: buy 10 YES at $0.20 and sell 10 YES at $0.02.
+It has no remaining lot or venue-cost quantity, and matched-fill accounting had
+already recorded `-$1.8138` net. Therefore the settlement is evidence of the
+completed market history, not a second economic close.
+
+The correction is deliberately not a generic automatic settlement policy. The
+exact release requires agreement across current account state, retained fill and
+order ownership, execution time, YES/NO transformation, costs, fees, realized
+closes and the normalized settlement row. Open/scalar/revenue-bearing,
+incomplete, external, corrected or conflicting rows remain manual economic
+holds. See [the build record](docs/BUILD_CLOSED_SETTLEMENT_RECONCILIATION.md).
+
 ## 170. Kalshi may enrich an unchanged applied deposit after approval — 2026-09-24
 
 VERIFIED LIVE during the generation-108 incident and generation-111 recovery.
