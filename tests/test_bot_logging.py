@@ -97,6 +97,28 @@ class LoggingTests(unittest.TestCase):
         self.assertEqual(event['context']['exit_code'], 0xC0000005)
         self.assertEqual(event['context']['generation'], 4)
 
+    def test_four_shards_and_recovery_reasons_are_readable_and_allowlisted(self):
+        log = self.start()
+        for stream in ('book-0', 'book-1', 'book-2', 'book-3'):
+            log.emit('reader_failed', stream=stream)
+        log.emit('recovery_failed', cause='routine_refresh_failed', phase='accounting_release',
+                 elapsed_ms=125, error=OSError(SECRET))
+        log.emit('recovery_failed', cause=SECRET, phase=SECRET, outcome=SECRET)
+        log.emit('entry_dispatch_blocked', market=SECRET, count=8,
+                 blockers=('entry_send_proof_changed', 'book_queue_pending', SECRET))
+        log.close()
+        data = rows(self.directory)
+        self.assertEqual([r['context']['stream'] for r in data if r['event']=='reader_failed'],
+                         ['book-0', 'book-1', 'book-2', 'book-3'])
+        failed = [r for r in data if r['event']=='recovery_failed']
+        self.assertEqual(failed[0]['context'], dict(cause='routine_refresh_failed',
+            phase='accounting_release', elapsed_ms=125))
+        self.assertEqual(failed[1]['context'], {})
+        entry = next(r for r in data if r['event']=='entry_dispatch_blocked')
+        self.assertEqual(entry['context']['unknown_blockers'], 1)
+        self.assertEqual(entry['context']['count'], 8)
+        self.assertNotIn(SECRET, json.dumps(data))
+
     def test_every_literal_diagnostic_event_is_registered(self):
         package = Path(__file__).resolve().parents[1]/'src'/'kalshi_bot'
         missing = []
@@ -343,6 +365,39 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
         errors = [r for r in data if r['event']=='writer_failed']
         self.assertTrue(errors)
         self.assertEqual(errors[0]['context']['command'], 'inventory')
+        self.assertNotIn(SECRET, json.dumps(data))
+
+    async def test_health_summary_is_bounded_and_missing_snapshot_is_not_zero_orders(self):
+        runtime = self.runtime()
+        for reason in ('snapshot_freshness', 'mutation_persisted', 'snapshot_freshness', SECRET):
+            runtime.request_recovery(reason)
+        runtime._diagnostic_summary()
+        data = await self.data()
+        row = next(r for r in data if r['event']=='runtime_health')
+        self.assertEqual(row['context']['recovery_requests'], 4)
+        self.assertNotIn('resting_orders', row['context'])
+        self.assertEqual(runtime.recovery_request_counts,
+                         {'snapshot_freshness': 2, 'mutation_persisted': 1, 'unknown': 1})
+        self.assertNotIn(SECRET, json.dumps(data))
+
+    async def test_recovery_failure_retains_stage_and_readable_trigger(self):
+        runtime = self.runtime()
+        runtime.account_subscribed = True
+        runtime.account.connected = True
+        async def failure(*args, **kwargs):
+            raise TimeoutError(SECRET)
+        async def quit_retry(_):
+            runtime.stop_requested.set()
+        runtime.sleep = quit_retry
+        runtime.request_recovery('snapshot_freshness')
+        with patch.object(runtime.account, 'reconcile', side_effect=failure):
+            await runtime._recover()
+        data = await self.data()
+        failed = next(r for r in data if r['event']=='recovery_failed')
+        self.assertEqual(failed['context']['cause'], 'snapshot_freshness')
+        self.assertEqual(failed['context']['phase'], 'first_snapshot')
+        self.assertEqual(runtime.recovery_phase, 'idle')
+        self.assertEqual(runtime.recovery_attempt_counts, {'snapshot_freshness': 1})
         self.assertNotIn(SECRET, json.dumps(data))
 
     async def test_rest_status_retries_are_logged_without_queries(self):

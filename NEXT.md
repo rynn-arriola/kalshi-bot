@@ -1,5 +1,14 @@
 # Active work queue
 
+## D-126 recovery renewal and logging
+
+1. Keep generation 164 running unchanged; do not deploy or restart for this task.
+2. After a separately authorized deployment, compare full recovery reasons,
+   routine renewal counts, order occupancy, reward coverage and quota deferrals.
+   Offline regression success does not establish sustained live improvement.
+3. Actual Kalshi reward credits still need independent verification; UNKNOWN
+   tracking intervals must not be reconstructed as earned rewards.
+
 ## D-125 command-capacity archive repair
 
 1. D-125 is verified, published and deployed; generation 164 created one real

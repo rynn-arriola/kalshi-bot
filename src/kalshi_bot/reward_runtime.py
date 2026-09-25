@@ -52,6 +52,8 @@ class RuntimeRewards:
         self.reflection_attempts = self.reflection_completed = self.reflection_failures = 0
         self.reflection_deferred = 0
         self.reflection_superseded = 0
+        self.reflection_quota_deferred = 0
+        self.reflection_outcome = None
         self.checkpoint_saves = self.checkpoint_failures = 0
         self.last_reflection_at = self.last_checkpoint_at = None
         self.last_reflection_error = self.last_checkpoint_error = None
@@ -447,6 +449,9 @@ class RuntimeRewards:
             self.last_checkpoint_error = type(exc).__name__
             self.blocker = self.blocker or 'reward_checkpoint_failed'
             self._invalidate_all()
+            if self.checkpoint_failures & (self.checkpoint_failures-1) == 0:
+                self.runtime.diagnostics.emit('reward_checkpoint_failed', error=exc,
+                    count=self.checkpoint_failures, outcome='checkpoint_failed')
 
     async def _reflect(self):
         self.reflection_attempts += 1
@@ -454,20 +459,41 @@ class RuntimeRewards:
             await self.reflect_once()
             self.reflection_completed += 1
             self.last_reflection_error = None
+            if self.reflection_outcome in {'quota_wait', 'invalid_data', 'timeout', 'io'}:
+                self.runtime.diagnostics.emit('reward_reflection_resumed', outcome='recovered',
+                    count=self.reflection_completed)
+            self.reflection_outcome = 'recovered'
         except ReflectionSuperseded:
             self.reflection_superseded += 1
             # The account report advanced during an otherwise valid read.  It
             # is no longer current, but this is not evidence that the preceding
             # leased observation was wrong.
             self._suspend_all()
-        except (InvalidData,QuotaUnavailable,TimeoutError,OSError) as exc:
+        except QuotaUnavailable:
+            # Normal shared-budget renewal is a temporary evidence gap, not
+            # conflicting queue data. Drop live proof but retain the old bounded
+            # interpolation endpoint; the tracker still rejects expired/gapped
+            # intervals. The service's existing timer owns the next attempt.
+            self.reflection_quota_deferred += 1
+            self.reflection_outcome = 'quota_wait'
+            self.last_reflection_error = None
+            self._suspend_all()
+            if self.reflection_quota_deferred & (self.reflection_quota_deferred-1) == 0:
+                self.runtime.diagnostics.emit('reward_reflection_deferred',
+                    outcome='quota_wait', count=self.reflection_quota_deferred,
+                    endpoint='/portfolio/orders/queue_positions')
+        except (InvalidData,TimeoutError,OSError) as exc:
             self.reflection_failures += 1
             self.last_reflection_error = type(exc).__name__
+            self.reflection_outcome = ('timeout' if isinstance(exc, TimeoutError)
+                else 'io' if isinstance(exc, OSError) else 'invalid_data')
             self._invalidate_all()
             # Emit a bounded stack-only diagnostic, never response/error text.
             # Power-of-two sampling retains repeated failures without a flood.
             if self.reflection_failures & (self.reflection_failures-1) == 0:
-                self.runtime.diagnostics.emit('reward_reflection_failed', error=exc)
+                self.runtime.diagnostics.emit('reward_reflection_failed', error=exc,
+                    outcome=self.reflection_outcome, count=self.reflection_failures,
+                    endpoint='/portfolio/orders/queue_positions')
 
     def stop(self):
         self.stopping = True
@@ -561,6 +587,8 @@ class RuntimeRewards:
                     reflection_failures=self.reflection_failures,
                     reflection_deferred=self.reflection_deferred,
                     reflection_superseded=self.reflection_superseded,
+                    reflection_quota_deferred=self.reflection_quota_deferred,
+                    reflection_outcome=self.reflection_outcome,
                     reflection_requested=self.reflection_requested,
                     checkpoint_configured=self.checkpoint is not None,
                     checkpoint_saves=self.checkpoint_saves,

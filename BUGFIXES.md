@@ -1,5 +1,17 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — full-cap renewal churn and missing recovery diagnostics
+
+D-126 routes a valid accounting-renewal anchor ahead of the full-cap
+snapshot-only optimization. The latter invalidated writer-bound authority and
+caused avoidable full recovery. All existing snapshot/history/accounting fences
+remain. Temporary reward quota loss now suspends live proof without erasing a
+bounded historical sample or inventing earnings across expired gaps. Logs retain
+readable fixed recovery causes/stages, all four shard names, bounded entry-block
+examples, reward/checkpoint outcomes and one health summary per minute. Unknown
+text, exception messages and identifiers remain excluded/fingerprinted.
+Finding 189 owns the reproduction; STATUS owns verification and deployment.
+
 ## 2026-09-25 — terminal command history exhausted ordinary entry capacity
 
 Generation 162 started cleanly but could place no orders because 4,124 retained

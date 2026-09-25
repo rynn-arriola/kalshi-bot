@@ -1,5 +1,17 @@
 # What exists
 
+## Recovery renewal and bounded diagnostics — D-126
+
+The existing refresh owner prioritizes accounting renewal at full capacity,
+preserving scoped market scheduling. Recovery status adds fixed-vocabulary
+request/attempt counts and current/last stage; structured events include the
+trigger, stage and duration. The health watcher emits one local counter summary
+per minute. Entry rejection and reward failure records are sampled at powers
+of two; exact counters remain in status. Quota deferrals retain no current
+reflection authority and cannot credit expired intervals. Checkpoint failures
+are now logged. See [diagnostic guide](docs/LOGGING_AND_ERRORS.md), Finding 189
+and STATUS for tests and the intentionally undeployed state.
+
 ## Exact proven-unsent command archive — D-125
 
 At the unchanged ordinary-entry mutation boundary, the single ledger writer can

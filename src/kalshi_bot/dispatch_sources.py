@@ -450,6 +450,12 @@ class InventoryDispatchSource:
             details=list(details), observed_at=utc(self.runtime.now()).isoformat(),
             historical_only=True)
         self.entry_block_counts[reason] = self.entry_block_counts.get(reason, 0)+1
+        count = self.entry_block_counts[reason]
+        # Keep exact counters in status, representative explanations in logs.
+        # A moving public book can reject many candidates in a single second.
+        if count & (count-1) == 0:
+            self.runtime.diagnostics.emit('entry_dispatch_blocked', market=ticker,
+                count=count, blockers=(reason, *details), blocker_count=1+len(details))
 
     def _entry_plan_changes(self, plan):
         """Bounded local attribution only; never new execution authority."""

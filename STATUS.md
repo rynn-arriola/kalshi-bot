@@ -1,5 +1,42 @@
 # Current status
 
+## D-126 recovery diagnostics and renewal repair — 2026-09-25
+
+**Verified release; not deployed.** The operator explicitly prohibits restart.
+`data/recovery-diagnostics-dev` / `fix/recovery-diagnostics` contains a full-cap
+renewal-priority repair and bounded diagnostics. The canonical running checkout
+remains at `e5e3bdd`, generation 164. Finding 189 distinguishes the reproduced
+defect from necessary post-mutation recovery; the prior aggregate attempt count
+is not a count of failures or proof of why every order vacancy occurred.
+
+Full-cap trading renewal now uses the existing empty-tail/accounting-release
+path before the snapshot-only scheduling optimization. Temporary reward quota
+loss suspends current proof and retains only bounded historical interpolation
+endpoints. Readable recovery reasons/stages, minute health summaries, sampled
+entry rejections, quota deferral/resumption, checkpoint failures and all four
+book shard names use the existing safe structured sink. No API, schema, strategy,
+risk, retry, source-age or retention limit changes. Live improvement requires
+a later authorized deployment.
+
+The 307-test fast gate and 37 focused logging tests pass. The final complete
+release gate runs **1,794 tests in 335.894 seconds**, with no failures and one
+expected Windows symlink-privilege skip. The synthetic 1,024-market/four-shard
+fixture reaches 30 orders in 10.834 seconds, refills in 1.397 seconds and
+completes protective withdrawal/refill in 1.294 seconds (0.057-second cancel-pair
+ACK gap). These are offline fixture measurements, not live latency promises.
+Ignored `data-fast-check.log` and `data-release-check.log` in the isolated checkout
+retain results. The first full-cap timer regression failed against the original
+branch ordering; the repaired real-owner 30-order timer fixture passes twice.
+
+Exact source/test diff review, staged whitespace and secret-pattern checks pass.
+The local-link audit checks 789 references, with only four pre-existing ignored
+research artifacts absent in isolation. No known blocking issue remains in this
+scoped release. The canonical source remains clean at `e5e3bdd`; live PID 50868
+still has its original 09:27:45 start time and reported 30 resting orders with
+zero positions at 11:19 ET. No live source, configuration or ledger was modified.
+Publish this release under D-065; parity refers to this isolated release checkout
+and GitHub, not the intentionally older running checkout.
+
 ## D-125 command-capacity archive repair — 2026-09-25
 
 **Published, deployed and running.** Generation 162 loaded D-124 but every entry pair was

@@ -176,6 +176,26 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.routine_refresh_completed, 1)
         self.assertFalse(runtime.recovery_requested.is_set())
 
+    async def test_full_cap_timer_renews_accounting_instead_of_snapshot_only(self):
+        runtime = await self.runtime()
+        old = self.writer._accounting_lease
+        self.advance()
+        original = runtime._refresh_routine_account
+        async def once():
+            result = await original()
+            runtime.stop_requested.set()
+            return result
+        # Full-cap scope is a scheduling hint. It cannot take precedence over
+        # renewal of the real accounting lease created by the fixture owners.
+        with (patch.object(runtime, '_current_steady_account_scope', return_value=frozenset(('A',))),
+              patch.object(runtime, '_refresh_steady_account',
+                  AsyncMock(side_effect=AssertionError('snapshot-only path revokes lease'))),
+              patch.object(runtime, '_refresh_routine_account', once)):
+            await asyncio.wait_for(runtime._live_refresh(), 2)
+        self.assertEqual(runtime.routine_refresh_completed, 1)
+        self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertIsNot(self.writer._accounting_lease, old)
+
     async def test_timer_counts_snapshot_read_time_not_only_publication_age(self):
         runtime = await self.runtime()
         # The report can be newly published after two seconds spent reading.
@@ -236,9 +256,9 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.writer._accounting_lease is not None
             and self.writer._accounting_lease.fence.current())
 
-    async def test_real_owned_orders_renew_at_two_and_twenty_eight_slots(self):
+    async def test_real_owned_orders_renew_at_two_twenty_eight_and_full_cap(self):
         runtime = await self.runtime()
-        for index in range(28):
+        for index in range(30):
             client, order_id = f'owned-{index}', f'order-{index}'
             req = dict(baseline.request(client), price='0.01')
             reserved = await self.reserve(client, req=req)
@@ -257,13 +277,32 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
             runtime.request_recovery()
             runtime.recovery_requested.clear()
             self.assertTrue(await runtime.recover_once())
-            if index in (1, 27):
+            if index in (1, 27, 29):
                 for reason in ('priority_capacity_met', 'coverage_complete'):
                     runtime.selection = SimpleNamespace(initial_ranking=SimpleNamespace(reason=reason))
                     self.advance()
                     self.assertTrue(await runtime._refresh_routine_account())
                     self.assertEqual(len(runtime.account.report.snapshot.orders), index+1)
                     self.assertIsNotNone(runtime._current_routine_proof())
+        self.assertEqual(runtime._current_steady_account_scope(), frozenset(('A',)))
+        self.advance()
+        original = runtime._refresh_routine_account
+        calls = 0
+        async def twice():
+            nonlocal calls
+            self.assertTrue(await original())
+            self.assertTrue(self.writer._accounting_lease.fence.current())
+            calls += 1
+            self.advance(3 if calls == 1 else 0)
+            if calls == 2:
+                runtime.stop_requested.set()
+            return True
+        with (patch.object(runtime, '_refresh_routine_account', twice),
+              patch.object(runtime, '_refresh_steady_account',
+                  AsyncMock(side_effect=AssertionError('lost full-cap renewal')))):
+            await asyncio.wait_for(runtime._live_refresh(), 3)
+        self.assertEqual(calls, 2)
+        self.assertFalse(runtime.recovery_requested.is_set())
 
     async def test_new_funding_cannot_renew(self):
         runtime = await self.runtime()

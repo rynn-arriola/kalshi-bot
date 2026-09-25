@@ -1,5 +1,37 @@
 # Findings — kalshi-bot
 
+## 189. Full-cap snapshot refresh bypasses accounting renewal — 2026-09-25
+
+**MEASURED, read-only local telemetry:** At 11:07 ET, generation 164 reported
+30 resting entries, all six readers subscribed, 783 completed routine renewals,
+235 completed steady snapshot refreshes, three reward-reflection failures and
+52 superseded reflections. The retained errors identify `QuotaUnavailable`.
+Recovery totals include ordinary mutation reconciliation and cannot alone prove
+a fault, a crash or the cause of 28/30 occupancy changes.
+
+**VERIFIED offline:** `_live_refresh` selected the full-cap snapshot-only path
+before `_refresh_routine_account`. Snapshot reconciliation advances writer
+revisions without releasing a new accounting lease, invalidating the retained
+renewal proof and forcing a subsequent full repair. A failing-before timer test
+reproduces that branch. D-126 prioritizes the existing accounting renewal and
+still records the full-cap scope for optional market scheduling. A real-owner
+fixture builds 30 durable orders and exercises two timer-driven renewals without
+a full recovery request. Changed cash, private/writer revision, funding, stale
+reads, stop and nonempty history tails retain the existing rejection behavior.
+
+**VERIFIED diagnostic gaps:** Recovery causes were hashed despite being static
+codes; incomplete passes omitted their stage; `book-2`/`book-3` were absent from
+the stream allowlist. Reward quota loss was classified as a conflicting-data
+failure and destroyed the interpolation endpoint. D-126 logs only fixed cause,
+stage and outcome vocabularies, records checkpoint failures and samples repeated
+entry blocks. Quota deferral removes operational reflection proof but retains
+the old bounded endpoint; a six-second gap test remains entirely UNKNOWN.
+
+**Limitations:** This is source verification, not proof of improved live rates,
+fill avoidance, minimum reward attainment or actual payouts. The current bot and
+its ledger are untouched. Historical generic logs cannot attribute every prior
+recovery request. STATUS owns final verification and publication state.
+
 ## 188. Deferred command-history rollover blocked every new entry — 2026-09-25
 
 **MEASURED:** After D-124 deployment, generation 162 had zero orders and zero

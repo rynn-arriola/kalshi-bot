@@ -21,6 +21,12 @@ from .windows import WindowsLease
 
 # Static event names are also the error codes. Never interpolate message text.
 EVENTS = {
+    'runtime_health': ('INFO', 'runtime'),
+    'account_refresh_failed': ('WARNING', 'recovery'),
+    'reward_reflection_deferred': ('INFO', 'rewards'),
+    'reward_reflection_resumed': ('INFO', 'rewards'),
+    'reward_checkpoint_failed': ('ERROR', 'rewards'),
+    'entry_dispatch_blocked': ('INFO', 'execution'),
     'fill_risk_withdrawal': ('INFO', 'inventory'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
@@ -77,10 +83,29 @@ EVENTS = {
 }
 NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
-                     'market_rows', 'milestone_rows', 'exit_code'))
+                     'market_rows', 'milestone_rows', 'exit_code', 'count',
+                     'recovery_requests', 'recovery_attempts', 'repair_passes',
+                     'routine_completed', 'routine_escalations', 'steady_completed',
+                     'resting_orders', 'positions', 'entry_allowed', 'dispatch_queued',
+                     'reflection_completed', 'reflection_failures', 'reflection_deferred',
+                     'reflection_superseded', 'reflection_quota_deferred',
+                     'checkpoint_failures', 'logging_backlog'))
+# Fixed vocabulary only: arbitrary exception text and source identifiers must
+# never be admitted as human-readable diagnostic reasons.
+RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed
+    steady_refresh_failed mutation_observed mutation_persisted safety_mutation_persisted
+    risk_cancel_outcome post_drain quota_restored private_fill_pending private_position
+    private_scope_ambiguous private_order_pending account_subscribed opening_approved
+    transient_retry unknown'''.split())
+RECOVERY_PHASES = frozenset('''idle first_snapshot history pending_fills missing_orders
+    final_snapshot management tail_snapshot accounting_release complete snapshot_and_tail'''.split())
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
 SAFE_CODES = frozenset(('venue_code',))
-ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1')),
+ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-2', 'book-3')),
+         'cause': RECOVERY_CAUSES,
+         'phase': RECOVERY_PHASES,
+         'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',
+                              'timeout', 'io', 'recovered', 'checkpoint_failed')),
          'command': frozenset(('close', 'fill', 'stage_fill', 'pending_fills', 'apply_pending', 'observe',
             'market_inventory', 'portfolio', 'reserve_entry', 'inventory', 'reconcile_snapshot', 'order',
             'orders', 'order_batch', 'fill_scope', 'order_evidence', 'recover_fills', 'venue_snapshot',
@@ -95,6 +120,15 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1')),
          'mode': frozenset(('flat', 'wait', 'attention', 'blocked', 'passive', 'passive_deferred',
                             'cancel_before_ioc', 'ioc'))}
 BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit_journal_scope_conflict
+    entry_runtime_unavailable entry_account_report_unavailable entry_book_catchup_pending
+    entry_management_proof_unavailable entry_authority_unavailable entry_selection_or_metadata_unavailable
+    entry_proposal_missing_or_changed entry_program_unavailable entry_selection_proof_changed
+    entry_horizon_ended entry_sources_changed_before_prepare incumbent_maintenance_reserved
+    entry_send_proof_changed private_work_pending book_queue_pending book_generation_changed
+    book_revision_changed book_expired plan_replaced plan_expired account_report_changed
+    writer_revision_changed selection_changed metadata_source_changed metadata_result_changed
+    metadata_expired runtime_unavailable request_changed account_source_changed
+    account_report_expired other_source_boundary
     incomplete_order_scope unowned_order_or_unaccounted_fills no_passive_touch
     await_terminal_cancellation_and_fill_proof live_authorization_missing inventory_age_unknown
     inventory_clock_regressed exit_terms_missing ioc_terminal_fill_proof_pending cancel_confirmation_pending

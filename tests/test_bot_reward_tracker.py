@@ -645,7 +645,33 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.rewards.reflection_failures,5)
         self.assertEqual(emit.call_count,3)  # attempts 1, 2, 4
         self.assertTrue(all(c.args == ('reward_reflection_failed',) for c in emit.call_args_list))
-        self.assertTrue(all(set(c.kwargs) == {'error'} for c in emit.call_args_list))
+        self.assertTrue(all(set(c.kwargs) == {'error', 'outcome', 'count', 'endpoint'}
+                            for c in emit.call_args_list))
+
+    async def test_quota_deferral_preserves_only_bounded_history_then_resumes(self):
+        from kalshi_bot.quota import QuotaUnavailable
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.reflect_once()
+        sample = self.rewards.tracker.records['P'].sample
+        self.assertIsNotNone(sample)
+        with (patch.object(self.rewards, 'reflect_once', side_effect=QuotaUnavailable('secret')),
+              patch.object(self.r.diagnostics, 'emit') as emit):
+            for _ in range(5):
+                await self.rewards._reflect()
+            self.assertEqual(emit.call_count, 3)
+            self.assertTrue(all(c.args == ('reward_reflection_deferred',) for c in emit.call_args_list))
+        self.assertEqual(self.rewards.reflection_failures, 0)
+        self.assertEqual(self.rewards.reflection_quota_deferred, 5)
+        self.assertFalse(self.rewards._reflection)
+        self.assertIsNone(self.rewards.reflected_quotes('A'))
+        self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
+        self.assertIs(self.rewards.tracker.records['P'].sample, sample)
+        with patch.object(self.r.diagnostics, 'emit') as emit:
+            await self.rewards._reflect()
+            emit.assert_called_once_with('reward_reflection_resumed', outcome='recovered', count=1)
+        self.assertEqual(self.rewards.reflection_outcome, 'recovered')
+        self.assertIsNotNone(self.rewards.reflected_quotes('A'))
 
     async def test_queue_mismatch_duplicate_and_bad_quantity_fail_closed(self):
         await self.owned()
@@ -660,6 +686,24 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.rewards.progress('P').current_hourly_usd)
         self.assertEqual(self.rewards.reflection_failures,len(invalid))
         self.assertFalse(self.r.stop_requested.is_set())
+
+    async def test_quota_deferral_past_lease_cannot_credit_missing_interval(self):
+        from kalshi_bot.quota import QuotaUnavailable
+        await self.owned()
+        self.r.reads = QueueReads([dict(order_id='o',market_ticker='A',queue_position_fp='0')])
+        await self.rewards.reflect_once()
+        report = self.r.account.report
+        with patch.object(self.rewards, 'reflect_once', side_effect=QuotaUnavailable()):
+            await self.rewards._reflect()
+        self.f.now += timedelta(seconds=6)
+        self.f.mono += 6
+        token = self.r.account.begin_reconciliation(self.f.now)
+        await self.r.account.finish_reconciliation(token, report.snapshot, self.f.now)
+        await self.r.management.refresh('A')
+        await self.rewards._reflect()
+        progress = self.rewards.progress('P')
+        self.assertEqual(progress.sampled_gross_usd, 0)
+        self.assertEqual(progress.unknown_seconds, 6)
 
     async def test_account_change_during_queue_read_cannot_publish_proof(self):
         await self.owned()

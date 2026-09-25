@@ -1,5 +1,38 @@
 # D-033 — Logging and error-handling guide
 
+## D-126 operational diagnostics (source-only until deployed)
+
+Use the current `runtime.logging.run_id` to select the run across the rotating
+files; live-session IDs differ. `recovery_attempts` includes normal post-mutation
+reconciliation, not just failures. Status now exposes bounded
+`recovery_request_counts` (notifications), `recovery_attempt_counts` (started
+passes), `recovery_phase`, `recovery_last_phase` and `recovery_elapsed_ms`.
+Coalesced notifications need not have a one-to-one relationship with passes.
+`recovery_repaired` remains a historical outcome; current `entry_allowed` is
+separate authority.
+
+- Recovery events carry allowlisted `cause` and `phase`, with elapsed time for
+  completed/failed passes. `account_refresh_failed` identifies the routine or
+  steady refresh path, failed stage and safe stack when an exception exists.
+- `runtime_health` samples in-memory counters once per minute in the existing
+  health watcher: recovery/renewal, queue backlog, dispatch, reward and logging.
+  Missing account proof omits order/position counts instead of reporting zero.
+  `resting_orders` includes every resting snapshot order, including reducers.
+- `entry_dispatch_blocked` records a fingerprinted market, fixed blockers and
+  count at occurrences 1, 2, 4, 8, etc. Exact totals and latest details remain in
+  dispatch status. `reader_*` events now identify `book-0` through `book-3`.
+- `reward_reflection_deferred` identifies temporary quota loss, separately from
+  invalid queue evidence. `reward_reflection_resumed` records a successful join
+  after such a wait/failure; it does not prove a payment or continuous accrual.
+  `reward_checkpoint_failed` includes safe type/stack and latches the existing
+  telemetry blocker. Repeated failures use power-of-two sampling.
+
+No new polling, logger worker, queue or retention limit is introduced. Fixed
+vocabularies exclude arbitrary text; raw requests, responses, exception messages,
+credentials and identifiers remain excluded. Logs cannot grant order authority.
+Finding 189 and STATUS contain evidence and verification. Earlier component-only
+launch statements below describe the original D-033 implementation.
+
 Implemented September 20, 2026, for the execution-disabled Windows components.
 No bot, collector, paper process or live account call was started to test this.
 

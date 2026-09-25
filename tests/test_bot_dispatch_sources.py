@@ -6,6 +6,7 @@ from decimal import Decimal as D
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from kalshi_bot.account import normalize_snapshot
 from kalshi_bot.command_types import CommandDenied
@@ -56,6 +57,17 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await self.writer.close()
             self.temp.cleanup()
+
+    async def test_repeated_entry_blocks_keep_exact_counts_without_log_flood(self):
+        with patch.object(self.runtime.diagnostics, 'emit') as emit:
+            for _ in range(1000):
+                self.source._record_entry_block('A', 'entry_send_proof_changed',
+                                               ('book_queue_pending',))
+            self.assertEqual(emit.call_count, 10)
+            self.assertEqual([c.kwargs['count'] for c in emit.call_args_list],
+                             [1, 2, 4, 8, 16, 32, 64, 128, 256, 512])
+        self.assertEqual(self.source.entry_block_counts['entry_send_proof_changed'], 1000)
+        self.assertEqual(self.source.last_entry_block['details'], ['book_queue_pending'])
 
     async def books(self):
         for name, shard in self.runtime.engine.shards.items():

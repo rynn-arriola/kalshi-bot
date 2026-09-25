@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-126 — Recovery renewal repair and useful bounded diagnostics
+
+- **Status:** ACCEPTED source-only work, 2026-09-25.
+- **Decision owner:** Operator asks for proper logging around problem areas,
+  to fix the reported issues, and explicitly says not to restart the bot.
+- **Scope:** Repair reproduced full-cap account-renewal churn and temporary
+  reward-quota handling; add readable recovery stages/causes, sampled dispatch
+  and reward diagnostics, and a bounded periodic health summary. Verify, review,
+  commit and push under D-065 from an isolated checkout.
+- **Boundary:** No running-package update, bot restart, order/account action,
+  new poller, freshness relaxation or strategy/risk change. Unknown reward
+  periods and actual payouts remain separate from estimated accrual.
+
 ### D-125 — Archive proven-unsent command evidence at the entry boundary
 
 - **Status:** ACCEPTED repair and Command 1 deployment, 2026-09-25.
