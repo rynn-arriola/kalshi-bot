@@ -12,7 +12,8 @@ import unittest
 
 from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.adapters import PriceBand
-from kalshi_bot.books import Book, Ladder
+from kalshi_bot.books import Book, BookConnection, Ladder
+from kalshi_bot.engine import EventEngine
 from kalshi_bot.config import BotConfig
 from kalshi_bot.exits import ExitTerms, plan_exit
 from kalshi_bot.execution import InjectedExecutor
@@ -105,11 +106,13 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
         runtime = self._manager.runtime
         runtime.current_now = decision_now
         runtime.account = SimpleNamespace(connected=True, generation=1, revision=1)
-        runtime.engine = SimpleNamespace(stopped=False,
-            market_shard={'A': 'fixture'}, book_received={'A': 100.0},
-            public={'fixture': False},
-            shards={'fixture': SimpleNamespace(generation=1, failed=False,
-                                                books={'A': book})})
+        async def noop(*_): pass
+        shard = BookConnection(('A',))
+        runtime.engine = EventEngine({'fixture':shard},clock=runtime.clock,
+            private_handler=noop,evaluate=noop,deadline_handler=noop)
+        runtime.engine.begin_book_epoch('fixture')
+        shard.books['A'] = book
+        runtime.engine.book_received['A'] = 100.0
         self._manager.terms['A'] = terms
         self._manager._plans['A'] = plan
         evidence = await self.writer.reduction_evidence(request, now=decision_now)

@@ -1,5 +1,25 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — whole refill path starved by unrelated book and catalog work
+
+D-119 fixes two demonstrated couplings across ranking, inventory and dispatch:
+any queued same-shard frame revoked a candidate before being interpreted, and
+priority reevaluation did not promote already-queued keys. Proof reads now apply
+one bounded ordered batch using the normal engine parser. Real source changes,
+private work and due timers still win; queues are never ignored. Priority dirty
+keys are promoted without duplicates, with one ordinary turn in four guaranteed
+while discovery is pending. Account/capital/reward/exit policies are unchanged.
+
+Post-risk-read diagnostics identify changed book/account/writer/selection/
+metadata sources; fixed-code counts show repeated entry blockers. Finding 181
+records the failing-before reproduction and sustained 0-to-30/refill test.
+An older send-fence regression now submits a real valid queued event instead
+of inserting an obsolete three-field internal queue placeholder; its expected
+NOT_SENT/no-transport safety outcome is unchanged. STATUS owns release results.
+Command-handoff/account-release tests now use a real event engine around their
+synthetic book instead of a partial namespace missing the new proof-read API.
+Their original reducer/hold/capacity assertions remain unchanged.
+
 ## 2026-09-24 — redundant source revocation and fatal unsent quota expiry
 
 D-118 keeps unchanged, still-valid metadata published during advisory requests

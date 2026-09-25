@@ -416,7 +416,11 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         async def changed(receipt):
             result = await original(receipt)
             name = self.runtime.engine.market_shard['A']
-            self.runtime.engine.public[name].append(('unprocessed', 0, 1))
+            shard = self.runtime.engine.shards[name]
+            self.runtime.engine.submit_book(name,
+                dict(type='orderbook_delta',sid=1,seq=2,
+                     msg=dict(market_ticker='A',side='yes',price_dollars='.1',delta_fp='1')),
+                generation=shard.generation)
             return result
         self.writer.begin_send = changed
         result = await self.run_priority()

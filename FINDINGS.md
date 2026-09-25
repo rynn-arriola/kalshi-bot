@@ -1,5 +1,60 @@
 # Findings — kalshi-bot
 
+## 181. Refill was coupled to shared queues and catalog scheduling — 2026-09-24
+
+**VERIFIED, local telemetry/source:** Generation 148 showed 14 resting entries
+at 21:14/21:17 ET with the cap still 30, no economic holds, remembered $2+
+candidates, and `entry_sources_changed_after_risk_read` / proposal-change
+deferrals. At 21:35:32 its matching PID-18684 snapshot showed 22 entries, no
+positions, current account proof and the same source-change deferral. This is
+slow refill, not evidence that only seven markets qualify. No venue operation
+or live source update was performed in this investigation.
+The 21:47:25 follow-up again showed 22 entries, zero positions and current
+account proof. A bounded local sample of 1,502 current-run events covering
+21:45:06–21:47:25 contained no WARNING/ERROR/CRITICAL events. Informational
+metadata/plan activity was present; absence of errors does not prove refill
+health. This observation does not assess older rotated logs or profitability.
+
+**VERIFIED, synthetic production-mode entry graph:** A baseline pair ACKed.
+Queuing an unrelated market's frame on its shared shard during the second risk
+read left the candidate's own revision unchanged, yet blocked it with zero wire
+calls. The same shared-queue rule affected inventory/ranking reads across their
+writer awaits. This guard predates the recent patches; historical generation
+116 reached 30 on `f46c23c`. No single new regression commit is established.
+
+Priority revalidation had a second scheduling defect: `mark()` coalesced an
+already-dirty market without promoting it ahead of the catalog. Thus account
+renewal could invalidate all proofs while priority candidates waited behind
+hundreds of ordinary evaluations. Catch-up alone still failed the initial
+capacity gate in a 150-second synthetic run (26 remembered priority candidates,
+23 pending refreshes); that run is diagnostic, not a controlled speed benchmark.
+
+D-119 shares the engine's bounded ordered parser at proof reads and promotes
+pending priority keys with discovery fairness. It does not suppress real book
+changes or extend freshness. Explicit regressions cover unrelated frames during
+inventory reads, proposal/risk reads, preparation and SENDING; candidate changes,
+sequence gaps, malformed ladders, pending private events, due safety timers,
+stale books and bursts above 64 remain unsent. Scheduler tests cover promotion,
+bounded duplicate coalescing, unregistration and ordinary-work progress.
+Restoring the old no-catch-up behavior in isolated tests reproduces four
+failures across the risk, inventory, proposal and SENDING edges, with no test
+errors or real transport. The repaired versions pass.
+
+**MEASURED, disposable synthetic ledger/wires, Windows, four shards / 1,024
+books:** The combined repair reached 30 resting entries in 110.384 seconds from
+composition, all in the $2+ tier. After two simulated terminal cancellations,
+real full recovery and dispatch restored 30 in approximately 4.61 seconds;
+the test then remained at cap for 3.5 seconds. Sixteen pairs were acknowledged,
+12 routine renewals completed, and the engine processed 22,527 events with zero
+book failures. All quantities remained ten; no competing writer, venue traffic,
+fixture authorization bypass or live data was used. This is correctness/load
+evidence, not predicted production latency, guaranteed occupancy or earnings.
+The clean full-release rerun also passed: cold population took 133.576 seconds,
+two-order refill 5.113 seconds, with 19 routine renewals and 26,874 processed
+events. Both runs use the same unchanged production repair; timings vary with
+Windows scheduling and the debug-enabled synthetic workload.
+STATUS owns the final release gate and deployment state.
+
 ## 180. Redundant metadata refresh and unsent quota expiry — 2026-09-24
 
 **VERIFIED:** A priority revalidation request removed still-fresh exit terms;

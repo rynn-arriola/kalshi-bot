@@ -1,5 +1,16 @@
 # What exists
 
+## Whole-pipeline refill repair — D-119
+
+The existing engine exposes bounded ordered book catch-up to inventory and
+dispatch proof reads. The dirty scheduler supports coalesced priority promotion
+with discovery fairness; selection uses it for pending $2+ revalidation. No new
+worker, shard, writer, schema or risk policy. Dispatch status adds blocker counts
+and post-risk-read attribution. `tests/test_bot_refill_pipeline.py` exercises
+actual composition, ranking, preparation, recovery and account renewal with
+1,024 synthetic books; it reaches/refills the 30-entry cap. Finding 181 owns
+measurements; STATUS owns final verification and deployment.
+
 ## Source-stable refresh and unsent quota recovery — D-118
 
 `ExitInputService.current_result` checks the original source-bound lease;

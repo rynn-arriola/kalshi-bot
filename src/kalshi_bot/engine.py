@@ -56,6 +56,7 @@ class EventEngine:
         self.processed = self.decisions = self.high_water = 0
         self.book_failures = {name: 0 for name in shards}
         self.book_received = {}  # bounded by subscribed markets, ingress not dequeue clock
+        self.send_edge_drains = self.send_edge_events = 0
 
     def _time(self):
         now = self.clock()
@@ -200,6 +201,43 @@ class EventEngine:
         self.deadlines.schedule(ticker, when)
         self.wake.set()
 
+    def _apply_public_batch(self, name):
+        """One synchronous bounded turn; shared by the event and send owners."""
+        applied = 0
+        for _ in range(min(64, len(self.public[name]))):
+            raw, size, generation, received = self.public[name].popleft()
+            self.public_bytes[name] -= size
+            try:
+                ticker = self.shards[name].apply(json.loads(raw), generation=generation)
+            except ProofLost as exc:
+                self.diagnostics.emit('book_proof_lost', error=exc, stream=name, generation=generation)
+                self._lose_book(name)
+                break
+            self.processed += 1
+            applied += 1
+            if ticker is not None:
+                self.book_received[ticker] = received
+                self.dirty.mark(ticker)
+        return applied
+
+    def catch_up_book(self, ticker):
+        """Validate queued frames before a send fence, never ignore the queue.
+
+        No await or advisory callback: the normal ordered parser owns sequence,
+        scope and epoch checks. Private work and already-due safety timers keep
+        precedence. A burst larger than one batch remains blocked.
+        """
+        self._check()
+        name = self.market_shard.get(ticker)
+        due = self.deadlines.next_deadline()
+        if name is None or self.private or (due is not None and due <= self._time()):
+            return False
+        if self.public[name]:
+            self.send_edge_drains += 1
+            self.send_edge_events += self._apply_public_batch(name)
+            self.wake.set()
+        return not self.public[name] and not self.shards[name].failed
+
     async def step(self):
         self._check()
         if self.running_step:
@@ -223,19 +261,7 @@ class EventEngine:
             names = tuple(self.shards)
             name = names[self.cursor % len(names)]
             self.cursor += 1
-            for _ in range(min(64, len(self.public[name]))):
-                raw, size, generation, received = self.public[name].popleft()
-                self.public_bytes[name] -= size
-                try:
-                    ticker = self.shards[name].apply(json.loads(raw), generation=generation)
-                except ProofLost as exc:
-                    self.diagnostics.emit('book_proof_lost', error=exc, stream=name, generation=generation)
-                    self._lose_book(name)
-                    break
-                self.processed += 1
-                if ticker is not None:
-                    self.book_received[ticker] = received
-                    self.dirty.mark(ticker)
+            self._apply_public_batch(name)
             for _ in range(8):
                 selected = self.dirty.take(self._time(), limit=1)
                 if not selected:
@@ -305,4 +331,6 @@ class EventEngine:
         return dict(live_ready=False, stopped=self.stopped, failed=self.failed,
                     backlog=self.backlog, high_water=self.high_water,
                     processed=self.processed, decisions=self.decisions,
+                    send_edge_drains=self.send_edge_drains,
+                    send_edge_events=self.send_edge_events,
                     book_failures=dict(self.book_failures))

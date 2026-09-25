@@ -141,6 +141,25 @@ class SchedulerTests(unittest.TestCase):
         with self.assertRaises(InvalidData): self.scheduler.mark("C")
         with self.assertRaises(InvalidData): self.scheduler.register("C")
 
+    def test_priority_promotes_existing_work_without_starving_discovery(self):
+        s = DirtyScheduler(1024)
+        tickers = [f'M{i:04d}' for i in range(1024)]
+        for ticker in tickers:
+            s.register(ticker)
+            s.mark(ticker)
+        for _ in range(100):
+            for ticker in tickers[-30:]: s.mark(ticker, priority=True)
+        self.assertEqual(len(s._queue)+len(s._priority),1024)
+        first = s.take(0,limit=4)
+        self.assertEqual(first,tickers[-30:-27]+tickers[:1])
+        for ticker in first[:3]: s.mark(ticker,priority=True)
+        self.assertEqual(s.take(0,limit=4)[-1],tickers[1])
+        s.unregister(tickers[-1])
+        remaining = s.take(0,limit=1024)
+        self.assertNotIn(tickers[-1],remaining)
+        self.assertEqual(len(remaining),len(set(remaining)))
+        self.assertFalse(s.pending)
+
 
 class WireTests(unittest.TestCase):
     @classmethod

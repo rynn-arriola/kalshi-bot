@@ -495,9 +495,12 @@ class RuntimeSelection:
             self._priority_refresh.update(selected)
             # Missing priority proof may be account/book state, not metadata.
             # Reevaluate even when the metadata scheduler keeps a fresh lease.
-            for ticker in selected:
-                self.runtime.engine.dirty.mark(ticker)
-            if selected:
+            # Existing pending hints also need promotion after an account
+            # renewal invalidates every plan. Plain mark() coalesces an already
+            # queued ticker without moving it ahead of the broad catalog.
+            for ticker in sorted(self._priority_refresh):
+                self.runtime.engine.dirty.mark(ticker, priority=True)
+            if self._priority_refresh:
                 self.runtime.engine.wake.set()
             scheduler = self.runtime.metadata_scheduler
             if scheduler is not None:

@@ -135,4 +135,5 @@ class DispatchSupervisor:
         return dict(running=self.running, stopping=self.stopping, failed=self.failed,
             turns=self.turns, last_state=self.last_state, queued=len(state.queued),
             active=state.active is not None, high_water=state.high_water, live_ready=False,
-            last_outcome=self.last_outcome, last_entry_block=self.source.last_entry_block)
+            last_outcome=self.last_outcome, last_entry_block=self.source.last_entry_block,
+            entry_block_counts=dict(self.source.entry_block_counts))

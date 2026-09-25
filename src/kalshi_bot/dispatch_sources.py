@@ -52,6 +52,7 @@ class InventoryDispatchSource:
         self._generation = 0
         self._stopped = False
         self.last_entry_block = None
+        self.entry_block_counts = {}
         self._paused_cancel_notice = None
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
@@ -134,6 +135,8 @@ class InventoryDispatchSource:
         if not self._available():
             return False
         runtime = self.runtime
+        if require_book and not runtime.engine.catch_up_book(plan.ticker):
+            return False
         now = utc(runtime.now())
         if not timedelta(0) <= now-report_observed_at <= timedelta(seconds=5):
             return False
@@ -161,10 +164,12 @@ class InventoryDispatchSource:
         return True
 
     async def refresh(self, ticker, priority):
-        def blocked(reason):
+        def blocked(reason, details=()):
             if priority == ENTRY_PAIR:
                 self.last_entry_block = dict(ticker=ticker, reason=reason,
+                    details=list(details),
                     observed_at=utc(self.runtime.now()).isoformat(), historical_only=True)
+                self.entry_block_counts[reason] = self.entry_block_counts.get(reason, 0)+1
             return None
 
         # Concurrent refresh cannot leave either caller holding authority.
@@ -200,6 +205,9 @@ class InventoryDispatchSource:
             report = runtime.account.current_report(runtime.now())
             if report is None:
                 return blocked('entry_account_report_unavailable')
+            if (priority not in {SAFETY_CANCEL, QUOTE_CANCEL}
+                    and not runtime.engine.catch_up_book(ticker)):
+                return blocked('entry_book_catchup_pending')
             plan = await runtime.management.refresh(ticker)
             if priority == ENTRY_PAIR and runtime.selection is not None:
                 runtime.selection.refresh(ticker)
@@ -270,7 +278,8 @@ class InventoryDispatchSource:
                         or not inputs._fresh(source)
                         or (view.epoch, view.revision) !=
                            (runtime.writer.epoch, runtime.writer.revision)):
-                    return blocked('entry_sources_changed_after_risk_read')
+                    return blocked('entry_sources_changed_after_risk_read',
+                        self._entry_source_changes(plan, report, entry_selection, source, result, view))
                 candidate = EntryPairCandidate(ticker, priority, str(uuid4()),
                     tuple(requests), view, report.snapshot.available_balance,
                     plan.terms.taker_fee_per_contract_bound,
@@ -368,6 +377,36 @@ class InventoryDispatchSource:
             return candidate
         finally:
             self._refreshing = False
+
+    def _entry_source_changes(self, plan, report, selection, source, result, view):
+        """Bounded local attribution only; never new execution authority."""
+        r, reasons = self.runtime, []
+        now = utc(r.now())
+        name = r.engine.market_shard.get(plan.ticker)
+        shard = r.engine.shards.get(name)
+        book = None if shard is None else shard.books.get(plan.ticker)
+        if r.engine.private or r.account._processing: reasons.append('private_work_pending')
+        if name is not None and r.engine.public[name]: reasons.append('book_queue_pending')
+        if shard is None or shard.failed or shard.generation != plan.book_generation:
+            reasons.append('book_generation_changed')
+        elif book is None or not book.valid or book.revision != plan.book_revision:
+            reasons.append('book_revision_changed')
+        received = r.engine.book_received.get(plan.ticker)
+        if received is None or not 0 <= r.clock()-received <= 5:
+            reasons.append('book_expired')
+        if r.management._plans.get(plan.ticker) is not plan: reasons.append('plan_replaced')
+        if r.account.current_report(now) is not report: reasons.append('account_report_changed')
+        if (view.epoch, view.revision) != (r.writer.epoch, r.writer.revision):
+            reasons.append('writer_revision_changed')
+        if not r.selection.dispatch_proof_current(selection): reasons.append('selection_changed')
+        if r.market_inputs.values.get(('market', plan.ticker)) is not source:
+            reasons.append('metadata_source_changed')
+        if r.market_inputs.results.get(plan.ticker) is not result:
+            reasons.append('metadata_result_changed')
+        if not r.market_inputs._fresh(source): reasons.append('metadata_expired')
+        if not timedelta(0) <= now-plan.observed_at <= timedelta(seconds=5):
+            reasons.append('plan_expired')
+        return tuple(reasons)
 
     def validate_proof(self, kind, request):
         """Synchronous pre/post-SENDING fence; no reads, awaits or network."""

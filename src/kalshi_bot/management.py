@@ -55,6 +55,11 @@ class InventoryManager:
         if name is None:
             return None, None
         shard = engine.shards[name]
+        # Advisory reads cross writer awaits too. Validate ordered pending
+        # frames here, not just at dispatch, or unrelated shard traffic can
+        # prevent a valid candidate from ever reaching the ranking board.
+        if engine.stopped or engine.failed or not engine.catch_up_book(ticker):
+            return shard, None
         book = shard.books.get(ticker)
         received = engine.book_received.get(ticker)
         if (shard.failed or book is None or not book.valid or engine.public[name]

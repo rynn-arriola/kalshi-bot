@@ -1,5 +1,22 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-119 validates a bounded ordered book batch at inventory/entry proof reads.
+The event engine's existing parser applies at most 64 queued frames from the
+candidate's shard synchronously, retaining ingress times and sequence/epoch
+checks. Unrelated valid updates no longer revoke that candidate by queue presence
+alone. Pending private work, due safety timers, a remaining queue, changed own
+book revision, or lost proof still block. No asynchronous evaluation or network
+work occurs inside this catch-up. `send_edge_drains/events` count these proof-read
+catch-ups, including advisory inventory reads, not just actual sends.
+
+Pending priority candidates use a coalesced O(1) two-lane dirty scheduler.
+Promotion moves an already-queued key; it never copies a plan or grants authority.
+At most three priority evaluations precede an ordinary discovery turn while both
+lanes have work. Private ingestion and safety deadlines retain their separate
+precedence. Account renewal still invalidates exact source proofs. Dispatch
+status records fixed blocker-code counts and detailed post-risk-read source
+changes. Finding 181 owns the reproductions and load-test evidence.
+
 D-118 distinguishes advisory reevaluation from source invalidation. A current
 metadata publication retains its identity and original expiry while its complete
 generation/provenance/value tuple is unchanged. Real changes still revoke it;

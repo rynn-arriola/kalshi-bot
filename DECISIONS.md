@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-119 — Investigate and repair the complete refill pipeline
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator requests the broader investigation and fix,
+  rather than another isolated patch for the recurring low-order-count issue.
+- **Scope:** Trace ranking, shared book processing, account renewal, dispatch
+  and recovery together; reproduce confirmed bottlenecks and fix their causes.
+  Verify sustained refill under busy 1,024-market synthetic load, real source
+  invalidations, renewal, priority/cap behavior and recovery. Add bounded
+  diagnostic attribution where current aggregate blockers hide the cause.
+- **Boundary:** No strategy, freshness, capital, position or reward-threshold
+  changes; no ignored sequence gaps, extra writer or ambiguous-send retries.
+  Isolated implementation/review and publication only, no live restart.
+
 ### D-118 — Recover unsent quota expiry and remove redundant metadata churn
 
 - **Status:** ACCEPTED, 2026-09-24.

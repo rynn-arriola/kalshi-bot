@@ -1,5 +1,5 @@
 """Coalesced dirty markets and bounded due timers; no all-market busy loop."""
-from collections import deque
+from collections import OrderedDict
 import heapq
 import math
 
@@ -11,7 +11,9 @@ class DirtyScheduler:
         self.capacity = integer(capacity, 1, 1024)
         self.managed: set[str] = set()
         self._dirty: set[str] = set()
-        self._queue: deque[str] = deque()
+        self._queue = OrderedDict()
+        self._priority = OrderedDict()
+        self._priority_streak = 0
         self._due: dict[str, float] = {}
         self._heap: list[tuple[float, str]] = []
 
@@ -21,18 +23,25 @@ class DirtyScheduler:
             raise InvalidData("managed-market capacity exceeded")
         self.managed.add(ticker)
 
-    def mark(self, ticker: str):
+    def mark(self, ticker: str, *, priority=False):
         if ticker not in self.managed:
             raise InvalidData("unregistered market")
-        if ticker not in self._dirty:
+        if type(priority) is not bool:
+            raise InvalidData("literal scheduling priority required")
+        if priority:
+            self._queue.pop(ticker, None)
+            self._priority.setdefault(ticker, None)
             self._dirty.add(ticker)
-            self._queue.append(ticker)
+        elif ticker not in self._dirty:
+            self._dirty.add(ticker)
+            self._queue[ticker] = None
 
     def unregister(self, ticker: str):
         self.managed.discard(ticker)
         self._dirty.discard(ticker)
         self._due.pop(ticker, None)
-        self._queue = deque(t for t in self._queue if t != ticker)
+        self._queue.pop(ticker, None)
+        self._priority.pop(ticker, None)
         self._heap = [(at, t) for at, t in self._heap if t != ticker]
         heapq.heapify(self._heap)
 
@@ -55,8 +64,13 @@ class DirtyScheduler:
                 del self._due[ticker]
                 self.mark(ticker)
         selected = []
-        while self._queue and len(selected) < limit:
-            ticker = self._queue.popleft()
+        while (self._queue or self._priority) and len(selected) < limit:
+            # Revalidation cannot sit behind an entire catalog, but repeated
+            # priority work must leave at least one in four turns for discovery.
+            urgent = self._priority and (not self._queue or self._priority_streak < 3)
+            queue = self._priority if urgent else self._queue
+            ticker, _ = queue.popitem(last=False)
+            self._priority_streak = min(3, self._priority_streak+1) if urgent else 0
             self._dirty.remove(ticker)
             selected.append(ticker)
         return selected
@@ -73,4 +87,4 @@ class DirtyScheduler:
 
     @property
     def pending(self) -> bool:
-        return bool(self._queue)
+        return bool(self._queue or self._priority)

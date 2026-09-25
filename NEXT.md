@@ -1,5 +1,16 @@
 # Active work queue
 
+## D-119 refill pipeline
+
+1. D-119 implementation, review and focused/fast/full verification are finished.
+   Keep the live canonical checkout pinned. At a separately authorized restart,
+   deploy the verified release and measure live refill, blocker attribution,
+   renewal and recovery. Do not equate synthetic 30-order success with guaranteed
+   live eligibility or profits.
+2. Preserve the separate unfinished command-1 worktree; it is not this release.
+
+Earlier queues and source/deployment snapshots below are historical.
+
 ## After Command 1 / D-118 deployment
 
 1. D-118 is deployed on generation 148. Do not repeat the restart. Measure live

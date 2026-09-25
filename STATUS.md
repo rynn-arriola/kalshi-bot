@@ -1,5 +1,32 @@
 # Current status
 
+## D-119 refill repair — verified source, not deployed, 2026-09-24
+
+`data/refill-pipeline-dev` / `fix/refill-pipeline`, based on `4428051`, contains
+the shared-book proof-read and priority scheduling fixes described in Finding
+181. Focused safety regressions and the 293-test fast gate pass. The clean full
+release gate passes 1,725 tests in 452.585 seconds, with one expected Windows
+symlink-privilege skip. Its 1,024-book test reaches 30 $2+-tier entries in 133.576
+seconds and refills two terminal cancellations in 5.113 seconds; 19 routine
+renewals complete. Earlier targeted measurements are retained in Finding 181.
+The first full pass found an incomplete shared test double and a string-format
+quantity assertion; both were corrected before this clean pass. Bot policies
+were not changed to satisfy either test.
+
+Exact source/test diff review, staged whitespace/secret checks and 777 local
+document links pass; four ignored research-artifact links are intentionally
+absent from this isolated checkout. Final test evidence is in canonical-root
+`data/refill-pipeline-release.log`, with fast/reversal logs alongside it.
+This isolated release checkout is the GitHub-master parity target; the running
+canonical checkout must remain pinned until a separately authorized restart.
+
+The canonical running checkout remains unchanged at `4428051` (D-118 logic).
+Generation 148 / PID 18684 had 22 entries and zero positions in its fresh
+21:47:25 ET local snapshot, with current account proof and no risk/accounting
+holds. Live source-change deferrals remained. This task performs no restart,
+venue mutation or live-ledger change. Synthetic success does not establish live
+refill acceptance. The separate unfinished `data/command1-dev` is untouched.
+
 ## Command 1 completed; D-118 running — 2026-09-24 21:11 ET
 
 The operator invoked Command 1 again. The verified generation-146 owner had
