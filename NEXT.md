@@ -1,5 +1,24 @@
 # Active work queue
 
+## Post-withdrawal refill latency
+
+1. Investigate and reproduce the slow replacement path after a protective pair
+   withdrawal. In generation 170's first 66 minutes, all 44 cancel pairs ACKed
+   in a median 1.441 seconds (maximum 3.980), but the next entry-pair ACK took a
+   median 41.895 seconds, p95 119.894 and maximum 238.192 seconds.
+2. Attribute the delay across terminal/account reconciliation, candidate
+   revalidation, management proof and send-edge book churn. Current cumulative
+   diagnostics include 236 management-proof blocks, 190 send-proof changes and
+   81 proposal changes; counts alone do not establish which stage owns each gap.
+3. Design and verify a bounded event-driven repair that prioritizes a genuine
+   vacant pair after reconciliation without reserving capacity indefinitely,
+   retrying ambiguous commands, weakening fresh ownership/book/account proofs,
+   changing fill-risk thresholds or bypassing ranked $2/$1 admission.
+4. Acceptance must measure withdrawal-to-pair-ACK and pair-ACK-to-restored-slot
+   latency under synthetic races and a separately authorized live deployment.
+   Thirty resting orders is a cap, not a guaranteed occupancy or permission to
+   retain an unsafe pair.
+
 ## D-128 protective-cancel scheduling repair
 
 1. D-128 is published and deployed as generation 170 after Command 1 completed
