@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-121 — Repair startup recovery and slow risk-pair refill
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator: “Ok lets look into that then fix it,” following
+  the startup timeline and recommendation to address repeated recovery, slow
+  refill, startup 429 retries and the cancellation delay feeding fill-risk.
+- **Scope:** Reproduce and repair premature recovery around durable mutations,
+  unnecessary recovery between the exact latched risk-pair cancellations and
+  bursty public discovery. Verify the whole withdrawal/reconcile/refill path.
+- **Boundary:** Keep target/reference/scoring policy, loss/capital/quantity caps,
+  current entry proofs, terminal/fill reconciliation and a single writer.
+  Isolated source changes, review, tests and publication; no new live restart.
+
 ### D-120 — Estimate fill risk, withdraw and select another rewarded market
 
 - **Status:** ACCEPTED, 2026-09-24.

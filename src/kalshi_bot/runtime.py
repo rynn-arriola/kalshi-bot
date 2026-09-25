@@ -150,6 +150,8 @@ class RecoveryRuntime:
         self.reader_retry_rounds = {s.name: 0 for s in self.specs}
         self.recovery_state = "not_started"
         self.recovery_attempts = 0
+        self.recovery_dispatch_waits = 0
+        self.recovery_dispatch_wait_ms = 0
         self.recovery_retry_rounds = 0
         self.recovery_passes = 0
         self.last_reports = None
@@ -601,13 +603,13 @@ class RecoveryRuntime:
         self.recovery_requested.set()  # Coalesced, never a task per market/event.
 
     def _request_post_drain_recovery(self):
-        """One bounded reconciliation after new durable paused-cancel outcomes.
+        """One bounded reconciliation after new durable stop/risk-cancel outcomes.
 
         A recovery pass may exhaust while the rapid cancel queue is changing
         its snapshot. Once that queue drains, these new outcomes justify one
         new pass, not an unlimited retry or a claim that the account is flat.
         """
-        if (not self._post_drain_recovery_pending or not self.entry_pause_active
+        if (not self._post_drain_recovery_pending
                 or self.stop_requested.is_set() or self.writer.failed or self.engine.failed
                 or self.recovery_lock.locked() or self.recovery_state == 'recovering'):
             return False
@@ -745,9 +747,7 @@ class RecoveryRuntime:
                     self._record_routine_proof(ids, history)
                     report = self.account.current_report(self.now())
                     scope = self._record_steady_account_scope(report)
-                    for ticker in scope or self.engine.market_shard:
-                        self.engine.dirty.mark(ticker)
-                    self.engine.wake.set()
+                    self._schedule_account_refresh(scope)
                     if self.rewards is not None:
                         self.rewards.request_reflection()
                     self.routine_refresh_completed += 1
@@ -762,6 +762,17 @@ class RecoveryRuntime:
                     self.account.revoke_accounting()
                     self.routine_refresh_escalations += 1
                     self.request_recovery('routine_refresh_failed')
+
+    def _schedule_account_refresh(self, scope):
+        # A just-canceled owner can be flat and absent from inventory repair.
+        # Reevaluate its exact terminal/fill proof before broad catalog work;
+        # priority is scheduling only, never ACK-based capacity release.
+        cycle = self.maintenance.cycle if self.maintenance is not None else None
+        if cycle is not None:
+            self.engine.dirty.mark(cycle.ticker, priority=True)
+        for ticker in scope or self.engine.market_shard:
+            self.engine.dirty.mark(ticker)
+        self.engine.wake.set()
 
     def _current_steady_account_scope(self):
         """Return an exact scheduling scope, never live/account authority."""
@@ -1418,6 +1429,19 @@ class RecoveryRuntime:
                         if self.quota.state == 'stopped':
                             return
                         raise
+                # Transport observation revokes proof immediately, but its
+                # ACK/UNKNOWN still has to cross the writer before a REST
+                # snapshot can be joined. Coalesce both notifications while
+                # joining the sole dispatch owner, outside the pass timeout.
+                if self.dispatch_supervisor is not None:
+                    if self.dispatch_supervisor.dispatcher.status().active is not None:
+                        self.recovery_state = 'awaiting_dispatch_outcome'
+                        self.recovery_dispatch_waits += 1
+                    joined_at = self.clock()
+                    await self.dispatch_supervisor.dispatcher.wait_idle()
+                    self.recovery_dispatch_wait_ms = max(0, int((self.clock()-joined_at)*1000))
+                if self.stop_requested.is_set():
+                    return
                 self.recovery_requested.clear()
                 if not self.account_subscribed:
                     self.recovery_state = "awaiting_account_stream"
@@ -1468,9 +1492,7 @@ class RecoveryRuntime:
                     account = self.account.current_report(self.now())
                     scope = (self._record_steady_account_scope(account)
                              if account is not None else None)
-                    for ticker in scope or self.engine.market_shard:
-                        self.engine.dirty.mark(ticker)
-                    self.engine.wake.set()
+                    self._schedule_account_refresh(scope)
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation,
                         elapsed_ms=max(0, int((self.clock()-recovery_started)*1000)))
                     break
@@ -1564,7 +1586,11 @@ class RecoveryRuntime:
                 renewal_due = (not self.entry_pause_active
                     and self._current_routine_proof() is not None
                     and snapshot_started is not None and self.clock()-snapshot_started >= 3)
-                if (report is None or renewal_due
+                drain = (self.dispatch_supervisor.dispatcher.status()
+                         if self.dispatch_supervisor is not None else None)
+                drain_pending = (self._post_drain_recovery_pending and drain is not None
+                                 and (drain.active is not None or drain.queued))
+                if not drain_pending and (report is None or renewal_due
                         or (utc(self.now())-report.observed_at).total_seconds() >= 3):
                     if self._current_steady_account_scope() is not None and report is not None:
                         refreshed = await self._refresh_steady_account()
@@ -1739,6 +1765,8 @@ class RecoveryRuntime:
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
             recovery_trigger=self._recovery_reason,
+            recovery_dispatch_waits=self.recovery_dispatch_waits,
+            recovery_dispatch_wait_ms=self.recovery_dispatch_wait_ms,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             routine_account_refresh=dict(attempts=self.routine_refresh_attempts,

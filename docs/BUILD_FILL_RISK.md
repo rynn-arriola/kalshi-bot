@@ -63,6 +63,30 @@ state is process-local and scoped to retained subscriptions, reset on restart;
 it is not durable accounting. No position is force-closed by this feature.
 Risk takes precedence over accumulating the $1 estimate on the withdrawn market.
 
+### D-121 cancellation scheduling correction
+
+The exact latched risk pair now drains like the existing owned-entry stop path:
+each ID obtains fresh durable ownership/route/revision evidence, with no full
+account recovery required between its two cancellations. No other ID or reducer
+is eligible. Entry authority is revoked immediately; ACK does not free capacity,
+authorize a replacement or prove absence of a fill. After the bounded queue
+drains, ordinary account recovery supplies those proofs. A 404, ambiguous result,
+lost connection, changed cycle or writer failure still blocks or reconciles.
+Actual fills continue through the existing inventory handler.
+
+Recovery joins the sole dispatcher's outcome persistence before starting its
+REST pass. Observation still revokes authority immediately; the two outcome
+notifications coalesce instead of racing an unfinished durable write. Timing
+samples retain the complete decision-to-ACK delay; the estimator is not clamped
+to hide slow cancellations. This changes scheduling, not the risk threshold.
+
+Successful recovery/renewal promotes the current maintenance market for fresh
+evaluation, including a canceled owner now absent from active inventory. Its
+terminal/fill proof must still pass before finishing withdrawal. Cooling or
+otherwise maintenance-ineligible markets retain advisory priority memory but
+cannot occupy pending priority-refresh slots or block other eligible markets.
+Cooldown expiry restores ordinary revalidation; no stale hint authorizes entry.
+
 ## Verification
 
 `tests/test_bot_fill_risk.py` covers bid/ask depletion, target-driven reference

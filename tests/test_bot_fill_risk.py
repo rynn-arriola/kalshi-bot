@@ -183,7 +183,51 @@ class WithdrawalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.m.fill_risk.status()['cancel_samples'],1)
         self.assertGreaterEqual(self.m.fill_risk.cancel_seconds[-1],.25)
         self.assertIsNone(await self.f.f.source.refresh('A',ENTRY_PAIR))
+        next_cancel = await self.f.f.source.refresh('A',QUOTE_CANCEL)
+        self.assertIsNotNone(next_cancel)
+        self.assertNotEqual(next_cancel.request['order_id'],result.order_id)
+
+    async def test_exact_risk_pair_drains_without_account_recovery_between_legs(self):
+        await self.queues()
+        ids=set(self.m.cycle.order_ids)
+        self.f.f.mono += .2
+        first=await self.f.f.run_priority(QUOTE_CANCEL)
+        self.assertIsNone(self.r.account.current_report(self.r.now()))
+        self.assertFalse(self.r.recovery_requested.is_set())
+        self.f.f.mono += .2
+        second=await self.f.f.run_priority(QUOTE_CANCEL)
+        self.assertEqual((first.state,second.state),('ACK','ACK'))
+        self.assertEqual({first.order_id,second.order_id},ids)
+        self.assertEqual(len(self.m.fill_risk.cancel_seconds),2)
+        self.assertAlmostEqual(max(self.m.fill_risk.cancel_seconds),.4)
+        # ACKs have not removed durable orders or released their capacity.
+        self.assertEqual(sum(o.order.remaining for o in await self.f.f.writer.orders()),20)
         self.assertIsNone(await self.f.f.source.refresh('A',QUOTE_CANCEL))
+        self.assertIsNone(await self.f.f.source.refresh('A',ENTRY_PAIR))
+        self.assertTrue(self.r._post_drain_recovery_pending)
+
+    async def test_risk_drain_rejects_replaced_cycle_and_unlatched_order(self):
+        await self.queues()
+        candidate=await self.f.f.source.refresh('A',QUOTE_CANCEL)
+        self.assertFalse(self.f.f.source.validate_proof('batch_create',()))
+        cycle=self.m.cycle
+        self.m.cycle=replace(cycle,order_ids=())
+        self.assertFalse(self.f.f.source.validate_proof('cancel',candidate.request))
+        self.assertIsNone(await self.f.f.source.refresh('A',QUOTE_CANCEL))
+        self.m.cycle=None
+        self.r.account._invalidate()
+        self.assertIsNone(await self.f.f.source.refresh('A',QUOTE_CANCEL))
+
+    async def test_risk_cancel_404_requests_recovery_and_never_proves_flat(self):
+        from kalshi_bot.command_types import MutationHTTPFailure
+        await self.queues()
+        async def missing(*args): raise MutationHTTPFailure(404,'not_found')
+        self.f.f.dispatcher.executor.invoke.invoke=missing
+        result=await self.f.f.run_priority(QUOTE_CANCEL)
+        self.assertEqual(result.state,'REJECTED')
+        self.assertTrue(self.r.recovery_requested.is_set())
+        self.assertFalse(self.r._post_drain_recovery_pending)
+        self.assertEqual(sum(o.order.remaining for o in await self.f.f.writer.orders()),20)
 
     async def test_confirmed_terminal_pair_releases_slots_but_same_market_cools_down(self):
         await self.queues()

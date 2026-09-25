@@ -1,5 +1,42 @@
 # Current status
 
+## D-121 startup/recovery/refill repair — isolated source, not deployed
+
+`data/startup-recovery-dev` / `fix/startup-recovery-refill`, based on `31950e1`,
+contains the persistence join, exact risk-pair drain, maintenance-owner priority,
+cooldown-aware revalidation and adaptive public-discovery pacing. Finding 184
+records the reproduced races, historical live delays and corrected test setup.
+The source leaves all money, quantity, reward and entry-proof policies intact.
+
+Focused verification passes: recovery handoff 4, fill risk 25, initial ranking
+31, public pacing 4 and logging 32 tests. The 293-test fast gate also passes.
+The corrected production-loop 1,024-book fixture fills 30 in 11.505 seconds,
+refills two terminal cancels in 0.757 seconds, and completes risk withdrawal
+plus ranked refill in 1.157 seconds, with 0.041 seconds between cancels.
+These synthetic timings are not live-network or profitability evidence.
+
+The clean complete release gate passes **1,759 tests in 348.955 seconds**, with
+one expected Windows symlink-privilege skip, using `data/startup-recovery-venv`
+installed against this worktree. All five dependency versions match the live
+environment; no `PYTHONPATH` override is needed. Its 1,024-book run fills 30 in
+15.004 seconds, refills two terminal cancellations in 1.064 seconds, and finishes
+risk withdrawal/refill in 2.043 seconds with a 0.045-second cancel-pair gap.
+Native supervisor tests pass. The earlier failed environment/instrumented runs
+remain diagnostic evidence, not the release gate.
+
+Exact source/test review, staged whitespace/secret checks and 783 local document
+links pass; four ignored research artifacts are intentionally absent from this
+checkout. The complete gate ran the same discovery command as `Test-Bot.ps1`
+using the verified isolated interpreter; this worktree's `.venv` now points to
+that environment for future script runs. Raw ignored release evidence is
+canonical-root `data/startup-recovery-release.log`. The isolated release checkout
+is the publication/parity target, not the still-running canonical package.
+
+The active canonical checkout remains clean at `31950e1`; this task does not
+restart, hot-update its package, change the live ledger or call venue APIs.
+The deployment snapshots below are historical, not claims of current account
+state. The separate unfinished `data/command1-dev` remains untouched.
+
 ## D-120 fill-risk withdrawal — deployed by Command 1, 2026-09-24 22:50 ET
 
 Command 1 stopped generation 150 through the supported owner path. Its 30

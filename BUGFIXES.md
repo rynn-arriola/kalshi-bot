@@ -1,5 +1,23 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — premature recovery, serialized risk cancellation and public bursts
+
+D-121 makes recovery wait for the single dispatcher's durable result; the prior
+worker could consume the first notification and read while ACK persistence was
+still held. Three real-dispatcher regressions reproduce that race and verify
+successful/failed persistence and stop behavior. The exact latched risk pair can
+cancel both owned entries before a shared final reconciliation, preserving
+terminal/fill evidence and all entry gates. Public preparation starts without
+100 banked requests and retains reduced pacing across pages after a 429.
+The integrated regression also exposed delayed flat-owner evaluation and a
+cooling market monopolizing priority-refresh slots. Recovery/renewal now
+prioritizes the maintenance owner; cooldown hints no longer block replacements.
+Focused synthetic pacing, ownership, partial-fill and full-graph refill tests
+cover the changes. STATUS owns final release verification and deployment state.
+The timing fixture uses the normal production event loop; debug-trace overhead
+was dominating its wall-clock bound. It accepts both existing account-renewal
+paths at full cap instead of incorrectly demanding the slower routine path.
+
 ## 2026-09-24 — queue evidence discarded and scoring dwell lacked fill-risk withdrawal
 
 D-120 retains exact queue quantities from the existing reflection join and

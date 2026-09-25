@@ -1,5 +1,18 @@
 # Active work queue
 
+## D-121 startup/recovery/refill repair
+
+1. D-121 implementation, review and clean full verification are finished; see
+   STATUS for the 1,759-test gate and Finding 184 for reproductions. Do not
+   equate synthetic timing with live acceptance.
+2. At the next explicitly authorized restart, deploy the verified release
+   through the supported owner path; measure initial-fill time, public 429s,
+   decision-to-cancel latency, recovery attempts and ranked refill. Keep the
+   canonical live source pinned until then; no new restart is requested here.
+3. Preserve the separate unfinished command-1 worktree.
+
+Earlier queues below are historical and do not authorize repeat operations.
+
 ## D-120 fill-risk withdrawal
 
 1. D-120 implementation, review and focused/fast/full verification are finished,

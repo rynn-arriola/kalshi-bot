@@ -35,6 +35,11 @@ class _PausedCancelProof:
     request_json: str
 
 
+@dataclass(frozen=True)
+class _RiskCancelProof(_PausedCancelProof):
+    cycle: object
+
+
 class InventoryDispatchSource:
     """Activation-gated composition for the existing, sole management owner.
 
@@ -54,6 +59,7 @@ class InventoryDispatchSource:
         self.last_entry_block = None
         self.entry_block_counts = {}
         self._paused_cancel_notice = None
+        self._risk_cancel_notice = None
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
         """Compose matching producer/executor callbacks and an explicit transport."""
@@ -81,9 +87,28 @@ class InventoryDispatchSource:
                 self.runtime.engine.wake.set()
 
     def _mutation_observed(self, notice=None):
+        risk = self._proof if isinstance(self._proof, _RiskCancelProof) else None
         paused_cancel = isinstance(self._proof, _PausedCancelProof)
         self._proof = None
         self._generation += 1
+        if notice is not None and risk is not None and notice.kind == 'cancel':
+            # The exact risk pair was already latched while account proof was
+            # current. Revoke all entry authority now; only its remaining owned
+            # entry ID may drain before the final account reconciliation.
+            self.runtime._revoke()
+            self._risk_cancel_notice = (notice, risk.cycle)
+            return
+        if notice is None and self._risk_cancel_notice is not None:
+            (observed, cycle), self._risk_cancel_notice = self._risk_cancel_notice, None
+            owner = self.runtime.dispatch_supervisor
+            if (observed.outcome == 'ack' and self.runtime.maintenance is not None
+                    and self.runtime.maintenance.cycle is cycle):
+                self.runtime._post_drain_recovery_pending = True
+                if owner is not None and owner.running and not owner.stopping:
+                    owner.request(cycle.ticker, QUOTE_CANCEL)
+                return
+            self.runtime.request_recovery('risk_cancel_outcome')
+            return
         if (notice is not None and notice.kind == 'cancel'
                 and self.runtime.entry_pause_active and paused_cancel):
             if notice.http_status is not None and notice.http_status != 404:
@@ -114,7 +139,8 @@ class InventoryDispatchSource:
             return
         self._paused_cancel_notice = None
         self.runtime._revoke()
-        self.runtime.request_recovery()  # Existing coalesced owner; no task/read here.
+        self.runtime.request_recovery('mutation_observed' if notice is not None
+                                      else 'mutation_persisted')
         if notice is not None and notice.http_status is not None:
             self.runtime.diagnostics.emit('mutation_failed', http_status=notice.http_status,
                 market=notice.ticker, order=notice.subject_id)
@@ -186,6 +212,22 @@ class InventoryDispatchSource:
         self._refreshing = True
         try:
             runtime = self.runtime
+            maintenance = runtime.maintenance
+            cycle = maintenance.cycle if maintenance is not None else None
+            if (priority == QUOTE_CANCEL and cycle is not None
+                    and cycle.reason == 'fill_risk_withdrawal' and cycle.ticker == ticker):
+                evidence = await runtime.writer.next_entry_cancel_evidence(
+                    ticker, subaccount=runtime.account.subaccount)
+                if (generation != self._generation or not self._available()
+                        or maintenance.cycle is not cycle or evidence is None
+                        or evidence.order_id not in cycle.order_ids):
+                    return None
+                request = dict(order_id=evidence.order_id, market_ticker=ticker,
+                    subaccount=evidence.subaccount, exchange_index=evidence.exchange_index)
+                self._proof = _RiskCancelProof(runtime.writer.epoch,
+                    evidence.writer_revision, encoded_request(request), cycle)
+                return DispatchCandidate(ticker, priority, str(uuid4()), request,
+                                         evidence, evidence.exchange_index)
             if priority == SAFETY_CANCEL and runtime.entry_pause_active:
                 evidence = await runtime.writer.next_entry_cancel_evidence(
                     ticker, subaccount=runtime.account.subaccount)
@@ -424,8 +466,15 @@ class InventoryDispatchSource:
                    else encoded_request(request) if isinstance(request, dict)
                    else None)
         if isinstance(proof, _PausedCancelProof):
+            if kind != 'cancel' or not isinstance(request, dict):
+                return False
+            cancel_authorized = (self.runtime.maintenance is not None
+                and self.runtime.maintenance.cycle is proof.cycle
+                and proof.cycle.reason == 'fill_risk_withdrawal'
+                and request.get('order_id') in proof.cycle.order_ids
+                if isinstance(proof, _RiskCancelProof) else self.runtime.entry_pause_active)
             return (kind == 'cancel' and encoded == proof.request_json
-                and self.runtime.entry_pause_active
+                and cancel_authorized
                 and proof.writer_epoch == self.runtime.writer.epoch
                 and self.runtime.writer.revision in {
                     proof.writer_revision+1, proof.writer_revision+2}

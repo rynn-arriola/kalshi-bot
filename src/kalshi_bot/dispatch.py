@@ -184,6 +184,8 @@ class MutationDispatcher:
         self._pending = {}
         self._active = None
         self._active_key = None
+        self._idle = asyncio.Event()
+        self._idle.set()
         self._high_water = 0
         self._failed = False
         self._stopping = False
@@ -386,6 +388,11 @@ class MutationDispatcher:
             await self._discard(permit)
             raise
 
+    async def wait_idle(self):
+        """Join outcome persistence without consuming/retrying the mutation."""
+        while self._active is not None:
+            await self._idle.wait()
+
     async def run_one(self):
         if self._failed:
             return self._finish(DispatchResult('FAILED', blockers=('dispatcher_failed',)))
@@ -401,6 +408,7 @@ class MutationDispatcher:
         task = asyncio.create_task(self._process(ticker, priority),
                                    name='kalshi-mutation-dispatch')
         self._active, self._active_key = task, (ticker, priority)
+        self._idle.clear()
         cancelled = False
         try:
             while not task.done():
@@ -414,6 +422,7 @@ class MutationDispatcher:
             raise
         finally:
             self._active = self._active_key = None
+            self._idle.set()
         if cancelled:
             raise asyncio.CancelledError
         return self._finish(result)

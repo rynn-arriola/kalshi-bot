@@ -1,5 +1,15 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-121 joins the sole dispatcher before recovery snapshots begin. Immediate
+outcome invalidation is preserved; persistence and recovery no longer race.
+An already-latched fill-risk pair drains its exact owned entry IDs through
+fresh durable cancellation evidence, followed by full terminal/fill/account
+reconciliation before refill. See [the lifecycle contract](BUILD_FILL_RISK.md).
+Public startup discovery has a separate local adaptive pacer: no banked burst,
+one-token capacity, rate halved once per shared 429 pause (floor one request/s).
+This is not a venue quota claim; authenticated document-derived budgets retain
+their existing behavior. Bulk public endpoint names are retained in diagnostics.
+
 D-120 adds [queue-depletion withdrawal](BUILD_FILL_RISK.md) to the existing
 maintenance/dispatch owners. Exact queue evidence reuses reward reflection;
 books update estimated protection, with target/5 reference context. A threatened

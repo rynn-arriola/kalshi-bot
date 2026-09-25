@@ -483,10 +483,16 @@ class RuntimeSelection:
         protected = set(protected)
         self._priority_refresh.intersection_update(self._priority_hints)
         self._priority_refresh.difference_update(protected)
+        maintenance = self.runtime.maintenance
+        permitted = {ticker for ticker, hint in self._priority_hints.items()
+                     if maintenance is None or maintenance.entry_allowed(ticker, hint.program_id)}
+        # A withdrawn/cooling market cannot consume scarce revalidation work
+        # or block every fallback slot. Retain its advisory hint for expiry.
+        self._priority_refresh.intersection_update(permitted)
         if available_pairs > 0:
             candidates = [(hint.projected_remaining(now), ticker)
                 for ticker, hint in self._priority_hints.items()
-                if (ticker not in protected and ticker not in self._priority_refresh
+                if (ticker in permitted and ticker not in protected and ticker not in self._priority_refresh
                     and not self._current_priority(ticker, now))]
             candidates.sort(key=lambda item:(-item[0], item[1]))
             limit = min(30, 2*available_pairs)

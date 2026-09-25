@@ -1,5 +1,75 @@
 # Findings — kalshi-bot
 
+## 184. Startup and risk refill contain avoidable scheduling delays — 2026-09-24
+
+**Correction to Finding 183:** Reaching 30 eventually did not establish an
+efficient startup/refill path. Generation 152's local timeline began at 22:40:12
+ET, started its runtime at 22:40:59, acknowledged its first pair at 22:42:40,
+completed historical 1,024-market coverage at 22:43:32, and first showed 30 in
+the sampled snapshots at 22:48:36. Public startup logged 22 REST 429 retries.
+Risk pairs showed a fast first cancellation followed by roughly 6–13 seconds
+before the second. Decision-to-ACK telemetry includes those scheduling waits;
+it must not be reported as network-only latency or hidden by reducing the
+estimator's horizon. This evidence is historical, not current account state.
+
+**VERIFIED, offline source reproduction:** Holding durable batch-result
+persistence allowed recovery to start reading before the result was stored.
+Three regression cases failed with the original handoff. Recovery now joins the
+sole dispatcher's result. Exact latched risk-entry IDs reuse durable cancel
+ownership/route/revision checks, then share the ordinary final reconciliation;
+no ACK releases capacity or authorizes entry. The integrated withdrawal test
+also exposed a flat maintenance owner delayed behind catalog work. Recovery
+and renewal now promote that owner without relaxing its source proof.
+
+A separate failing-before regression showed that a cooling priority-market
+hint blocked an eligible fallback. Such hints now retain advisory memory but
+leave the pending revalidation set until admission permits them again. Public
+discovery no longer banks 100 startup requests and halves its local pacing
+after each shared 429 pause. Authenticated account budgets are unchanged.
+The [official rate-limit guide](https://docs.kalshi.com/getting_started/rate_limits)
+documents token costs and 429 backoff, not a public 50-requests/s entitlement;
+this pacer is explicitly a local ceiling, not an exchange-limit claim.
+
+**Verification discipline:** The first extended 1,024-book run exposed the
+withdrawal/refill timeout above. Subsequent standalone stress runs missed the
+unchanged 150-second initial-fill bound. These failures are retained in local
+logs, not relabeled success or addressed by lengthening the deadline. Final
+release results and deployment state belong in STATUS. A controlled follow-up
+disabled only unittest's asyncio debug instrumentation: the same fixture reached
+30, recovered and refilled within roughly 14 seconds, then failed an older test
+assumption requiring the routine refresh counter specifically. At full cap the
+valid steady-account refresh path had run instead. The timing fixture now uses
+the production non-debug loop and accepts either actual refresh counter; every
+production gate and the 150/30/45-second timing bounds are unchanged. Focused
+race/failure tests retain debug instrumentation. This is a synthetic scheduler
+measurement, not a promise of live startup or network latency.
+
+**MEASURED, corrected production-loop fixture:** 1,024 books/four shards reached
+30 entries in 11.505 seconds, replenished two independently terminal cancellations
+in 0.757 seconds, then withdrew a threatened pair and refilled in 1.157 seconds.
+The two cancels were 0.041 seconds apart with no intervening full recovery;
+the replacement used a different market and the victim remained in cooldown.
+One full-cap steady renewal completed, with no book/dispatch failure. The
+fixture now waits for completed renewal evidence rather than assuming a fixed
+sleep after wire ACK includes durable recovery and the next refresh. Raw ignored
+artifact: `data/startup-recovery-risk-load-v5.log` in the canonical checkout.
+
+**Test-environment correction:** The initial complete run used the shared live
+virtual environment with a worktree `PYTHONPATH`. Native children intentionally
+discard that variable, imported the canonical package and rejected its differing
+source identity. These failures do not establish a supervisor regression. A
+separate `data/startup-recovery-venv` now installs only this worktree; its five
+dependency versions match the live environment. The live installation was not
+changed. The clean release run must use this isolated installation without
+`PYTHONPATH`; AI_OPERATOR records the requirement for future sessions.
+
+The corrected complete run passes 1,759 tests (one expected Windows privilege
+skip), including native supervisor cases, in 348.955 seconds. Its four-shard
+fixture fills 30 in 15.004 seconds, refills terminal cancellations in 1.064
+seconds, and completes withdrawal/replacement in 2.043 seconds with a
+0.045-second gap between cancels. No code/configuration was deployed and no
+venue operation was performed by this task.
+
 ## 183. D-120 live acceptance preserves safety at the cost of transient slots — 2026-09-24
 
 **VERIFIED, live Command 1:** The supported stop removed 30 entries and exited

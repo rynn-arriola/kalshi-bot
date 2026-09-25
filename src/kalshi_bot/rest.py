@@ -269,6 +269,24 @@ class TokenBudget:
         self._wake_waiters()
 
 
+class PublicDiscoveryBudget(TokenBudget):
+    """Local unauthenticated pacing, not an account entitlement.
+
+    Start without banked tokens and retain 429 backoff across different URLs.
+    Concurrent failures in one pause window reduce the rate only once.
+    Authenticated, document-derived read budgets never use this policy.
+    """
+    def __init__(self, *, clock=time.monotonic, sleep=asyncio.sleep):
+        super().__init__(rate=50, capacity=1, default_cost=1,
+                         initial_tokens=0, clock=clock, sleep=sleep)
+
+    def throttle(self, delay):
+        previous_deadline = self.blocked_until
+        super().throttle(delay)
+        if self.updated >= previous_deadline:
+            self.rate = max(1, self.rate//2)
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *_args, **_kwargs):
         return None

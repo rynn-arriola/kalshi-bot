@@ -290,6 +290,24 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.status()['last_proposal']['fallback_reason'],
                          'priority_candidates_resolved')
 
+    async def test_withdrawn_priority_does_not_block_other_markets_during_cooldown(self):
+        from kalshi_bot.quote_maintenance import QuoteMaintenance
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.s.invalidate('C')
+        self.assertIn('priority_revalidation_pending',(await self.proposal()).blockers)
+        self.r.maintenance = QuoteMaintenance(self.r)
+        self.r.maintenance._risk_cooldown['C'] = self.mono+300
+        result = await self.proposal()
+        self.assertEqual([row.ticker for row in result.additions],['A'])
+        self.assertNotIn('C',self.s._priority_refresh)
+        # Keep only advisory memory, so expiry resumes normal revalidation.
+        self.assertIn('C',self.s._priority_hints)
+        self.mono += 300
+        self.assertTrue(self.s._request_priority_revalidation(
+            now=self.now,available_pairs=1,protected=()))
+        self.assertIn('C',self.s._priority_refresh)
+
     async def test_fresh_inactive_market_retires_hint_and_allows_fallback(self):
         from types import SimpleNamespace as NS
         await self.publish('A',pool=3000000)

@@ -1,5 +1,17 @@
 # What exists
 
+## Startup/recovery handoff and risk-pair drain — D-121
+
+The dispatcher exposes an event-based persistence join to recovery. Exact
+latched risk entries reuse durable cancel evidence and the existing drain
+completion wake; no new writer, polling worker or account bypass. Public
+candidate preparation uses `PublicDiscoveryBudget`, independent of authenticated
+quota documents. Regression coverage extends the 1,024-book refill graph through
+actual queue reflection, risk withdrawal, terminal reconciliation and replacement.
+Recovery/renewal promotes flat maintenance owners and priority revalidation
+excludes currently maintenance-ineligible hints without deleting their memory.
+STATUS owns final test and publication evidence.
+
 ## Target-aware fill-risk withdrawal — D-120
 
 `fill_risk.py` owns bounded queue-depletion/latency estimates. Reward reflection

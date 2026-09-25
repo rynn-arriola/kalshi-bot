@@ -194,6 +194,12 @@ before publishing a meaningful live-money release, not after every edit or
 documentation-only update. A focused failure still blocks publication, and the
 complete suite remains mandatory before a changed build is deployed live.
 
+For isolated worktree verification, install that worktree into its own virtual
+environment. A shared live environment plus `PYTHONPATH` is insufficient for
+native supervisor tests: children intentionally sanitize the environment and
+must import the same reviewed source as their parent. Never repoint the live
+environment's editable installation to a test checkout.
+
 D-065: when a work unit is complete and verified, review the exact staged
 scope, commit it, push to the canonical branch and verify local/remote parity.
 Do not stage unrelated or private files, force-push, or publish a failed or

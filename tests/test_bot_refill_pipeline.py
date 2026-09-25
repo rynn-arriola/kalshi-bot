@@ -101,6 +101,11 @@ class EntryInterleavingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Measure the production loop, not unittest's per-callback traceback
+        # instrumentation. Focused interleaving/failure tests retain debug=True.
+        asyncio.get_running_loop().set_debug(False)
+
     async def test_1024_books_fill_thirty_orders_then_refill_with_real_recovery(self):
         # The event and mutation wire never leave this process. No fixture
         # authorization bypass: compose installs the actual live owners.
@@ -111,6 +116,7 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
         markets = {t:metadata.market(t) for t in tickers}
         md = metadata.Reads()
         orders, batches, canceled = {}, [], []
+        threatened, cancel_recoveries, cancel_times = set(), [], []
         calls = {}
         docs = {
             '/account/limits':LIMITS, '/account/endpoint_costs':COSTS,
@@ -139,6 +145,10 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 rows = list(orders.values())
                 if query.get('status') == ['resting']: rows = [r for r in rows if r['status']=='resting']
                 doc = {'orders':rows, 'cursor':''}
+            elif path == '/portfolio/orders/queue_positions':
+                doc = {'queue_positions':[dict(order_id=r['order_id'], market_ticker=r['ticker'],
+                    queue_position_fp='0' if r['ticker'] in threatened else '1000')
+                    for r in orders.values() if r['status']=='resting']}
             elif path.startswith('/portfolio/orders/'):
                 doc = {'order':orders[path.rsplit('/',1)[1]]}
             elif path.startswith('/markets/'):
@@ -182,6 +192,8 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 row = orders[req['order_id']]
                 row.update(status='canceled', remaining_count_fp='0', last_updated_ts_ms=2)
                 canceled.append(row['order_id'])
+                cancel_recoveries.append(runtime.recovery_attempts)
+                cancel_times.append(time.monotonic())
                 return dict(order_id=row['order_id'],reduced_by='10',ts_ms=2)
             async def batch(self, requests):
                 session.check('batch_create', requests)
@@ -237,20 +249,48 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                         if task.done(): task.result()
                         await asyncio.sleep(.05)
                 refill_seconds = time.monotonic()-started-first_full
-                await asyncio.sleep(3.5)  # Exercise normal account renewal at cap.
+                # Wire ACK precedes durable recovery; a fixed 3.5s sleep can
+                # end before the next renewal even starts. Await its evidence.
+                async with asyncio.timeout(10):
+                    while runtime.routine_refresh_completed+runtime.steady_refresh_completed == 0:
+                        if task.done(): task.result()
+                        await asyncio.sleep(.05)
                 self.assertEqual(sum(r['status']=='resting' for r in orders.values()),30)
                 self.assertEqual(len(batches),16)
                 self.assertFalse(canceled)
                 self.assertFalse(runtime.engine.failed)
                 self.assertFalse(runtime.dispatch_supervisor.failed)
-                self.assertGreater(runtime.routine_refresh_completed,0)
+                self.assertGreater(runtime.routine_refresh_completed+runtime.steady_refresh_completed,0)
                 self.assertTrue(all(len(batch)==2 and all(D(r['count'])==D(10) for r in batch)
                                     for batch in batches))
+                # Drive the real reflection -> risk decision -> two exact
+                # cancellations -> reconciliation -> ranked refill graph.
+                victim=next(row['ticker'] for row in orders.values() if row['status']=='resting')
+                victim_ids={r['order_id'] for r in orders.values()
+                            if r['ticker']==victim and r['status']=='resting'}
+                threatened.add(victim)
+                risk_started=time.monotonic()
+                runtime.rewards.request_reflection()
+                async with asyncio.timeout(45):
+                    while (len(canceled)<2 or len(batches)<17
+                           or sum(r['status']=='resting' for r in orders.values()) != 30):
+                        if task.done(): task.result()
+                        await asyncio.sleep(.05)
+                self.assertEqual(set(canceled),victim_ids)
+                self.assertEqual(cancel_recoveries[0],cancel_recoveries[1])
+                self.assertLess(cancel_times[1]-cancel_times[0],2)
+                self.assertNotIn(victim,{r['ticker'] for r in batches[-1]})
+                self.assertFalse(runtime.maintenance.entry_allowed(victim,'reward-'+victim))
+                self.assertFalse(runtime.dispatch_supervisor.failed)
                 print('REFILL_LOAD', json.dumps(dict(first_full_seconds=round(first_full,3),
                     refill_seconds=round(refill_seconds,3),
+                    risk_refill_seconds=round(time.monotonic()-risk_started,3),
+                    cancel_pair_gap_seconds=round(cancel_times[1]-cancel_times[0],3),
                     final_seconds=round(time.monotonic()-started,3),batches=len(batches),
                     engine=runtime.engine.status(),dispatch=runtime.dispatch_supervisor.status(),
-                    routine_refreshes=runtime.routine_refresh_completed),default=str))
+                    routine_refreshes=runtime.routine_refresh_completed,
+                    steady_refreshes=runtime.steady_refresh_completed,
+                    loop_debug=asyncio.get_running_loop().get_debug()),default=str))
             except BaseException:
                 if runtime is not None:
                     print('REFILL_FAILURE',json.dumps(dict(orders=len(orders),batches=len(batches),

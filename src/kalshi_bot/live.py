@@ -26,7 +26,7 @@ from .observability import Diagnostics, NO_LOG, safe_error
 from .quota import ProbeConfig, QuotaGuard, QuotaPolicy
 from .quota_supervisor import QuotaSupervisor
 from .recovery_fence import FenceCooldown, RecoveryFence
-from .rest import RestReads, TokenBudget
+from .rest import RestReads, TokenBudget, PublicDiscoveryBudget
 from .restriction_journal import RestrictionJournal
 from .runtime import RecoveryRuntime, readonly_reader_factory
 from .startup import load_signer, read_text_shared, save_result, _noop
@@ -160,11 +160,10 @@ async def refresh_candidate_inputs(path, now, diagnostics):
         'valid_until':timestamp(raw['fee_profile']['valid_until'])}))
     if profile.valid_until <= now:
         raise InvalidData('launch fee profile expired')
-    # Public-only launch preparation is request-latency bound.  Four workers is
-    # the reviewed RestReads ceiling and remains under this isolated 50/s
-    # public-only token budget.
-    reads = RestReads(TokenBudget(rate=50, capacity=100, default_cost=1,
-        initial_tokens=100, clock=time.monotonic), concurrency=4,
+    # Public endpoints do not expose an authenticated account entitlement.
+    # Keep four I/O workers, but avoid a cold-start burst and retain adaptive
+    # pacing across pages after a 429 instead of resetting at every URL.
+    reads = RestReads(PublicDiscoveryBudget(), concurrency=4,
         diagnostics=diagnostics)
     try:
         prepared = await prepare_candidates(reads, now=now)
