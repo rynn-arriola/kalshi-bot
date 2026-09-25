@@ -1,5 +1,23 @@
 # Findings — kalshi-bot
 
+## 183. D-120 live acceptance preserves safety at the cost of transient slots — 2026-09-24
+
+**VERIFIED, live Command 1:** The supported stop removed 30 entries and exited
+both exact managed processes in about 13 seconds. Independent signed account
+reads returned zero resting orders and zero positions before deployment. Release
+`3e0a346` then started as generation 152 with all six readers subscribed and
+complete 1,024/1,024 initial market coverage.
+
+The new fill-risk status loaded and recorded eight cancellation samples during
+the acceptance window. The bot reached the 30-order cap more than once, then
+moved between 28 and 30 as estimated-reachable orders were canceled and fresh
+replacement/account proofs were obtained. This is the designed safety tradeoff:
+30 is a cap, not a promise to retain a risky order. Zero positions, healthy
+logging/quota and no ERROR/CRITICAL event were observed. Startup REST 429 retries
+and incomplete first recovery passes recovered. Live observation does not prove
+that every withdrawal avoided a fill, that every order scores, or that rewards
+exceed trading losses and fees.
+
 ## 182. Queue depletion estimates require actual protection, not reward target — 2026-09-24
 
 **VERIFIED, source and official documentation:** Reference uses target/5,

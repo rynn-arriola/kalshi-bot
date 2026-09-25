@@ -1,6 +1,26 @@
 # Current status
 
-## D-120 fill-risk withdrawal — verified source, not deployed
+## D-120 fill-risk withdrawal — deployed by Command 1, 2026-09-24 22:50 ET
+
+Command 1 stopped generation 150 through the supported owner path. Its 30
+resting entries reached zero and both managed processes exited in about 13
+seconds. Independent signed venue reads then returned HTTP 200 with zero resting
+orders and zero positions, so no liquidation order was required. The clean
+canonical checkout fast-forwarded from `7019bfc` to published release `3e0a346`.
+
+The supported live launcher started parent PID 50384 / session
+`ac539922d35b482a998bc0ab5c988a2c` and generation 152 / child PID 45864. All six
+readers subscribed, ranking evaluated 1,024/1,024 markets with no missing shard,
+and the D-120 `fill_risk` telemetry is present. The run reached 30 resting
+entries more than once and had zero positions; occupancy subsequently moved
+between 28 and 30 while eight estimated-reachable orders were withdrawn and
+replacement proofs refreshed. Logging and quota remained healthy, and the
+current-run sample contained no ERROR or CRITICAL event. Temporary REST 429
+retries during startup and incomplete first recovery passes recovered without a
+process failure. This verifies deployment and live withdrawal/refill operation,
+not fill avoidance, reward eligibility, profit, or permanent 30-order occupancy.
+
+## D-120 source verification — release evidence
 
 `data/fill-risk-dev` / `feat/fill-risk-withdrawal` starts at `7019bfc` and adds
 target-aware queue-depletion withdrawal through the existing owners. The new
@@ -15,16 +35,10 @@ not observed live cancellation success. Details: docs/BUILD_FILL_RISK.md.
 Actual source/test review, staged whitespace/secret checks and 530 local document
 links pass. Disabling the new withdrawal decision makes its regression fail.
 Ignored verification logs are canonical-root `data/fill-risk-fast.log` and
-`data/fill-risk-full.log`. This reviewed isolated checkout is the publication/
-GitHub-master parity target; keep the active canonical package pinned until
-the next separately authorized restart.
-
-Canonical source/runtime remains on `7019bfc` (generation 150); a 22:28:14 ET
-read-only snapshot showed 30 entries, zero positions and current quota/account
-proof with healthy logging. No
-restart, venue mutation or live-ledger change is part of D-120. Deployment and
-live effect require the next authorized restart. Unfinished command-1 work
-remains separate.
+`data/fill-risk-full.log`. This reviewed release was published as `3e0a346` and
+is now the canonical deployed package. Unfinished command-1 software work
+remains separate; this operation used the existing supported stop/start path and
+did not exercise automatic emergency liquidation because the account was flat.
 
 ## D-119 refill repair — verified source, not deployed, 2026-09-24
 

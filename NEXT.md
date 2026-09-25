@@ -2,10 +2,10 @@
 
 ## D-120 fill-risk withdrawal
 
-1. D-120 implementation, review and focused/fast/full verification are finished
-   in `data/fill-risk-dev`. Keep the active checkout pinned; deploy the published
-   verified change only at an authorized restart.
-2. After deployment, measure withdrawal latency and fills during cancellation,
+1. D-120 implementation, review and focused/fast/full verification are finished,
+   and published release `3e0a346` is deployed on generation 152. Do not repeat
+   the restart merely to prove deployment.
+2. Continue measuring withdrawal latency and fills during cancellation,
    cooldown/refill behavior and reward time lost. Do not label estimates as
    calibrated probabilities or assume larger target means more actual queue.
 3. Preserve the separate unfinished command-1 worktree.
