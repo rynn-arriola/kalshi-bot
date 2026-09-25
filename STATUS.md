@@ -1,13 +1,13 @@
 # Current status
 
-## D-122 stopped-account audit and quota-refresh repair — not deployed
+## D-122 cumulative repair — deployed, bot kept stopped
 
 **Current operation:** The bot is stopped. The operator explicitly authorized
 canceling all remaining orders and keeping it stopped. The cancel-only operation
 received 28 HTTP 200 acknowledgments; a separate signed account enumeration at
 **2026-09-24 23:46:07 ET** returned **zero resting orders and zero nonzero position
-rows**. No bot start, position-closing trade, ledger edit or source deployment
-was performed. Ignored `data/trader/cancel-stopped-20260925-*.json` retains the
+rows**. The cancel-only operation did not start the bot, close a position, edit
+the ledger or deploy source. Ignored `data/trader/cancel-stopped-20260925-*.json` retains the
 operation/verification evidence. A future start must reconcile those external
 cancellations through the existing owner; stale saved DRAINING status is not
 current venue exposure.
@@ -16,10 +16,15 @@ Finding 185 records two quota-refresh dispatch failures, fill-risk activity and
 the remaining live timing limitation. Isolated `fix/quota-refresh-dispatch`,
 based on published `bb1003f`, repairs pre-send temporary quota loss and completed
 refresh revocation. Only durable NOT_SENT preparations can return to fresh
-reevaluation. The canonical checkout remains clean at `31950e1`; D-121 and this
-repair have **not yet** been deployed. The operator's subsequent instruction
-authorizes deploying all completed verified fixes after the release gate, while
-keeping the bot stopped. No trading restart is authorized by this task.
+reevaluation. After the operator authorized cumulative deployment, the canonical
+checkout fast-forwarded from `31950e1` to published code **`5d34d0e`**, including
+**D-121 (`bb1003f`) and D-122** plus all their earlier ancestors. All three
+account/process leases protected the source update. At 23:58:53 ET the installed
+canonical interpreter imported the combined features, 47 focused post-deployment
+tests passed, no parent/child was present, stop remained latched, and trading
+remained disarmed. Database and configuration SHA-256 values were unchanged.
+No restart occurred or is authorized by this task. The separate unfinished
+command-1 worktree was not included. Future live behavior remains unverified.
 
 Focused cancellation/batch regressions and the 293-test fast gate pass. Exact
 source/test review checks both legs, no send under revoked quota, no capacity
@@ -31,7 +36,9 @@ and finishes risk withdrawal/refill in 1.216 seconds (0.037-second cancel-pair
 gap). These are fixture results, not promised live latency. Whitespace/secret
 checks and 787 local documentation links pass, excluding four known ignored
 research artifacts. Evidence: ignored `data/quota-refresh-release.log`.
-Publication and the authorized stopped-source deployment are next.
+The code commit was pushed and HEAD/origin/master/GitHub parity verified before
+deployment. This deployment record is a documentation-only follow-up; no second
+full release run is required for it.
 
 Older deployment and process snapshots below are historical.
 
