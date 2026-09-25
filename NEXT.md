@@ -1,5 +1,21 @@
 # Active work queue
 
+## Active now — trading runs independently of command-1 development
+
+1. Manual-close accounting and supported restart are finished on `40b69f0`;
+   do not repeat that reconciliation. Generation 144 is trading; see STATUS.
+2. Finish isolated `data/command1-dev` verification/review. Inspect the full
+   suite's results and rerun native tests with its own `.venv`, not canonical
+   Python plus PYTHONPATH (children deliberately sanitize that variable).
+   Then publish the reviewed command changes. Do not claim the current child
+   supports the command until a separately coordinated deployment loads it.
+3. Preserve live trading; no additional live restart merely to manufacture a
+   test. Command 1 is explicit immediate liquidation, not ordinary stop policy.
+4. Track remaining source-driven refill deferrals separately; do not label
+   20/22 orders a verified 30-order refill or guarantee $2 actual payout.
+
+## Historical handoff — superseded by the active queue above
+
 ## Finish the entry/advisory race repair
 
 1. Finding 177 passed the full 1,702-test gate and is published as `c9dce41`.

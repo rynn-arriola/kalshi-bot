@@ -1,5 +1,29 @@
 # Current status
 
+## Live trading resumed; emergency command remains isolated — 2026-09-24 20:12 ET
+
+Release `40b69f0` is published with local/remote parity. The stopped-owner
+reconciliation applied the three actual manual-close fills and canceled exit
+evidence; local and venue cash matched, position was flat, and receipt-window
+net P&L is -$2.184600. A verified stopped-ledger backup was retained locally.
+The supported restart launched generation 144, currently PID 50416, supervisor
+healthy. At 20:12:07 ET its fresh matching snapshot showed 20 resting entries,
+zero positions, current account proof, no accounting blockers and healthy logs.
+Earlier this run reached 22 entries, all 11 acknowledged pairs from the $2+
+projected-reward tier. Ranking covered 1,024/1,024 in 101.7 seconds. Neither
+full 30-order occupancy nor reward payout is established by these observations.
+
+D-116 command-1 code is under development in ignored `data/command1-dev` Git
+worktree; it is NOT in the active bot. Ten command tests, 45 live-runtime tests
+and the 297-test fast subset pass. Initial isolated native tests failed because
+the sandboxed children discard PYTHONPATH and loaded the other checkout. A
+worktree-only venv with explicit local dependency paths fixes that mismatch;
+all 12 native supervisor tests then pass. The initial full-suite run still needs
+its final results inspected and affected environment tests rerun as necessary.
+Logs: `data/command1-full.log`, `data/command1-fast-native.log`,
+`data/command1-native-corrected.log`. No extra live restart solely to test this
+feature is planned; keep current trading running while finishing verification.
+
 ## Manual-close accounting repaired; applying and restarting — 2026-09-24
 
 The operator confirmed manual close and renewed restart authority. Fresh venue
