@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-128 — Retain interrupted protective-cancel scheduling
+
+- **Status:** ACCEPTED source repair, 2026-09-25.
+- **Decision owner:** Operator: “You need to fix issues you encounter,” during
+  the deeper investigation of cancellation delays.
+- **Scope:** Repair the reproduced lost cancellation wake and premature
+  post-drain recovery; preserve deferred threat reevaluation after dispatch.
+  Add bounded retry visibility and synthetic race regressions, review, verify
+  and publish under D-065.
+- **Boundary:** No live action, deployment or restart. Keep exact ownership,
+  single-writer/quota fences, reconciliation, queue expiry and strategy unchanged.
+  Missing observations are unknown, not permission to cancel or credit rewards.
+
 ### D-127 — Preserve order-scoped fill-risk observation through report renewal
 
 - **Status:** ACCEPTED source repair, 2026-09-25.

@@ -1,5 +1,15 @@
 # What exists
 
+## Protective-cancel scheduling intent — D-128
+
+The existing dispatch source retains one current risk-cycle scheduling marker,
+with private-event and existing half-second refresh wakes, backoff and bounded
+escalation. Queue emptiness no longer substitutes for fast-drain completion.
+Deferred threat keys receive fresh evaluation after dispatch/cycle completion.
+Tests cover temporary blocks, stale proof, no duplicate sends, limits and
+recovery ordering. See [the contract](docs/BUILD_FILL_RISK.md), Finding 192 and
+STATUS for final verification/publication; this source repair is not deployed.
+
 ## Order-scoped fill-risk observation — D-127
 
 Maintenance retains original-lived queue anchors before reward joins and checks
@@ -8,7 +18,7 @@ no longer hides otherwise valid depletion warnings. Existing exact-ID dispatch,
 terminal/fill reconciliation and entry gates remain. Bounded queue/depth/gap
 and cancellation timing events support future diagnosis without new polling.
 See [the contract](docs/BUILD_FILL_RISK.md), Finding 191 and STATUS for verification
-and the deliberately undeployed state.
+and its deployment state.
 
 ## Recovery renewal and bounded diagnostics — D-126
 

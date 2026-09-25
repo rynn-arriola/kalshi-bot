@@ -111,6 +111,29 @@ otherwise maintenance-ineligible markets retain advisory priority memory but
 cannot occupy pending priority-refresh slots or block other eligible markets.
 Cooldown expiry restores ordinary revalidation; no stale hint authorizes entry.
 
+### D-128 retained scheduling intent
+
+A transient source/private-work fence may consume a dispatcher key without
+submitting its cancellation. The source retains one current risk-cycle marker,
+not a command/price/ownership lease. Private-event completion and the existing
+half-second refresh owner requeue reevaluation with at least 250 ms backoff;
+ordinary book wakes respect that backoff. Eight temporary blocks or five seconds
+without progress hand back to bounded recovery. In-flight outcomes are joined
+before escalation, and an ACK resets the per-leg retry window.
+
+Routine renewal/post-drain recovery cannot treat the empty queue as completion
+while that marker remains pending. A successful current durable no-candidate
+read ends fast draining, not terminal/fill reconciliation. Replaced cycles,
+stop, permanent rejection and UNKNOWN do not authorize retransmission. No new
+REST polling, task or mutation owner is introduced. Deferred threat keys wake
+after dispatch/cycle completion and must pass fresh observations again.
+
+`risk_cancel_deferred` logs fixed blocker names at powers-of-two counts;
+dispatch status exposes `risk_drain_pending` and `risk_cancel_deferrals`.
+`risk_cancel_retry_exhausted` identifies bounded recovery escalation. Existing
+`fill_risk_cancel_ack.elapsed_ms` includes first-warning-to-latch delay, not
+just transport. Correlate withdrawal and submission events to separate stages.
+
 ## Verification
 
 `tests/test_bot_fill_risk.py` covers bid/ask depletion, target-driven reference
@@ -130,3 +153,9 @@ Resource acceptance: 30/120 synthetic orders, 100 levels per side, 20 evaluation
 per order; p99 per estimate below 50 ms and traced peak below 4 MiB. These are
 offline computation checks, not live escape-rate or profitability evidence.
 Final test counts and publication/deployment state belong in STATUS.
+
+`tests/test_bot_risk_dispatch_retry.py` reproduces the missing automatic second
+key and covers private/source races, send-edge rejection, wake coalescing,
+backoff, retry bounds, in-flight join, cycle/stop/disconnect changes, UNKNOWN,
+permanent rejection, post-drain ordering and deferred threat wakeups. All venue
+responses and ledgers are synthetic/disposable.

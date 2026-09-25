@@ -94,6 +94,8 @@ class LoggingTests(unittest.TestCase):
                  depletion_hundredths=200, queue_age_ms=300, horizon_ms=7000, eta_ms=500)
         log.emit('fill_risk_cancel_ack', market=SECRET, order=SECRET, elapsed_ms=250)
         log.emit('cancel_submit_attempt', order=SECRET, operation=SECRET)
+        log.emit('risk_cancel_deferred', market=SECRET, count=2,
+                 blockers=('current_candidate_missing', SECRET), blocker_count=2)
         log.emit('fill_risk_observation_gap', risk_state='queue_expired', count=8)
         log.emit('fill_risk_observation_gap', risk_state=SECRET, unknown_field=SECRET)
         log.ensure_healthy()
@@ -105,6 +107,9 @@ class LoggingTests(unittest.TestCase):
         self.assertEqual(sample['order_ref'], ack['order_ref'])
         self.assertEqual(sample['eta_ms'], 500)
         self.assertEqual(sample['risk_state'], 'threat')
+        retry = next(r['context'] for r in data if r['event'] == 'risk_cancel_deferred')
+        self.assertEqual(retry['blockers'], ['current_candidate_missing'])
+        self.assertEqual(retry['unknown_blockers'], 1)
 
     def test_native_exit_code_is_recorded_without_exception_text(self):
         log = self.start()

@@ -295,6 +295,11 @@ class RecoveryRuntime:
     def _request_quote_dispatch(self, ticker):
         if self.maintenance is None or self.dispatch_supervisor is None or self.stop_requested.is_set():
             return
+        source = getattr(self.dispatch_supervisor, 'source', None)
+        if (source is not None and source.risk_drain_pending
+                and self.maintenance.cycle.ticker == ticker):
+            source.resume_risk_drain()
+            return  # Book churn must not bypass the deferred-cancel backoff.
         plan = self.management.current(ticker, require_market=False)
         if plan is not None and self.maintenance.cancel_target(plan) is not None:
             from .dispatch import QUOTE_CANCEL
@@ -624,6 +629,8 @@ class RecoveryRuntime:
         owner = self.dispatch_supervisor
         if owner is None:
             return False
+        if getattr(getattr(owner, 'source', None), 'risk_drain_pending', False):
+            return False  # A temporarily blocked, popped key is not a drain.
         state = owner.dispatcher.status()
         if state.active is not None or state.queued or state.failed or state.stopping:
             return False
@@ -920,6 +927,7 @@ class RecoveryRuntime:
                 else:
                     await self.management.refresh(event["msg"]["market_ticker"])
                     self._request_inventory_dispatch(event["msg"]["market_ticker"])
+                self._resume_risk_drain()
                 return
             if generation != self.account.generation or not self.account.connected:
                 return  # Old order/position projection will be re-enumerated.
@@ -947,6 +955,12 @@ class RecoveryRuntime:
             if ticker is not None:
                 await self.management.refresh(ticker)
                 self._request_inventory_dispatch(ticker)
+            self._resume_risk_drain()
+
+    def _resume_risk_drain(self):
+        source = getattr(self.dispatch_supervisor, 'source', None)
+        if source is not None:
+            source.resume_risk_drain()
 
     async def _consume(self, spec, event, generation, acknowledged, ready=None):
         kind = event.get("type")
@@ -1623,6 +1637,7 @@ class RecoveryRuntime:
         Otherwise retain the full-cap observation shortcut or ordinary recovery.
         """
         while not self.stop_requested.is_set():
+            self._resume_risk_drain()
             self._request_post_drain_recovery()
             if (self.account_subscribed and self.recovery_state == 'repaired_entries_blocked'
                     and not self.recovery_requested.is_set()
@@ -1643,8 +1658,10 @@ class RecoveryRuntime:
                     and snapshot_started is not None and self.clock()-snapshot_started >= 3)
                 drain = (self.dispatch_supervisor.dispatcher.status()
                          if self.dispatch_supervisor is not None else None)
-                drain_pending = (self._post_drain_recovery_pending and drain is not None
-                                 and (drain.active is not None or drain.queued))
+                risk_pending = getattr(getattr(self.dispatch_supervisor, 'source', None),
+                                       'risk_drain_pending', False)
+                drain_pending = (risk_pending or (self._post_drain_recovery_pending
+                    and drain is not None and (drain.active is not None or drain.queued)))
                 if not drain_pending and (report is None or renewal_due
                         or (utc(self.now())-report.observed_at).total_seconds() >= 3):
                     # Full-cap scope limits optional market work; it does not

@@ -1,13 +1,23 @@
 # Active work queue
 
+## D-128 protective-cancel scheduling repair
+
+1. D-128 is source-verified with the complete release gate and diff review.
+   Deploy only on separate operator instruction; the runtime remains D-127.
+2. After a separately authorized deployment, measure warning-to-latch,
+   latch-to-submit and submit-to-ACK separately, plus retry counts, recovery
+   ordering and occupancy. Synthetic success is not a live fill-avoidance rate.
+3. Treat remaining queue-publication/account gaps as unknown coverage, not
+   earned rewards or a reason to lengthen queue expiry. Reassess their impact
+   after removing the reproduced scheduling delay.
+
 ## D-127 fill-risk observation release
 
 1. D-127 is published, deployed and running as generation 168. Do not restart
    merely to prove deployment again.
-2. Inspect fresh queue/gap and decision-to-
-   attempt/ACK evidence. Synthetic success is not a measured live fill-avoidance
-   rate. Any depth/stability ranking change remains undecided; preserve current
-   reward tiers and thresholds.
+2. The diagnostic deep dive is recorded in Finding 192 and repaired in D-128
+   above. Depth/stability ranking changes remain undecided; preserve tiers and
+   thresholds.
 
 ## D-126 recovery renewal and logging
 

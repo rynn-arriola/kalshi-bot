@@ -136,4 +136,6 @@ class DispatchSupervisor:
             turns=self.turns, last_state=self.last_state, queued=len(state.queued),
             active=state.active is not None, high_water=state.high_water, live_ready=False,
             last_outcome=self.last_outcome, last_entry_block=self.source.last_entry_block,
+            risk_drain_pending=self.source.risk_drain_pending,
+            risk_cancel_deferrals=self.source.risk_cancel_deferrals,
             entry_block_counts=dict(self.source.entry_block_counts))

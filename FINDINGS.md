@@ -1,5 +1,52 @@
 # Findings — kalshi-bot
 
+## 192. Lost protective-cancel key lets recovery overtake the pair — 2026-09-25
+
+**MEASURED:** Generation 168's local structured events, 12:41:15–13:06:35 ET,
+contain 20,374 records (30 WARNING, no ERROR/CRITICAL) and 36 correlated risk
+cancel ACKs. Submission-to-durable-ACK median is 0.229 s, p95 0.394 s, maximum
+0.563 s; this includes transport and persistence, not pure venue latency.
+Withdrawal-latch-to-submission median is 1.768 s, p95 11.389 s, max 12.619 s.
+The existing `elapsed_ms` starts at the first observed threat, including time
+before a cycle can latch: median 2.220 s, p95 19.410 s, maximum 31.665 s.
+
+The worst pair first warned at 12:49:42.273, latched at 12:50:01.116, submitted
+its first cancel at 12:50:01.472 and ACKed at 12:50:01.683. A `post_drain`
+recovery ran 12:50:01.953–12:50:07.231 with the second cancel still outstanding.
+That cancel submitted at 12:50:13.735 and ACKed at 12:50:13.938. This locates
+the delay mainly before transport; it does not prove every slow case has one cause.
+
+**VERIFIED offline:** The real source/dispatcher fixture ACKs the first leg and
+automatically queues the second. A temporary `account._processing` fence then
+returns `current_candidate_missing`; the dispatcher consumes the key. Baseline
+`47a0a92` treats the empty queue as drained and requests recovery, despite a
+fresh source lookup still returning the second cancel. Earlier tests manually
+submitted both keys and therefore did not exercise this lost-wake path.
+
+D-128 retains cycle-scoped scheduling intent across temporary blocks, wakes it
+from private-event completion or the existing refresh watchdog, and prevents
+routine/post-drain recovery from mistaking an empty queue for a finished drain.
+Every retry obtains new durable evidence and uses the existing quota/send fences.
+ACK/UNKNOWN orders are never blindly resent. Source changes, cycle replacement,
+terminal/fill handling, stop and bounded retry exhaustion are covered offline.
+Warnings deferred by another mutation/cycle are marked for fresh reevaluation
+at completion; old queue observations never become fresh authorization.
+
+The actual supervisor and half-second watchdog replay resumes a temporarily
+blocked second leg without manually submitting another key: ACK-pair gap
+0.510 s, two transport calls, no duplicate and no intervening recovery. This is
+a synthetic scheduler measurement, not a live venue latency guarantee.
+
+**Correction/limits:** Observation-gap emission counts are not seconds of blind
+monitoring and do not directly prove the cause of churn. Missing observations
+block that detection path; they do not automatically cancel resting orders.
+Successful queue publication still requires the existing account join, with
+original five-second expiry. D-128 does not loosen it or change reward ranking,
+thresholds, capacity or the latency-based protection horizon. Sparse health
+records with missing order counts are UNKNOWN, not zero occupancy. No absence
+of ERROR logs proves cancellation efficiency. Live improvement remains unmeasured
+until a separately authorized deployment. STATUS owns final verification.
+
 ## 191. Order-scoped warning survives report/reward renewal — 2026-09-25
 
 **VERIFIED offline:** A synthetic real-writer/manager fixture seeds an exact

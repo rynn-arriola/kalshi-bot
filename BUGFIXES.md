@@ -1,5 +1,17 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — popped risk-cancel key incorrectly counted as a completed drain
+
+D-128 retains bounded cycle-scoped scheduling intent when private work or a
+proven-unsent source race consumes the dispatcher key. Existing private/timer
+wakes retry with fresh ownership/quota/send checks. Recovery waits for an actual
+current durable no-candidate result or bounded escalation, not merely an empty
+queue. Permanent/ambiguous outcomes reconcile; ACK alone still frees no slots.
+Deferred warnings are reevaluated when another mutation/cycle finishes. Fixed-
+vocabulary deferral logs and status counters expose retry behavior. Finding 192
+owns the baseline reproduction and live timing evidence; STATUS owns release
+verification and deployment state.
+
 ## 2026-09-25 — reward/report joins suppressed fresh fill-risk warnings
 
 D-127 removes whole-report and reward-metadata dependencies from cancellation-

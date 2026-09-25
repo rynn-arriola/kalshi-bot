@@ -1,5 +1,33 @@
 # Current status
 
+## D-128 protective-cancel scheduling repair — 2026-09-25
+
+**Verified source release; not deployed.** Finding 192 reproduces a lost
+second-cancel key and premature recovery. Cycle-scoped pending intent now
+survives temporary private/source fences, wakes through existing event/timer
+owners, and prevents false drain completion. Deferred warnings are reevaluated
+after the mutation/cycle that delayed them. Fresh proof, bounded retries and
+UNKNOWN/terminal reconciliation remain mandatory; strategy is unchanged.
+
+All 15 new synthetic scheduling regressions pass. The 308-test fast gate passed;
+the complete release gate on the final source ran **1,826 tests in 345.808 s**,
+with no failures and one expected Windows symlink-privilege skip. An additional
+actual supervisor/watchdog synthetic replay automatically resumes the blocked
+second leg in 0.510 s, with two sends and no duplicate/recovery between legs.
+The four-shard/1,024-market fixture reaches 30 orders in 11.346 s, refills in
+0.516 s, and withdraws/refills in 1.096 s (cancel-pair gap 0.052 s). These are
+offline measurements, not live performance guarantees.
+
+Exact diff review, whitespace/secret checks and the 794-reference local-link
+audit pass apart from four pre-existing ignored research artifacts absent in
+isolation. Ignored `data-d128-fast-check.log` and `data-d128-release-check.log`
+retain verification output. Publish from the isolated checkout under D-065;
+leave the canonical runtime checkout at `47a0a92` until an authorized deployment.
+No live action or restart occurred. At 13:25:46 ET, generation 168's saved
+telemetry reported RUNNING, 30 resting entries, no positions and healthy logging
+with zero dropped records; its account report was not current at that instant,
+so this is local telemetry, not a fresh venue/account reconciliation.
+
 ## D-127 order-scoped fill-risk observation — 2026-09-25
 
 **Published, deployed and running.** Successful existing queue reads now seed

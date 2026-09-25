@@ -31,6 +31,7 @@ EVENTS = {
     'fill_risk_sample': ('INFO', 'inventory'),
     'fill_risk_observation_gap': ('INFO', 'inventory'),
     'fill_risk_cancel_ack': ('INFO', 'inventory'),
+    'risk_cancel_deferred': ('INFO', 'execution'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),
@@ -100,7 +101,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
 # never be admitted as human-readable diagnostic reasons.
 RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed
     steady_refresh_failed mutation_observed mutation_persisted safety_mutation_persisted
-    risk_cancel_outcome post_drain quota_restored private_fill_pending private_position
+    risk_cancel_outcome risk_cancel_retry_exhausted post_drain quota_restored private_fill_pending private_position
     private_scope_ambiguous private_order_pending account_subscribed opening_approved
     transient_retry unknown'''.split())
 RECOVERY_PHASES = frozenset('''idle first_snapshot history pending_fills missing_orders
@@ -138,6 +139,8 @@ BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit
     writer_revision_changed selection_changed metadata_source_changed metadata_result_changed
     metadata_expired runtime_unavailable request_changed account_source_changed
     account_report_expired other_source_boundary
+    current_candidate_missing stale_writer_evidence risk_account_book_proof_stale
+    proof_changed_before_submission
     incomplete_order_scope unowned_order_or_unaccounted_fills no_passive_touch
     await_terminal_cancellation_and_fill_proof live_authorization_missing inventory_age_unknown
     inventory_clock_regressed exit_terms_missing ioc_terminal_fill_proof_pending cancel_confirmation_pending

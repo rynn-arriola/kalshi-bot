@@ -121,6 +121,18 @@ class QuoteMaintenance:
         self._dwell.pop(ticker, None)
         self._cooldown[ticker] = self.runtime.clock()+30
         self.runtime._entry_dirty = True
+        self.wake_deferred_risk()
+
+    def wake_deferred_risk(self):
+        """Reevaluate warnings deferred by another mutation/cycle, not old proof."""
+        r = self.runtime
+        if (r.stop_requested.is_set() or r.engine.failed
+                or (self.cycle is not None and self.cycle.reason == 'fill_risk_withdrawal')):
+            return
+        for ticker in self._risk_since:
+            if ticker in r.engine.market_shard:
+                r.engine.dirty.mark(ticker)
+                r.engine.wake.set()
 
     def dispatch_result(self, result):
         """Decision-to-durable-ACK time includes dispatch/reconciliation waiting."""
