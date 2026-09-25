@@ -2,10 +2,12 @@
 
 ## D-123 stopped-bot repair
 
-1. Focused/native/full release verification and exact diff review passed; see STATUS.
-2. Publish and deploy the verified build under exclusive stopped-owner leases,
-   then restore the existing bot as requested. Check actual current status and
-   correlate errors using the diagnostic run ID, not the live-session ID.
+1. D-123 is verified, published and deployed; generation 160 is running and
+   rebuilding orders. Do not restart simply to prove the operation again.
+2. At subsequent checks, verify live safety-action recovery, occupancy/refill,
+   quota health and any native exit codes. Use `runtime.logging.run_id` for
+   logs, not the separate live-session ID. Offline regressions are not evidence
+   of a new real fill/exit cycle or indefinite uptime.
 3. Preserve separate unfinished Command 1 work; no unrelated feature merge.
 
 Earlier queues below are historical.

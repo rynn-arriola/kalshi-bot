@@ -2,11 +2,25 @@
 
 ## D-123 stopped-bot repair — 2026-09-25
 
-Generation 158 stopped after recovery exhaustion and an unexpected process exit;
-generation 159 is disarmed/attention-required, with both owners absent. Cleanup
-reported flat at 00:44 ET and a signed account check at 06:00:56 ET independently
-confirmed zero resting orders and positions. Finding 186 traces the incident and
-corrects the previous log-ID filtering claim.
+**Running again.** Published code `0c46bac` was deployed while all three
+account/process leases were held; ledger/config hashes were unchanged. The
+supported launcher started generation 160 at 06:20:35 ET. Its loaded build
+fingerprint matches the canonical package. At **06:26:34 ET**, both processes
+were present, supervisor health was healthy, telemetry age was 0.31 seconds,
+**24 entry orders** were resting with **zero positions**, account proof and
+entry authority were current, and no risk/accounting blockers were present.
+All six WebSocket readers subscribed; ranking reached 1,024/1,024. Two quota
+refreshes completed; logging/dispatch remained healthy. Refill is progressing
+toward the unchanged 30-order cap; full occupancy is not claimed.
+
+Live-session ID `8426ebaf437a48ed94f78e6fb25b5aad` and diagnostic run ID
+`a317637562834abfb8534613da53ed9c` are distinct. Correctly filtered current-run
+logs have zero ERROR/CRITICAL events and six startup REST retry warnings.
+This verifies restored operation, not indefinite uptime or future profitability.
+
+Earlier generation 158 exhausted recovery and exited. Generation 159's cleanup
+reported flat at 00:44 ET, independently confirmed by signed GETs at 06:00:56 ET.
+Finding 186 traces the incident and corrects the previous log-ID filtering claim.
 
 The isolated `fix/recovery-handoff-stall` branch repairs durable safety-action
 progress, the missing deadline log event and final-slot cleanup handoff, and
@@ -19,8 +33,9 @@ seconds; these are not live latency promises. Exact diff review, secret-pattern
 and whitespace checks pass. Local-link audit checks 787 references, with only
 four pre-existing ignored research artifacts unavailable in the isolated tree.
 Evidence: `data/startup-recovery-dev/data/d123-release.log`. No financial history
-or configuration changed. Publication/deployment and authorized restoration
-are next; no current running-bot claim is made yet.
+or configuration was rewritten. Code publication and local/origin/GitHub parity
+were verified before deployment. This operational record is documentation-only;
+it does not require repeating the full release suite or restarting again.
 
 Older operation records below are historical, not current liveness evidence.
 
