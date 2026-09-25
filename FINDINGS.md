@@ -1,27 +1,65 @@
 # Findings — kalshi-bot
 
+## 194. Refill review: logging omissions and evidence limits — 2026-09-25
+
+**VERIFIED offline:** A disposable `Diagnostics` sink given a synthetic mixed
+batch ACK (`order_count=1`, `rejected_count=1`) discards both fields because
+`observability.NUMBERS` lacks them. `execution.py` emits these counts after
+`record_batch_outcome`; a batch-level `mutation_ack` therefore does not prove
+that both orders were accepted. The same sink removes `candidate_not_selected`
+and `proposal_blocked` because `observability.BLOCKERS` omits them, retaining
+only `unknown_blockers=2`. Actual run logs show the corresponding missing detail.
+This is a diagnostic defect, not evidence of lost durable financial outcomes.
+Add fixed-vocabulary fields and mixed-result regression coverage in later work.
+
+**REVIEW CORRECTIONS:** Finding 193 previously mixed successive live log reads.
+Reanalysis bounded to sequences 1–90,380 gives 67 withdrawals, 134 protective
+ACKs and 13 repeated markets, rather than 68/136/14. All sequences are present.
+Its 81 batch-shaped ACKs cannot establish 162 accepted orders because of the
+logging omission above. The apparent `81*2-138=24` agreement is not a verified
+order reconciliation. The saved three-candidate proposal is explicitly
+`historical_only`; at the reported instant current account proof was absent.
+It shows recently identified candidates, not three immediately executable pairs.
+Zero read throttles and connected readers do not exclude local write-budget
+waiting, scheduler load or proof starvation on busy shards.
+
+**HYPOTHESIS TO TEST:** `runtime._ranked_entry_turn` clears `_entry_dirty` before
+awaiting the proposal and leaves it cleared on several temporary failure paths.
+However market evaluations, maintenance completion and dispatch-result wakes
+already rearm work. This is not a reproduced lost-wake defect or established
+cause of the live delay. Test a recovered vacancy without a new book tick,
+alongside active public/private traffic, before changing retry behavior. Retain
+bounded event-driven work and never retry an ambiguous submitted command.
+
+**STRATEGY LIMIT:** Repeated withdrawals are measured, but a ranking penalty's
+benefit is unproved. Withdrawal ETA uses conservative aggregate-depth depletion;
+same-price cancellations behind us and temporary depth changes can overstate
+loss of queue protection. Compare each warning's original queue age, depth,
+depletion rate and cancellation horizon before recommending threshold or ranking
+changes. Fresh cancellation priority remains required. These are saved future
+work items; this review changes documentation only.
+
 ## 193. Eligible-market supply is not the resting-order bottleneck — 2026-09-25
 
 **MEASURED:** Generation 170 run `587e5d6eaf2044afbff1ae5ba6632f3b`
 produced 90,380 retained structured events from 13:51:44 through 15:39:53 ET.
-It completed 68 protective pair withdrawals (136 correlated cancel ACKs) across
-31 market references. Fourteen markets were withdrawn more than once and the
-most repeated market was withdrawn eight times. The run recorded 81 entry-pair
-ACKs and 138 single-order cancel ACKs; 136 cancel ACKs belong to those protective
-withdrawals and two are outside that count. The resulting order arithmetic,
-`81 * 2 - 138 = 24`, matches saved status at 15:40:19 ET: 24 resting entries,
-no positions, `$100.30` exposure and three currently proposed two-sided
-additions—exactly enough to restore the 30-order cap after current proof
-recovered. Startup and withdrawal overlapped, so the entry-pair events cannot
-be partitioned into 15 initial pairs plus a simple replacement count.
+Bounded reanalysis of sequences 1–90,380 finds 67 protective pair withdrawals
+(134 correlated cancel ACKs) across 31 market references. Thirteen markets
+recurred; the most repeated market was withdrawn eight times. There are 81
+batch-shaped ACKs and 138 single-order ACKs. Batch accepted/rejected counts were
+discarded by logging (Finding 194), so these events cannot reconstruct exact
+occupancy. Saved status at 15:40:19 ET reported 24 resting entries, no positions
+and a recent historical proposal containing three two-sided additions, while
+current account proof was absent. Startup and withdrawals overlapped.
 
 For 66 withdrawals with a correlated two-cancel completion and a later entry
-pair, time from the second cancel ACK to the next *any-market* entry-pair ACK was
-median 46.083 s, p95 210.911 s and maximum 343.995 s. Concurrent withdrawals
-mean this is an optimistic portfolio-refill marker, not exact same-market or
-same-slot attribution. Cancellation itself is not the bottleneck: the first
-66-minute control already measured pair completion at median 1.441 s and maximum
-3.980 s.
+batch, monotonic time from the second cancel ACK to the next *any-market*
+batch-shaped ACK was median 46.084 s, p95 210.915 s and maximum 344.001 s.
+Concurrent withdrawals and missing per-leg batch counts make this an optimistic
+refill-attempt marker, not proof of restored slots. All 67 protective pairs have
+two distinct cancel ACKs before their next same-market withdrawal; latch-to-last
+ACK was median 1.439 s, p95 3.902 s, maximum 4.519 s. This excludes the earlier
+warning-to-latch wait and is not a bound on total protective response time.
 
 At 15:40:19 ET, all six readers remained on their first subscribed connection,
 the shared read budget had zero throttles, dispatch and logging were nonfailed,
@@ -29,15 +67,17 @@ and logging had zero drops. The selector retained 30 priority-candidate hints
 and its last proposal contained three `$2+` additions with no proposal blocker.
 The runtime was instead in account recovery with entry authority revoked. The
 latest candidate had then failed its send fence because its book revision changed.
-This rules out WebSocket count, the 30-order cap, rate limiting, capital, and
-reward-program scarcity as the immediate cause of low occupancy in this sample.
+This supports recovery and proof freshness as immediate entry blockers. It does
+not prove all remembered candidates remain eligible, exclude local write-quota
+waiting or establish whether more shards would improve processing latency.
 
 **VERIFIED in source:** Admission ranks current candidates by gross hourly reward
 and then capital efficiency; it does not include pre-entry depletion/fill-risk
 history. A protective withdrawal applies only a 300-second market cooldown.
 Ranked scheduling submits `proposal.additions[0]`, so vacant pairs are filled
-serially. Every persisted/observed mutation revokes entry authority and requests
-account recovery, and dispatch then reproposes and rechecks management, account,
+serially. Ordinary entry mutation callbacks revoke entry authority and request
+account recovery; latched protective cancels defer full recovery until their pair
+drains. Dispatch then reproposes and rechecks management, account,
 metadata, book and selection proof before send. By the 15:40 sample this had
 produced 421 management-proof blocks, 319 send-proof changes, 135 proposal
 changes, 10 missing-account-report blocks and one authority block, alongside
@@ -45,8 +85,8 @@ changes, 10 missing-account-report blocks and one authority block, alongside
 
 **INFERRED:** Frequent intentional fill-risk withdrawals create the vacancies;
 serial recovery/revalidation and moving-book proof loss determine how long those
-vacancies remain. Re-admitting markets with repeated withdrawal history adds
-avoidable churn. The safe repair should preserve exact current account/book
+vacancies remain. Re-admitting repeatedly withdrawn markets is a candidate for
+churn reduction, whose benefit needs testing. A repair must preserve current account/book
 proof and cancellation precedence: first attribute the 46-second refill path by
 stage, then keep bounded vacancy demand armed through recovery, and separately
 evaluate a fill-risk/depth stability input to ranking. That ranking change is a

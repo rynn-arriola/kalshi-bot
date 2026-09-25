@@ -1,25 +1,31 @@
 # Current status
 
+## Occupancy findings rechecked — 2026-09-25
+
+Documentation review only; no code, configuration or runtime change. Finding 194
+corrects mixed log cutoffs and overclaims in Finding 193. The fixed 90,380-event
+window contains 67 protective withdrawals across 31 markets, with 13 markets
+repeated. Recent candidate proposals are historical during account recovery.
+Batch ACK events lack accepted/rejected counts, so exact restored-slot latency
+and accepted-order totals cannot be inferred from them. A synthetic logging probe
+reproduces that omission and two discarded ranking-block reasons. NEXT contains
+the ordered diagnostic and repair work, including unproved retry and strategy
+hypotheses. The earlier assertion that rate limits/shard throughput were ruled
+out is withdrawn; connected readers and zero read throttles are narrower evidence.
+Verification: 308 fast-gate tests and 38 logging tests pass; the synthetic
+mixed-batch logging probe reproduces the saved defect. The local documentation
+link audit checks 791 references with no missing targets; generated upstream
+API-reference links are excluded. Full release tests were not rerun for this
+documentation-only change. No implementation or deployment is claimed.
+
 ## Generation 170 low-occupancy diagnosis — 2026-09-25
 
-**Reviewed read-only; no runtime change.** Finding 193 shows that current
-reward-market supply is sufficient. From 13:51:44 through 15:39:53 ET, the live
-run completed 68 protective pair withdrawals, 81 entry-pair ACKs and 138
-single-order cancel ACKs. Startup and withdrawals overlapped, so there is no
-valid 15-initial-plus-replacements partition; the direct order arithmetic
-matches the saved 24 resting entries at 15:40:19 ET. It had no positions and
-three current proposed pairs, but account recovery had revoked entry authority
-and a candidate then lost current book proof. All six readers, shared read
-budget, dispatch and logging were healthy.
-
-The observed low count is therefore vacancy churn plus slow safe refill, not a
-smaller cap or too few eligible markets. Second-cancel-ACK to next any-market
-entry-pair ACK measured median 46.083 seconds, p95 210.911 and maximum 343.995
-over 66 samples; overlapping withdrawals make this an optimistic portfolio
-marker rather than exact slot attribution. Fourteen of 31 withdrawn markets
-recurred, with one withdrawn eight times. The active queue in NEXT owns stage
-attribution and a bounded repair. No restart, order mutation, configuration or
-strategy change occurred during this review.
+**Reviewed read-only; corrected by Finding 194 above.** Saved telemetry at
+15:40:19 ET reported 24 resting entries, no positions and a recent proposal of
+three pairs, with account authority unavailable. Finding 193 preserves the
+corrected fixed-window counts and timing. Protective churn and delayed entry
+admission are observed; precise delay attribution remains pending. No restart,
+order mutation, configuration or strategy change occurred during this review.
 
 ## D-128 protective-cancel scheduling repair — 2026-09-25
 

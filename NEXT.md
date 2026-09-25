@@ -2,33 +2,39 @@
 
 ## Post-withdrawal refill latency
 
-1. Investigate and reproduce the slow replacement path after a protective pair
-   withdrawal. In generation 170's first 108 minutes, 68 protective pairs were
-   withdrawn across 31 markets; 14 markets recurred and one recurred eight
-   times. All 44 cancel pairs in the first 66 minutes ACKed in a median 1.441
-   seconds (maximum 3.980), while second-cancel-ACK to the next any-market entry
-   pair measured median 46.083 seconds, p95 210.911 and maximum 343.995 over 66
-   samples. Concurrent withdrawals make the latter an optimistic portfolio
-   marker, not exact same-slot attribution. Finding 193 owns the evidence.
-2. Attribute the delay across terminal/account reconciliation, candidate
-   revalidation, management proof and send-edge book churn. At 15:40 ET,
-   cumulative diagnostics included 421 management-proof blocks, 319 send-proof
-   changes, 135 proposal changes and 532 recovery starts; counts alone do not
-   establish which stage owns each gap. Include recovery-complete-to-proposal,
-   proposal-to-preparation and preparation-to-send/ACK timing.
-3. Design and verify a bounded event-driven repair that prioritizes a genuine
-   vacant pair after reconciliation and retains the demand through transient
-   proof loss without reserving capacity indefinitely, retrying ambiguous
-   commands, weakening fresh ownership/book/account proofs, changing fill-risk
-   thresholds or bypassing ranked $2/$1 admission. Keep one writing worker.
-4. Present repeated-withdrawal/depth stability as a separate strategy option.
-   Current ranking uses reward rate/capital efficiency and a five-minute risk
-   cooldown, so it can re-admit a repeatedly threatened market. Do not implement
-   a ranking penalty or threshold change without an operator decision.
-5. Acceptance must measure withdrawal-to-pair-ACK and pair-ACK-to-restored-slot
-   latency under synthetic races and a separately authorized live deployment.
-   Thirty resting orders is a cap, not a guaranteed occupancy or permission to
-   retain an unsafe pair.
+Findings 193–194 own the corrected evidence. This queue is saved for later
+implementation; the review did not change the live bot.
+
+1. Repair the reproduced logging omissions first: allow the emitted bounded
+   `order_count`/`rejected_count` fields and fixed `candidate_not_selected` /
+   `proposal_blocked` reasons. Test mixed batch outcomes and unknown-field
+   redaction through the real sink. Never infer two accepted legs from one ACK.
+2. Attribute vacancy delay using one frozen run/sequence range and original
+   timestamps. Correlate warning, latch, cancel submissions/ACKs, terminal/fill
+   reconciliation, account release, proposal, preparation and accepted legs.
+   Include local write-budget waiting and public/private backlog. Report
+   unresolved intervals; a historical proposal is not current entry authority.
+   Existing median 46.084-second next-batch timing is not restored-slot latency.
+3. Reproduce the proposed lost-retry issue before repairing it. Exercise
+   `_ranked_entry_turn` clearing `_entry_dirty` on transient proposal/source
+   loss, then recovery without another book tick. Verify existing maintenance,
+   dispatch-result and market-evaluation wakes under a busy four-shard stream.
+   Retain bounded vacancy demand only if a missing wake is demonstrated; avoid
+   hot loops, competing writers, reserved empty slots or ambiguous-order retries.
+4. Repair whichever stage the replay identifies while preserving current
+   ownership/account/book proof, safety precedence and ranked $2/$1 admission.
+   Measure the contribution of serial reconciliation and candidate displacement
+   before changing concurrency or adding shards. Counters alone are not durations.
+5. Review repeated withdrawals separately: 67 protective pairs across 31
+   markets in the fixed 108-minute window; 13 markets repeat, one eight times.
+   Compare exact queue age, depth/depletion and cancel horizon at each warning;
+   conservative depletion may include cancellations behind our order. Evaluate
+   stability/risk ranking only after this check. No threshold, cooldown or
+   ranking-policy change without the operator's decision.
+6. Acceptance: synthetic transient races, no-new-tick recovery, mixed batches,
+   concurrent vacancies, safety preemption and no duplicate sends; measure
+   confirmed restored-slot latency and then separately authorized live results.
+   Thirty is a cap, not a guarantee or permission to retain threatened orders.
 
 ## D-128 protective-cancel scheduling repair
 
