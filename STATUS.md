@@ -1,5 +1,36 @@
 # Current status
 
+## D-117 repricing isolation — source fixed, not deployed, 2026-09-24
+
+Finding 179's account-wide maintenance admission gate is now market-local.
+Unrelated markets retain ordinary ranking and all source/account/risk checks;
+the waiting market cannot reserve the whole account's available order slots.
+Same-ticker replacement still requires its exact program and terminal/fill proof.
+The synthetic selector fills 20 to 30 slots with eligible alternatives, and the
+production-mode synthetic entry graph acknowledges an unrelated pair while the
+other market's reprice remains pending. This is not measured live refill.
+
+Implementation is isolated in `data/maintenance-isolation-dev` on
+`fix/market-local-repricing`; the active canonical source package is untouched.
+The 32-test maintenance suite and 288-test fast gate pass. The full release gate
+passes 1,707 tests in 318.865 seconds with one expected Windows symlink-privilege
+skip. Logs remain ignored at `data/maintenance-isolation-full.log` and
+`data/maintenance-isolation-dev/data-fast-results.log`. Four regressions failed
+with the original gate. Source/test diff review and changed-document local-link
+checks pass. No production requests, runtime configuration, ledger or process
+changes were made for this fix. Restart/deployment needs a separate command.
+
+Publish this verified commit from the isolated release checkout to GitHub master;
+keep canonical `C:/Users/rynna/Bots/kalshi` pinned to `05641ec` while its current
+child runs. The tested release checkout, not the pinned production checkout,
+is the local/remote parity target until the next authorized deployment.
+
+The separate command-1 worktree remains pending and is not part of this release.
+Its initial full-run log contains supervisor faults and still needs corrected
+environment verification; do not mistake D-117 tests for command-1 clearance.
+
+Earlier runtime snapshots below are historical observations, not current proof.
+
 ## Live trading resumed; emergency command remains isolated — 2026-09-24 20:12 ET
 
 Release `40b69f0` is published with local/remote parity. The stopped-owner

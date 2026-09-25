@@ -29,6 +29,7 @@ from kalshi_bot.rest import WireResponse
 from kalshi_bot.rest import RestReads, TokenBudget
 from kalshi_bot.quota import QuotaGuard, QuotaPolicy, ProbeConfig
 from kalshi_bot.quota_supervisor import QuotaSupervisor
+from kalshi_bot.quote_maintenance import MaintenanceCycle
 from kalshi_bot.risk import WindowState, window_bounds
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot import startup
@@ -121,6 +122,35 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(evidence[0]['order_ids']),set(result.order_ids))
         self.assertEqual(len(evidence[0]['client_order_ids']),2)
         self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
+
+    async def test_unrelated_stalled_maintenance_allows_real_entry_graph(self):
+        self.runtime.attach_rewards(scope='synthetic-live')
+        maintenance = self.runtime.attach_maintenance()
+        # No current B market evidence: its pending reprice cannot replace, but
+        # A has real synthetic account/metadata/book proof and can still enter.
+        maintenance.cycle = MaintenanceCycle('B', program(ticker='B'), (),
+                                             'restore_reference_pair', True)
+        cycle = maintenance.cycle
+        self.assertFalse(maintenance.entry_allowed('B', 'P'))
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(all(row['ticker'] == 'A' for row in self.calls[0][1]))
+        self.assertIs(maintenance.cycle, cycle)
+        self.assertEqual(len(result.order_ids), 2)
+        self.assertEqual({row['phase'] for row in await self.f.writer.mutations()}, {'ACK'})
+
+    async def test_same_market_changed_program_still_blocks_real_entry_graph(self):
+        self.runtime.attach_rewards(scope='synthetic-live')
+        maintenance = self.runtime.attach_maintenance()
+        maintenance.cycle = MaintenanceCycle('A', program(program_id='OLD'), (),
+                                             'restore_reference_pair', True)
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertFalse(await self.f.writer.mutations())
 
     async def test_background_evaluation_during_entry_risk_read_keeps_exact_proof(self):
         original = self.runtime.risk_view

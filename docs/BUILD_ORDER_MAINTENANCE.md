@@ -51,10 +51,13 @@ scanner, process or venue client. Only normal composition attaches it.
 - Cancel through the sole writer, reconcile terminal records/all fills, then
   re-evaluate a fresh same-program pair. Never submit the original cached price.
   A fill hands control back to inventory exits.
-- During the one cycle, new-market additions wait so they cannot steal its
-  released capacity. Exits/account work continue. Failed current gates, program
-  end or insufficient reduced cap release only a proven-flat owner. Missing
-  evidence waits visibly; no overlapping replacement or guessed cancellation.
+- D-117 makes the one cycle's admission restriction market-local. Other markets
+  use ordinary ranked admission and shared capacity even while this ticker's
+  evidence is missing; no free slots are reserved for its eventual replacement.
+  Failed current gates, program end or insufficient remaining cap release only
+  a proven-flat owner. Same-ticker replacement still waits for terminal/fill and
+  fresh same-program evidence. Exits/account work and the single writer retain
+  priority; no overlapping replacement or guessed cancellation is introduced.
 - New entries retain $1 projected remaining and $2 priority. A continuation may
   use its own nonconflicting sampled accrued estimate plus remaining projection,
   not estimates from another/changed program. It need not earn another future

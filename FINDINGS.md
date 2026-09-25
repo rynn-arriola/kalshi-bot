@@ -1,5 +1,24 @@
 # Findings — kalshi-bot
 
+## 179. A market-local reprice imposed an account-wide entry gate — 2026-09-24
+
+**VERIFIED:** `QuoteMaintenance.entry_allowed` admitted only the active cycle's
+ticker/program. That predicate runs in ranked selection, dispatch preparation
+and the final selection-proof fence, so WebSocket shards could not isolate it.
+Generation 144's 20:17 ET telemetry still showed the AALCC T104 replacement
+cycle with `entry_proposal_missing_or_changed`; direct venue evidence at 20:14 ET
+had 20 resting orders in ten markets and no positions. This does not establish
+the total number of currently eligible markets or explain every source deferral.
+
+D-117 allows unrelated tickers through this predicate only; their normal source,
+reward, cash, account and writer risk checks still apply. Same-ticker gates and
+terminal/fill reconciliation are unchanged. One maintenance cycle remains;
+this is admission isolation, not concurrent repricing workers or more shards.
+Four regressions failed on the old gate, including an actual production-mode
+entry graph with synthetic transport. The repaired selector fills ten available
+slots from 20 to 30 in a synthetic fixture, not a live occupancy guarantee.
+Release verification and deployment state belong in STATUS.
+
 ## 178. Manual close used three fills — 2026-09-24
 
 Fresh read-only venue inspection confirmed zero orders and positions after the

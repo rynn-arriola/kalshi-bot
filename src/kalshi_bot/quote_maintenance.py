@@ -61,7 +61,10 @@ class QuoteMaintenance:
 
     def entry_allowed(self, ticker, program_id):
         c = self.cycle
-        if c is None:
+        if c is None or c.ticker != ticker:
+            # The cycle coordinates only this market's withdrawal/re-entry.
+            # Other markets still pass ordinary ranked admission and the sole
+            # writer's shared risk/cap checks; never reserve all free slots.
             return True
         observation = self.runtime.selection._observation(ticker)
         return (c.reenter and c.ticker == ticker and c.program.program_id == program_id
@@ -194,8 +197,9 @@ class QuoteMaintenance:
                 self._finish(ticker)
                 self.bindings.pop(ticker, None)
                 return  # The ratchet may tighten while cancellation is pending.
-            # Only the same program can use the freed capacity. Unknown sources
-            # wait; a freshly evaluated failed gate releases a flat/clear owner.
+            # Only the same program can re-enter this ticker. Other markets may
+            # use free capacity; unknown local sources cannot stall their entries.
+            # A freshly evaluated failed gate releases a flat/clear owner.
             if r.selection.current(ticker):
                 observation = r.selection._observation(ticker)
                 if observation is not None and c.program not in observation.programs:

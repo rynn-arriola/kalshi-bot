@@ -1,5 +1,11 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-117 scopes the maintenance admission gate to its own ticker, not every shard.
+Other qualified markets can fill available capacity through the existing ranked
+selector and sole writer. No free slots are earmarked for replacement; shared
+limits remain authoritative. Same-ticker continuation still requires terminal/
+fill proof and the unchanged program, and yields when the cap has no pair room.
+
 The sole dispatcher's active entry key temporarily owns that ticker's advisory
 publication. Background evaluation and in-flight inventory reads defer publication
 until its result requeues the market. This does not pause book/private ingestion,

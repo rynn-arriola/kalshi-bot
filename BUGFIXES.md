@@ -1,5 +1,15 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — stalled repricing blocked unrelated new orders
+
+Finding 179 traced the shared maintenance predicate across selection and the
+dispatch/send fences. It now restricts only its own ticker, preserving exact
+same-program and terminal/fill checks. Other qualified markets can consume
+ordinary shared capacity; the stalled replacement has no exclusive slot claim.
+Regressions cover unrelated entry ACK, changed-program rejection, missing local
+proof, withdrawal-only cycles, 20-to-30 selection and tightened/odd caps. Existing
+cancel-ACK, partial-fill, stale-send, risk and inventory-priority tests remain.
+
 ## 2026-09-24 — manual close split across prices blocked restart
 
 The explicit operator-close primitive assumed one fill at the order limit.

@@ -1,5 +1,12 @@
 # What exists
 
+## Market-local maintenance admission — D-117, 2026-09-24
+
+The maintenance predicate no longer globally freezes ranked additions while one
+market awaits replacement. Existing selection, dispatch proof and writer checks
+remain the only route to execution. No new worker, shard, quota, timer or database
+schema is introduced. See Finding 179 and STATUS for verification/deployment.
+
 ## Exact split-fill operator close — 2026-09-24
 
 Explicit stopped-owner reconciliation supports up to 128 actual fills for one

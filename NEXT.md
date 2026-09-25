@@ -1,5 +1,20 @@
 # Active work queue
 
+## D-117 release handoff — market-local repricing admission
+
+1. D-117 implementation/review and full release verification are finished;
+   evidence and source location are in STATUS. Publish the reviewed commit from
+   that isolated checkout; do not hot-update the active package or restart merely
+   to prove synthetic tests.
+2. At the next explicitly authorized restart, safely stop the exact current
+   owner, then fast-forward the clean canonical checkout to the published
+   master. Verify source identity before the supported start and measure actual
+   refill. Do not promise 30 orders or assume every historical rank is current.
+3. Keep command-1 changes in their separate `data/command1-dev` worktree. They
+   are not included in D-117 and still need their own verification/integration.
+
+The older active queue below is retained as background, not a competing task.
+
 ## Active now — trading runs independently of command-1 development
 
 1. Manual-close accounting and supported restart are finished on `40b69f0`;

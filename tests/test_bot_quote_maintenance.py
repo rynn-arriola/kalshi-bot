@@ -9,7 +9,7 @@ from test_bot_reward_tracker import QueueReads
 from kalshi_bot.config import BotConfig
 from kalshi_bot.dispatch import QUOTE_CANCEL, ENTRY_PAIR, SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
 from kalshi_bot.orders import OrderUpdate
-from kalshi_bot.quote_maintenance import MaintenanceCycle
+from kalshi_bot.quote_maintenance import MaintenanceCycle, QuoteMaintenance
 from kalshi_bot.selection import MarketSelector
 import test_bot_dispatch_sources as dispatch_fixtures
 from test_bot_inventory_risk import request
@@ -153,11 +153,11 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(self.m.cycle, old)
         self.assertGreater(self.m.cycle.evidence_valid_until, self.f.now)
 
-    async def test_drift_reserves_same_program_not_better_spare(self):
+    async def test_drift_restricts_same_market_program_not_unrelated_entries(self):
         await self.drift()
         self.assertTrue(self.m.cycle.reenter)
         self.assertTrue(self.m.entry_allowed('A', 'P'))
-        self.assertFalse(self.m.entry_allowed('B', 'P'))
+        self.assertTrue(self.m.entry_allowed('B', 'P'))
         self.assertFalse(self.m.entry_allowed('A', 'OTHER'))
         candidate = await self.f.source.refresh('A', QUOTE_CANCEL)
         self.assertIn(candidate.request['order_id'], self.m.cycle.order_ids)
@@ -378,6 +378,45 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ContinuationTests(unittest.TestCase):
+    def test_stalled_market_allows_twenty_to_thirty_without_reserved_slots(self):
+        # Unknown/changed A proof must not be consulted for other markets.
+        def unavailable(_):
+            raise AssertionError('unrelated entry read stalled market proof')
+        owner = QuoteMaintenance(SimpleNamespace(selection=SimpleNamespace(
+            _observation=unavailable)))
+        owner.cycle = MaintenanceCycle('A', program(), (), 'restore_reference_pair', True)
+        selector = MarketSelector()
+        for ticker in ('B', 'C', 'D', 'E', 'F', 'G'):
+            selector.update(replace(book(), ticker=ticker),
+                (program(ticker=ticker, pool_centicents=5000000),),
+                terms=terms(ticker), now=NOW, valid_until=NOW+timedelta(seconds=4))
+        args = dict(view=view(entry_count=20, exposure=(('EXISTING', D(180)),)),
+            window=window(), free_cash=D(320), account_known=True,
+            now=NOW, current=lambda t: True, entry_allowed=owner.entry_allowed)
+        result = selector.propose(**args)
+        self.assertEqual(len(result.additions), 5)
+        self.assertEqual(20+2*len(result.additions), 30)
+        self.assertTrue(all(row.ticker != 'A' for row in result.additions))
+        self.assertIn('entry_cap', dict(result.exclusions)['G'])
+        # Ratcheted limits still apply; a single free slot is not a pair.
+        for cap, pairs in ((21, 0), (24, 2), (30, 5)):
+            with self.subTest(cap=cap):
+                self.assertEqual(len(selector.propose(
+                    **(args | {'window': window(cap=cap)})).additions), pairs)
+        for overrides in ({'window': window(held=True)}, {'account_known': False},
+                          {'free_cash': D(0)}, {'current': lambda t: False}):
+            with self.subTest(gate=overrides):
+                self.assertFalse(selector.propose(**(args | overrides)).additions)
+
+    def test_withdrawal_and_unknown_same_market_proof_remain_local(self):
+        owner = QuoteMaintenance(SimpleNamespace(selection=SimpleNamespace(
+            _observation=lambda _: None)))
+        for reenter in (True, False):
+            owner.cycle = MaintenanceCycle('A', program(), (), 'withdraw', reenter)
+            self.assertTrue(owner.entry_allowed('B', 'P'))
+            self.assertFalse(owner.entry_allowed('A', 'P'))
+            self.assertFalse(owner.entry_allowed('A', 'OTHER'))
+
     def test_earned_credit_is_only_for_same_program_and_never_bypasses_risk(self):
         s = MarketSelector()
         p = program(pool_centicents=100000)

@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-117 — Market-local repricing admission
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator: “Ok can we do that then,” accepting isolation
+  of a stalled repricing market instead of blocking all shards' new entries.
+- **Scope:** Restrict same-program replacement only on the maintenance ticker.
+  Other qualified markets may use available slots under ordinary ranking and
+  the shared cap; a maintenance cycle does not reserve the account's free slots.
+- **Boundary:** Preserve one writer, one maintenance cycle, exact terminal/fill
+  reconciliation, fresh dispatch proofs, safety priority and existing risk limits.
+  No new shards, parallel writers, price-policy changes or live restart authorized.
+  D-098's global new-entry waiting rule is superseded only by this isolation.
+
 ### D-116 — Explicit command 1 flatten/restart and restart-friction repair
 
 - **Status:** ACCEPTED, 2026-09-24.
