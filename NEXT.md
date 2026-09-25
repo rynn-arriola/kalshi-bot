@@ -2,23 +2,21 @@
 
 ## D-125 command-capacity archive repair
 
-1. The 1,787-test complete release gate passes; finish exact diff/security review.
-2. Publish under D-065, fast-forward the stopped canonical checkout, verify the
-   installed source, then use the already authorized Command 1 restart.
-3. Confirm one real archive, healthy account/dispatch/logging, and rebuilt
-   resting entries. Do not claim constant 30-order occupancy or profitability.
-4. Keep ACK/rejected/unknown and all financial evidence hot; archive only exact
+1. D-125 is verified, published and deployed; generation 164 created one real
+   archive and rebuilt up to 28 orders with zero positions. Do not restart merely
+   to prove it again.
+2. Monitor sustained occupancy and residual `book_queue_pending` /
+   `book_revision_changed` proof churn separately. Do not treat a momentary
+   26–28 count as a changed cap, guaranteed eligibility or profitability.
+3. Keep ACK/rejected/unknown and all financial evidence hot; archive only exact
    `NOT_SENT` creates from retired episodes.
 
 ## D-124 replacement refill repair
 
-1. D-124 implementation, exact review and full release verification are finished;
-   see STATUS and Finding 187. Keep the running canonical source pinned to D-123
-   until the next authorized deployment, even after source publication.
-2. At a separately authorized deployment/restart, measure replacement latency,
-   remaining NOT_SENT attempts and new blocker details. Do not equate synthetic
-   refill with live acceptance or a guarantee of constant 30-order occupancy.
-3. Preserve separate unfinished Command 1 work; no unrelated merge.
+1. D-124 is verified and deployed with D-125. Initial live diagnostics separate
+   queued/changed book proof from the removed redundant risk-read windows.
+2. Continue any residual occupancy investigation under D-125 item 2; do not
+   equate synthetic refill or a momentary live count with guaranteed occupancy.
 
 ## D-123 stopped-bot repair
 

@@ -2,8 +2,7 @@
 
 ## D-125 command-capacity archive repair — 2026-09-25
 
-**Release verification complete; bot stopped with zero saved resting entries
-and zero saved positions.** Generation 162 loaded D-124 but every entry pair was
+**Published, deployed and running.** Generation 162 loaded D-124 but every entry pair was
 blocked by `capacity_entries_held`: the durable ledger contained 4,124 mutation
 rows above the unchanged 4,096 ordinary-entry boundary. All 1,487 reclaimable
 rows are creates durably proved `NOT_SENT`, have aborted intents, no order
@@ -22,17 +21,39 @@ production ledger. Focused command-capacity and entry-dispatch tests pass. The
 complete release gate passes **1,787 tests in 361.473 seconds**, with one expected
 Windows symlink-privilege skip. Its 1,024-book fixture reaches 30 in 10.025s,
 refills in 0.507s and completes risk refill in 1.123s; these are synthetic, not
-live timing or profitability evidence. Exact deployment and live refill remain
-pending.
+live timing or profitability evidence. Deployment and initial live results are
+recorded below.
+
+Commit `7c4a941` is published with local/origin parity and deployed in the
+canonical Windows checkout. Before deployment, the stopped ledger was backed up
+to ignored `data/trader/d125-backup-20260925T132701Z/account.db`; its integrity
+check passed and it retained 4,124 mutations with zero resting orders. The source
+database hash remained unchanged through backup and source deployment. Canonical
+post-deployment command-capacity, entry-dispatch and live-runtime checks pass 82
+tests.
+
+The supported Command 1 start launched generation 164 with build fingerprint
+`405377301ead50416d88ca9f9f08c75e4b3f8eea900dc228cfb7d46d08369377`.
+Its first eligible entry transaction archived 512 rows (104,813 compressed
+bytes); hot mutation/intent counts fell to 3,612/2,374 before new orders. SQLite
+quick-check passes. All six WebSocket readers subscribed and initial ranking
+completed 1,024/1,024 markets. Resting entries rebuilt from zero to 28 and were
+26 at the 09:33 ET observation, with zero positions. Engine, dispatcher and
+logging are nonfailed/healthy and current run `80ceba049c93499698bb5f994b748bdf`
+has no matched ERROR/CRITICAL event. The supervisor was in a normal recovery
+pass at that instant after book/account proof changed; live status alternated
+with current entry authority while rebuilding. D-125's capacity failure is
+resolved, but constant 30-order occupancy is not claimed: current residual
+blocks identify queued/changed book proof and candidate changes.
 
 ## D-124 replacement refill repair — 2026-09-25
 
-**Release verification complete; not deployed.** Branch `fix/replacement-proof-churn`
+**Deployed with D-125; this section is the predeployment verification record.** Branch `fix/replacement-proof-churn`
 in `data/startup-recovery-dev` removes redundant portfolio awaits after entry
 price capture and adds discriminating rejection details. Finding 187 records
 the failing-before reproduction and corrects the cooldown-only explanation.
-The canonical checkout and running generation 160 remain on D-123. No restart,
-venue request, ledger modification or configuration change occurred in this task.
+The source-only D-124 task itself performed no restart, venue request, ledger
+modification or configuration change. Generation 164 now includes this repair.
 
 The fast gate passed 301 tests before three additional negative fixtures. The
 final full gate passes **1,784 tests in 344.413 seconds**, with one expected
@@ -45,11 +66,12 @@ bookkeeping during account gaps; all 31 ranking tests pass. Exact source/test
 diff review and whitespace/secret checks pass. The local-link audit checks 787
 relative references; only four pre-existing ignored research artifacts are
 absent in isolation. No known blocking issue remains in this scoped repair.
-Actual improvement in live refill remains unverified until authorized deployment.
+Live startup rebuilt as high as 28 orders; residual blockers now identify queued
+or changed book proof. Sustained occupancy and cause coverage remain unverified.
 
 ## D-123 stopped-bot repair — 2026-09-25
 
-**Running again.** Published code `0c46bac` was deployed while all three
+**Historical generation-160 snapshot.** Published code `0c46bac` was deployed while all three
 account/process leases were held; ledger/config hashes were unchanged. The
 supported launcher started generation 160 at 06:20:35 ET. Its loaded build
 fingerprint matches the canonical package. At **06:26:34 ET**, both processes
