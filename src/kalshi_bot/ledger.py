@@ -144,6 +144,13 @@ CREATE INDEX IF NOT EXISTS credits_episode ON command_credits(episode_id,state);
 CREATE INDEX IF NOT EXISTS credits_owner ON command_credits(owner_id,state,purpose);
 CREATE TABLE IF NOT EXISTS command_capacity_counters (
   resource TEXT PRIMARY KEY, used INTEGER NOT NULL, held INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS command_episodes_state ON command_episodes(state,created_at);
+CREATE INDEX IF NOT EXISTS authorizations_episode ON command_authorizations(episode_id);
+CREATE INDEX IF NOT EXISTS recovery_fills_order ON recovery_fills(json_extract(id,'$[0]'));
+CREATE TABLE IF NOT EXISTS command_archive_rollup (
+  id INTEGER PRIMARY KEY CHECK(id=1), root TEXT NOT NULL, archive_count INTEGER NOT NULL,
+  attempt_count INTEGER NOT NULL, intent_count INTEGER NOT NULL,
+  first_created_at TEXT NOT NULL, last_created_at TEXT NOT NULL, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS command_history_archives (
   id TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL, intent_count INTEGER NOT NULL,
   authorization_count INTEGER NOT NULL, credit_count INTEGER NOT NULL,

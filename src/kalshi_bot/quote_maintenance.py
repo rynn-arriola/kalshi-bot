@@ -59,7 +59,8 @@ class QuoteMaintenance:
         self.fill_risk = FillRisk()
         self._risk_cooldown = {}
         self._risk_since = {}
-        self._cycle_started = None
+        self._cycle_started = None  # First warning; diagnostic decision delay.
+        self._cycle_latched = None  # Latched decision; D-129 cancel budget.
         self._cycle_acks = set()
         self._risk_queues = {}
         self._risk_log_at = {}
@@ -116,6 +117,7 @@ class QuoteMaintenance:
             self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
         self.cycle = None
         self._cycle_started = None
+        self._cycle_latched = None
         self._cycle_acks.clear()
         self._risk_since.pop(ticker, None)
         self._dwell.pop(ticker, None)
@@ -142,12 +144,18 @@ class QuoteMaintenance:
                 and result.priority == QUOTE_CANCEL and result.state == 'ACK'
                 and result.ticker == c.ticker and result.order_id in c.order_ids
                 and result.order_id not in self._cycle_acks):
-            self.fill_risk.cancel_ack(self.runtime.clock()-self._cycle_started)
+            now = self.runtime.clock()
+            latched = self._cycle_latched if self._cycle_latched is not None else self._cycle_started
+            # D-129: the budget estimates latched-decision-to-ACK latency. Time a
+            # warning waited behind another cycle/recovery is reported, but
+            # must not widen every order's future withdrawal horizon.
+            self.fill_risk.cancel_ack(now-latched)
             self._cycle_acks.add(result.order_id)
             if c.reason == 'fill_risk_withdrawal':
                 self.runtime.diagnostics.emit('fill_risk_cancel_ack', market=c.ticker,
                     order=result.order_id,
-                    elapsed_ms=max(0, int((self.runtime.clock()-self._cycle_started)*1000)))
+                    elapsed_ms=max(0, int((now-self._cycle_started)*1000)),
+                    latch_ms=max(0, int((now-latched)*1000)))
 
     def accept_risk_queues(self, proofs):
         """Retain the original successful queue join for cancellation only.
@@ -307,7 +315,7 @@ class QuoteMaintenance:
         ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
         self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter,
                                       evidence_valid_until, evidence_identity)
-        self._cycle_started = r.clock()
+        self._cycle_started = self._cycle_latched = r.clock()
         self._cycle_acks.clear()
         if reason == 'fill_risk_withdrawal':
             self._cycle_started = self._risk_since.get(plan.ticker, self._cycle_started)

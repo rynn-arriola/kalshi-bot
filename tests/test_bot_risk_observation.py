@@ -218,6 +218,22 @@ class RiskObservationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(logs[0].kwargs['order'], result.order_id)
         self.assertGreaterEqual(logs[0].kwargs['elapsed_ms'], 250)
 
+    async def test_budget_uses_latched_decision_not_earlier_warning_wait(self):
+        # D-129: a warning that waited behind another cycle is reported, but
+        # the wait must not inflate the cancel budget for every later horizon.
+        await self.gap()
+        self.m.refresh('A')
+        self.assertEqual(self.m.cycle.reason, 'fill_risk_withdrawal')
+        self.m._cycle_started -= 10
+        self.f.f.mono += .25
+        with patch.object(self.r.diagnostics, 'emit') as emit:
+            await self.f.f.run_priority(QUOTE_CANCEL)
+            log = next(c for c in emit.call_args_list if c.args[0] == 'fill_risk_cancel_ack')
+        self.assertAlmostEqual(self.m.fill_risk.cancel_seconds[-1], .25, places=3)
+        self.assertEqual(self.m.fill_risk.cancel_budget(), 2.0)
+        self.assertGreaterEqual(log.kwargs['elapsed_ms'], 10250)
+        self.assertEqual(log.kwargs['latch_ms'], 250)
+
     async def test_unsent_cancel_does_not_log_submission(self):
         await self.gap()
         self.m.refresh('A')

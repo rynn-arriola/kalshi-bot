@@ -160,7 +160,10 @@ class ArchiveOwnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((report.seen, report.owned, report.foreign), (1, 1, 0))
         self.assertFalse(report.ready_for_entry)
         self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
-        self.assertEqual(self.owner.order_states["o"].intent_state, "TERMINAL")
+        # D-129: terminal reconciled orders live in durable evidence only.
+        self.assertNotIn("o", self.owner.order_states)
+        receipts = {r.order.order_id: r for r in await self.writer.orders()}
+        self.assertEqual(receipts["o"].intent_state, "TERMINAL")
 
     async def test_terminal_with_missing_fills_keeps_reservation(self):
         report = await self.owner.recover_archived_orders(

@@ -1,5 +1,16 @@
 # What exists
 
+## Terminal-episode command archive and Finding 196 repairs — D-129
+
+The ledger writer now also archives exact command evidence of retired, flat,
+zero-fill episodes whose orders are terminal, starting at 75% capacity and
+rolling the oldest exact archives into a hash chain instead of stopping at a
+fixed archive count. The fill-risk cancel budget is measured from the latched
+decision; the in-memory account projection drops terminal reconciled orders;
+a lease lost at the single-create send edge is recorded proven-unsent. See
+[the archive contract](docs/BUILD_COMMAND_HISTORY_ARCHIVE.md), Finding 197 and
+STATUS for verification and deployment state.
+
 ## Protective-cancel scheduling intent — D-128
 
 The existing dispatch source retains one current risk-cycle scheduling marker,

@@ -294,7 +294,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.reads.quantity = "10"
         await self.connected()
         self.assertTrue(await self.runtime.recover_once())
-        self.assertEqual(self.runtime.account.order_states["o"].intent_state, "TERMINAL")
+        # D-129: terminal reconciled orders live in durable evidence only.
+        self.assertNotIn("o", self.runtime.account.order_states)
+        receipts = {r.order.order_id: r for r in await self.runtime.writer.orders()}
+        self.assertEqual(receipts["o"].intent_state, "TERMINAL")
 
     async def test_no_id_ambiguous_send_is_not_reported_repaired(self):
         await self.reserve()

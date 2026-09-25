@@ -285,6 +285,25 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(executor.failed)
         self.assertEqual(notices, ['changed'])
 
+    async def test_lease_lost_at_send_edge_is_proven_unsent_not_unknown(self):
+        # D-129: matches the batch path; the transport was never entered.
+        receipt = (await self.reserve()).receipt
+        calls, invoked = [], []
+        def current(_receipt):
+            calls.append(1)
+            return len(calls) < 3  # begin_send, first fence, then lost at edge
+        self.writer.entry_accounting_current = current
+        async def invoke(*_):
+            invoked.append(1)
+        executor = InjectedExecutor(self.writer, invoke=invoke,
+            validate_proof=lambda *_: True, offline_fixture=True)
+        with self.assertRaises(CommandDenied) as denied:
+            await executor.execute_prepared(receipt)
+        self.assertEqual(denied.exception.blockers, ('proof_changed_before_submission',))
+        self.assertEqual(invoked, [])
+        self.assertEqual((await self.writer.mutations())[0]['phase'], 'NOT_SENT')
+        self.assertFalse(executor.failed)
+
     async def test_only_active_executor_can_record_proven_unsent_after_sending(self):
         receipt = (await self.reserve()).receipt
         executor = InjectedExecutor(self.writer, invoke=lambda *_: None,

@@ -288,6 +288,12 @@ class AccountCoordinator:
 
     def _store_order(self, receipt):
         key = receipt.order.order_id
+        if receipt.order.terminal and not receipt.awaiting_fills:
+            # D-129: every consumer uses this projection for working or
+            # fill-pending orders only. Durable terminal evidence stays in the
+            # writer; retaining it here would fail the engine at 4,096 orders.
+            self.order_states.pop(key, None)
+            return
         if key not in self.order_states and len(self.order_states) >= 4096:
             raise InvalidData("account order projection capacity exceeded")
         self.order_states[key] = receipt

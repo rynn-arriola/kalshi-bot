@@ -854,9 +854,10 @@ class InjectedExecutor:
                         if inspect.iscoroutine(edge_result):
                             edge_result.close()
                         raise InvalidData('send-edge check must not await')
-                if not self.writer.entry_accounting_current(receipt):
-                    raise CommandDenied(('accounting_lease_stale',))
-                if (self.writer.revision != send.writer_revision
+                # D-129: a lease lost at the send edge is proven unsent, exactly
+                # like the batch path; never record it as an UNKNOWN submission.
+                if (not self.writer.entry_accounting_current(receipt)
+                        or self.writer.revision != send.writer_revision
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
                     aborted, outcome_cancelled = await self._retain(
                         self.writer.abort_sending_before_submission(receipt, self))

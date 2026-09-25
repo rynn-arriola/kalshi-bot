@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-129 — Repair Finding 196 in priority order
+
+- **Status:** ACCEPTED source repair, 2026-09-25.
+- **Decision owner:** Operator: “Fix all based on priority,” after Finding 196.
+- **Scope:** (P0) Archive exact command evidence of retired, zero-fill,
+  terminal entry episodes so ACK/rejected/unknown rows stop exhausting the
+  4,096 mutation/intent/order bounds; start archival before the boundary;
+  roll the exact-archive table into a hash-committed chain instead of
+  stopping at 128. (P1) Measure the fill-risk cancel budget from the latched
+  withdrawal decision, not the first warning; keep warning-to-ACK as a
+  diagnostic. (P2) Prune terminal, fully reconciled receipts from the
+  in-memory account order projection. (P3) Route the single-create
+  send-edge lease check through the proven-unsent abort path.
+- **Boundary:** Any episode with fills, positions, pending fills, held
+  credits, active intents/authorizations, or a nonterminal/unfilled-proof
+  order stays hot. No change to risk limits, ranking, thresholds, concurrency
+  of withdrawals or retry policy. No live action, deployment or restart is
+  authorized by this decision; publish under D-065.
+
 ### D-128 — Retain interrupted protective-cancel scheduling
 
 - **Status:** ACCEPTED source repair, 2026-09-25.

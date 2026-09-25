@@ -68,8 +68,11 @@ Withdraw if that time is no greater than:
 `max(2 seconds, decision-to-cancel-ACK p95) + reflection interval + queue age + 1 second`
 
 Defaults live in `FillRiskPolicy`; samples retain at most 256 orders and 128
-cancellation timings. Measure from the withdrawal decision through the durable
-ACK, including dispatch/quota/reconciliation waiting, separately for each leg.
+cancellation timings. Measure from the latched withdrawal decision through the
+durable ACK, including dispatch/quota/reconciliation waiting, separately for
+each leg. D-129: time a warning spent before latching (for example behind
+another market's cycle or recovery) is logged as `elapsed_ms` but excluded from
+the budget (`latch_ms`), because it fed back into every order's horizon.
 Only successful observations contribute; this is not a worst-case latency bound.
 
 Either threatened leg withdraws the owned pair through existing QUOTE_CANCEL,

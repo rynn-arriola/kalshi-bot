@@ -1,5 +1,16 @@
 # Current status
 
+## D-129 Finding 196 repairs — 2026-09-25
+
+**Verified and published; not deployed.** Terminal-episode command archival
+(with hash-chain rollover), latch-based fill-risk cancel budget, bounded
+in-memory order projection and proven-unsent send-edge abort. Finding 197 owns
+evidence. Complete release gate: 1,836 tests, no failures, one expected skip.
+The running generation 170 still uses the old code: at 22:03:57 UTC it had
+3,891 of 4,096 non-archivable hot mutation rows, so entries are expected to
+block (`capacity_entries_held`) within roughly 1–2 hours unless the operator
+authorizes deployment (`Command 1`/restart). No live action occurred.
+
 ## Source review — 2026-09-25
 
 **Review complete; nothing changed.** Finding 196: at 21:48 UTC 3,867 of 3,905

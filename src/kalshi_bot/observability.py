@@ -96,7 +96,8 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'reflection_superseded', 'reflection_quota_deferred',
                      'checkpoint_failures', 'logging_backlog',
                      'ahead_hundredths', 'queue_hundredths', 'depth_hundredths',
-                     'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms'))
+                     'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms',
+                     'latch_ms'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
 RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed

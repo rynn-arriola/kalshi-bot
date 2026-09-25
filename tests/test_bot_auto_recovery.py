@@ -126,7 +126,10 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         await self.reserve()
         result = await self.recover(Reads([history()], {"o": wire_order()}))
         self.assertEqual(result.imported, 1)
-        self.assertEqual(self.owner.order_states["o"].intent_state, "TERMINAL")
+        # D-129: terminal reconciled orders live in durable evidence only.
+        self.assertNotIn("o", self.owner.order_states)
+        receipts = {r.order.order_id: r for r in await self.writer.orders()}
+        self.assertEqual(receipts["o"].intent_state, "TERMINAL")
 
     async def test_archive_lookup_can_bind_missing_order_for_fill(self):
         await self.reserve()

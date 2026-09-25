@@ -480,7 +480,10 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(CommandDenied):
             await executor.execute_prepared(prepared, before_invoke=self.account.disconnect)
         self.assertEqual(calls, [])
-        self.assertEqual((await self.writer.mutations())[0]['phase'], 'UNKNOWN')
+        # D-129: the transport was never entered, so this is proven unsent
+        # (as on the batch path), not an ambiguous submission.
+        self.assertEqual((await self.writer.mutations())[0]['phase'], 'NOT_SENT')
+        self.assertFalse(executor.failed)
 
     async def test_cancelled_consumer_joins_reads_but_cannot_issue_authority(self):
         await self.refresh()

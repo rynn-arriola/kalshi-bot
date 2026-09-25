@@ -1,5 +1,36 @@
 # Findings — kalshi-bot
 
+## 197. D-129 repairs for Finding 196 — 2026-09-25
+
+**P0 capacity:** Reproduced offline: a tiny-policy ledger with two terminal,
+zero-fill episodes denied the next entry with `capacity_entries_held` before the
+repair and admits it after, reducing hot mutation/intent/order use to 1/1/0.
+On a disposable copy of the running production ledger (hot use 3,957/2,111/1,955
+at copy time), ten bounded passes archived 1,280 episodes and 72 proven-unsent
+creates in 169–250 ms each and stopped at 3,029/1,611/1,527, below the 75%
+trigger. `integrity_check` passed, a hash over every financial, risk,
+accounting and history table was unchanged, and a cold writer start validated
+all archives (full capacity validation about 0.4 s). MEASURED on that copy only;
+live timing will vary. Episodes with any fill, pending fill or position stay hot.
+
+**P1 fill-risk budget:** The regression starts a warning ten seconds before
+latching; the budget sample is now 0.25 s (latch-to-ACK) and the budget stays
+at its 2-second floor, while `elapsed_ms` still reports ≥10,250 ms and a new
+`latch_ms` field reports 250. The live effect on withdrawal frequency is a
+HYPOTHESIS until measured after deployment.
+
+**P2 order projection:** 5,000 resting-then-canceled receipts leave the
+projection empty (it raised at 4,096 before the repair); working and
+fill-pending orders stay visible.
+
+**P3 send edge:** A lease lost after quota consumption now records `NOT_SENT`
+without entering the transport, matching the batch path; the executor is not
+held. The prior regression expecting `UNKNOWN` was updated deliberately.
+
+Each new regression fails with its source change reverted (P0 by the boundary
+denial, P2 and P3 checked by reverting the file). Complete release suite:
+1,836 tests in 279.6 s, one expected Windows symlink-privilege skip.
+
 ## 196. Source review: command-ledger entry capacity will run out again — 2026-09-25
 
 **Scope:** Read-only source review plus read-only (`mode=ro`) SQLite counts from
