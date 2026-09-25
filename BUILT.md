@@ -1,5 +1,14 @@
 # What exists
 
+## Target-aware fill-risk withdrawal — D-120
+
+`fill_risk.py` owns bounded queue-depletion/latency estimates. Reward reflection
+retains queue quantities; maintenance withdraws threatened entry pairs and
+excludes that market temporarily while existing ranking refills. Target/5 is
+reported as reference depth, never invented volume ahead. No extra REST poll,
+writer, connection or ledger schema. See [design and tests](docs/BUILD_FILL_RISK.md)
+and STATUS for final verification/deployment state.
+
 ## Whole-pipeline refill repair — D-119
 
 The existing engine exposes bounded ordered book catch-up to inventory and

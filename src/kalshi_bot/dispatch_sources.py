@@ -69,6 +69,8 @@ class InventoryDispatchSource:
             offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
 
     def _dispatch_result(self, result):
+        if self.runtime.maintenance is not None:
+            self.runtime.maintenance.dispatch_result(result)
         selection = self.runtime.selection
         if selection is not None and result.priority == ENTRY_PAIR:
             selection.record_dispatch_result(result)

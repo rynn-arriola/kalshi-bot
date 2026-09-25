@@ -209,7 +209,7 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
             await self.sample(6, drift=True, reflection=False)
             self.r.management.invalidate('A')
             self.r.reads = QueueReads([dict(order_id=o.order_id,
-                market_ticker='A',queue_position_fp='0') for o in self.orders])
+                market_ticker='A',queue_position_fp='500') for o in self.orders])
             self.assertEqual(await self.rewards.reflect_once(),1)
             await self.r._evaluate('A',None,0)
         self.assertIsNotNone(self.m.cycle,self.m.status())

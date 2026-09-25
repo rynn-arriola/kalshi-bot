@@ -19,6 +19,9 @@ class ReflectionProof:
     account_revision: int
     signature: tuple
     valid_until: datetime
+    queue_positions: tuple = ()
+    queue_started_mono: float | None = None
+    book_generation: int | None = None
 
 
 class ReflectionSuperseded(InvalidData):
@@ -189,10 +192,10 @@ class RuntimeRewards:
                     raise InvalidData('invalid queue-position row')
                 order_id = identity(row['order_id'])
                 ticker = identity(row['market_ticker'])
-                count(row['queue_position_fp'],zero=True)
+                ahead = count(row['queue_position_fp'],zero=True)
                 if order_id in result:
                     raise InvalidData('duplicate queue-position order')
-                result[order_id] = ticker
+                result[order_id] = (ticker, ahead)
             return result
         except (KeyError,TypeError) as exc:
             raise InvalidData('incomplete queue-position response') from exc
@@ -233,6 +236,17 @@ class RuntimeRewards:
         return (proof.valid_until if isinstance(proof, ReflectionProof)
                 else utc(self.runtime.now())+timedelta(seconds=5))
 
+    def queue_evidence(self, ticker, plan):
+        """Fresh exact queue quantities; fixture reflection alone is insufficient."""
+        proof = self._reflection.get(ticker)
+        if (not self._queue_identity_current(ticker)
+                or proof.signature != self._signature(plan)
+                or proof.book_generation != plan.book_generation
+                or proof.queue_started_mono is None
+                or not 0 <= self.runtime.clock()-proof.queue_started_mono < 5):
+            return None
+        return proof
+
     async def reflect_once(self):
         """Join one complete private snapshot to the all-resting queue endpoint.
 
@@ -266,20 +280,24 @@ class RuntimeRewards:
             else:
                 current_group = value
         groups.append(current_group)
-        actual = {}
+        actual, queue_times = {}, {}
+        book_epochs = {t: r.engine.shards[r.engine.market_shard[t]].generation
+                       for t in set(expected.values()) if t in r.engine.market_shard}
         for group in groups:
+            started = r.clock()
             result = await r.reads.read('queue_positions',reason='reflection',
                 coalesce_scope=('reward-reflection',r.account.subaccount,generation,revision),
                 subaccount=r.account.subaccount, market_tickers=group)
             rows = self._queue_rows(result.payload)
-            if (set(actual) & set(rows) or any(t not in group.split(',') for t in rows.values())):
+            if (set(actual) & set(rows) or any(t not in group.split(',') for t,q in rows.values())):
                 raise InvalidData('queue position chunk scope conflict')
             actual.update(rows)
+            queue_times.update({t: started for t in group.split(',')})
         current = r.account.current_report(r.now())
         if (self.stopping or current is not report or (generation,revision) !=
                 (r.account.generation,r.account.revision)):
             raise ReflectionSuperseded('private account source changed during reflection')
-        if actual != expected:
+        if {key: row[0] for key,row in actual.items()} != expected:
             raise InvalidData('queue positions disagree with complete resting-order snapshot')
         now = utc(r.now())
         valid_until = min(now+timedelta(seconds=5),report.observed_at+timedelta(seconds=5))
@@ -293,7 +311,9 @@ class RuntimeRewards:
             # complete account snapshot now; the consumer still requires fresh
             # owned inventory, exact terms/signature, book and reward metadata.
             signature = self._snapshot_signature(report,ticker)
-            proofs[ticker] = ReflectionProof(report,generation,revision,signature,valid_until)
+            proofs[ticker] = ReflectionProof(report,generation,revision,signature,valid_until,
+                tuple((key, q) for key,(t,q) in actual.items() if t == ticker),
+                queue_times[ticker], book_epochs.get(ticker))
         published = tuple(proofs)
         self._reflection = proofs
         for ticker in tuple(self.tracker._by_market):

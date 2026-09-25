@@ -1,5 +1,31 @@
 # Current status
 
+## D-120 fill-risk withdrawal — verified source, not deployed
+
+`data/fill-risk-dev` / `feat/fill-risk-withdrawal` starts at `7019bfc` and adds
+target-aware queue-depletion withdrawal through the existing owners. The new
+22-test suite and 293-test fast gate pass. The complete release gate passes
+1,747 tests in 417.608 seconds, with one expected Windows symlink-privilege skip.
+Its 1,024-book fixture reaches 30 entries in 89.044 seconds and refills two freed
+slots in 4.470 seconds, with eight routine renewals and no book failures. The
+30/120-order estimator resource cases used 0.094/0.453 CPU seconds, p99
+0.409/0.503 ms and 40,860/156,460 traced peak bytes. These are offline results,
+not observed live cancellation success. Details: docs/BUILD_FILL_RISK.md.
+
+Actual source/test review, staged whitespace/secret checks and 530 local document
+links pass. Disabling the new withdrawal decision makes its regression fail.
+Ignored verification logs are canonical-root `data/fill-risk-fast.log` and
+`data/fill-risk-full.log`. This reviewed isolated checkout is the publication/
+GitHub-master parity target; keep the active canonical package pinned until
+the next separately authorized restart.
+
+Canonical source/runtime remains on `7019bfc` (generation 150); a 22:28:14 ET
+read-only snapshot showed 30 entries, zero positions and current quota/account
+proof with healthy logging. No
+restart, venue mutation or live-ledger change is part of D-120. Deployment and
+live effect require the next authorized restart. Unfinished command-1 work
+remains separate.
+
 ## D-119 refill repair — verified source, not deployed, 2026-09-24
 
 `data/refill-pipeline-dev` / `fix/refill-pipeline`, based on `4428051`, contains

@@ -1,5 +1,15 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — queue evidence discarded and scoring dwell lacked fill-risk withdrawal
+
+D-120 retains exact queue quantities from the existing reflection join and
+uses source-bound book depletion estimates. Risk withdrawal skips scoring
+dwell and can preempt idle ordinary repricing, then waits for exact terminal/
+fill evidence before ranked refill. A racing fill uses the established exit
+policy. New queue age/book epoch checks reject long reads/reconnects; target
+depth never substitutes for actual queue protection. Tests and limitations are
+in [BUILD_FILL_RISK](docs/BUILD_FILL_RISK.md); STATUS owns release evidence.
+
 ## 2026-09-24 — whole refill path starved by unrelated book and catalog work
 
 D-119 fixes two demonstrated couplings across ranking, inventory and dispatch:

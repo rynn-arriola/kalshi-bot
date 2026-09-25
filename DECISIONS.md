@@ -10,6 +10,26 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-120 — Estimate fill risk, withdraw and select another rewarded market
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator requests calculating fill risk, canceling and
+  finding new markets, while acknowledging fills cannot always be avoided;
+  follow-up explicitly requires considering program target size/reference price.
+- **Scope:** Reuse exact queue-position reads and WebSocket books, estimate
+  queue depletion against observed cancellation delays, withdraw threatened
+  owned entry pairs without the ordinary repricing dwell, then refill through
+  existing ranking. Show target/5 reference depth and actual queue protection
+  separately. Risk withdrawal can precede the estimated $1 reward threshold.
+- **Implementation defaults:** Two-second cancellation floor, measured
+  decision-to-ACK p95, one-second margin plus sampling interval/queue age,
+  ten-second trend retention and five-minute market cooldown. These are
+  engineering estimates, not calibrated probabilities or venue guarantees.
+- **Boundary:** One writer, existing fill reconciliation and position exits,
+  30 entries/size ten/capital/reward gates unchanged. Unknown evidence never
+  fabricates a safe queue. Isolated build, verification and publication; this
+  request does not authorize a live restart or deployment.
+
 ### D-119 — Investigate and repair the complete refill pipeline
 
 - **Status:** ACCEPTED, 2026-09-24.

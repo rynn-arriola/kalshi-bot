@@ -1,5 +1,32 @@
 # Findings — kalshi-bot
 
+## 182. Queue depletion estimates require actual protection, not reward target — 2026-09-24
+
+**VERIFIED, source and official documentation:** Reference uses target/5,
+already implemented by `quoting._reference`; a 1,000-contract target places
+the reference at 200 cumulative contracts, but does not guarantee 200 ahead of
+our order. The queue endpoint supplies actual preceding quantity. The old
+reflection parser validated then discarded this number. D-120 retains it,
+combines it with existing books and implements bounded withdrawal/cooldown.
+See [field ownership, caveats and test design](docs/BUILD_FILL_RISK.md).
+
+**MEASURED, historical generation-150 local logs:** 18 mixed order mutations
+between 22:00:08 and 22:14:50 ET had median send-to-durable-ACK 283.1 ms and
+maximum 367.2 ms. These omit detection/pre-send waiting and are not cancel-only
+performance. The new model measures decision-to-ACK and uses a two-second floor
+plus observation age/cadence and margin. No measured escape probability exists.
+
+**VERIFIED, offline:** The 22 new tests pass, including real manager/dispatcher
+withdrawal, racing partial fill and replacement ranking. Removing the withdrawal
+decision causes its regression to fail. The complete 1,747-test gate passes with
+one expected Windows privilege skip. Estimator 30/120-order p99 is 0.409/0.503 ms;
+the existing 1,024-book fixture reaches 30 entries in 89.044 seconds and refills
+two slots in 4.470 seconds. These are synthetic correctness/resource measurements.
+
+**LIMITATION:** Aggregate depth decreases may be behind us, and a large trade
+can sweep our order before any warning arrives. The estimate may overreact or
+miss a burst. It cannot promise no fills, $1 eligibility or positive net profit.
+
 ## 181. Refill was coupled to shared queues and catalog scheduling — 2026-09-24
 
 **VERIFIED, local telemetry/source:** Generation 148 showed 14 resting entries

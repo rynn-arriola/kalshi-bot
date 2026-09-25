@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from .selection import MarketSelector
+from .fill_risk import FillRisk
 from .values import InvalidData, utc
 
 
@@ -43,6 +44,11 @@ class QuoteMaintenance:
         self.samples = {}
         self._dwell = {}
         self._cooldown = {}
+        self.fill_risk = FillRisk()
+        self._risk_cooldown = {}
+        self._risk_since = {}
+        self._cycle_started = None
+        self._cycle_acks = set()
         self._actual = MarketSelector(1)
         self._target = MarketSelector(1)
 
@@ -53,13 +59,19 @@ class QuoteMaintenance:
             raise InvalidData('maintenance binding outside runtime scope')
         for old in tuple(self.bindings):
             if old not in self.runtime.engine.market_shard:
-                for table in (self.bindings, self.samples, self._dwell, self._cooldown):
+                for table in (self.bindings, self.samples, self._dwell, self._cooldown,
+                              self._risk_cooldown, self._risk_since):
                     table.pop(old, None)
         if self.bindings.get(program.ticker) != program:
             self._dwell.pop(program.ticker, None)
         self.bindings[program.ticker] = program
 
     def entry_allowed(self, ticker, program_id):
+        deadline = self._risk_cooldown.get(ticker)
+        if deadline is not None:
+            if self.runtime.clock() < deadline:
+                return False
+            self._risk_cooldown.pop(ticker, None)
         c = self.cycle
         if c is None or c.ticker != ticker:
             # The cycle coordinates only this market's withdrawal/re-entry.
@@ -83,10 +95,73 @@ class QuoteMaintenance:
                 if c is not None and c.reenter else {})
 
     def _finish(self, ticker):
+        if self.cycle is not None and self.cycle.reason == 'fill_risk_withdrawal':
+            self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
         self.cycle = None
+        self._cycle_started = None
+        self._cycle_acks.clear()
+        self._risk_since.pop(ticker, None)
         self._dwell.pop(ticker, None)
         self._cooldown[ticker] = self.runtime.clock()+30
         self.runtime._entry_dirty = True
+
+    def dispatch_result(self, result):
+        """Decision-to-durable-ACK time includes dispatch/reconciliation waiting."""
+        from .dispatch import QUOTE_CANCEL
+        c = self.cycle
+        if (c is not None and self._cycle_started is not None
+                and result.priority == QUOTE_CANCEL and result.state == 'ACK'
+                and result.ticker == c.ticker and result.order_id in c.order_ids
+                and result.order_id not in self._cycle_acks):
+            self.fill_risk.cancel_ack(self.runtime.clock()-self._cycle_started)
+            self._cycle_acks.add(result.order_id)
+
+    def _fill_risk(self, plan, program):
+        r, ticker = self.runtime, plan.ticker
+        rewards = r.rewards
+        source = rewards._sources(ticker) if rewards else None
+        if source is not None and program not in source[1].programs:
+            return False
+        proof = rewards.queue_evidence(ticker, plan) if source is not None else None
+        if proof is None:
+            return False
+        book = source[3]
+        queue = dict(proof.queue_positions)
+        samples = []
+        self.fill_risk.prune(o.order.order_id for p in r.management._plans.values()
+                             for o in p.inventory.orders)
+        for row in plan.inventory.orders:
+            if row.order.order_id not in queue:
+                return False
+            sample = self.fill_risk.observe(order=row.order, book=book, program=program,
+                identity=(r.writer.epoch, r.account.generation, plan.book_generation),
+                ahead=queue[row.order.order_id], queue_at=proof.queue_started_mono,
+                now=r.clock(), interval=rewards.reflection_interval)
+            if sample is not None:
+                samples.append(sample)
+        if not samples:
+            return False
+        self.samples[ticker] = dict(state='FILL_RISK_ESTIMATE',
+            observed_at=utc(r.now()).isoformat(), valid_until=proof.valid_until.isoformat(),
+            fill_risk=samples, action='retain')
+        if not any(s['withdraw'] for s in samples):
+            self._risk_since.pop(ticker, None)
+            return False
+        self._risk_since.setdefault(ticker, r.clock())
+        if self.cycle is not None:
+            if self.cycle.reason == 'fill_risk_withdrawal':
+                return self.cycle.ticker == ticker
+            service = r.dispatch_supervisor
+            if service is not None and service.dispatcher.status().active is not None:
+                return False
+            # A flat market waiting for ordinary repricing must not monopolize
+            # emergency withdrawal. Its exact outstanding orders remain owned
+            # and will be reevaluated through the same manager later.
+            r.engine.dirty.mark(self.cycle.ticker)
+            r.engine.wake.set()
+            self.cycle = None
+        self._start(plan, program, 'fill_risk_withdrawal', False)
+        return self.cycle is not None and self.cycle.ticker == ticker
 
     def _identity(self, plan, program):
         return (program, self.runtime.writer.epoch, self.runtime.account.generation,
@@ -138,6 +213,16 @@ class QuoteMaintenance:
         ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
         self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter,
                                       evidence_valid_until, evidence_identity)
+        self._cycle_started = r.clock()
+        self._cycle_acks.clear()
+        if reason == 'fill_risk_withdrawal':
+            self._cycle_started = self._risk_since.get(plan.ticker, self._cycle_started)
+            # The decision is latched for exact owned IDs through cancellation
+            # reconciliation. No score lease can authorize new entries here.
+            self._risk_cooldown = {t:until for t,until in self._risk_cooldown.items()
+                                   if until > r.clock()}
+            self._risk_cooldown[plan.ticker] = r.clock()+self.fill_risk.policy.cooldown_seconds
+            r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker)
         if evidence_valid_until is None:
             self._dwell.pop(plan.ticker, None)
         self.samples[plan.ticker]['action'] = reason
@@ -158,6 +243,7 @@ class QuoteMaintenance:
             if c is not None and c.ticker == ticker:
                 self._finish(ticker)
             self._dwell.pop(ticker, None)
+            self._risk_since.pop(ticker, None)
             self.samples[ticker] = dict(state='INVENTORY', action='existing_exit_policy')
             return
         orders = inventory.orders
@@ -167,6 +253,9 @@ class QuoteMaintenance:
         journal = inventory.exit_journal
         if journal is None or journal.cancel_ids or journal.unresolved_ioc:
             return
+        if orders and (c is None or c.ticker != ticker or c.reason != 'fill_risk_withdrawal'):
+            self._fill_risk(plan, program)
+            c = self.cycle
         if c is not None and c.ticker == ticker:
             if orders:
                 if not set(c.order_ids) & {o.order.order_id for o in orders}:
@@ -216,6 +305,7 @@ class QuoteMaintenance:
                     r._entry_dirty = True
             return
         if not orders:
+            self._risk_since.pop(ticker, None)
             return
         # Exact lifecycle deadlines do not require reward/reflection estimates.
         terms = plan.terms
@@ -228,7 +318,9 @@ class QuoteMaintenance:
         if (terms is not None and terms.observed_at <= now < terms.valid_until
                 and (not terms.active or now >= terms.deadline)):
             expired = True
-        self.samples[ticker] = dict(state='UNKNOWN', action='retain_pending_evidence')
+        risk_samples = self.samples.get(ticker, {}).get('fill_risk', [])
+        self.samples[ticker] = dict(state='UNKNOWN', action='retain_pending_evidence',
+                                   fill_risk=risk_samples)
         if expired:
             self._start(plan, program, 'earning_window_ended', False)
             return
@@ -259,6 +351,7 @@ class QuoteMaintenance:
         except InvalidData:
             return
         self.samples[ticker] = dict(state='OBSERVED', observed_at=now.isoformat(),
+            fill_risk=risk_samples,
             valid_until=until.isoformat(), program_id=program.program_id,
             orders=[dict(side=q.side, price=str(q.yes_price), remaining=str(q.quantity)) for q in quotes],
             quote_statuses=actual.quote_statuses,
@@ -334,4 +427,7 @@ class QuoteMaintenance:
             unscoring_dwell_seconds=self.UNSCORING_DWELL_SECONDS,
             evidence_gap_limit_seconds=self.MAX_EVIDENCE_GAP_SECONDS,
             cooldown_seconds=30,
+            fill_risk=self.fill_risk.status(),
+            risk_cooldowns={t:max(0, until-self.runtime.clock()) for t,until in self._risk_cooldown.items()
+                            if until > self.runtime.clock()},
             replaces_for_better_rank=False, estimate_only=True)

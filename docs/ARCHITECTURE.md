@@ -1,5 +1,11 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-120 adds [queue-depletion withdrawal](BUILD_FILL_RISK.md) to the existing
+maintenance/dispatch owners. Exact queue evidence reuses reward reflection;
+books update estimated protection, with target/5 reference context. A threatened
+pair withdraws before scoring dwell and cools down while ordinary ranking refills.
+One writer and existing inventory/terminal-fill proof remain authoritative.
+
 D-119 validates a bounded ordered book batch at inventory/entry proof reads.
 The event engine's existing parser applies at most 64 queued frames from the
 candidate's shard synchronously, retaining ingress times and sequence/epoch
