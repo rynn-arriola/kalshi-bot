@@ -1,5 +1,13 @@
 # Current status
 
+## D-131 items 2–6 — 2026-09-25
+
+**Implemented, reviewed and verified offline; not deployed.** Finding 200:
+fixed a quota clock-drift bug that would stop all reads after ~31 h of
+continuous running; history-proof cost reduction and early warning; exact
+entry-block detail counts; episode/fee row bounds. Complete release gate 1,857
+tests, no failures. Items 7–9 next. Live generation 170 untouched.
+
 ## Pre-deployment review — 2026-09-25
 
 **D-129 + D-130 reviewed, repaired and verified; published, not deployed.**

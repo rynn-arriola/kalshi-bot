@@ -1,5 +1,53 @@
 # Findings — kalshi-bot
 
+## 200. D-131 items 2–6: fixes, remaining-code review and a clock bug — 2026-09-25
+
+**MEASURED/VERIFIED — quota clock drift would stop all reads after ~31 h.**
+Child log timestamps (run `587e5d6e…`) show wall minus monotonic time
+drifting linearly by −316 ms over 4.95 h (~64 ms/h, ~18 ppm). `QuotaGuard`
+compared each sample with its construction anchor against a 2 s tolerance, so
+any run lasting ~31 h would enter the sticky `clock_fault` state: no reads,
+no account proof, no recovery. Earlier runs restarted before that. Fixed by
+comparing successive samples; a real step is still a sticky fault (existing
+test kept). The supervisor's own clock check uses its last persisted sample,
+refreshed by heartbeats, so it does not accumulate drift; a large time-sync
+step still stops it for attention (fail-closed by design).
+
+**Items 2–3 (history proof cost/limits):** full recovery must re-prove fills
+from the opening boundary because release requires receipts from the current
+account source revision (D-035/D-068). Moving that start forward is an
+operator decision. Implemented within the rules: fills already stored with
+exact time are no longer replayed through the writer each pass (staging still
+compares every enumerated fill); `history_scope` status and a sampled
+`history_scope_high` warning at 5,000 rows or 2.5 s, versus the 10,000-row and
+5 s limits. At ~11 fills/day the hard limit is years away.
+
+**Item 4 (entry churn):** a standing rule forbids sending on a book changed
+since pricing, so the send-edge check is unchanged. D-130 removed the recovery
+churn that caused most aborts; every block detail reason is now counted
+exactly in status for post-deploy attribution.
+
+**Item 5 (unbounded rows):** v2 command archives now move the episode row
+itself out of the hot table (4,263 orphan fee rows and 3,124 episode rows
+observed live); orphan fee bounds (no remaining intent) are swept in bounded
+batches during reclamation. Production-copy check: archival 225 rows in
+287 ms, integrity ok, financial hash unchanged, cold writer start ok.
+
+**Item 6 (review coverage):** read in full this pass: transport, book
+refresh, quota, write budget, management, selection, selection runtime (part),
+live startup/supervise, supervised child (part), process supervisor (part).
+Whole-package scans for naive time, float money, unbounded long-lived state
+and capacity-raise patterns found no further defect (position updates are
+bounded by the 1,024-market scope; the metadata cache is unused in
+production). Not read line by line: supervision/store/control/protocol,
+Windows IPC, incentives, ranking, admission (unused in broad mode), reward
+tracker/checkpoint, opening account, candidate preparation, bulk inputs,
+metadata scheduler, REST remainder.
+
+**Verification:** complete release suite 1,857 tests in 340.3 s, no failures,
+one expected Windows symlink-privilege skip; each new regression fails with its
+change reverted.
+
 ## 199. Pre-deployment review of D-129/D-130 — 2026-09-25
 
 **Scope:** Exact review of every source change since `b8ef3a8`, plus a fresh
