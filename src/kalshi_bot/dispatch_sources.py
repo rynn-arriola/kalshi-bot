@@ -28,6 +28,16 @@ class _Proof:
     maintenance_cycle: object = None
 
 
+@dataclass
+class _Drain:
+    """Scheduling state for one latched protective cycle; never authority."""
+    cycle: object
+    started: float | None = None
+    at: float = 0.
+    count: int = 0
+    drained: bool = False
+
+
 @dataclass(frozen=True)
 class _PausedCancelProof:
     writer_epoch: str
@@ -64,26 +74,44 @@ class InventoryDispatchSource:
         self._risk_cancel_notice = None
         # Scheduling intent only, never execution authority. A popped key is
         # not proof that the latched pair has no further cancelable orders.
-        self._risk_drain_cycle = None
-        self._risk_retry_started = None
-        self._risk_retry_at = 0.
-        self._risk_retry_count = 0
+        # D-131 item 7: one retry/backoff record per latched protective cycle.
+        self._risk_drains = {}
         self.risk_cancel_deferrals = 0
         # D-130: per-turn evidence that no command reached transport.
         self._executor = None
         self._transport_invoked = False
         self._rebase_requested = False
 
+    def _current_drains(self):
+        """Undrained records whose exact latched cycle is still current."""
+        maintenance = self.runtime.maintenance
+        for ticker, drain in tuple(self._risk_drains.items()):
+            if maintenance is None or maintenance.risk_cycle_for(ticker) is not drain.cycle:
+                del self._risk_drains[ticker]
+        return {ticker: drain for ticker, drain in self._risk_drains.items()
+                if not drain.drained}
+
     @property
     def risk_drain_pending(self):
+        return bool(self._current_drains())
+
+    def request_risk_drain(self, ticker):
+        """Register a latched cycle's drain; retries keep their backoff."""
         maintenance = self.runtime.maintenance
-        return (self._risk_drain_cycle is not None and maintenance is not None
-                and maintenance.cycle is self._risk_drain_cycle)
+        cycle = maintenance.risk_cycle_for(ticker) if maintenance is not None else None
+        if cycle is None:
+            return False
+        drain = self._risk_drains.get(ticker)
+        if drain is None or drain.cycle is not cycle:
+            self._risk_drains[ticker] = _Drain(cycle)
+        self.resume_risk_drain()
+        return True
 
     def resume_risk_drain(self):
         """Private-event wake plus existing 0.5s watchdog; no new polling task."""
         owner = self.runtime.dispatch_supervisor
-        if (not self.risk_drain_pending or owner is None or not owner.running
+        drains = self._current_drains()
+        if (not drains or owner is None or not owner.running
                 or owner.stopping or owner.failed or self._stopped
                 or self.runtime.stop_requested.is_set()):
             return
@@ -91,14 +119,17 @@ class InventoryDispatchSource:
         state = owner.dispatcher.status()
         if state.active is not None or state.failed or state.stopping:
             return  # Join an in-flight outcome before expiring its retry window.
-        if (self._risk_retry_started is not None
-                and (not 0 <= now-self._risk_retry_started < 5
-                     or self._risk_retry_count >= 8)):
-            self._risk_drain_cycle = None
-            self.runtime.request_recovery('risk_cancel_retry_exhausted')
-            return
-        if now >= self._risk_retry_at and self._available():
-            owner.request(self._risk_drain_cycle.ticker, QUOTE_CANCEL)
+        for ticker, drain in drains.items():
+            if ticker not in self.runtime.engine.market_shard:
+                self._risk_drains.pop(ticker, None)  # Outside scope: nothing to route.
+                continue
+            if (drain.started is not None
+                    and (not 0 <= now-drain.started < 5 or drain.count >= 8)):
+                self._risk_drains.pop(ticker, None)
+                self.runtime.request_recovery('risk_cancel_retry_exhausted')
+                continue
+            if now >= drain.at and self._available():
+                owner.request(ticker, QUOTE_CANCEL)
 
     def dispatcher(self, budget, *, invoke, clock_pair, pause_seconds=1.):
         """Compose matching producer/executor callbacks and an explicit transport."""
@@ -129,20 +160,19 @@ class InventoryDispatchSource:
         if self.runtime.maintenance is not None:
             self.runtime.maintenance.dispatch_result(result)
             self.runtime.maintenance.wake_deferred_risk()
-        if (self.risk_drain_pending and result.priority == QUOTE_CANCEL
-                and result.ticker == self._risk_drain_cycle.ticker):
+        drain = (self._current_drains().get(result.ticker)
+                 if result.priority == QUOTE_CANCEL else None)
+        if drain is not None:
             if result.state == 'ACK':
-                self._risk_retry_started = None
-                self._risk_retry_count = 0
-                self._risk_retry_at = 0.
+                drain.started, drain.count, drain.at = None, 0, 0.
             elif result.state == 'BLOCKED' and set(result.blockers) <= {
                     'current_candidate_missing', 'stale_writer_evidence',
                     'risk_account_book_proof_stale', 'proof_changed_before_submission'}:
                 now = self.runtime.clock()
-                if self._risk_retry_started is None:
-                    self._risk_retry_started = now
-                self._risk_retry_count += 1
-                self._risk_retry_at = now+.25
+                if drain.started is None:
+                    drain.started = now
+                drain.count += 1
+                drain.at = now+.25
                 self.risk_cancel_deferrals += 1
                 count = self.risk_cancel_deferrals
                 if count & (count-1) == 0:
@@ -150,7 +180,7 @@ class InventoryDispatchSource:
                         market=result.ticker, count=count,
                         blockers=result.blockers, blocker_count=len(result.blockers))
             elif result.state not in {'WAITING', 'ACK'}:
-                self._risk_drain_cycle = None
+                self._risk_drains.pop(result.ticker, None)
                 self.runtime.request_recovery('risk_cancel_outcome')
         selection = self.runtime.selection
         if selection is not None and result.priority == ENTRY_PAIR:
@@ -179,12 +209,12 @@ class InventoryDispatchSource:
             (observed, cycle), self._risk_cancel_notice = self._risk_cancel_notice, None
             owner = self.runtime.dispatch_supervisor
             if (observed.outcome == 'ack' and self.runtime.maintenance is not None
-                    and self.runtime.maintenance.cycle is cycle):
+                    and self.runtime.maintenance.risk_cycle_for(cycle.ticker) is cycle):
                 self.runtime._post_drain_recovery_pending = True
                 if owner is not None and owner.running and not owner.stopping:
                     owner.request(cycle.ticker, QUOTE_CANCEL)
                 return
-            self._risk_drain_cycle = None
+            self._risk_drains.pop(cycle.ticker, None)
             self.runtime.request_recovery('risk_cancel_outcome')
             return
         if (notice is not None and notice.kind == 'cancel'
@@ -259,7 +289,7 @@ class InventoryDispatchSource:
 
     def stop(self):
         self._stopped = True
-        self._risk_drain_cycle = None
+        self._risk_drains.clear()
         self._proof = None
         self._generation += 1
 
@@ -314,14 +344,13 @@ class InventoryDispatchSource:
         generation = self._generation
         self._proof = None
         maintenance = self.runtime.maintenance
-        cycle = maintenance.cycle if maintenance is not None else None
-        risk_drain = (priority == QUOTE_CANCEL and cycle is not None
-                      and cycle.reason == 'fill_risk_withdrawal' and cycle.ticker == ticker)
-        if risk_drain and self._risk_drain_cycle is not cycle:
-            self._risk_drain_cycle = cycle
-            self._risk_retry_started = None
-            self._risk_retry_count = 0
-            self._risk_retry_at = 0.
+        cycle = (maintenance.risk_cycle_for(ticker)
+                 if maintenance is not None and priority == QUOTE_CANCEL else None)
+        risk_drain = cycle is not None
+        if risk_drain:
+            drain = self._risk_drains.get(ticker)
+            if drain is None or drain.cycle is not cycle:
+                self._risk_drains[ticker] = _Drain(cycle)
         if (self._refreshing or not self._available()
                 or ticker not in self.runtime.engine.market_shard
                 or priority not in {SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER,
@@ -334,12 +363,14 @@ class InventoryDispatchSource:
                 evidence = await runtime.writer.next_entry_cancel_evidence(
                     ticker, subaccount=runtime.account.subaccount)
                 if (generation != self._generation or not self._available()
-                        or maintenance.cycle is not cycle):
+                        or maintenance.risk_cycle_for(ticker) is not cycle):
                     return None
                 if evidence is None or evidence.order_id not in cycle.order_ids:
                     # A completed, current durable read ends fast drain, NOT
                     # order/fill reconciliation. Never retry ACK/UNKNOWN orders.
-                    self._risk_drain_cycle = None
+                    drain = self._risk_drains.get(ticker)
+                    if drain is not None and drain.cycle is cycle:
+                        drain.drained = True
                     return None
                 request = dict(order_id=evidence.order_id, market_ticker=ticker,
                     subaccount=evidence.subaccount, exchange_index=evidence.exchange_index)
@@ -625,7 +656,7 @@ class InventoryDispatchSource:
             if kind != 'cancel' or not isinstance(request, dict):
                 return False
             cancel_authorized = (self.runtime.maintenance is not None
-                and self.runtime.maintenance.cycle is proof.cycle
+                and self.runtime.maintenance.risk_cycle_for(proof.cycle.ticker) is proof.cycle
                 and proof.cycle.reason == 'fill_risk_withdrawal'
                 and request.get('order_id') in proof.cycle.order_ids
                 if isinstance(proof, _RiskCancelProof) else self.runtime.entry_pause_active)

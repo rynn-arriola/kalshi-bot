@@ -300,10 +300,11 @@ class RecoveryRuntime:
         if self.maintenance is None or self.dispatch_supervisor is None or self.stop_requested.is_set():
             return
         source = getattr(self.dispatch_supervisor, 'source', None)
-        if (source is not None and source.risk_drain_pending
-                and self.maintenance.cycle.ticker == ticker):
-            source.resume_risk_drain()
-            return  # Book churn must not bypass the deferred-cancel backoff.
+        if source is not None and self.maintenance.risk_cycle_for(ticker) is not None:
+            # D-131 item 7: every latched protective cycle drains through its
+            # own record; book churn must not bypass its deferred-cancel backoff.
+            source.request_risk_drain(ticker)
+            return
         plan = self.management.current(ticker, require_market=False)
         if plan is not None and self.maintenance.cancel_target(plan) is not None:
             from .dispatch import QUOTE_CANCEL
@@ -858,6 +859,9 @@ class RecoveryRuntime:
         cycle = self.maintenance.cycle if self.maintenance is not None else None
         if cycle is not None:
             self.engine.dirty.mark(cycle.ticker, priority=True)
+        for ticker in (self.maintenance.risk_latched if self.maintenance is not None else ()):
+            if ticker in self.engine.market_shard:
+                self.engine.dirty.mark(ticker, priority=True)
         for ticker in scope or self.engine.market_shard:
             self.engine.dirty.mark(ticker)
         self.engine.wake.set()

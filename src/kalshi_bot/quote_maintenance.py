@@ -4,6 +4,7 @@ One pair withdraws at a time. Exact terminal/fill proof precedes a fresh pair
 through the ordinary selector/writer. Recovery-only startup never resumes this
 ephemeral policy; the existing supervisor drains durable orders first.
 """
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -46,6 +47,9 @@ class RiskQueueAnchor:
 
 class QuoteMaintenance:
     REPRICE_DWELL_SECONDS = 30
+    # D-131 item 7: bounded concurrent protective withdrawals (primary cycle
+    # plus latched secondaries). Cancels still dispatch one at a time.
+    MAX_RISK_CYCLES = 4
     UNSCORING_DWELL_SECONDS = 90
     MAX_EVIDENCE_GAP_SECONDS = 15
 
@@ -62,6 +66,10 @@ class QuoteMaintenance:
         self._cycle_started = None  # First warning; diagnostic decision delay.
         self._cycle_latched = None  # Latched decision; D-129 cancel budget.
         self._cycle_acks = set()
+        # ticker -> latched secondary risk cycle and its (warned, latched, acks).
+        self.risk_latched = {}
+        self._latched_timing = {}
+        self._withdrawals = {}  # ticker -> recent withdrawal clocks (item 8)
         self._risk_queues = {}
         self._risk_log_at = {}
         self._risk_gap_counts = {}
@@ -99,6 +107,78 @@ class QuoteMaintenance:
         observation = self.runtime.selection._observation(ticker)
         return (c.reenter and c.ticker == ticker and c.program.program_id == program_id
                 and observation is not None and c.program in observation.programs)
+
+    def risk_cycle_for(self, ticker):
+        """The latched protective cycle owning this market, if any."""
+        c = self.cycle
+        if c is not None and c.reason == 'fill_risk_withdrawal' and c.ticker == ticker:
+            return c
+        return self.risk_latched.get(ticker)
+
+    def risk_cycles(self):
+        c = self.cycle
+        primary = ((c,) if c is not None and c.reason == 'fill_risk_withdrawal' else ())
+        return primary+tuple(self.risk_latched.values())
+
+    def _latch_secondary(self, plan, program):
+        """Latch another threatened market while a primary cycle is draining."""
+        r, ticker = self.runtime, plan.ticker
+        if (ticker in self.risk_latched or r.entry_pause_active
+                or len(self.risk_cycles()) >= self.MAX_RISK_CYCLES):
+            return ticker in self.risk_latched
+        service = r.dispatch_supervisor
+        active = service.dispatcher.status().active if service is not None else None
+        if active is not None and active[0] == ticker:
+            return False  # Join an in-flight command for this same market.
+        ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
+        cycle = MaintenanceCycle(ticker, program, ids, 'fill_risk_withdrawal', False)
+        now = r.clock()
+        self.risk_latched[ticker] = cycle
+        self._latched_timing[ticker] = (self._risk_since.get(ticker, now), now, set())
+        self._risk_cooldown[ticker] = now+self.fill_risk.policy.cooldown_seconds
+        if ticker in self.samples:
+            self.samples[ticker]['action'] = 'fill_risk_withdrawal'
+        r.diagnostics.emit('fill_risk_withdrawal', market=ticker,
+                           count=self._record_withdrawal(ticker))
+        r.diagnostics.emit('maintenance_cycle_started', market=ticker,
+            maintenance_reason='fill_risk_withdrawal', count=len(ids))
+        source = getattr(service, 'source', None)
+        if source is not None:
+            source.request_risk_drain(ticker)  # Never depend on the caller's wake.
+        return True
+
+    REPEAT_WINDOW_SECONDS = 3600
+
+    def _record_withdrawal(self, ticker):
+        """D-131 item 8: bounded per-market withdrawals in the last hour.
+
+        Measurement only; no threshold, cooldown or ranking change uses it.
+        """
+        now = self.runtime.clock()
+        horizon = now-self.REPEAT_WINDOW_SECONDS
+        for key in tuple(self._withdrawals):
+            times = self._withdrawals[key]
+            while times and times[0] < horizon:
+                times.popleft()
+            if not times:
+                del self._withdrawals[key]
+        times = self._withdrawals.setdefault(ticker, deque(maxlen=64))
+        times.append(now)
+        return len(times)
+
+    def _finish_secondary(self, ticker):
+        cycle = self.risk_latched.pop(ticker, None)
+        timing = self._latched_timing.pop(ticker, None)
+        if cycle is None:
+            return
+        self.runtime.diagnostics.emit('maintenance_cycle_finished', market=ticker,
+            maintenance_reason=cycle.reason,
+            elapsed_ms=max(0, int((self.runtime.clock()-timing[1])*1000)) if timing else None)
+        self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
+        self._risk_since.pop(ticker, None)
+        self._dwell.pop(ticker, None)
+        self._cooldown[ticker] = self.runtime.clock()+30
+        self.runtime._entry_dirty = True
 
     def credit(self, program):
         rewards = self.runtime.rewards
@@ -145,6 +225,18 @@ class QuoteMaintenance:
     def dispatch_result(self, result):
         """Decision-to-durable-ACK time includes dispatch/reconciliation waiting."""
         from .dispatch import QUOTE_CANCEL
+        latched = self.risk_latched.get(result.ticker)
+        timing = self._latched_timing.get(result.ticker)
+        if (latched is not None and timing is not None and result.priority == QUOTE_CANCEL
+                and result.state == 'ACK' and result.order_id in latched.order_ids
+                and result.order_id not in timing[2]):
+            now = self.runtime.clock()
+            self.fill_risk.cancel_ack(now-timing[1])
+            timing[2].add(result.order_id)
+            self.runtime.diagnostics.emit('fill_risk_cancel_ack', market=result.ticker,
+                order=result.order_id, elapsed_ms=max(0, int((now-timing[0])*1000)),
+                latch_ms=max(0, int((now-timing[1])*1000)))
+            return
         c = self.cycle
         if (c is not None and self._cycle_started is not None
                 and result.priority == QUOTE_CANCEL and result.state == 'ACK'
@@ -258,7 +350,11 @@ class QuoteMaintenance:
         self._risk_since.setdefault(ticker, r.clock())
         if self.cycle is not None:
             if self.cycle.reason == 'fill_risk_withdrawal':
-                return self.cycle.ticker == ticker
+                if self.cycle.ticker == ticker:
+                    return True
+                # D-131 item 7: latch now instead of waiting for the primary
+                # cycle's full terminal/fill reconciliation.
+                return self._latch_secondary(plan, program)
             service = r.dispatch_supervisor
             active = service.dispatcher.status().active if service is not None else None
             if active is not None and active[0] in {self.cycle.ticker, plan.ticker}:
@@ -336,7 +432,8 @@ class QuoteMaintenance:
             self._risk_cooldown = {t:until for t,until in self._risk_cooldown.items()
                                    if until > r.clock()}
             self._risk_cooldown[plan.ticker] = r.clock()+self.fill_risk.policy.cooldown_seconds
-            r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker)
+            r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker,
+                               count=self._record_withdrawal(plan.ticker))
         if evidence_valid_until is None:
             self._dwell.pop(plan.ticker, None)
         self.samples[plan.ticker]['action'] = reason
@@ -366,6 +463,7 @@ class QuoteMaintenance:
             self._risk_queues.pop(ticker, None)
             if c is not None and c.ticker == ticker:
                 self._finish(ticker)
+            self._finish_secondary(ticker)  # Inventory policy takes over.
             self._dwell.pop(ticker, None)
             self._risk_since.pop(ticker, None)
             self.samples[ticker] = dict(state='INVENTORY', action='existing_exit_policy')
@@ -377,6 +475,13 @@ class QuoteMaintenance:
             return
         journal = inventory.exit_journal
         if journal is None or journal.cancel_ids or journal.unresolved_ioc:
+            return
+        latched = self.risk_latched.get(ticker)
+        if latched is not None:
+            # Exact latched IDs drain without report/score renewal; the cycle
+            # ends only when durable inventory no longer holds any of them.
+            if not set(latched.order_ids) & {o.order.order_id for o in orders}:
+                self._finish_secondary(ticker)
             return
         if orders and (c is None or c.ticker != ticker or c.reason != 'fill_risk_withdrawal'):
             self._fill_risk(plan, program)
@@ -538,6 +643,14 @@ class QuoteMaintenance:
                         evidence_valid_until=until, evidence_identity=identity)
 
     def cancel_target(self, plan):
+        latched = self.risk_latched.get(plan.ticker) if plan is not None else None
+        if latched is not None and not plan.inventory.position:
+            for row in plan.inventory.orders:
+                if (row.order.order_id in latched.order_ids and row.owned
+                        and not row.reducing and not row.awaiting_fills
+                        and not row.order.terminal):
+                    return row.order.order_id
+            return None
         c = self.cycle
         if (c is None or plan is None or c.ticker != plan.ticker or plan.inventory.position
                 or not self._cycle_current(plan, c)):
@@ -559,6 +672,7 @@ class QuoteMaintenance:
                        if rc.owned and not rc.order.terminal)
         if c is not None:
             current.add(c.ticker)
+        current.update(self.risk_latched)
         now = utc(r.now())
         markets, observed, risk_current = {}, 0, 0
         for ticker in sorted(current):
@@ -577,8 +691,15 @@ class QuoteMaintenance:
                 risk_current += 1
             if len(markets) < 30:
                 markets[ticker] = entry
+        horizon = r.clock()-self.REPEAT_WINDOW_SECONDS
+        repeats = {t: sum(1 for at in times if at >= horizon)
+                   for t, times in self._withdrawals.items()}
         return dict(cycle=None if c is None else dict(ticker=c.ticker,
             program_id=c.program.program_id, reason=c.reason, reenter=c.reenter),
+            latched_risk_cycles=sorted(self.risk_latched),
+            max_risk_cycles=self.MAX_RISK_CYCLES,
+            repeat_withdrawals_last_hour={t: n for t, n in sorted(
+                repeats.items(), key=lambda item: -item[1])[:30] if n >= 2},
             coverage=dict(owned_markets=len(current), reward_observed_current=observed,
                           fill_risk_observed_last_5s=risk_current, historical_only=True),
             markets=markets,
