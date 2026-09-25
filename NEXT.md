@@ -1,5 +1,19 @@
 # Active work queue
 
+## After Command 1 on D-121/D-122
+
+1. Generation 158 is running on `d4e888b`; do not restart merely to prove it.
+   Monitor live quota-refresh survival, withdrawal decision-to-ACK latency,
+   occupancy/refill and reward-quality evidence without assuming profitability.
+2. The permanent D-116 Command 1 implementation remains unfinished. Replace the
+   one-time stopped reconciliation path with a bounded supported command that
+   cancels, reconciles exact terminal/fill evidence, flattens inventory when
+   authorized, restarts, and reports each stage without repeated broad scans.
+3. Preserve the separate unfinished command-1 worktree until that scoped build
+   is explicitly resumed; do not merge it merely because this operation worked.
+
+Earlier queues below are historical and do not authorize repeat operations.
+
 ## D-122 quota-refresh failure
 
 1. D-121 plus D-122 are verified, published and deployed at code `5d34d0e`.

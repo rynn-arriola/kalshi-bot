@@ -1,5 +1,38 @@
 # Current status
 
+## Command 1 completed on cumulative release — 2026-09-25 00:12 ET
+
+The operator invoked Command 1 after cumulative D-121/D-122 deployment. The
+account had already been independently proved flat, but generation 154 correctly
+refused new entries because 28 externally canceled orders still appeared resting
+in the local ledger. Its exact supported stop reached `shutdown_timeout`; under
+D-112, only the reverified bound child PID 47844 / generation 154 was terminated.
+Both managed processes then exited and the stop latch remained set.
+
+A fresh stopped-account audit proved all 28 exact orders canceled with zero
+fills, zero venue resting orders and zero positions. Twenty-four older fills in
+the full history interval were unrelated to those order IDs. The scoped terminal
+repair changed only those order/intents: risk, accounting, fill, position and
+history tables were verified unchanged. Backup
+`data/trader/d094-backup-20260925T040703Z` was created before the transaction.
+The supervisor was reset to disarmed with no child and no retry holds.
+
+The supported launcher then completed a recovery-only flat pass and started
+normal generation 158 / run `fb3f6149373c4bacb1c5498a49ac75d8` on deployed
+release `d4e888b`. All six WebSocket readers subscribed; initial ranking reached
+1,024/1,024 markets with none missing. At the final 00:12 ET check the supervisor
+was healthy, 28 entry orders were resting, positions were empty, entry authority
+was active, quota/dispatch/logging were healthy, and the current run had no
+ERROR or CRITICAL events. Two quota refreshes completed without the D-122 crash.
+Twenty-eight is a current occupancy observation, not a changed 30-order cap or
+proof that two additional qualifying orders must always exist.
+
+The ignored stopped-account utility was narrowed to distinguish unrelated
+historical fills and to reject stale saved evidence. That local operational aid
+is not product source. A permanent first-class Command 1 implementation remains
+unfinished; the successful operation used supported owners plus exact stopped
+reconciliation. Do not repeat this operation merely to prove it.
+
 ## D-122 cumulative repair — deployed, bot kept stopped
 
 **Current operation:** The bot is stopped. The operator explicitly authorized
