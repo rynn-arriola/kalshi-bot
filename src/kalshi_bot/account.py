@@ -462,12 +462,23 @@ class AccountCoordinator:
                     self._store_order(receipt)
                     known.add(order_id)
             imported, duplicates, missing = 0, 0, []
+            # D-131: staging above already compared every enumerated fill with
+            # the durable ledger (economics and time). A fill stored with exact
+            # microsecond time has nothing left to import or refine; skip its
+            # writer replay instead of re-applying all history every pass.
+            refined = await self.writer.refined_fills(
+                tuple(record.fill.key for record in evidence.records))
+            if not self._current(token):
+                return None
+            replay = tuple(record for record in evidence.records
+                           if record.fill.key not in refined)
+            duplicates += len(evidence.records)-len(replay)
             # Fetcher sorts by execution time/identity; committed older receipts
             # are never reordered. New chunks get receipt AFTER all awaited reads.
-            for offset in range(0, len(evidence.records), 32):
+            for offset in range(0, len(replay), 32):
                 if not self._current(token):
                     return None
-                result = await self.writer.recover_fills(evidence.records[offset:offset+32],
+                result = await self.writer.recover_fills(replay[offset:offset+32],
                                                        subaccount=self.subaccount, now=now())
                 if not self._current(token):
                     return None

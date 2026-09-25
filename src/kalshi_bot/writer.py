@@ -414,6 +414,13 @@ class LedgerWriter:
             raise InvalidData("bounded immutable account snapshot required")
         return await self._wait(self._submit("reconcile_snapshot", snapshot, utc(now)))
 
+    async def refined_fills(self, keys):
+        """Read-only: durable fills already stored with exact microsecond time."""
+        if type(keys) is not tuple or len(keys) > 10000 or any(
+                not isinstance(key, str) or len(key) > 1024 for key in keys):
+            raise InvalidData('bounded fill identities required')
+        return await self._wait(self._submit('refined_fills', keys))
+
     async def reaudit(self, snapshot):
         """Read-only local audit of an unchanged venue snapshot (D-130).
 
@@ -628,6 +635,15 @@ class LedgerWriter:
                     snapshot.subaccount, now))
                 return audit_snapshot(ledger, snapshot, epoch=self.epoch, revision=self._revision,
                                       capacity=self.market_capacity)
+        if command == 'refined_fills':
+            found = set()
+            keys = args[0]
+            for offset in range(0, len(keys), 512):
+                chunk = keys[offset:offset+512]
+                found.update(row[0] for row in ledger.connection.execute(
+                    f"SELECT id FROM fills WHERE execution_precision_us=1 AND executed_us IS NOT NULL "
+                    f"AND id IN ({','.join('?' for _ in chunk)})", chunk))
+            return frozenset(found)
         if command == "reaudit":
             from .verification import audit_snapshot
             return audit_snapshot(ledger, args[0], epoch=self.epoch, revision=self._revision,
@@ -1028,7 +1044,8 @@ class LedgerWriter:
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'next_entry_cancel_evidence', 'reduction_evidence',
-                                 'command_capacity', 'accounting_status', 'reaudit'}
+                                 'command_capacity', 'accounting_status', 'reaudit',
+                                 'refined_fills'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

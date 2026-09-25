@@ -36,6 +36,7 @@ EVENTS = {
     'maintenance_cycle_started': ('INFO', 'inventory'),
     'maintenance_cycle_finished': ('INFO', 'inventory'),
     'command_reclaim_failed': ('WARNING', 'writer'),
+    'history_scope_high': ('WARNING', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),

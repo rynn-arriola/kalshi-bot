@@ -206,5 +206,27 @@ class MaintenanceVisibilityTests(unittest.IsolatedAsyncioTestCase):
                       observability.ENUMS['maintenance_reason'])
 
 
+
+class HistoryScopeTests(unittest.TestCase):
+    def test_history_scope_warns_before_row_or_token_limit(self):
+        from types import SimpleNamespace
+        from kalshi_bot.runtime import RecoveryRuntime
+        emitted = []
+        runtime = SimpleNamespace(history_scope=None, history_scope_warnings=0,
+            HISTORY_WARN_ROWS=RecoveryRuntime.HISTORY_WARN_ROWS,
+            HISTORY_WARN_MS=RecoveryRuntime.HISTORY_WARN_MS,
+            diagnostics=SimpleNamespace(emit=lambda *a, **k: emitted.append((a, k))))
+        observe = RecoveryRuntime._observe_history_scope
+        history = SimpleNamespace(seen=34, enumeration=SimpleNamespace(pages=1))
+        observe(runtime, history, .3)
+        self.assertEqual(runtime.history_scope['rows'], 34)
+        self.assertEqual(emitted, [])
+        observe(runtime, SimpleNamespace(seen=6000, enumeration=None), .3)
+        observe(runtime, history, 2.6)
+        self.assertEqual(runtime.history_scope_warnings, 2)
+        self.assertEqual([k['count'] for _, k in emitted], [6000, 34])
+        from kalshi_bot import observability
+        self.assertIn('history_scope_high', observability.EVENTS)
+
 if __name__ == '__main__':
     unittest.main()

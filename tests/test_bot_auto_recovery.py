@@ -93,6 +93,18 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
         self.assertEqual((await self.writer.observe(NOW)).realized_pnl, D("-0.01"))
 
+    async def test_refined_durable_fill_is_not_replayed_every_pass(self):
+        # D-131: after one import at exact time, later passes skip writer replay.
+        await self.bind()
+        first = await self.recover(Reads([history()]))
+        self.assertEqual(first.imported, 1)
+        from unittest.mock import patch
+        with patch.object(self.writer, 'recover_fills', wraps=self.writer.recover_fills) as replay:
+            second = await self.recover(Reads([history()]), now=lambda: NOW+timedelta(seconds=1))
+        replay.assert_not_called()
+        self.assertEqual((second.seen, second.already_recorded, second.imported), (1, 1, 0))
+        self.assertFalse(second.missing_fill_keys)
+
     async def test_duplicates_keep_original_receipt_across_restart_and_window(self):
         await self.bind()
         await self.recover(Reads([history()]))

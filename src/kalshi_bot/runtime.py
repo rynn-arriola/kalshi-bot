@@ -185,6 +185,8 @@ class RecoveryRuntime:
         self.steady_refresh_escalations = 0
         self.suppressed_market_evaluations = 0
         self.unsent_rebases = 0
+        self.history_scope = None
+        self.history_scope_warnings = 0
         self.recovery_risk_drain_waits = 0
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
@@ -679,6 +681,25 @@ class RecoveryRuntime:
         self.diagnostics.emit('account_rebased_unsent',
             outcome='recovered' if (rebased is not None or anchored) else 'source_changed')
         return rebased is not None or anchored
+
+    # D-131: full recovery re-proves fills from the opening boundary inside a
+    # 5 s evidence token, and history staging is capped at 10,000 fills. Warn
+    # long before either limit; moving the boundary is an operator decision.
+    HISTORY_WARN_ROWS = 5000
+    HISTORY_WARN_MS = 2500
+
+    def _observe_history_scope(self, history, elapsed):
+        rows = history.seen
+        elapsed_ms = max(0, int(elapsed*1000))
+        self.history_scope = dict(rows=rows, row_limit=10000, elapsed_ms=elapsed_ms,
+                                  token_ms=5000, pages=history.enumeration.pages
+                                  if history.enumeration is not None else None)
+        if rows >= self.HISTORY_WARN_ROWS or elapsed_ms >= self.HISTORY_WARN_MS:
+            self.history_scope_warnings += 1
+            count = self.history_scope_warnings
+            if count & (count-1) == 0:
+                self.diagnostics.emit('history_scope_high', count=rows,
+                                      elapsed_ms=elapsed_ms)
 
     def _revoke(self):
         self._steady_account_scope = None
@@ -1368,10 +1389,12 @@ class RecoveryRuntime:
             return False
         history_ingress = self.ingress_revision
         self.recovery_phase = 'history'
+        history_started = self.clock()
         history = await self.account.recover_history(reads, start=self.history_start,
                                                     end=self.now(), now=self.now)
         if history is None:
             return False
+        self._observe_history_scope(history, self.clock()-history_started)
         history_reports = [history]
         release_receipt_ids = (history.enumeration.receipt_id,)
         self.recovery_phase = 'pending_fills'
@@ -1935,6 +1958,8 @@ class RecoveryRuntime:
             recovery_dispatch_wait_ms=self.recovery_dispatch_wait_ms,
             recovery_risk_drain_waits=self.recovery_risk_drain_waits,
             unsent_rebases=self.unsent_rebases,
+            history_scope=self.history_scope,
+            history_scope_warnings=self.history_scope_warnings,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             routine_account_refresh=dict(attempts=self.routine_refresh_attempts,
