@@ -859,7 +859,7 @@ class RecoveryRuntime:
         cycle = self.maintenance.cycle if self.maintenance is not None else None
         if cycle is not None:
             self.engine.dirty.mark(cycle.ticker, priority=True)
-        for ticker in (self.maintenance.risk_latched if self.maintenance is not None else ()):
+        for ticker in getattr(self.maintenance, 'risk_latched', ()):
             if ticker in self.engine.market_shard:
                 self.engine.dirty.mark(ticker, priority=True)
         for ticker in scope or self.engine.market_shard:

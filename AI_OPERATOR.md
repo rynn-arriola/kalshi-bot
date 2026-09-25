@@ -124,6 +124,13 @@ reverified immediately before termination. It never authorizes a broad process
 kill, an ambiguous target, a second bot, direct venue mutation or bypassing
 recovery and flat-state checks.
 
+D-116: **“command 1”** explicitly means cancel this bot's primary-account orders,
+immediately flatten its inventory at available prices (accepting P&L/fees), verify
+flat, then restart. Use `scripts/Restart-LiquidityBot.ps1 -Flatten -Live` and
+supervise it through its saved stage/result. Ordinary restart retains ordinary
+exit policy. Never claim success from a launch receipt, ignore a reported blocker,
+or run a second closer. See `docs/BUILD_EMERGENCY_RESTART.md` for limits.
+
 An AI recommendation is not approval. Record accepted decisions in
 `DECISIONS.md` before implementing them. In the current phase, live order
 execution is not authorized. D-021 authorizes building only; AI operation does

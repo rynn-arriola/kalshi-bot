@@ -1,5 +1,14 @@
 # Current status
 
+## D-131 items 7–9 — 2026-09-25
+
+**Implemented, reviewed and verified offline; not deployed.** Finding 201:
+up to 4 concurrent protective withdrawals, repeat-withdrawal counts, and the
+finished explicit-only Command 1 (cancel → flatten at market → verified flat →
+restart). Complete release gate 1,873 tests, no failures. All D-129–D-131 work
+is published and waits for an operator-authorized deployment; generation 170
+still runs the old code.
+
 ## D-131 items 2–6 — 2026-09-25
 
 **Implemented, reviewed and verified offline; not deployed.** Finding 200:

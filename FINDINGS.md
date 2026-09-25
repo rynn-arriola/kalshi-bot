@@ -1,5 +1,37 @@
 # Findings — kalshi-bot
 
+## 201. D-131 items 7–9: concurrent withdrawals, repeat tracking, Command 1 — 2026-09-25
+
+**Item 7:** a threatened market now latches immediately as a secondary
+protective cycle (at most 4 cycles total) instead of waiting for the primary
+cycle's full terminal/fill reconciliation. Each latched cycle keeps its own
+D-128 retry/backoff/escalation record; cancels still dispatch one at a time;
+post-cancel reconciliation and every recovery pass wait until no latched pair
+has a cancelable leg (bounded 5 s). Durable per-order cancel checks prevent any
+duplicate send. Secondary cycles end when durable inventory no longer holds
+their IDs, or hand over to inventory policy on a fill. Two-market synthetic
+test: both pairs' four cancels ACK, none sent twice, reconciliation starts only
+after both drains complete. Existing single-cycle D-128/D-127 suites unchanged.
+
+**Item 8:** per-market withdrawals in the last hour are counted (bounded) and
+reported in status and on each `fill_risk_withdrawal` event. Measurement only;
+no threshold, cooldown or ranking change (operator decision after data).
+
+**Item 9 (D-116 Command 1):** the preserved `data/command1-dev` work (left
+untouched) was ported onto current code: generation-bound flatten request,
+immediate exit deadline applied to current and refreshed terms of an
+entry-paused owner, existing exact reduce-only IOC path, correlated
+verified-flat receipt, supported relaunch and readiness check, bounded
+timeouts with explicit blockers. Review fix: a malformed/unreadable request
+file no longer crashes a draining owner (treated as no flatten). Status-field,
+stop-receipt and launch-receipt contracts verified against current code.
+Operational note: `Restart-LiquidityBot.ps1 -Flatten -Live` closes open
+inventory at available prices; ordinary stop/start does not.
+
+**Verification:** complete release suite 1,873 tests in 284.5 s, no failures,
+one expected Windows symlink-privilege skip. Synthetic fixture 30 orders in
+8.465 s, refill 0.538 s, risk refill 1.580 s (offline only).
+
 ## 200. D-131 items 2–6: fixes, remaining-code review and a clock bug — 2026-09-25
 
 **MEASURED/VERIFIED — quota clock drift would stop all reads after ~31 h.**

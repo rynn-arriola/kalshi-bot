@@ -62,6 +62,20 @@ class _StopSignal:
     def request(self):
         self.local = True
 
+    def flatten_requested(self):
+        """Only an exact, valid, current request flattens; anything else is no.
+
+        An unreadable or malformed request must never crash a draining owner
+        (open orders could be left behind); the ordinary drain continues.
+        """
+        from .emergency import requested
+        try:
+            return requested(self.args.control_root, scope_id=self.args.scope_id,
+                child_id=self.args.child_id, generation=self.args.child_generation,
+                now=time.time())
+        except (InvalidData, OSError, ValueError, TypeError):
+            return False
+
 
 class _LatestStatus:
     def __init__(self):
@@ -417,6 +431,7 @@ async def _run_live(args, scope, endpoint, protocol, control, power, diagnostics
     initialize = mode.initialize
 
     run_args = SimpleNamespace(initialize=initialize,
+        supervisor_child_id=args.child_id,
         resume_opening=mode.resume_opening,
         inputs=ROOT / "config" / "live-inputs.local.json",
         key_id_file=ROOT / "kalshi-bot.txt",

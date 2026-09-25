@@ -324,7 +324,7 @@ async def verified_flat(runtime):
             and not view.blockers and not view.entry_count and not view.total)
 
 
-async def supervise(runtime, *, stop, publish, interval=1):
+async def supervise(runtime, *, stop, publish, interval=1, flatten=None):
     """A stop requests entry cancellation and existing inventory management.
 
     Stay alive while inventory/uncertainty remains. Do not label process exit
@@ -336,6 +336,8 @@ async def supervise(runtime, *, stop, publish, interval=1):
         while not task.done():
             if stop():
                 runtime.live_session.entries_paused = True
+                if flatten is not None and await asyncio.to_thread(flatten):
+                    runtime.management.request_flatten(runtime.now())
             if runtime.entry_pause_active:
                 runtime.request_entry_drain()
                 for ticker in runtime.engine.market_shard:
@@ -343,6 +345,8 @@ async def supervise(runtime, *, stop, publish, interval=1):
                 runtime.engine.wake.set()
             result = await local_status(runtime)
             result['state'] = 'DRAINING' if runtime.entry_pause_active else 'RUNNING'
+            result['emergency_flatten'] = runtime.management.flatten_at is not None
+            result['emergency_flatten_supported'] = True
             await asyncio.to_thread(publish, result)
             if (runtime.entry_pause_active and result['account_current']
                     and not result['positions'] and not result['resting_entries']
@@ -470,6 +474,8 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
         def publish(value):
             document = value | {'run_id': session.run_id,
                                 'recovery_only': bool(recovery_only)}
+            if getattr(args, 'supervisor_child_id', None) is not None:
+                document['supervisor_child_id'] = args.supervisor_child_id
             evidence = document.get('recovery_restrictions', {})
             journal.replace(tuple(evidence.get('component_holds', ())), tuple(
                 FenceCooldown(item['name'], math.ceil(
@@ -478,7 +484,8 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
             save_result(DATA/'status.json', document)
             if publish_override is not None:
                 publish_override(document)
-        result = await supervise(runtime, stop=lambda: stop.requested, publish=publish)
+        result = await supervise(runtime, stop=lambda: stop.requested, publish=publish,
+                                 flatten=getattr(stop, 'flatten_requested', None))
     finally:
         session.close()
         try:
@@ -494,6 +501,8 @@ async def run(args, inputs, session, diagnostics, stop, *, publish_override=None
         raise InvalidData('live runtime ended without terminal flat result')
     terminal = result | {'run_id': session.run_id,
                          'recovery_only': bool(recovery_only)}
+    if getattr(args, 'supervisor_child_id', None) is not None:
+        terminal['supervisor_child_id'] = args.supervisor_child_id
     save_result(DATA/'status.json', terminal)
     if publish_override is not None:
         publish_override(terminal)

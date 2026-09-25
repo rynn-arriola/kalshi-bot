@@ -11,12 +11,15 @@
    `account_rebased_unsent` events replacing most `mutation_persisted`
    recoveries; recovery time share well below 37%; `latch_ms` vs
    `elapsed_ms`; `awaiting_risk_drain` waits; withdrawal frequency; refill.
-2. **Operator decisions pending:** concurrent risk withdrawals (still one
-   global cycle) and any ranking/threshold change for repeated withdrawals.
-3. Open engineering: bound full-recovery history re-enumeration (receipt
-   chain instead of opening boundary); finish line-by-line review of the
-   supervisor/Windows, selection/ranking, rewards/incentives and REST/quota
-   modules (Finding 198 scope note).
+2. **Choose the deployment path:** ordinary supported stop → fast-forward →
+   start keeps open inventory under normal exit policy; `Command 1`
+   (`Restart-LiquidityBot.ps1 -Flatten -Live`) now also closes inventory at
+   market. The deploy itself (fast-forward to the published commit) happens
+   between stop and start either way. After deploy, also verify latched
+   secondary withdrawals and repeat-withdrawal counts; any ranking/threshold
+   change for repeat withdrawals remains an operator decision.
+3. Open: moving the history-proof start forward needs an operator decision
+   (Finding 200); modules not yet read line by line are listed there.
 
 ## Overall run review — prioritized work saved for later
 

@@ -146,7 +146,24 @@ test is not independent permission to trade, cancel, stop or restart.
 
 # Request drain, not a force-kill or a claim that the account is flat.
 .\scripts\Stop-LiquidityBot.ps1
+
+# D-116, explicit "command 1": cancel, immediate reducing exits, verified flat,
+# then normal restart. Accepts resulting execution P&L and fees.
+.\scripts\Restart-LiquidityBot.ps1 -Flatten -Live
 ```
+
+Command 1 uses the existing live owner, not a second order writer. Its request
+is bound to the exact child/generation and cannot liquidate a later run. It
+requires a current emergency-capable child; old/stopped/unknown owners report a
+blocker without an ad hoc close. The normal stop/start commands remain available
+for separately supervised recovery. Default flatten/readiness bounds are 180/300
+seconds, configurable up to 900 each. Timeout leaves the actual state visible;
+it never force-kills, assumes flat, or launches a duplicate automatically.
+`data/trader/supervisor/command1-status.json` holds the last operation and stage;
+read it and ordinary status before retrying an interrupted command. COMPLETE
+requires old-owner terminal flat proof, exit, and a fresh ready normal child.
+Thin or unavailable books can block liquidation; immediate does not guarantee a
+fill or bounded loss. No foreign ownership or another subaccount is included.
 
 The account-scoped Windows leases prevent competing supervisor/runtime owners.
 `HOST_STARTED` is only a startup acknowledgment; inspect current status and

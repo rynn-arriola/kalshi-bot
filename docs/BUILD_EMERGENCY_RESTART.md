@@ -7,6 +7,13 @@ account or adopt unknown orders/positions implicitly.
 
 ## Implementation boundary
 
+Entry point: `scripts/Restart-LiquidityBot.ps1 -Flatten -Live` invokes
+`kalshi_bot.emergency_restart`. One Windows command lease prevents competing
+restart invocations. The request lives under the supervisor control root and is
+bound to the current child ID/generation, with a bounded expiry. A stopped or
+older child lacking capability reports a blocker; no fallback external closer
+is authorized. Existing stop/start recovery remains available to the operator.
+
 One generation-bound local request asks the existing child to pause entries and
 apply an immediate flatten deadline. Existing terminal cancellation, fresh book,
 inventory/account, reduce-only IOC, writer and quota checks remain authoritative.

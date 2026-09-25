@@ -1,5 +1,5 @@
 """Bounded advisory inventory plans. Never dispatches orders/cancels/IOC."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from .orders import InventoryPlan, inventory_plan
@@ -33,10 +33,23 @@ class InventoryManager:
         self._logged_states = {}  # bounded by managed market scope, no tick-by-tick logs
         self._inventory_revision = None
         self._inventory_cache = {}
+        self.flatten_at = None
+
+    def request_flatten(self, now):
+        """Explicit operator deadline; cannot enable entries or grant proof."""
+        if not self.runtime.entry_pause_active:
+            raise InvalidData('flatten requires paused entries')
+        if self.flatten_at is not None:
+            return
+        self.flatten_at = utc(now)
+        for terms in tuple(self.terms.values()):
+            self.set_terms(terms)
 
     def set_terms(self, terms):
         if not isinstance(terms, ExitTerms) or terms.ticker not in self.runtime.engine.market_shard:
             raise InvalidData("exit terms outside managed scope")
+        if self.flatten_at is not None:
+            terms = replace(terms, flatten_at=min(terms.flatten_at or self.flatten_at, self.flatten_at))
         self.terms[terms.ticker] = terms
         self.invalidate(terms.ticker)
         self.runtime.engine.dirty.mark(terms.ticker)

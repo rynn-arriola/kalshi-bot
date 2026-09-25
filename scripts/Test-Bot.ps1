@@ -11,6 +11,7 @@ Push-Location $projectPath
 try {
     if ($Fast) {
         $patterns = @(
+            'test_bot_emergency_restart.py',
             'test_bot_live_runtime.py',
             'test_bot_recovery_runtime.py',
             'test_bot_routine_refresh.py',

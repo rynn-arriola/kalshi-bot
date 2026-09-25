@@ -84,6 +84,12 @@ Other qualified markets can fill available capacity through the existing ranked
 selector and sole writer. No free slots are earmarked for replacement; shared
 limits remain authoritative. Same-ticker continuation still requires terminal/
 fill proof and the unchanged program, and yields when the cap has no pair room.
+D-116 adds a generation-bound emergency request to the existing supervised
+child. Only an explicitly stopped/entry-paused owner can latch its immediate
+flatten deadline. Fresh metadata keeps its original validity/bands/fee fields;
+normal source fences, single-writer cancellation and exact reducing IOC remain.
+A bounded command coordinator consumes correlated terminal flat cleanup before
+normal launch, then checks fresh readiness. It never becomes an order writer.
 
 The sole dispatcher's active entry key temporarily owns that ticker's advisory
 publication. Background evaluation and in-flight inventory reads defer publication

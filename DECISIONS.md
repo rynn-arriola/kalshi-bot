@@ -250,7 +250,8 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-116 — Explicit command 1 flatten/restart and restart-friction repair
 
-- **Status:** ACCEPTED, 2026-09-24.
+- **Status:** ACCEPTED, 2026-09-24. Implementation completed under D-131
+  (Finding 201); not deployed.
 - **Decision owner:** Operator confirmed the manual close and requested restart,
   fixes to wasted restart time, and “command 1” to cancel orders and flatten
   positions instead of waiting for ordinary passive exits.

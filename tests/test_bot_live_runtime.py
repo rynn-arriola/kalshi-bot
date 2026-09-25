@@ -570,6 +570,21 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertNotIn('expiration_time', self.f.calls[0][1])
 
+    async def test_operator_flatten_queues_exact_no_exit_without_age_wait(self):
+        await self.f.ready(filled='4', side='ask')
+        runtime = self.f.runtime
+        runtime.live_session = SimpleNamespace(entries_paused=True)
+        runtime.management.request_flatten(self.f.now)
+        await runtime._evaluate('A', None, 0)
+        self.assertEqual(self.f.dispatcher.status().queued, ((DUE_IOC, 'A'),))
+        result = await self.f.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        request = self.f.calls[0][1]
+        self.assertEqual(request['side'], 'bid')
+        self.assertEqual(D(request['count']), 4)
+        self.assertTrue(request['reduce_only'])
+        self.assertNotIn('expiration_time', request)
+
     async def test_due_inventory_rearms_one_exhausted_recovery_before_ioc(self):
         from kalshi_bot.observability import Diagnostics
         log = Diagnostics(Path(self.f.temp.name)/'deadline-logs').start()

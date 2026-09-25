@@ -1,5 +1,13 @@
 # What exists
 
+## Concurrent withdrawals, repeat counts and Command 1 — D-131
+
+Quote maintenance latches up to four protective cycles; the dispatch source
+keeps one retry record per latched cycle. Repeat withdrawals per market are
+counted for the last hour. `scripts/Restart-LiquidityBot.ps1 -Flatten -Live`
+implements D-116 through the existing owner. See Finding 201 and
+[the Command 1 contract](docs/BUILD_EMERGENCY_RESTART.md); not deployed.
+
 ## Recovery-churn and visibility repairs — D-130
 
 Proven-unsent dispatcher turns re-audit the unchanged account snapshot (new
