@@ -1,5 +1,100 @@
 # Findings — kalshi-bot
 
+## 195. Overall generation-170 log review — 2026-09-25
+
+**Scope:** Local read-only review of child run
+`587e5d6eaf2044afbff1ae5ba6632f3b`, frozen at sequences 1–112,742,
+13:51:44.724–16:07:03.743 ET. All 112,742 sequences were present, with no
+malformed records: 112,684 INFO, 58 WARNING, zero ERROR/CRITICAL. Later status
+samples below are separate observations. No venue requests, financial-ledger
+inspection, order actions, source changes or restart were performed.
+
+**Observed working:** Both exact managed processes remain present in generation
+170; supported local supervisor status reports current presence and a recent
+saved heartbeat, no attention reason/holds and one launch attempt. Parent run
+`bca43cfc747946ef8ed36a6717718ac9` contains startup and no failure/exit event.
+All six child readers remain subscribed on their first connections, all four
+book failure counts are zero, dispatcher/engine are nonfailed, and logging has
+zero drops. All 39 quota refreshes completed; incentive discovery has no failure.
+The initial ranking covered 1,024/1,024 selected markets. These observations
+establish current operation, not tested crash recovery or perpetual uptime.
+
+**P1 — protective scheduling still has a recovery-entry race:** All 78 logged
+protective withdrawals have 156 cancel ACKs. Across these legs, recorded
+first-warning-to-ACK median/p95/max is 1.220/11.100/27.478 seconds;
+latch-to-ACK is 1.099/3.787/4.602 seconds; submission-to-ACK is
+0.215/0.353/0.510 seconds. Warning timestamps can span unknown intervals and do
+not prove a continuous threat. The first zero-ahead sample at sequence 11,325
+is followed by several recoveries before the withdrawal latches at 11,732,
+about 25.9 seconds later. Preserve fresh revalidation while investigating the
+time before latching, not just cancel transport or the second-leg retry.
+
+There is also a concrete scheduling overlap: first cancel ACK at sequence
+100,272 (15:52:00.952 ET), routine-refresh failure at 100,279, full recovery
+start at 100,280 (15:52:01.238), second cancel ACK at 100,300
+(15:52:02.638). Twelve of the 78 pairs have recovery-start events between their
+two ACKs: ten `routine_refresh_failed`, one `quota_restored` and one
+`mutation_persisted`. `_refresh_routine_account` requests recovery on failure;
+`_recover` joins the dispatcher's current active operation but does not inspect
+`source.risk_drain_pending` before starting. An isolated invocation of that
+actual method with an idle mocked dispatcher and pending risk drain reaches
+`recovery_started`; the probe stops there without I/O. D-128 protects the
+watchdog/post-drain request path, but not this alternate entry to full recovery.
+Replay the real dispatcher plus an already-running routine renewal before
+repairing; preserve bounded escalation for ambiguous/permanent cancel outcomes.
+This overlap is verified, but it does not by itself explain all pre-latch delay.
+
+**P2 — recovery/refill cost remains:** The frozen window has 653 recovery-start
+events, 612 repaired passes, 33 incomplete warnings, 19 proven-unsent mutations
+and no unknown-mutation event. Repaired-pass duration median/p95/max is
+5.471/6.519/7.572 seconds. The 20 routine-refresh warnings comprise 18 source
+changes and two quota waits; every one is followed by a repaired pass within
+5.255–10.574 seconds. The 134 periodic health samples show entry allowed in 46
+and unavailable in 88; 72 omit order counts. These samples are not an exact
+time-weighted availability measure. Existing Findings 193–194 own slow refill
+and missing batch-result detail; counts cannot replace stage timing.
+
+**P2 — reward visibility and reference-price coverage are incomplete:** Reward
+reflection reports 1,466 completed joins, zero failures, 148 superseded joins,
+766 deferrals and three quota deferrals; 134 checkpoints saved with no failures.
+Those counters do not prove continuous per-order reward evidence. In 16 local
+status samples at 16:08:15–16:08:45 ET, reward progress reported 0–13 rows while
+26–28 entries were reported; only two samples had any ESTIMATING row (one/two),
+the rest reported UNKNOWN rows or none. `RuntimeRewards._progress_status` walks
+the transient management-plan cache, so a missing plan can omit an owner from
+the report. Historical checkpoint totals span earlier runs and idle intervals;
+do not interpret accumulated UNKNOWN seconds as this run's lost income.
+
+A separate 12-sample check at 16:10:33–16:10:55 ET reported 28 entries with
+7–13 maintenance rows. Available quote-status fields said full price weight,
+but some rows' validity had expired and several owners had no current scoring
+row. These explicitly historical samples cannot prove all orders are currently
+at reference price. No drift dwell was present in those samples. Logs do not
+identify ordinary maintenance-cycle reasons and completion well enough to prove
+an actual cancel/reprice/reentry cycle. Keep unknown owners visible, add bounded
+source-gap/coverage and cycle diagnostics, and exercise expiry/drift/reentry
+with current proofs before claiming complete repricing coverage. UNKNOWN is
+neither zero rewards nor permission to assume a scoring quote or change prices.
+No paid reward/payout reconciliation or profitability is established here.
+
+**P3 — startup throttle and diagnostic load:** All five REST retry warnings are
+HTTP 429 on public `/markets`, confined to 13:51:51–13:51:57 ET; initial discovery
+subsequently completed. Authenticated read-budget status shows zero throttles;
+that does not cover this public startup client or local write-budget waiting.
+The run emits 64,503 `exit_inputs_published` events (57.2% of records) and 18,976
+inventory-plan changes. This suggests a targeted review of repeated publication
+and log volume, not proof of wasted REST requests or CPU saturation. Retain
+bounded disk use, safety-event visibility and source-expiry semantics.
+
+**Unexercised paths:** Every logged inventory-plan mode is `flat`; known health
+samples have no positions, and the 16:07 status reports no positions or risk/
+accounting holds and zero realized P&L for its current window. Without financial
+ledger/venue reconciliation this does not establish that no fill ever occurred.
+The run supplies no affirmative completed fill-to-passive-exit/IOC evidence,
+loss-stop test, native crash/reconnect recovery test or reward payment evidence.
+Record these as unverified live paths, not failures and not reasons to trigger
+real fills/crashes for this review.
+
 ## 194. Refill review: logging omissions and evidence limits — 2026-09-25
 
 **VERIFIED offline:** A disposable `Diagnostics` sink given a synthetic mixed

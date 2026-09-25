@@ -1,5 +1,39 @@
 # Active work queue
 
+## Overall run review — prioritized work saved for later
+
+Finding 195 covers the full current run through 16:07:03 ET and separate later
+status samples. No implementation or restart was performed for this review.
+
+1. **Protective cancellation scheduling:** Reproduce routine-refresh failure
+   requesting full recovery while an exact risk pair still has a pending leg.
+   Twelve pairs show intervening recovery starts (routine failure, quota restored
+   and mutation persisted). Check all entry paths, not only the post-drain watchdog. Cover active
+   renewal, idle-but-pending dispatch, fresh warning reevaluation, permanent /
+   unknown cancel escalation, stop and fill takeover. Also attribute the observed
+   25.9-second warning-to-latch interval. Preserve original proof expiry and
+   bounded cancel recovery; do not solve this by suppressing necessary recovery.
+2. **Refill and diagnostic accuracy:** Execute the detailed queue below, starting
+   with discarded batch counts/block reasons. Correlate recovery, quota waits,
+   source changes and actual accepted legs before changing retry/concurrency.
+3. **Reward and repricing coverage:** Keep every known owned market visible with
+   age/UNKNOWN reasons when management plans are temporarily missing. Measure
+   source-valid coverage independently from reflection-success counters. Add
+   bounded maintenance reason/start/finish and drift-dwell diagnostics; test a
+   complete reference-drift cancel/reentry cycle across renewal gaps. Do not
+   extend leases, infer reward income or reprice from historical status rows.
+4. **Repeated withdrawal quality:** Use the measurements above and the separate
+   strategy option below to assess depth/depletion and repeated reentry. Ranking
+   or threshold changes still need an operator decision.
+5. **Lower-priority startup/load work:** Review the five startup public-market
+   429s and high metadata-publication log volume. Check useful changed values,
+   cache hits, source expiry and event-loop cost before changing the pacer or
+   sampling. Existing bounded logging and error visibility must remain.
+6. **Live acceptance still unverified:** Do not label fills/exits, loss stops,
+   crash recovery or reward payouts verified from an all-flat, noncrashing run.
+   Reuse offline regressions; when a natural live episode occurs, correlate its
+   full evidence. Do not provoke fills, restart or change orders merely to test.
+
 ## Post-withdrawal refill latency
 
 Findings 193–194 own the corrected evidence. This queue is saved for later

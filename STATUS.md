@@ -1,5 +1,29 @@
 # Current status
 
+## Overall log review — 2026-09-25
+
+**Review complete; issues queued, not fixed.** Finding 195 audits generation
+170's complete retained 112,742-event window through 16:07:03 ET. There are
+58 warnings, zero ERROR/CRITICAL, no reader/engine/dispatcher failure or unknown
+mutation event. Exact parent/child presence and a fresh supervisor heartbeat
+were confirmed; no restart occurred. At 16:07 saved status reported 28 resting
+entries, no positions, no risk/accounting holds and healthy zero-drop logging.
+
+Highest priority: full recovery can enter through a routine-refresh failure
+between protective cancel legs; both live correlation and a scheduling probe
+show the gap. First-warning-to-ACK reaches 27.478 seconds while submission-to-ACK
+stays below 0.511 seconds. Slow refill remains. Reward/scoring telemetry is often
+UNKNOWN or omits owners during management-plan renewal, preventing an all-orders
+reference-price or $1-accrual assurance. Five recovered startup public 429s and
+repetitive metadata logging are lower-priority follow-ups. Fills/exits, crash
+recovery and actual payouts are not established by this flat, noncrashing run.
+NEXT owns the ordered work; no bot logic, settings, ledger or orders changed.
+Validation: 25 fill-risk, 32 quote-maintenance and 17 routine-refresh tests pass
+(74 total). The isolated recovery-start probe reproduces the scheduling gap;
+all 78 live risk pairs have distinct correlated cancel ACKs, with 12 intervening
+recovery starts. Existing tests passing does not cover that newly identified
+race. Full release tests are unnecessary for this documentation-only update.
+
 ## Occupancy findings rechecked — 2026-09-25
 
 Documentation review only; no code, configuration or runtime change. Finding 194
