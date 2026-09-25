@@ -756,7 +756,14 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
                 return SupervisorDecision(replace(bare,
                     state=SupervisorState.BACKOFF, desired_armed=True,
                     stop_latched=False, next_restart_utc=event.observed_utc,
-                    attention_reason=None, recovery_reasons=()))
+                    attention_reason=None, recovery_reasons=(),
+                    # A verified cleanup and its normal-child handoff share
+                    # one reserved restart slot. Failed starts/deaths remain
+                    # charged; this is not a reset of the incident budget.
+                    incident_attempts=max(0, bare.incident_attempts-1),
+                    restart_attempts_utc=(bare.restart_attempts_utc[:-1]
+                        if bare.restart_attempts_utc and bare.restart_attempts_utc[-1]
+                            == state.start_requested_utc else bare.restart_attempts_utc)))
             return SupervisorDecision(replace(bare, state=SupervisorState.DISARMED,
                 desired_armed=False, stop_latched=True, next_restart_utc=None,
                 attention_reason=None, recovery_reasons=()))

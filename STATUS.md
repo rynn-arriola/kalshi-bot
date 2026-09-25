@@ -1,5 +1,29 @@
 # Current status
 
+## D-123 stopped-bot repair — 2026-09-25
+
+Generation 158 stopped after recovery exhaustion and an unexpected process exit;
+generation 159 is disarmed/attention-required, with both owners absent. Cleanup
+reported flat at 00:44 ET and a signed account check at 06:00:56 ET independently
+confirmed zero resting orders and positions. Finding 186 traces the incident and
+corrects the previous log-ID filtering claim.
+
+The isolated `fix/recovery-handoff-stall` branch repairs durable safety-action
+progress, the missing deadline log event and final-slot cleanup handoff, and
+adds parent-side exit-code diagnostics. Failing-before regressions reproduce
+the defects. Focused checks and the 312-test fast/native gate pass. The full
+release gate passes **1,780 tests in 360.325 seconds**, with one expected Windows
+symlink-privilege skip. The synthetic 1,024-book fixture reaches 30 orders in
+12.423 seconds, refills in 1.350 seconds and withdraws/refills risk in 1.067
+seconds; these are not live latency promises. Exact diff review, secret-pattern
+and whitespace checks pass. Local-link audit checks 787 references, with only
+four pre-existing ignored research artifacts unavailable in the isolated tree.
+Evidence: `data/startup-recovery-dev/data/d123-release.log`. No financial history
+or configuration changed. Publication/deployment and authorized restoration
+are next; no current running-bot claim is made yet.
+
+Older operation records below are historical, not current liveness evidence.
+
 ## Command 1 completed on cumulative release — 2026-09-25 00:12 ET
 
 The operator invoked Command 1 after cumulative D-121/D-122 deployment. The

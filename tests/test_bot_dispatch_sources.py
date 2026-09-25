@@ -138,6 +138,30 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidData):
             InventoryDispatchSource(object(), offline_fixture=True)
 
+    async def test_only_durable_safety_ack_advances_recovery_progress(self):
+        from kalshi_bot.dispatch import DispatchResult, ENTRY_PAIR
+        self.runtime.recovery_state = 'blocked_retry_exhausted'
+        self.runtime.recovery_requested.clear()
+        for state in ('UNKNOWN', 'REJECTED', 'BLOCKED', 'WAITING', 'FAILED'):
+            self.source._dispatch_result(DispatchResult(state, 'A', SAFETY_CANCEL))
+        self.source._dispatch_result(DispatchResult('ACK', 'A', ENTRY_PAIR))
+        self.assertEqual(self.runtime.recovery_action_progress, 0)
+        self.assertFalse(self.runtime.recovery_requested.is_set())
+        self.source._dispatch_result(DispatchResult('ACK', 'A', SAFETY_CANCEL))
+        self.assertEqual(self.runtime.recovery_action_progress, 1)
+        self.assertTrue(self.runtime.recovery_requested.is_set())
+        self.assertIsNone(self.runtime.account.current_report(self.now))
+
+    async def test_late_paused_drain_ack_keeps_shared_idle_recovery_wake(self):
+        from kalshi_bot.dispatch import DispatchResult
+        self.runtime.recovery_state = 'blocked_retry_exhausted'
+        self.runtime.recovery_requested.clear()
+        self.runtime._post_drain_recovery_pending = True
+        self.source._dispatch_result(DispatchResult('ACK', 'A', SAFETY_CANCEL))
+        self.assertEqual(self.runtime.recovery_action_progress, 1)
+        self.assertFalse(self.runtime.recovery_requested.is_set())
+        self.assertTrue(self.runtime._post_drain_recovery_pending)
+
     async def test_empty_discovered_market_does_not_flood_inventory_logs(self):
         events = []
         self.runtime.diagnostics = type('Log', (), {
@@ -164,6 +188,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         await self.ready(filled='4', route=1)
         result = await self.run_priority()
         self.assertEqual(result.state, 'ACK')
+        self.assertEqual(self.runtime.recovery_action_progress, 1)
         kind, req = self.calls[0]
         self.assertEqual((kind, req['side'], D(req['price']), D(req['count']),
                           req['exchange_index']), ('create', 'ask', D('.59'), 4, 1))
@@ -288,6 +313,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.run_priority(SAFETY_CANCEL)).state, 'ACK')
         self.assertEqual({row[1]['order_id'] for row in self.calls},
                          {'first-order', 'second-order'})
+        self.assertEqual(self.runtime.recovery_action_progress, 2)
+        self.assertTrue(all(row['phase'] == 'ACK' for row in await self.writer.mutations()))
         self.assertIsNone(await self.source.refresh('A', SAFETY_CANCEL))
 
     async def test_paused_drain_falls_through_to_cancel_due_passive_reducer(self):

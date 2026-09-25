@@ -1,5 +1,14 @@
 # What exists
 
+## Recovery/deadline/cleanup-handoff repair — D-123
+
+Existing owners now expose durable safety-action progress, preserve its recovery
+wake, register every literal diagnostic event and record native child exit codes.
+Verified cleanup shares a restart slot with its normal-child handoff. No new
+process, writer, database schema, strategy or risk configuration. Regressions
+cover repeated and late progress, genuine exhaustion, real deadline logging,
+native crash exit codes and final-slot rebuild. See Finding 186 and STATUS.
+
 ## Temporary quota-loss dispatch recovery — D-122
 
 The original dispatcher distinguishes a revoked preparation from an uncertain

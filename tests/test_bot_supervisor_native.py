@@ -3,6 +3,7 @@ import asyncio
 import ctypes
 from ctypes import wintypes
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -255,6 +256,12 @@ class NativeHostTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state.stop_latched)
         await host.request_shutdown()
         await asyncio.wait_for(task, 5)
+        events = [json.loads(line) for line in
+            (self.scope.control_root/'parent-logs'/'events.jsonl').read_text().splitlines()]
+        exits = [row['context'] for row in events
+                 if row['event'] == 'supervisor_child_exited']
+        self.assertEqual(len(exits), 3)
+        self.assertTrue(all(row['exit_code'] == 7 for row in exits))
 
     async def test_hung_child_is_not_replaced_after_shutdown_timeout(self):
         policy = SupervisorPolicy(shutdown_timeout_seconds=.2)

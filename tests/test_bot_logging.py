@@ -1,5 +1,6 @@
 """Disposable Windows diagnostic/fault tests; no network or account access."""
 import asyncio
+import ast
 from contextlib import redirect_stdout
 from datetime import timedelta
 import io
@@ -15,7 +16,7 @@ from kalshi_bot.cli import main
 from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.config import BotConfig
 from kalshi_bot.execution import InjectedExecutor
-from kalshi_bot.observability import Diagnostics, StrictRotatingHandler, safe_error
+from kalshi_bot.observability import Diagnostics, StrictRotatingHandler, safe_error, EVENTS
 from kalshi_bot.rest import RestReads, TokenBudget, WireResponse, ReadFailure
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.supervised_live_child import (PRODUCTION_LOG_BACKUPS,
@@ -85,6 +86,29 @@ class LoggingTests(unittest.TestCase):
         event = next(row for row in rows(self.directory)
                      if row['event'] == 'candidate_scope_prepared')
         self.assertEqual(event['context']['reviewed_markets'], 1024)
+
+    def test_native_exit_code_is_recorded_without_exception_text(self):
+        log = self.start()
+        log.emit('supervisor_child_exited', operation='child-test', generation=4,
+                 exit_code=0xC0000005)
+        log.close()
+        event = next(row for row in rows(self.directory)
+                     if row['event'] == 'supervisor_child_exited')
+        self.assertEqual(event['context']['exit_code'], 0xC0000005)
+        self.assertEqual(event['context']['generation'], 4)
+
+    def test_every_literal_diagnostic_event_is_registered(self):
+        package = Path(__file__).resolve().parents[1]/'src'/'kalshi_bot'
+        missing = []
+        for path in package.glob('*.py'):
+            for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == 'emit' and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)
+                        and node.args[0].value not in EVENTS):
+                    missing.append((path.name, node.lineno, node.args[0].value))
+        self.assertEqual(missing, [])
 
     def test_secrets_and_unknown_objects_are_never_formatted(self):
         class Poison:

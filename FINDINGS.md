@@ -1,5 +1,41 @@
 # Findings — kalshi-bot
 
+## 186. Recovery progress, deadline logging and cleanup handoff stop the run — 2026-09-25
+
+**MEASURED:** Generation 158's diagnostic run `3e12e4a4a5fd44ef9fe305f46c49d4f5`
+exhausted recovery at 00:28:12 ET. Its last two incomplete passes overlapped
+durable cancellation and passive-reducer ACKs. The old progress condition only
+recognized a completed account pass, so it erased the new recovery request.
+A 10-contract fill was durably received at 00:28:00.653 ET. Logging ended at
+00:42:59.888 and the parent recorded unexpected death at 00:43:01.395.
+
+**VERIFIED reproduction / INFERRED historical death cause:** The existing
+15-minute inventory recovery path emits `safety_recovery_rearmed`, missing
+from the diagnostic event registry. With the real logging sink, that path
+sets `invalid_event` and `ensure_healthy()` raises. Its timing matches the live
+exit, but the failed sink could not record a traceback and the old parent did
+not retain the native exit code. Do not claim a captured historical exception.
+A static audit finds this is the only unregistered literal event in the package.
+
+**VERIFIED control history:** Recovery-only cleanup subsequently closed inventory,
+canceled entries and reported STOPPED_FLAT at 00:44:12 ET. Its CLEAN handoff
+still consumed incident attempt three, so the next tick refused the normal
+child as `restart_budget_exhausted`. A new signed GET-only account check at
+06:00:56 ET returned zero resting orders and zero nonzero positions.
+
+**VERIFIED offline:** Failing-before tests reproduce lost durable-action progress,
+logging failure and the last-slot cleanup handoff. D-123 preserves fresh account
+and terminal/fill proof, recognizes only durable safety-action ACK progress,
+registers the deadline event, records native exit codes and charges verified
+cleanup/normal handoff as one restart slot. Rejections, uncertainty, ambiguous
+scope, failed cleanup, stops and genuine retry exhaustion remain blocked.
+STATUS owns final verification/deployment results.
+
+**Correction:** The preceding Command 1 status claimed no ERROR events using
+the live-session ID to filter diagnostic logs. These are separate run IDs.
+Use `runtime.logging.run_id` for log correlation; that earlier filter did not
+establish the claimed absence of errors.
+
 ## 185. Live withdrawal triggered, but quota refresh ended the run — 2026-09-24
 
 **MEASURED:** Current supervisor-run logs from 22:40:11 to 23:34:39 ET contain

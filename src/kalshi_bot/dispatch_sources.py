@@ -75,6 +75,17 @@ class InventoryDispatchSource:
             offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
 
     def _dispatch_result(self, result):
+        if (result.priority in {SAFETY_CANCEL, QUOTE_CANCEL, DUE_IOC, PASSIVE_REDUCER}
+                and result.state == 'ACK'):
+            # Called only after the sole dispatcher has durably recorded the
+            # result. Observation, rejection and UNKNOWN do not earn progress.
+            self.runtime.recovery_action_progress += 1
+            if (self.runtime.recovery_state == 'blocked_retry_exhausted'
+                    and not self.runtime._post_drain_recovery_pending):
+                # The last failed pass can finish between outcome notification
+                # and this post-persistence callback. Do not lose this new ACK;
+                # rapid paused/risk drains retain their shared idle wake instead.
+                self.runtime.request_recovery('safety_mutation_persisted')
         if self.runtime.maintenance is not None:
             self.runtime.maintenance.dispatch_result(result)
         selection = self.runtime.selection

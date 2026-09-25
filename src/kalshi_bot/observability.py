@@ -28,6 +28,7 @@ EVENTS = {
     'supervisor_control_failed': ('ERROR', 'supervisor'),
     'supervisor_child_started': ('INFO', 'supervisor'),
     'supervisor_child_stopped': ('INFO', 'supervisor'),
+    'supervisor_child_exited': ('INFO', 'supervisor'),
     'supervisor_child_failed': ('ERROR', 'supervisor'),
     'log_started': ('INFO', 'logging'), 'log_stopped': ('INFO', 'logging'),
     'runtime_started': ('INFO', 'runtime'), 'runtime_stopped': ('INFO', 'runtime'),
@@ -38,6 +39,7 @@ EVENTS = {
     'recovery_started': ('INFO', 'recovery'), 'recovery_failed': ('WARNING', 'recovery'),
     'recovery_incomplete': ('WARNING', 'recovery'), 'recovery_repaired': ('INFO', 'recovery'),
     'recovery_progressed': ('INFO', 'recovery'),
+    'safety_recovery_rearmed': ('INFO', 'recovery'),
     'recovery_retry_wait': ('WARNING', 'recovery'),
     'recovery_exhausted': ('ERROR', 'recovery'),
     'book_proof_lost': ('WARNING', 'engine'), 'private_ingress_failed': ('ERROR', 'engine'),
@@ -75,7 +77,7 @@ EVENTS = {
 }
 NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
-                     'market_rows', 'milestone_rows'))
+                     'market_rows', 'milestone_rows', 'exit_code'))
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
 SAFE_CODES = frozenset(('venue_code',))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1')),

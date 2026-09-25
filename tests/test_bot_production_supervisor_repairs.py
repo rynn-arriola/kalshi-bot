@@ -8,7 +8,7 @@ from threading import Event
 from types import SimpleNamespace as NS
 import time
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 from kalshi_bot import live
@@ -242,6 +242,7 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
             close_after_exit=AsyncMock())
         host = SupervisorHost.__new__(SupervisorHost)
         host.child = factory
+        host.diagnostics = NS(emit=Mock())
         host.launch_profile = ProductionLaunchProfile()
         host.fixture_mode = 'production_live'
         host._apply = AsyncMock()
@@ -249,6 +250,8 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
         await host._finish_child(27)
         event = host._apply.call_args.args[0]
         self.assertEqual(event.outcome, ChildOutcome.UNEXPECTED_DEATH)
+        host.diagnostics.emit.assert_called_once_with('supervisor_child_exited',
+            operation='child', generation=1, exit_code=27)
 
     def test_restrictions_are_durable_at_component_transition(self):
         with TemporaryDirectory() as folder:

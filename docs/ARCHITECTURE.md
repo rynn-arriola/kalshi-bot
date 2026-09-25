@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-123 recognizes durable safety-cancel/reducer ACKs as recovery scheduling
+progress, never as terminal/fill/account proof. Existing single-owner callbacks
+and bounded retry rounds remain. Verified-flat cleanup and its normal-child
+handoff share one restart slot; failed starts, stops and unresolved cleanup
+retain their restrictions. The registry audit covers every literal event, and
+the parent records native exit codes independently of the child's logger.
+
 D-122 treats temporary pre-send quota revocation as scheduling, not a transport
 retry. The dispatcher retains original issued permit terms across preparation,
 checks current quota/revision, and may requeue only after the writer confirms

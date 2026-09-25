@@ -164,6 +164,7 @@ class RecoveryRuntime:
         self._shutdown_task = None
         self.dispatch_supervisor = None  # Explicit offline attachment only.
         self._post_drain_recovery_pending = False
+        self.recovery_action_progress = 0
         self._safety_recovery_retries = set()
         self._steady_account_scope = None
         self._routine_account_proof = None
@@ -1453,10 +1454,13 @@ class RecoveryRuntime:
                 self.diagnostics.emit('recovery_started', attempt=attempt+1,
                     generation=self.account.generation, reason=self._recovery_reason)
                 completed_before = self.recovery_passes
+                actions_before = self.recovery_action_progress
+                pass_returned = False
                 try:
                     # Bounds the whole pass; individual account proofs retain 5s.
                     async with asyncio.timeout(20):
                         repaired = await self.recover_once()
+                        pass_returned = True
                 except QuotaUnavailable:
                     self.recovery_attempts -= 1
                     self.recovery_state = 'awaiting_quota'
@@ -1496,14 +1500,18 @@ class RecoveryRuntime:
                     self.diagnostics.emit('recovery_repaired', generation=self.account.generation,
                         elapsed_ms=max(0, int((self.clock()-recovery_started)*1000)))
                     break
-                if (self.recovery_passes > completed_before
+                if ((self.recovery_passes > completed_before
+                        or (pass_returned and not self._epoch_ambiguous
+                            and self.recovery_action_progress > actions_before))
                         and self.recovery_requested.is_set()):
                     # A source-consistent pass can authorize one safety action.
                     # Its durable mutation immediately requests a fresh pass and
                     # invalidates the report that authorized it. Treat that as
                     # forward progress, not as one of the bounded failed attempts;
-                    # otherwise a drain with more than three resting orders can
-                    # never reach flatness in one process.
+                    # A durable cancel/reducer ACK can supersede an incomplete
+                    # pass before it increments recovery_passes. Its fresh
+                    # notification must not be erased by retry exhaustion.
+                    # ACK is progress only, never terminal/fill/account proof.
                     self.recovery_state = 'progressed_retry_queued'
                     self.diagnostics.emit('recovery_progressed',
                         attempt=attempt+1, generation=self.account.generation)
@@ -1765,6 +1773,7 @@ class RecoveryRuntime:
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
             recovery_trigger=self._recovery_reason,
+            recovery_action_progress=self.recovery_action_progress,
             recovery_dispatch_waits=self.recovery_dispatch_waits,
             recovery_dispatch_wait_ms=self.recovery_dispatch_wait_ms,
             recovery_retry_rounds=self.recovery_retry_rounds,

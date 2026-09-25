@@ -1,5 +1,15 @@
 # Active work queue
 
+## D-123 stopped-bot repair
+
+1. Focused/native/full release verification and exact diff review passed; see STATUS.
+2. Publish and deploy the verified build under exclusive stopped-owner leases,
+   then restore the existing bot as requested. Check actual current status and
+   correlate errors using the diagnostic run ID, not the live-session ID.
+3. Preserve separate unfinished Command 1 work; no unrelated feature merge.
+
+Earlier queues below are historical.
+
 ## After Command 1 on D-121/D-122
 
 1. Generation 158 is running on `d4e888b`; do not restart merely to prove it.

@@ -210,6 +210,44 @@ class PolicyTests(unittest.TestCase):
         fresh = start(due.state, 114, child='fresh-normal')
         self.assertEqual(fresh.state, SupervisorState.STARTING)
 
+    def test_verified_cleanup_handoff_does_not_spend_a_second_restart(self):
+        # Reproduce a cleanup launched in the final slot after an initial
+        # bootstrap/normal start. Successful cleanup must reach a fresh normal
+        # child, not BACKOFF followed immediately by budget-exhausted attention.
+        normal = started(start(arm(self.state)), 101)
+        normal = replace(normal, incident_attempts=2,
+                         restart_attempts_utc=(99., 100.))
+        crashed = result(normal, ChildOutcome.UNEXPECTED_DEATH, 102,
+            cleanup_complete=False, unresolved_work=True).state
+        recovery = started(start(crashed, crashed.next_restart_utc))
+        self.assertEqual(recovery.incident_attempts, 3)
+        clean = result(recovery, ChildOutcome.CLEAN).state
+        self.assertEqual(clean.incident_attempts, 2)
+        self.assertEqual(clean.restart_attempts_utc, (99., 100.))
+        fresh = start(clean, child='fresh-normal')
+        self.assertEqual(fresh.incident_attempts, 3)
+        # A subsequent death is still bounded; CLEAN did not reset the incident.
+        failed = result(fresh, ChildOutcome.UNEXPECTED_DEATH,
+                        cleanup_complete=False, unresolved_work=True)
+        self.assertEqual(failed.state.attention_reason,
+                         AttentionReason.RESTART_BUDGET_EXHAUSTED)
+
+    def test_unproved_cleanup_at_limit_never_refunds_attempt(self):
+        normal = started(start(arm(self.state)), 101)
+        crashed = result(normal, ChildOutcome.UNEXPECTED_DEATH, 102,
+                         cleanup_complete=False, unresolved_work=True).state
+        recovery = started(start(crashed, crashed.next_restart_utc))
+        recovery = replace(recovery, incident_attempts=3)
+        for outcome, values in (
+                (ChildOutcome.CLEAN, dict(cleanup_complete=False)),
+                (ChildOutcome.CLEAN, dict(unresolved_work=True)),
+                (ChildOutcome.CLEAN, dict(retry_holds=('unknown_scope',))),
+                (ChildOutcome.UNEXPECTED_DEATH, dict(cleanup_complete=False))):
+            with self.subTest(outcome=outcome, values=values):
+                blocked = result(recovery, outcome, **values).state
+                self.assertEqual(blocked.incident_attempts, 3)
+                self.assertEqual(blocked.state, SupervisorState.ATTENTION_REQUIRED)
+
     def test_manual_stop_after_crash_prevents_recovery_or_normal_rearm(self):
         normal = started(start(arm(self.state)), 101)
         crashed = result(normal, ChildOutcome.UNEXPECTED_DEATH, 102,

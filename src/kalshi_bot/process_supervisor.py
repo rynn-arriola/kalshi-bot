@@ -451,6 +451,8 @@ class SupervisorHost:
 
     async def _finish_child(self, returncode):
         child = self.child
+        self.diagnostics.emit('supervisor_child_exited', operation=child.child_id,
+                              generation=child.child_generation, exit_code=returncode)
         if child.endpoint is not None:
             deadline = time.monotonic()+.25
             while time.monotonic() < deadline:

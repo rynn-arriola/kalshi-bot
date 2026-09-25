@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-123 — Repair stopped recovery and restore the existing bot
+
+- **Status:** ACCEPTED repair assignment, 2026-09-25.
+- **Decision owner:** Operator: “Check bot it stopped and fix it”, following
+  standing directions to repair restart problems and restore operation.
+- **Scope:** Diagnose the stopped run, fix confirmed recovery/progress and
+  restart-handoff defects, verify in isolation, publish and restore the same bot.
+  Count verified cleanup plus its normal-child handoff as one restart attempt;
+  retain bounded failure budgets and all manual-stop/integrity restrictions.
+- **Boundary:** No strategy, risk, freshness, selection or account-history
+  changes. No second bot or broad process termination. Report unexplained
+  process death as unknown, not as a diagnosed exception.
+
 ### D-122 — Audit live withdrawal and repair quota-refresh dispatch failure
 
 - **Status:** ACCEPTED, 2026-09-24.

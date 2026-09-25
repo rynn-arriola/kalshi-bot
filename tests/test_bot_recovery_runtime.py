@@ -653,6 +653,55 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(self.runtime.recovery_state, 'blocked_retry_exhausted')
         self.assertEqual(self.delays, [])
 
+    async def test_durable_cancel_during_incomplete_pass_is_progress(self):
+        await self.connected()
+        self.runtime.recovery_action_progress = 0
+        calls = 0
+        async def repair():
+            nonlocal calls
+            calls += 1
+            if calls <= 5:
+                self.runtime.recovery_action_progress += 1
+                self.runtime.request_recovery('mutation_persisted')
+                return False
+            return True
+        self.runtime.recover_once = repair
+        self.runtime.request_recovery()
+        self.tasks.append(asyncio.create_task(self.runtime._recover()))
+        await self.eventually(lambda: self.runtime.recovery_state == 'repaired_entries_blocked')
+        self.assertEqual(calls, 6)
+        self.assertEqual(self.runtime.recovery_passes, 0)
+        self.assertEqual(self.delays, [])
+
+    async def test_cancel_progress_does_not_hide_subsequent_real_failure(self):
+        await self.connected()
+        self.runtime.recovery_action_progress = 0
+        calls = 0
+        async def repair():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                self.runtime.recovery_action_progress += 1
+                self.runtime.request_recovery('mutation_persisted')
+            return False
+        self.runtime.recover_once = repair
+        self.runtime.request_recovery()
+        self.tasks.append(asyncio.create_task(self.runtime._recover()))
+        await self.eventually(lambda: self.runtime.recovery_state == 'blocked_retry_exhausted')
+        self.assertEqual(calls, 4)
+        self.assertEqual(self.delays, [1, 2])
+
+    async def test_source_notifications_alone_do_not_reset_failure_budget(self):
+        await self.connected()
+        async def repair():
+            self.runtime.request_recovery('mutation_observed')
+            return False
+        self.runtime.recover_once = repair
+        self.runtime.request_recovery()
+        self.tasks.append(asyncio.create_task(self.runtime._recover()))
+        await self.eventually(lambda: self.runtime.recovery_state == 'blocked_retry_exhausted')
+        self.assertEqual(self.runtime.recovery_attempts, 3)
+
     async def test_successful_recovery_wakes_reward_reflection(self):
         await self.connected()
         calls = []

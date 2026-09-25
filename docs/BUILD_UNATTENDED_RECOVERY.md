@@ -26,6 +26,9 @@ one fresh normal child. The normal child refreshes the candidate universe,
 re-ranks current markets and uses the ordinary dispatcher to refill. Manual STOP,
 retry holds, incomplete cleanup, loss/economic restrictions and integrity or
 unknown outcomes never enter this path. The existing restart budget remains.
+D-123 charges verified-flat cleanup plus its normal-child handoff as one slot,
+refunding only that cleanup start. It does not reset prior failed attempts;
+a further death at the limit still requires attention.
 
 ## Accounting retention
 

@@ -1,5 +1,18 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — recovery progress discarded, deadline event fatal, rebuild budget blocked
+
+D-123 recognizes completed cancel/reducer ACKs while an account pass is
+superseded, without treating them as account or no-fill proof. A late callback
+re-signals an exhausted pass; rapid risk/paused drains retain their shared idle
+wake. UNKNOWN, rejection, source notifications and entry ACKs earn no progress.
+The missing `safety_recovery_rearmed` event is registered and the deadline
+regression uses a real logging sink. A package-wide literal-event audit prevents
+another omission. Parent logs now retain the native exit code even without a
+child RESULT. Verified-flat cleanup refunds only its own reserved start before
+the normal-child handoff, not earlier failures or the entire incident budget.
+Finding 186 owns the incident evidence; STATUS owns release verification.
+
 ## 2026-09-24 — routine quota refresh crashed pre-send dispatch
 
 D-118 only recognized base-budget expiry/429 exceptions. The live shared quota

@@ -493,17 +493,25 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('expiration_time', self.f.calls[0][1])
 
     async def test_due_inventory_rearms_one_exhausted_recovery_before_ioc(self):
-        await self.f.ready()
-        await self.f.due()
-        self.f.runtime.recovery_state = 'blocked_retry_exhausted'
-        self.f.runtime._revoke()
-        self.f.runtime.recovery_requested.clear()
-        await self.f.runtime._deadline('A')
-        self.assertTrue(self.f.runtime.recovery_requested.is_set())
-        self.assertEqual(self.f.dispatcher.status().queued, ())
-        self.f.runtime.recovery_requested.clear()
-        await self.f.runtime._deadline('A')
-        self.assertFalse(self.f.runtime.recovery_requested.is_set())
+        from kalshi_bot.observability import Diagnostics
+        log = Diagnostics(Path(self.f.temp.name)/'deadline-logs').start()
+        self.f.runtime.diagnostics = log
+        try:
+            await self.f.ready()
+            await self.f.due()
+            self.f.runtime.recovery_state = 'blocked_retry_exhausted'
+            self.f.runtime._revoke()
+            self.f.runtime.recovery_requested.clear()
+            await self.f.runtime._deadline('A')
+            log.ensure_healthy()
+            self.assertTrue(self.f.runtime.recovery_requested.is_set())
+            self.assertEqual(self.f.dispatcher.status().queued, ())
+            self.f.runtime.recovery_requested.clear()
+            await self.f.runtime._deadline('A')
+            log.ensure_healthy()
+            self.assertFalse(self.f.runtime.recovery_requested.is_set())
+        finally:
+            log.close()
 
     async def test_partial_fill_cancels_old_entry_before_reducer(self):
         await self.f.ready(filled='4', remaining='6')
