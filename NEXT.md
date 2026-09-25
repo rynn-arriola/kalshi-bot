@@ -3,18 +3,29 @@
 ## Post-withdrawal refill latency
 
 1. Investigate and reproduce the slow replacement path after a protective pair
-   withdrawal. In generation 170's first 66 minutes, all 44 cancel pairs ACKed
-   in a median 1.441 seconds (maximum 3.980), but the next entry-pair ACK took a
-   median 41.895 seconds, p95 119.894 and maximum 238.192 seconds.
+   withdrawal. In generation 170's first 108 minutes, 68 protective pairs were
+   withdrawn across 31 markets; 14 markets recurred and one recurred eight
+   times. All 44 cancel pairs in the first 66 minutes ACKed in a median 1.441
+   seconds (maximum 3.980), while second-cancel-ACK to the next any-market entry
+   pair measured median 46.083 seconds, p95 210.911 and maximum 343.995 over 66
+   samples. Concurrent withdrawals make the latter an optimistic portfolio
+   marker, not exact same-slot attribution. Finding 193 owns the evidence.
 2. Attribute the delay across terminal/account reconciliation, candidate
-   revalidation, management proof and send-edge book churn. Current cumulative
-   diagnostics include 236 management-proof blocks, 190 send-proof changes and
-   81 proposal changes; counts alone do not establish which stage owns each gap.
+   revalidation, management proof and send-edge book churn. At 15:40 ET,
+   cumulative diagnostics included 421 management-proof blocks, 319 send-proof
+   changes, 135 proposal changes and 532 recovery starts; counts alone do not
+   establish which stage owns each gap. Include recovery-complete-to-proposal,
+   proposal-to-preparation and preparation-to-send/ACK timing.
 3. Design and verify a bounded event-driven repair that prioritizes a genuine
-   vacant pair after reconciliation without reserving capacity indefinitely,
-   retrying ambiguous commands, weakening fresh ownership/book/account proofs,
-   changing fill-risk thresholds or bypassing ranked $2/$1 admission.
-4. Acceptance must measure withdrawal-to-pair-ACK and pair-ACK-to-restored-slot
+   vacant pair after reconciliation and retains the demand through transient
+   proof loss without reserving capacity indefinitely, retrying ambiguous
+   commands, weakening fresh ownership/book/account proofs, changing fill-risk
+   thresholds or bypassing ranked $2/$1 admission. Keep one writing worker.
+4. Present repeated-withdrawal/depth stability as a separate strategy option.
+   Current ranking uses reward rate/capital efficiency and a five-minute risk
+   cooldown, so it can re-admit a repeatedly threatened market. Do not implement
+   a ranking penalty or threshold change without an operator decision.
+5. Acceptance must measure withdrawal-to-pair-ACK and pair-ACK-to-restored-slot
    latency under synthetic races and a separately authorized live deployment.
    Thirty resting orders is a cap, not a guaranteed occupancy or permission to
    retain an unsafe pair.

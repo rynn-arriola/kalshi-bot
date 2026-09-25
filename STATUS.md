@@ -1,5 +1,26 @@
 # Current status
 
+## Generation 170 low-occupancy diagnosis — 2026-09-25
+
+**Reviewed read-only; no runtime change.** Finding 193 shows that current
+reward-market supply is sufficient. From 13:51:44 through 15:39:53 ET, the live
+run completed 68 protective pair withdrawals, 81 entry-pair ACKs and 138
+single-order cancel ACKs. Startup and withdrawals overlapped, so there is no
+valid 15-initial-plus-replacements partition; the direct order arithmetic
+matches the saved 24 resting entries at 15:40:19 ET. It had no positions and
+three current proposed pairs, but account recovery had revoked entry authority
+and a candidate then lost current book proof. All six readers, shared read
+budget, dispatch and logging were healthy.
+
+The observed low count is therefore vacancy churn plus slow safe refill, not a
+smaller cap or too few eligible markets. Second-cancel-ACK to next any-market
+entry-pair ACK measured median 46.083 seconds, p95 210.911 and maximum 343.995
+over 66 samples; overlapping withdrawals make this an optimistic portfolio
+marker rather than exact slot attribution. Fourteen of 31 withdrawn markets
+recurred, with one withdrawn eight times. The active queue in NEXT owns stage
+attribution and a bounded repair. No restart, order mutation, configuration or
+strategy change occurred during this review.
+
 ## D-128 protective-cancel scheduling repair — 2026-09-25
 
 **Verified, published and deployed by Command 1.** Finding 192 reproduces a lost
