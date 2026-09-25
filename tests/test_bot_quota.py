@@ -214,6 +214,16 @@ class LeaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.guard.state, 'clock_fault')
         with self.assertRaises(QuotaUnavailable): await self.reads.refresh_budget()
 
+    async def test_slow_cumulative_drift_is_not_a_clock_fault(self):
+        # D-131: measured live drift is ~64 ms/hour; 40 polls x 0.1 s = 4 s
+        # total drift must not fault, while each step stays within tolerance.
+        self.install()
+        for step in range(1, 41):
+            self.clock.t = step*10
+            self.clock.offset = -0.1*step
+            self.guard.poll()
+            self.assertNotEqual(self.guard.state, 'clock_fault')
+
     async def test_monotonic_regression(self):
         self.install(); self.clock.t = 1; self.guard.poll(); self.clock.t = .9
         self.assertFalse(self.guard.poll())

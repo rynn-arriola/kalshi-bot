@@ -224,8 +224,12 @@ class QuotaGuard:
             return False
         try:
             mono, wall = self._sample()
+            # D-131: detect a step between successive samples, not cumulative
+            # drift since construction. This host's clocks drift steadily
+            # (~64 ms/hour measured), which would otherwise fault every run
+            # after ~31 hours. A real step remains a sticky clock fault.
             if (mono < self.last[0] or wall < self.last[1] or
-                    abs((mono-self.anchor[0])-(wall-self.anchor[1])) > self.policy.clock_tolerance):
+                    abs((mono-self.last[0])-(wall-self.last[1])) > self.policy.clock_tolerance):
                 raise QuotaUnavailable('quota_clock_fault')
             self.last = mono, wall
         except (InvalidData, ValueError, OverflowError):
