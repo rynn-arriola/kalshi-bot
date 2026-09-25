@@ -123,6 +123,59 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(evidence[0]['client_order_ids']),2)
         self.assertFalse(self.runtime.entry_allowed)  # outcome revokes account lease
 
+    async def test_identical_real_metadata_refresh_during_entry_risk_read(self):
+        from test_bot_market_inputs import Reads, review
+        from kalshi_bot.market_inputs import ExitInputService, FeeProfile
+        reads = Reads(('A',))
+        row = reads.markets['A']
+        row['exchange_index'] = 1
+        row['open_time'] = (self.f.now-timedelta(hours=1)).isoformat()
+        row['close_time'] = (self.f.now+timedelta(hours=3)).isoformat()
+        reads.event['exchange_index'] = 1
+        reads.milestone['start_date'] = (self.f.now+timedelta(hours=1)).isoformat()
+        service = ExitInputService(reads, ('A',), now=lambda:self.f.now,
+            clock=lambda:self.f.tick, ttl=30,
+            timing_reviews=(replace(review(row), valid_until=self.f.now+timedelta(hours=2)),),
+            fee_profile=FeeProfile(D('.0001'), 'fixture', self.f.now+timedelta(hours=1)))
+        service.bind(self.runtime.management.set_terms, self.runtime.management.revoke_terms)
+        service.begin(1)
+        service.subscribed(1, 7)
+        initial = await service.refresh('A')
+        self.runtime.market_inputs = service
+        original = self.runtime.risk_view
+        async def overlap():
+            result = await original()
+            self.assertIs(await service.refresh('A'), initial)
+            return result
+        self.runtime.risk_view = overlap
+        try:
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+            self.assertEqual(result.state, 'ACK', result.blockers)
+            self.assertEqual(len(self.calls), 1)
+            self.assertEqual(len(result.order_ids), 2)
+        finally:
+            await service.close()
+
+    async def test_expired_quota_aborts_both_entry_legs_without_killing_dispatch(self):
+        clock = [1]
+        self.dispatcher.clock_pair = lambda:quota_now(clock[0])
+        original = self.f.writer.reserve_entry_pair
+        async def expire(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            clock[0] = 300
+            return result
+        self.f.writer.reserve_entry_pair = expire
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertEqual((result.state, result.blockers), ('WAITING', ('write_quota_expired',)))
+        rows = await self.f.writer.mutations()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row['phase'] for row in rows}, {'NOT_SENT'})
+        self.assertFalse(self.calls)
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertEqual(self.dispatcher.status().queued, ((ENTRY_PAIR, 'A'),))
+
     async def test_unrelated_stalled_maintenance_allows_real_entry_graph(self):
         self.runtime.attach_rewards(scope='synthetic-live')
         maintenance = self.runtime.attach_maintenance()

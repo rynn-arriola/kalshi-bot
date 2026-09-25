@@ -13,6 +13,7 @@ from .command_types import (CancelEvidence, CommandDenied, ReductionEvidence)
 from .execution import (InjectedExecutor, encoded_request, validate_entry_pair,
                         validate_request)
 from .portfolio import PortfolioView
+from .quota import QuotaUnavailable
 from .values import InvalidData, decimal, identity, integer
 from .write_budget import BATCH_ORDERS, ORDERS, WriteBudget
 from .writer import LedgerWriter
@@ -315,12 +316,24 @@ class MutationDispatcher:
                 self.budget.check_permit(permit, method, route,
                     shard=current.budget_shard, units=current.units,
                     now=self.clock_pair())
-            except Exception:
+            except Exception as exc:
                 if priority == ENTRY_PAIR:
-                    await self.writer.abort_batch(receipt)
+                    aborted = await self.writer.abort_batch(receipt)
                 else:
-                    await self.writer.abort_prepared(receipt)
+                    aborted = await self.writer.abort_prepared(receipt)
                 receipt = None
+                if (isinstance(exc, QuotaUnavailable)
+                        and exc.reason in {'write_quota_expired', 'write_429_pause'}
+                        and aborted.blockers == ('prepared_aborted',)):
+                    # Only a durable PREPARED -> NOT_SENT transition permits
+                    # retry. Retain a reevaluation key, never this command.
+                    await self._discard(permit)
+                    self.submit(ticker, priority)
+                    return DispatchResult('WAITING', ticker, priority,
+                        current.attempt_id, (exc.reason,),
+                        self.budget.ready_delay(method, route,
+                            shard=current.budget_shard, units=current.units,
+                            now=self.clock_pair()))
                 raise
             def consume_at_send_edge():
                 nonlocal consumed

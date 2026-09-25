@@ -1,5 +1,30 @@
 # Findings — kalshi-bot
 
+## 180. Redundant metadata refresh and unsent quota expiry — 2026-09-24
+
+**VERIFIED:** A priority revalidation request removed still-fresh exit terms;
+republishing equal terms invalidated their management/entry proof by identity.
+The isolated pre-fix regressions reproduced both defects without venue calls.
+Preserving a publication requires identical generation, provenance revisions,
+values and original validity bounds; real changes/expiry still revoke it.
+Priority revalidation explicitly queues account/book reevaluation, so preserving
+fresh metadata cannot strand the candidate waiting for a publication callback.
+
+The generation-144 shutdown stack ended in `check_permit` after preparation.
+The offline reproduction proved zero transport calls and durable NOT_SENT,
+yet the dispatcher failed. D-118 keeps only this proven-unsent temporary expiry
+recoverable; clock faults, used receipts and ambiguous sends remain fatal.
+These findings explain reproduced deferrals, not every unfilled live slot.
+
+**VERIFIED exit observation:** The current ZYNPOS T109 position first filled
+at 20:37:11.854 ET. Its 900-second age deadline was 20:52:11.854 ET. Read-only
+ledger evidence shows the passive exit canceled and all ten contracts executed
+on an ask at .08 by 20:52:18.056 ET (6.202 seconds after the deadline).
+The opening basis was .11. These order prices are not an audited net-P&L/fee
+calculation. Direct read-only venue inspection at 20:53:21 ET confirmed zero
+positions and 16 resting entry orders. No manual close or restart was performed;
+this observed exit followed existing policy, not a newly deployed fix.
+
 ## 179. A market-local reprice imposed an account-wide entry gate — 2026-09-24
 
 **VERIFIED:** `QuoteMaintenance.entry_allowed` admitted only the active cycle's

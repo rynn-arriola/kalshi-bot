@@ -365,6 +365,24 @@ class ExitInputService:
             self._clear_terms(ticker)
             self._notify('changed', ticker)
 
+    def current_result(self, ticker):
+        """Return only the unchanged, unexpired publication; never extend its lease."""
+        result = self.results.get(ticker)
+        now = utc(self.now())
+        if (self.closed or not self.connected or result is None
+                or result.generation != self.generation
+                or not result.terms.observed_at <= now < result.terms.valid_until):
+            return None
+        for name, key, revision in result.provenance:
+            evidence = self.values.get((name, key))
+            if evidence is None or evidence.revision != revision or not self._fresh(evidence):
+                return None
+        market = self.values.get(('market', ticker))
+        if (market is None or result.terms.active !=
+                (market.value.active and market.value.opens <= now < market.value.closes)):
+            return None
+        return result
+
     def next_refresh_at(self, ticker):
         """Monotonic deadline, with UTC policy/source expiries still enforced."""
         mono, now = self.clock(), utc(self.now())
@@ -641,6 +659,9 @@ class ExitInputService:
                               event_risk_at=risk_at,taker_fee_per_contract_bound=bound,
                               active=m.active and m.opens<=utc(self.now())<m.closes)
             result = InputResult(terms,tuple(blockers),tuple((n,k,v.revision) for n,k,v in inputs),generation)
+            previous = self.current_result(ticker)
+            if previous is not None and previous == result:
+                return previous
             self.results[ticker] = result
             self.publish(terms)
             self.diagnostics.emit('exit_inputs_published',market=ticker,generation=generation,

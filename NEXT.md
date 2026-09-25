@@ -1,5 +1,18 @@
 # Active work queue
 
+## D-118 source release — current queue
+
+1. D-118 implementation, review and focused/fast/full verification are finished.
+   Keep the running canonical checkout pinned. At a separately authorized
+   restart, deploy the verified release and measure actual refill, metadata
+   work and dispatch deferrals. Do not promise all 30 slots or guaranteed reward.
+2. The queried position closed under its existing timed policy; do not send a
+   competing close. Read Finding 180 rather than acting on older position data.
+3. Preserve the separate unfinished command-1 worktree and its own verification
+   requirement. It is not included in this release.
+
+Older queue entries below are historical; the source-release status is in STATUS.
+
 ## After Command 1 / D-117 deployment
 
 1. D-117 is deployed on generation 146; do not repeat this restart. Verify actual

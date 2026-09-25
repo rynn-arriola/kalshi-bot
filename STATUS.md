@@ -1,5 +1,29 @@
 # Current status
 
+## D-118 refresh/quota repair — verified source, not deployed, 2026-09-24
+
+Implementation is in `data/refresh-quota-dev`, branch
+`fix/refresh-quota-recovery`, based on `abc8403`. It removes redundant metadata
+revocation/publication and recovers proven-unsent temporary quota expiry without
+weakening real source, risk or ambiguous-send checks. Finding 180 records evidence.
+Focused regressions and the 293-test fast gate pass. The complete release gate
+passes 1,719 tests in 310.614 seconds with one expected Windows symlink-privilege
+skip. Exact source/test diff review, whitespace checks and 525 local document
+links pass. Ignored logs: `data/refresh-quota-fast.log` and
+`data/refresh-quota-full.log` in canonical root. This isolated release checkout,
+not the pinned canonical checkout, is the GitHub-master parity target.
+No live restart or package replacement is part of this task.
+
+The position questioned by the operator closed automatically at 20:52:18 ET,
+6.202 seconds after its 15-minute deadline. Direct read-only venue confirmation
+at 20:53:21 ET found zero positions and 16 resting entries in eight markets.
+Generation 146 remains the live owner; canonical HEAD stays `abc8403` (D-117
+source plus handoff docs). Synthetic verification is not measured live refill.
+No forced close, venue write, live database change or exit-policy change was made.
+The unfinished command-1 worktree remains separate and unmodified.
+
+Older release and runtime snapshots below are historical, not repeat actions.
+
 ## Command 1: flat account verified; D-117 deployed — 2026-09-24
 
 The operator invoked Command 1. Before any action, both managed processes were

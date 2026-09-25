@@ -14,6 +14,8 @@ from kalshi_bot.dispatch import SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
 from kalshi_bot.dispatch_sources import InventoryDispatchSource
 from kalshi_bot.exits import ExitTerms
 from kalshi_bot.ledger import Fill
+from kalshi_bot.market_inputs import ExitInputService, FeeProfile
+from kalshi_bot.metadata_scheduler import MetadataScheduler
 from kalshi_bot.orders import OrderUpdate
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.values import InvalidData
@@ -22,6 +24,7 @@ from kalshi_bot.writer import LedgerWriter
 from test_bot_engine import NOW, BANDS, snapshot
 from test_bot_inventory_risk import request
 from test_bot_write_budget import snapshot as quota_snapshot, now as quota_now
+from test_bot_market_inputs import Reads, review
 
 
 class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
@@ -184,6 +187,50 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(req['post_only'])
         self.assertTrue(req['reduce_only'])
         self.assertNotIn('expiration_time', req)
+
+    async def metadata_during_exit(self, *, due=False, changed=False):
+        await self.ready()
+        if due:
+            await self.due()
+        reads = Reads(('A',))
+        service = ExitInputService(reads, ('A',), now=lambda:self.now,
+            clock=lambda:self.mono, ttl=30, timing_reviews=(review(reads.markets['A']),),
+            fee_profile=FeeProfile(D('.0001'), 'fixture', NOW+timedelta(hours=1)))
+        service.bind(self.runtime.management.set_terms, self.runtime.management.revoke_terms)
+        scheduler = MetadataScheduler(service, defer=lambda:True)
+        service.begin(1)
+        service.subscribed(1, 7)
+        await service.refresh('A')
+        original = self.writer.prepare_reduction
+        async def overlap(*args, **kwargs):
+            prepared = await original(*args, **kwargs)
+            scheduler.request('A')
+            scheduler.step()
+            await service.refresh('A')  # Cached identical publication at prepare edge.
+            if changed:
+                service.ingest(dict(type='market_lifecycle_v2', sid=7, seq=1,
+                    msg=dict(market_ticker='A', event_type='deactivated')), generation=1)
+            return prepared
+        self.writer.prepare_reduction = overlap
+        try:
+            result = await self.run_priority(DUE_IOC if due else PASSIVE_REDUCER)
+            self.assertEqual(result.state, 'BLOCKED' if changed else 'ACK', result.blockers)
+            self.assertEqual(len(self.calls), 0 if changed else 1)
+            self.assertFalse(self.dispatcher.status().failed)
+            self.assertEqual((await self.writer.mutations())[-1]['phase'],
+                             'NOT_SENT' if changed else 'ACK')
+            self.assertEqual(scheduler.started, 0)
+        finally:
+            await scheduler.close()
+
+    async def test_identical_metadata_during_passive_prepare_keeps_exit_proof(self):
+        await self.metadata_during_exit()
+
+    async def test_identical_metadata_during_timed_prepare_keeps_exit_proof(self):
+        await self.metadata_during_exit(due=True)
+
+    async def test_real_metadata_change_during_exit_prepare_still_blocks(self):
+        await self.metadata_during_exit(changed=True)
 
     async def test_deferred_early_exit_still_places_exact_passive_reducer(self):
         await self.ready(filled='4')

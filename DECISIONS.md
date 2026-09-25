@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-118 — Recover unsent quota expiry and remove redundant metadata churn
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator: “Ok fix it,” following the two offline
+  reproductions and live refill/shutdown investigation.
+- **Scope:** Preserve still-valid metadata during advisory revalidation, retain
+  identical source-bound results, and keep dispatch alive after verified-unsent
+  temporary quota expiry. Test overlapping refresh/preparation, recovery and
+  continued dispatch, not merely absence of an unsafe send.
+- **Added scope:** Operator: “Also add to the fix why open position not
+  closing.” Trace the actual position/exit evidence and fix confirmed defects;
+  this does not authorize forced liquidation or a different exit policy.
+- **Boundary:** No widened freshness windows, changed risk/reward policy,
+  retry of ambiguous sends, clock/integrity bypass, extra writer or restart.
+  Publish verified source separately from the currently running package.
+
 ### D-117 — Market-local repricing admission
 
 - **Status:** ACCEPTED, 2026-09-24.

@@ -1,5 +1,22 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — redundant source revocation and fatal unsent quota expiry
+
+D-118 keeps unchanged, still-valid metadata published during advisory requests
+and skips identical source-bound publication. Real source changes, disconnects,
+market open/close transitions and original expiries still invalidate it.
+Priority selection queues its own bounded reevaluation instead of depending on
+a redundant metadata callback. No extra workers, REST polling or wider leases.
+
+Pre-send temporary quota expiry returns WAITING only after the writer proves
+the entire preparation aborted. Both entry legs are NOT_SENT; only the market
+key is retained for a fresh candidate after quota recovery. Clock/integrity
+faults, already-used receipts and post-SENDING ambiguity remain fail-closed.
+Regression tests exercise real synthetic entry/passive/timed-exit preparation
+overlapping refresh, source-change rejection and resumed dispatch after expiry.
+Release verification/deployment state is owned by STATUS; exit evidence by
+Finding 180. No exit policy change was needed for the observed position.
+
 ## 2026-09-24 — stalled repricing blocked unrelated new orders
 
 Finding 179 traced the shared maintenance predicate across selection and the

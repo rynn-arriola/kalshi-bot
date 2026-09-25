@@ -172,6 +172,41 @@ class InputTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.terms.taker_fee_per_contract_bound,D('.0276'))
         self.assertEqual(len(result.provenance),6)
 
+    async def test_identical_refresh_preserves_result_and_publication_identity(self):
+        result = await self.service.refresh('A')
+        published = []
+        self.service.publish = published.append
+        again = await self.service.refresh('A')
+        self.assertIs(again, result)
+        self.assertIs(self.service.results['A'], result)
+        self.assertFalse(published)
+        self.assertIs(self.service.current_result('A'), result)
+
+    async def test_current_result_rejects_revision_expiry_and_disconnect(self):
+        result = await self.service.refresh('A')
+        original = self.service.values[('market', 'A')]
+        self.service.values[('market', 'A')] = replace(original, revision=original.revision+1)
+        self.assertIsNone(self.service.current_result('A'))
+        self.service.values[('market', 'A')] = original
+        self.assertIs(self.service.current_result('A'), result)
+        self.mono += 30
+        self.assertIsNone(self.service.current_result('A'))
+        self.mono -= 30
+        self.service.disconnect()
+        self.assertIsNone(self.service.current_result('A'))
+
+    async def test_equal_terms_with_new_source_revision_still_publish(self):
+        first = await self.service.refresh('A')
+        evidence = self.service.values[('market', 'A')]
+        self.service.values[('market', 'A')] = replace(evidence, revision=evidence.revision+1)
+        published = []
+        self.service.publish = published.append
+        second = await self.service.refresh('A')
+        self.assertEqual(second.terms, first.terms)
+        self.assertIsNot(second, first)
+        self.assertNotEqual(second.provenance, first.provenance)
+        self.assertEqual(published, [second.terms])
+
     async def test_unreviewed_timing_is_explicit_not_inferred(self):
         self.service.reviews.clear()
         result=await self.service.refresh('A')

@@ -493,6 +493,12 @@ class RuntimeSelection:
             selected = tuple(ticker for _, ticker in
                              candidates[:max(0, limit-len(self._priority_refresh))])
             self._priority_refresh.update(selected)
+            # Missing priority proof may be account/book state, not metadata.
+            # Reevaluate even when the metadata scheduler keeps a fresh lease.
+            for ticker in selected:
+                self.runtime.engine.dirty.mark(ticker)
+            if selected:
+                self.runtime.engine.wake.set()
             scheduler = self.runtime.metadata_scheduler
             if scheduler is not None:
                 for ticker in selected:

@@ -1,5 +1,14 @@
 # What exists
 
+## Source-stable refresh and unsent quota recovery — D-118
+
+`ExitInputService.current_result` checks the original source-bound lease;
+metadata scheduling preserves it until actual invalidation/expiry. Identical
+publication is idempotent; ranking independently wakes bounded reevaluation.
+The sole dispatcher recovers a pre-send temporary quota expiry only after a
+successful durable abort. No new workers or schemas. Finding 180 records the
+reproductions and observed exit; STATUS owns release verification/deployment.
+
 ## Market-local maintenance admission — D-117, 2026-09-24
 
 The maintenance predicate no longer globally freezes ranked additions while one

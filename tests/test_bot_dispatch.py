@@ -190,10 +190,26 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.writer.prepare_cancel = stale
         self.dispatcher.submit('A', SAFETY_CANCEL)
-        with self.assertRaises(Exception):
-            await self.dispatcher.run_one()
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'WAITING')
+        self.assertEqual(result.blockers, ('write_quota_expired',))
         self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.invoked)
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertEqual(self.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.assertEqual(self.budget.status(now=budget_now(300)).outstanding, 0)
+        # Fresh evidence and a new candidate, never retry the old receipt/id.
+        self.writer.prepare_cancel = original
+        self.budget.refresh(snapshot(scope=self.budget._snapshot.scope, sequence=2,
+            start=budget_now(300), rate=100, capacity=100), now=budget_now(300))
+        self.clock = 301
+        old = self.candidates[('A', SAFETY_CANCEL)]
+        self.candidates[('A', SAFETY_CANCEL)] = replace(old, attempt_id='after-quota',
+            evidence=await self.writer.cancel_evidence('order-a'))
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', result.blockers)
+        self.assertEqual(len(self.invoked), 1)
+        self.assertFalse(self.dispatcher.status().failed)
 
     async def test_quota_expiry_during_sending_never_invokes_transport(self):
         await self.working_order()
@@ -212,6 +228,37 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.executor.failed)
         self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
         self.assertEqual(self.budget.status(now=budget_now(300)).outstanding, 0)
+
+    async def test_pre_send_clock_fault_remains_fatal_after_abort(self):
+        await self.working_order()
+        original = self.writer.prepare_cancel
+        async def regressed(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            self.clock = 0
+            return result
+        self.writer.prepare_cancel = regressed
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(QuotaUnavailable):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+
+    async def test_expired_permit_with_already_sending_receipt_remains_fatal(self):
+        await self.working_order()
+        original = self.writer.prepare_cancel
+        async def advanced(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            await self.writer.begin_send(result.receipt)
+            self.clock = 300
+            return result
+        self.writer.prepare_cancel = advanced
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(QuotaUnavailable):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'SENDING')
 
     async def test_async_send_edge_callback_rejected_before_sending(self):
         candidate = await self.working_order()

@@ -236,6 +236,11 @@ class MetadataScheduler:
                 continue
             self.due.pop(ticker)
             if not self.stopping and self.service.connected and ticker not in self.exhausted:
+                # An advisory request is not a source change. Keep its original
+                # expiry scheduled, including while refresh workers are deferred.
+                if self.service.current_result(ticker) is not None:
+                    self._queue(ticker, self.service.next_refresh_at(ticker))
+                    continue
                 # Expired evidence is revoked even when both workers are busy.
                 self.service._clear_terms(ticker)
                 self.ready[ticker] = None

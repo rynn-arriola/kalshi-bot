@@ -93,6 +93,43 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.high_water, 2)
         self.assertFalse(self.scheduler.status()['live_authority'])
 
+    async def test_advisory_request_keeps_fresh_terms_and_does_not_start_worker(self):
+        self.connect()
+        await self.drain(2)
+        result = self.service.results['A']
+        calls, started = len(self.reads.calls), self.scheduler.started
+        self.advance(.1)
+        for _ in range(20):
+            self.scheduler.request('A')
+            self.scheduler.step()
+            await asyncio.sleep(0)
+        self.assertIs(self.service.results.get('A'), result)
+        self.assertIs(self.published.get('A'), result.terms)
+        self.assertEqual(self.scheduler.started, started)
+        self.assertEqual(len(self.reads.calls), calls)
+        # Keeping a fresh result must not lose the later expiry wake.
+        self.scheduler.defer = lambda: True
+        self.advance(9.9)
+        self.scheduler.step()
+        self.assertNotIn('A', self.service.results)
+        self.assertNotIn('A', self.published)
+
+    async def test_requested_fresh_terms_survive_deferred_workers_not_real_change(self):
+        self.connect()
+        await self.drain(2)
+        result = self.service.results['A']
+        self.advance(.1)
+        self.scheduler.defer = lambda: True
+        self.scheduler.request('A')
+        self.scheduler.step()
+        self.assertIs(self.service.results.get('A'), result)
+        self.event('A', event_type='deactivated')
+        self.assertNotIn('A', self.service.results)
+        self.assertNotIn('A', self.published)
+        self.scheduler.defer = lambda: False
+        await self.drain(3)
+        self.assertFalse(self.published['A'].active)
+
     async def test_duplicate_ack_does_not_rebootstrap(self):
         self.connect()
         await self.drain(2)
@@ -184,11 +221,11 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
             self.scheduler.request('A')
             self.scheduler.request('B')
         self.assertLessEqual(len(self.scheduler.heap), 4)
-        await self.drain(4)
-        self.assertEqual(self.scheduler.started, 4)
+        await self.drain(2)
+        self.assertEqual(self.scheduler.started, 2)
         self.assertEqual(len(self.reads.calls), 7)
 
-    async def test_requests_while_busy_have_one_followup(self):
+    async def test_requests_while_busy_skip_redundant_followup_when_fresh(self):
         gate = asyncio.Event()
         async def slow(name): await gate.wait()
         self.reads.before = slow
@@ -199,8 +236,8 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         gate.set()
         await self.drain(2)
         self.advance(.1)
-        await self.drain(3)
-        self.assertEqual(self.scheduler.started, 3)
+        await self.drain(2)
+        self.assertEqual(self.scheduler.started, 2)
         self.assertEqual(len(self.reads.calls), 7)
 
     async def test_unknown_universe_events_cannot_grow_work(self):

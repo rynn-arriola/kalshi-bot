@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-118 distinguishes advisory reevaluation from source invalidation. A current
+metadata publication retains its identity and original expiry while its complete
+generation/provenance/value tuple is unchanged. Real changes still revoke it;
+ranking wakes its own bounded reevaluation. Pre-send temporary quota expiry may
+return to waiting only after the writer confirms the entire preparation aborted.
+The queue retains a market key, never a reusable receipt or stale authorization.
+
 D-117 scopes the maintenance admission gate to its own ticker, not every shard.
 Other qualified markets can fill available capacity through the existing ranked
 selector and sole writer. No free slots are earmarked for replacement; shared

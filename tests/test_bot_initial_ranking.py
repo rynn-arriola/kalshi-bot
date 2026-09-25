@@ -247,10 +247,14 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         await self.publish('A',pool=3000000)
         self.s._priority_hints['C'] = PriorityCandidateHint(
             'C','PROGRAM',self.now,self.now+timedelta(hours=1),D(3),())
+        self.r.engine.dirty.take(self.mono, limit=1024)
+        self.r.engine.wake.clear()
         result = await self.proposal()
         self.assertEqual(result.blockers,('initial_ranking_pending',))
         self.assertEqual(self.s.status()['priority_revalidation_pending'],1)
         self.assertTrue(self.r._metadata_priority('C'))
+        self.assertIn('C', self.r.engine.dirty.take(self.mono, limit=1024))
+        self.assertTrue(self.r.engine.wake.is_set())
         self.assertFalse(await self.writer.mutations())
 
     async def test_invalidated_priority_is_revalidated_before_fallback(self):
@@ -330,8 +334,10 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
     async def test_priority_refresh_uses_bounded_batches_and_advances(self):
         shard = self.r.engine.market_shard['A']
         tickers = [f'P{i:02d}' for i in range(40)]
+        self.r.engine.dirty.capacity = 64
         for ticker in tickers:
             self.r.engine.market_shard[ticker] = shard
+            self.r.engine.dirty.register(ticker)
             self.s._priority_hints[ticker] = PriorityCandidateHint(
                 ticker, 'PROGRAM', self.now, self.now+timedelta(hours=1), D(3), ())
         self.assertTrue(self.s._request_priority_revalidation(
