@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 178. Manual close used three fills — 2026-09-24
+
+Fresh read-only venue inspection confirmed zero orders and positions after the
+operator closed `KXTOKENUSE-26SEP28-T138`. The 10 NO contracts closed through
+YES-equivalent buys: one at .83 and nine at .84, against .63 opening basis.
+Gross trading loss was $2.09; actual fees total $0.0946; net loss $2.1846.
+The single-fill operator-adoption primitive could not represent this real order.
+Its bounded multi-fill repair passes 39 accounting tests and the complete
+1,703-test release gate, with one expected Windows symlink-privilege skip.
+The stopped-owner reconciliation dry-run independently matched venue cash.
+Application/restart results remain owned by STATUS.
+
 ### D-115 manual-close handoff — 2026-09-24 19:49 ET
 
 No one-off IOC was submitted. Exact generation 141/PID 44492 was reverified

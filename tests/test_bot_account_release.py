@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from kalshi_bot.account import AccountCoordinator, normalize_snapshot
-from kalshi_bot.account_release import (cash_limit, record_operator_close,
+from kalshi_bot.account_release import (cash_limit, record_operator_close, record_operator_close_fills,
                                         validate_cash)
 from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.config import BotConfig
@@ -412,6 +412,46 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         with closing(Ledger(self.path)) as restarted:
             self.assertEqual(restarted.position('A'), 0)
             validate_cash(restarted)
+
+    async def test_operator_split_close_exact_prices_fees_and_cold_cash(self):
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            opening = OrderUpdate('split-open', 'split-client', 'A', 'ask',
+                D('.63'), D(10), D(10), D(0), 'executed', 0, 1, 1)
+            with ledger.transaction():
+                ledger.connection.execute('INSERT INTO order_evidence VALUES (?,?,?,?)',
+                    (opening.order_id, opening.client_id, opening.encode(), NOW.isoformat()))
+            ledger.record_fill(Fill('open', opening.order_id, 'A', 'ask',
+                D(10), D('.63'), D(0), int(NOW.timestamp()*1_000_000)), NOW)
+            order = OrderUpdate('split-close', '', 'A', 'bid', D('.84'),
+                D(10), D(10), D(0), 'executed', 0, 1, 2)
+            fills = tuple(Fill('close'+str(i), order.order_id, 'A', 'bid',
+                D(q), D(p), D(f), int(NOW.timestamp()*1_000_000)+1)
+                for i,(q,p,f) in enumerate((('1','.83','.0099'),('8','.84','.0753'),('1','.84','.0094'))))
+            before = D(ledger.connection.execute('SELECT cash FROM accounting_cash WHERE exchange_index=1').fetchone()[0])
+            for invalid in (fills[:2], fills+(fills[0],),
+                    (replace(fills[0], yes_price=D('.85')),)+fills[1:],
+                    (replace(fills[0], book_side='ask'),)+fills[1:]):
+                with self.assertRaises(InvalidData):
+                    record_operator_close_fills(ledger, invalid, order, reference='split', now=NOW)
+                self.assertEqual(ledger.position('A'), -10)
+                self.assertIsNone(ledger.connection.execute('SELECT 1 FROM operator_fill_scopes').fetchone())
+            record_operator_close_fills(ledger, fills, order, reference='split', now=NOW)
+            self.assertEqual(ledger.position('A'), 0)
+            after = D(ledger.connection.execute('SELECT cash FROM accounting_cash WHERE exchange_index=1').fetchone()[0])
+            self.assertEqual(after-before, D('1.5154'))
+            self.assertEqual(ledger.filled_quantity(order.order_id), 10)
+            validate_cash(ledger)
+            with self.assertRaisesRegex(InvalidData, 'already reconciled'):
+                record_operator_close_fills(ledger, fills, order, reference='split', now=NOW)
+        with closing(Ledger(self.path)) as restarted:
+            validate_cash(restarted)
+            self.assertEqual(restarted.position('A'), 0)
+            with restarted.transaction():
+                restarted.connection.execute('UPDATE operator_fill_scopes SET fill_id=?',
+                    (json.dumps(dict(version=1,fills=[fills[0].key,fills[1].key])),))
+            with self.assertRaises(InvalidData):
+                validate_cash(restarted)
 
     async def test_independent_cash_ceilings_no_double_subtraction_or_cross_shard_credit(self):
         await self.writer.close()

@@ -180,7 +180,7 @@ def apply_fill_cash(ledger, fill, matched, now):
                            'WHERE order_id=?', (fill.order_id,)).fetchone()
     if row is None:
         raise InvalidData('baseline cash requires owned fill scope')
-    if row['fill_id'] is not None and row['fill_id'] != fill.key:
+    if row['fill_id'] is not None and fill.key not in operator_fill_ids(row['fill_id']):
         raise InvalidData('operator fill scope identity changed')
     order = OrderUpdate.decode(row[0])
     shard = conn.execute('SELECT cash FROM accounting_cash WHERE exchange_index=?',
@@ -200,31 +200,61 @@ def apply_fill_cash(ledger, fill, matched, now):
 
 
 def record_operator_close(ledger, fill, order, *, reference, now):
-    """Explicit stopped-owner adoption of one exact external flattening fill.
+    """Compatibility wrapper for an exact, single-fill operator close."""
+    return record_operator_close_fills(ledger, (fill,), order, reference=reference, now=now)
 
-    Ordinary stream/history recovery never calls this function.  The caller
-    must separately hold process ownership and fresh venue evidence.  This
-    primitive only accepts a terminal full-fill that exactly flattens one local
-    position and retains its non-bot origin for cold cash verification.
+
+def operator_fill_ids(payload):
+    """Versioned exact fill manifest; retain legacy single-key rows unchanged."""
+    value = json.loads(payload)
+    if isinstance(value, list) and len(value) == 2 and all(isinstance(v, str) for v in value):
+        return (payload,)
+    if (not isinstance(value, dict) or set(value) != {'version', 'fills'}
+            or value['version'] != 1 or type(value['fills']) is not list
+            or not 1 <= len(value['fills']) <= 128
+            or any(not isinstance(v, str) for v in value['fills'])
+            or len(set(value['fills'])) != len(value['fills'])):
+        raise InvalidData('invalid operator fill manifest')
+    for key in value['fills']:
+        parsed = json.loads(key)
+        if not isinstance(parsed, list) or len(parsed) != 2:
+            raise InvalidData('invalid operator fill identity')
+        for item in parsed:
+            identity(item)
+    return tuple(value['fills'])
+
+
+def record_operator_close_fills(ledger, fills, order, *, reference, now):
+    """Atomically adopt exact real fills of a stopped-owner terminal close.
+
+    Caller holds account ownership and fresh venue evidence. No normal history
+    import invokes this explicit operation. No synthetic average-price fill.
     """
     from .ledger import Fill
-    if not isinstance(fill, Fill) or not isinstance(order, OrderUpdate):
+    if (type(fills) is not tuple or not 1 <= len(fills) <= 128
+            or any(not isinstance(fill, Fill) for fill in fills)
+            or not isinstance(order, OrderUpdate)):
         raise InvalidData('typed operator close evidence required')
     reference, now = identity(reference), utc(now)
-    if (order.order_id != fill.order_id or order.ticker != fill.ticker
-            or order.side != fill.book_side or order.subaccount != 0
-            or not order.terminal or order.remaining != 0
-            or order.initial != fill.quantity or order.filled != fill.quantity
-            or order.yes_price != fill.yes_price):
+    quantity = sum((fill.quantity for fill in fills), ZERO)
+    keys = tuple(fill.key for fill in fills)
+    if (len(set(keys)) != len(keys) or order.subaccount != 0
+            or not order.terminal or order.remaining != 0 or order.initial != quantity
+            or order.filled != quantity or any(
+                order.order_id != fill.order_id or order.ticker != fill.ticker
+                or order.side != fill.book_side
+                or (fill.yes_price > order.yes_price if order.side == 'bid'
+                    else fill.yes_price < order.yes_price) for fill in fills)):
         raise InvalidData('operator close order/fill terms differ')
-    expected = fill.quantity if fill.book_side == 'ask' else -fill.quantity
+    expected = quantity if order.side == 'ask' else -quantity
+    manifest = keys[0] if len(keys) == 1 else json.dumps(dict(version=1, fills=keys), separators=(',', ':'))
     conn = ledger.connection
     with ledger.transaction():
-        existing = conn.execute('SELECT * FROM operator_fill_scopes WHERE order_id=? OR fill_id=?',
-                                (order.order_id, fill.key)).fetchone()
+        existing = conn.execute('SELECT * FROM operator_fill_scopes WHERE order_id=?',
+                                (order.order_id,)).fetchone()
         if existing is not None:
             raise InvalidData('operator close was already reconciled')
-        if ledger.position(fill.ticker) != expected:
+        if ledger.position(order.ticker) != expected:
             raise InvalidData('operator fill does not exactly flatten local position')
         if (conn.execute('SELECT 1 FROM order_evidence WHERE order_id=? OR client_id=?',
                          (order.order_id, order.client_id)).fetchone()
@@ -234,10 +264,11 @@ def record_operator_close(ledger, fill, order, *, reference, now):
         if conn.execute('SELECT COUNT(*) FROM operator_fill_scopes').fetchone()[0] >= 128:
             raise InvalidData('operator fill scope capacity reached')
         conn.execute('INSERT INTO operator_fill_scopes VALUES (?,?,?,?,?)',
-                     (order.order_id, fill.key, order.encode(), reference,
+                     (order.order_id, manifest, order.encode(), reference,
                       now.isoformat()))
-        if not ledger.record_fill(fill, now):
-            raise InvalidData('operator close fill already exists')
+        for fill in fills:
+            if not ledger.record_fill(fill, now):
+                raise InvalidData('operator close fill already exists')
     return True
 
 
@@ -382,9 +413,11 @@ def _closed_settlement_proof(ledger, settlements, snapshot, opening):
                 order = OrderUpdate.decode(row['owned'] or row['external'])
             except (InvalidData, ValueError, TypeError, KeyError, IndexError):
                 return None
-            if (row['external'] is not None and row['external_fill_id'] != row['id']
+            if (row['external'] is not None and row['id'] not in operator_fill_ids(row['external_fill_id'])
                     or order.order_id != order_id or order.ticker != ticker
-                    or order.side != side or order.yes_price != yes_price
+                    or order.side != side
+                    or (order.yes_price != yes_price if row['owned'] is not None else
+                        (yes_price > order.yes_price if side == 'bid' else yes_price < order.yes_price))
                     or order.subaccount != 0 or order.exchange_index != settlement.exchange_index
                     or not order.terminal or row['executed_us'] < boundary_us
                     or row['executed_us'] > timestamp_us(settlement.settled_at.isoformat())):
@@ -597,15 +630,23 @@ def validate_cash(ledger):
         raise InvalidData('operator fill scope capacity exceeded')
     for scope in scopes:
         order = OrderUpdate.decode(scope['order_payload'])
-        fill = conn.execute('SELECT payload FROM fills WHERE id=?',
-                            (scope['fill_id'],)).fetchone()
-        if (fill is None or json.loads(scope['fill_id'])[0] != scope['order_id']
+        keys = operator_fill_ids(scope['fill_id'])
+        retained = [conn.execute('SELECT payload FROM fills WHERE id=?', (key,)).fetchone() for key in keys]
+        if (any(fill is None for fill in retained)
+                or any(json.loads(key)[0] != scope['order_id'] for key in keys)
                 or order.order_id != scope['order_id'] or not order.terminal
                 or conn.execute('SELECT 1 FROM order_evidence WHERE order_id=? OR client_id=?',
                                 (order.order_id, order.client_id)).fetchone()
                 or conn.execute('SELECT 1 FROM intents WHERE client_id=?',
                                 (order.client_id,)).fetchone()):
             raise InvalidData('operator fill scope is invalid')
+        parts = [json.loads(fill[0]) for fill in retained]
+        if (order.remaining != 0 or order.initial != order.filled
+                or sum((decimal(part[2]) for part in parts), ZERO) != order.filled
+                or any(part[0] != order.ticker or part[1] != order.side
+                    or (decimal(part[3]) > order.yes_price if order.side == 'bid'
+                        else decimal(part[3]) < order.yes_price) for part in parts)):
+            raise InvalidData('operator close manifest economics changed')
     with localcontext() as ctx:
         ctx.prec = 40
         for row in conn.execute('SELECT f.id,f.payload,o.payload AS owned,'
@@ -614,7 +655,7 @@ def validate_cash(ledger):
                 "operator_fill_scopes x ON x.order_id=json_extract(f.id,'$[0]') ORDER BY f.rowid"):
             if (row['owned'] is None) == (row['external'] is None):
                 raise InvalidData('cash fill lost ownership')
-            if row['external'] is not None and row['external_fill_id'] != row['id']:
+            if row['external'] is not None and row['id'] not in operator_fill_ids(row['external_fill_id']):
                 raise InvalidData('operator fill scope identity changed')
             order = OrderUpdate.decode(row['owned'] or row['external'])
             data = json.loads(row['payload'])

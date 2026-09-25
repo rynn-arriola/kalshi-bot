@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-116 — Explicit command 1 flatten/restart and restart-friction repair
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator confirmed the manual close and requested restart,
+  fixes to wasted restart time, and “command 1” to cancel orders and flatten
+  positions instead of waiting for ordinary passive exits.
+- **Scope:** Record the actual multi-fill manual close, then restart. Implement
+  an explicit emergency cancel/flatten/restart command for this bot's primary
+  account scope, using the sole runtime owner and existing reducing IOC path.
+  The command accepts execution gains/losses and fees, not guaranteed prices.
+- **Boundary:** Ordinary restart/stop does not implicitly liquidate. No other
+  account, foreign ownership, risk increase, stale-price execution or concurrent
+  writer. Reconcile terminal/fill evidence and verify flat before normal restart.
+  Missing liquidity, uncertainty or a bounded timeout must report a concrete
+  blocker rather than loop forever or label a process start as success.
+
 ### D-115 — Close the remaining position immediately, then restart
 
 - **Status:** ACCEPTED, 2026-09-24.

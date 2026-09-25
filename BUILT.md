@@ -1,5 +1,14 @@
 # What exists
 
+## Exact split-fill operator close — 2026-09-24
+
+Explicit stopped-owner reconciliation supports up to 128 actual fills for one
+fully executed flattening order. A versioned manifest preserves every fill ID,
+price and fee, with atomic application and cold cash checks; legacy single-fill
+rows remain supported without schema migration. Normal automatic history import
+does not gain external-trade authority. The 39-test accounting suite, 286-test
+fast gate and full 1,703-test gate pass (one expected Windows privilege skip).
+
 ## Entry/advisory scheduling ownership — 2026-09-24
 
 The active entry source owns its market's advisory plan across awaits; background

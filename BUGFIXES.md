@@ -1,5 +1,15 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — manual close split across prices blocked restart
+
+The explicit operator-close primitive assumed one fill at the order limit.
+Actual close evidence contained three fills, including one at an improved price.
+It now validates the complete exact quantity and limit direction, persists a
+bounded fill-ID manifest, and books each real fee/price atomically. Missing,
+duplicate, wrong-side or worse-than-limit fills fail closed. Cold cash validation
+checks all manifest members and economics. No synthetic averaged execution or
+automatic adoption of foreign history was introduced.
+
 ## 2026-09-24 — background evaluation invalidated unchanged entry proof
 
 Finding 177 reproduces three dispatch/advisory races. Background evaluation now

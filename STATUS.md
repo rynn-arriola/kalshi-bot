@@ -1,5 +1,16 @@
 # Current status
 
+## Manual-close accounting repaired; applying and restarting — 2026-09-24
+
+The operator confirmed manual close and renewed restart authority. Fresh venue
+reads show no orders or positions. The exact three-fill reconciliation dry-run
+matches venue cash and records net loss $2.1846 without invented fills.
+The 39-test accounting suite, fast gate (286 tests), and full 1,703-test gate
+pass with one expected Windows privilege skip. Source/test diff review passed.
+Apply the stopped-owner reconciliation, then supported restart; do not mistake
+the former historical local position for fresh venue inventory.
+Command-1 development is isolated in an ignored Git worktree and not deployed.
+
 ## Stopped for operator manual close — 2026-09-24 19:49 ET
 
 The operator elected manual close after D-115. No one-off close was executed.
