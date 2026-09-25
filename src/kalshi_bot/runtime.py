@@ -184,6 +184,8 @@ class RecoveryRuntime:
         self.steady_refresh_completed = 0
         self.steady_refresh_escalations = 0
         self.suppressed_market_evaluations = 0
+        self.unsent_rebases = 0
+        self.recovery_risk_drain_waits = 0
         self.selection = None  # Advisory only, attached before runtime start.
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
@@ -637,6 +639,41 @@ class RecoveryRuntime:
         self._post_drain_recovery_pending = False
         self.request_recovery('post_drain')
         return True
+
+    async def rebase_after_unsent(self):
+        """D-130: keep scheduling evidence across a proven-unsent command.
+
+        Returns True when the current report and/or routine renewal anchor
+        were re-bound to the new writer revision, or recovery already owns the
+        gap. False means the caller must use the ordinary full recovery. This
+        never extends a lease, restores accounting authority or imports venue
+        evidence; routine renewal still re-reads the complete account.
+        """
+        if self.stop_requested.is_set() or self.writer.failed or self.engine.failed:
+            return True
+        if self.recovery_requested.is_set() or self.recovery_lock.locked():
+            return True
+        proof, ingress = self._routine_account_proof, self.ingress_revision
+        report = self.account.report
+        rebased = None
+        if report is not None:
+            try:
+                rebased = await self.account.rebase_unsent(report, now=self.now())
+            except InvalidData:
+                rebased = None
+        if self.ingress_revision != ingress or self.recovery_requested.is_set():
+            return self.recovery_requested.is_set()
+        source = self._routine_source()
+        anchored = (proof is not None and self._routine_account_proof is proof
+                    and proof.source[:3]+proof.source[4:] == source[:3]+source[4:])
+        if anchored:
+            self._routine_account_proof = replace(proof, source=source)
+        if rebased is not None:
+            self._record_steady_account_scope(rebased)
+            self.unsent_rebases += 1
+        self.diagnostics.emit('account_rebased_unsent',
+            outcome='recovered' if (rebased is not None or anchored) else 'source_changed')
+        return rebased is not None or anchored
 
     def _revoke(self):
         self._steady_account_scope = None
@@ -1494,6 +1531,21 @@ class RecoveryRuntime:
                         self.recovery_dispatch_waits += 1
                     joined_at = self.clock()
                     await self.dispatch_supervisor.dispatcher.wait_idle()
+                    # D-130: every recovery cause (routine failure, quota,
+                    # persisted mutation) joins a pending protective drain.
+                    # The drain has its own 5 s/8-attempt escalation; this wait
+                    # is bounded and never suppresses the requested pass.
+                    source = getattr(self.dispatch_supervisor, 'source', None)
+                    if source is not None and source.risk_drain_pending:
+                        self.recovery_state = 'awaiting_risk_drain'
+                        self.recovery_risk_drain_waits += 1
+                        for _ in range(100):
+                            if (not source.risk_drain_pending or self.stop_requested.is_set()
+                                    or self.clock()-joined_at >= 5):
+                                break
+                            source.resume_risk_drain()
+                            await asyncio.sleep(.05)
+                        await self.dispatch_supervisor.dispatcher.wait_idle()
                     self.recovery_dispatch_wait_ms = max(0, int((self.clock()-joined_at)*1000))
                 if self.stop_requested.is_set():
                     return
@@ -1876,6 +1928,8 @@ class RecoveryRuntime:
             recovery_action_progress=self.recovery_action_progress,
             recovery_dispatch_waits=self.recovery_dispatch_waits,
             recovery_dispatch_wait_ms=self.recovery_dispatch_wait_ms,
+            recovery_risk_drain_waits=self.recovery_risk_drain_waits,
+            unsent_rebases=self.unsent_rebases,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             routine_account_refresh=dict(attempts=self.routine_refresh_attempts,

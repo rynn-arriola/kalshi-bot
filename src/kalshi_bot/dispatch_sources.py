@@ -67,6 +67,10 @@ class InventoryDispatchSource:
         self._risk_retry_at = 0.
         self._risk_retry_count = 0
         self.risk_cancel_deferrals = 0
+        # D-130: per-turn evidence that no command reached transport.
+        self._executor = None
+        self._transport_invoked = False
+        self._rebase_requested = False
 
     @property
     def risk_drain_pending(self):
@@ -103,6 +107,7 @@ class InventoryDispatchSource:
             validate_proof=self.validate_proof, offline_fixture=self.offline_fixture,
             now=self.runtime.now, diagnostics=self.runtime.diagnostics,
             after_outcome=self._mutation_observed)
+        self._executor = executor
         return MutationDispatcher(self.runtime.writer, executor, budget,
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
             offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
@@ -159,6 +164,8 @@ class InventoryDispatchSource:
         paused_cancel = isinstance(self._proof, _PausedCancelProof)
         self._proof = None
         self._generation += 1
+        if notice is not None:
+            self._transport_invoked = True
         if notice is not None and risk is not None and notice.kind == 'cancel':
             # The exact risk pair was already latched while account proof was
             # current. Revoke all entry authority now; only its remaining owned
@@ -207,6 +214,15 @@ class InventoryDispatchSource:
                 owner.request(ticker, SAFETY_CANCEL)
             return
         self._paused_cancel_notice = None
+        if (notice is None and not self._transport_invoked
+                and self._executor is not None and self._executor.last_denied
+                and not self._executor.failed):
+            # D-130: proven unsent; no venue effect. After the dispatcher's
+            # own abort commits, after_turn re-audits the unchanged snapshot
+            # (or falls back to this ordinary recovery). Owner proof is
+            # already revoked above.
+            self._rebase_requested = True
+            return
         self.runtime._revoke()
         self.runtime.request_recovery('mutation_observed' if notice is not None
                                       else 'mutation_persisted')
@@ -214,6 +230,30 @@ class InventoryDispatchSource:
             self.runtime.diagnostics.emit('mutation_failed', http_status=notice.http_status,
                 market=notice.ticker, order=notice.subject_id)
             self.runtime.diagnostics.ensure_healthy()
+
+    async def after_turn(self, result):
+        """D-130: bound recovery after dispatcher turns with no transport call.
+
+        Runs on the sole dispatch owner after the turn's durable aborts. Any
+        transport invocation, failed owner or non-blocked result keeps the
+        ordinary conservative recovery path.
+        """
+        requested, self._rebase_requested = self._rebase_requested, False
+        invoked, self._transport_invoked = self._transport_invoked, False
+        runtime = self.runtime
+        if self._stopped or runtime.stop_requested.is_set():
+            return
+        unsent = (not invoked and result.state in {'BLOCKED', 'WAITING'}
+                  and self._executor is not None and not self._executor.failed)
+        report = runtime.account.report
+        stale_by_revision = (report is not None and report.audit is not None
+            and report.audit.writer_revision != runtime.writer.revision)
+        if unsent and (requested or stale_by_revision):
+            if await runtime.rebase_after_unsent() or not requested:
+                return
+        if requested:
+            runtime._revoke()
+            runtime.request_recovery('mutation_persisted')
 
     def stop(self):
         self._stopped = True

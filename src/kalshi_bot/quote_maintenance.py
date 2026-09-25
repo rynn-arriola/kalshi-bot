@@ -254,8 +254,9 @@ class QuoteMaintenance:
             if self.cycle.reason == 'fill_risk_withdrawal':
                 return self.cycle.ticker == ticker
             service = r.dispatch_supervisor
-            if service is not None and service.dispatcher.status().active is not None:
-                return False
+            active = service.dispatcher.status().active if service is not None else None
+            if active is not None and active[0] in {self.cycle.ticker, plan.ticker}:
+                return False  # Join an in-flight command for either market.
             # A flat market waiting for ordinary repricing must not monopolize
             # emergency withdrawal. Its exact outstanding orders remain owned
             # and will be reevaluated through the same manager later.
@@ -310,8 +311,13 @@ class QuoteMaintenance:
             if rows is None or window is None or len(rows)-len(plan.inventory.orders)+2 > window.cap:
                 return  # In particular, do not churn an intentional odd-cap orphan.
         service = r.dispatch_supervisor
-        if service is not None and service.dispatcher.status().active is not None:
-            return  # No new maintenance episode during an in-flight mutation.
+        active = service.dispatcher.status().active if service is not None else None
+        # No new repricing episode during an in-flight mutation. D-130: a risk
+        # withdrawal latches during another market's command (its cancel
+        # queues behind it), but still joins a command for this same market.
+        if active is not None and (reason != 'fill_risk_withdrawal'
+                                   or active[0] == plan.ticker):
+            return
         ids = tuple(sorted(o.order.order_id for o in plan.inventory.orders))
         self.cycle = MaintenanceCycle(plan.ticker, program, ids, reason, reenter,
                                       evidence_valid_until, evidence_identity)

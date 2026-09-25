@@ -624,6 +624,35 @@ class AccountCoordinator:
         self._token = None  # Cannot reuse a snapshot token.
         return self.report
 
+    async def rebase_unsent(self, report, *, now):
+        """D-130: re-audit the same venue snapshot after proven-unsent writes.
+
+        A prepared-then-aborted command advances the writer revision without
+        any venue effect. Re-auditing the unchanged snapshot at the new
+        revision keeps its original observation time and five-second bound.
+        Any private ingress, reconciliation, reconnect, stale evidence or
+        interleaved write returns None so the caller uses full recovery.
+        """
+        self._check_owner()
+        now = utc(now)
+        generation, revision = self.generation, self.revision
+        if (report is None or report is not self.report or report.audit is None
+                or report.audit.blockers or not report.positions_match
+                or not self.connected or self._processing or self._token is not None
+                or self.writer.failed or report.audit.writer_epoch != self.writer.epoch
+                or not timedelta(0) <= now-report.observed_at <= timedelta(seconds=5)):
+            return None
+        audit = await self.writer.reaudit(report.snapshot)
+        if (self.report is not report or (self.generation, self.revision) != (generation, revision)
+                or not self.connected or self._processing or self._token is not None
+                or self.writer.failed
+                or (audit.writer_epoch, audit.writer_revision) != (self.writer.epoch, self.writer.revision)
+                or audit.blockers or not audit.positions_match):
+            return None
+        self.report = replace(report, positions_match=audit.positions_match,
+            unresolved_intents=audit.unresolved_intents, audit=audit)
+        return self.report
+
     def current_report(self, now):
         report = self.report
         if (report is None or report.audit is None or not self.connected or self._processing

@@ -754,6 +754,7 @@ class InjectedExecutor:
         self.timeout = timeout
         self.lock = asyncio.Lock()
         self.failed = False
+        self.last_denied = False
         writer.claim_executor(self)
 
     @staticmethod
@@ -769,6 +770,7 @@ class InjectedExecutor:
 
     async def execute_prepared(self, receipt, *, before_invoke=None):
         completed = False
+        self.last_denied = False
         try:
             result = await self._execute_prepared(receipt, before_invoke=before_invoke)
             completed = True
@@ -777,6 +779,8 @@ class InjectedExecutor:
             # A denial may durably prove a SENDING command was never submitted.
             # Re-signal the owner so the fresh command can be planned promptly.
             completed = not self.failed
+            # D-130: a denial with a healthy owner never entered transport.
+            self.last_denied = completed
             raise
         finally:
             # Recovery may consume an ingress notification while persistence is
@@ -956,6 +960,7 @@ class InjectedExecutor:
 
     async def execute_prepared_batch(self, batch, *, before_invoke=None):
         completed = False
+        self.last_denied = False
         try:
             result = await self._execute_prepared_batch(
                 batch, before_invoke=before_invoke)
@@ -963,6 +968,7 @@ class InjectedExecutor:
             return result
         except CommandDenied:
             completed = not self.failed
+            self.last_denied = completed
             raise
         finally:
             if self.after_outcome is not None and (completed or self.failed or self.writer.failed):

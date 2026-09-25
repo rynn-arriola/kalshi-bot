@@ -83,6 +83,8 @@ class DispatchSupervisor:
                 self.last_state = 'RUNNING'
                 result = await self.dispatcher.run_one()
                 self.turns += 1
+                if result.state != 'IDLE':
+                    await self.source.after_turn(result)
                 self.last_state = result.state
                 if result.state != 'IDLE':
                     self.last_outcome = dict(state=result.state, ticker=result.ticker,

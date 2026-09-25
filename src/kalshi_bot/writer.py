@@ -413,6 +413,19 @@ class LedgerWriter:
             raise InvalidData("bounded immutable account snapshot required")
         return await self._wait(self._submit("reconcile_snapshot", snapshot, utc(now)))
 
+    async def reaudit(self, snapshot):
+        """Read-only local audit of an unchanged venue snapshot (D-130).
+
+        Used only after proven-unsent local writes. It neither advances the
+        revision nor revokes a lease and carries no venue evidence of its own.
+        """
+        from .account import Snapshot
+        if (not isinstance(snapshot, Snapshot) or type(snapshot.orders) is not tuple
+                or type(snapshot.positions) is not tuple or len(snapshot.orders) > 4096
+                or len(snapshot.positions) > self.market_capacity):
+            raise InvalidData("bounded immutable account snapshot required")
+        return await self._wait(self._submit("reaudit", snapshot))
+
     async def order(self, update: OrderUpdate, now: datetime):
         if not isinstance(update, OrderUpdate):
             raise InvalidData("validated order update required")
@@ -614,6 +627,10 @@ class LedgerWriter:
                     snapshot.subaccount, now))
                 return audit_snapshot(ledger, snapshot, epoch=self.epoch, revision=self._revision,
                                       capacity=self.market_capacity)
+        if command == "reaudit":
+            from .verification import audit_snapshot
+            return audit_snapshot(ledger, args[0], epoch=self.epoch, revision=self._revision,
+                                  capacity=self.market_capacity)
         if command == "market_inventory":
             from .portfolio import market_inventory
             return replace(market_inventory(ledger, *args), writer_epoch=self.epoch,
@@ -1008,7 +1025,7 @@ class LedgerWriter:
                                  "order_evidence", "pending_fills", "exit_basis", "mutations", "history_coverage",
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'next_entry_cancel_evidence', 'reduction_evidence',
-                                 'command_capacity', 'accounting_status'}
+                                 'command_capacity', 'accounting_status', 'reaudit'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

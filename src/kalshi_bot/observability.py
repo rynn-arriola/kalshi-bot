@@ -32,6 +32,7 @@ EVENTS = {
     'fill_risk_observation_gap': ('INFO', 'inventory'),
     'fill_risk_cancel_ack': ('INFO', 'inventory'),
     'risk_cancel_deferred': ('INFO', 'execution'),
+    'account_rebased_unsent': ('INFO', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),
