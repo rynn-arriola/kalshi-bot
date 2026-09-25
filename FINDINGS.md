@@ -1,5 +1,45 @@
 # Findings — kalshi-bot
 
+## 187. Replacement selection freezes price proof before redundant risk reads — 2026-09-25
+
+**MEASURED, read-only local evidence:** Generation 160 had 28 resting entries
+and no positions at 07:31 ET. Its retained account inspections include 30 orders
+at 06:27:00.966 and 07:29:18.011 ET: it reached the cap but did not consistently
+retain it. Sixteen of 777 inspection samples contained 30 orders; these are
+event-biased observations, not a time-at-cap percentage. At the 07:30 audit,
+current-run mutation records contained 86 accepted creates, 354 NOT_SENT creates
+and 58 acknowledged cancels, with no received fills since startup. These are
+individual order records, not pair attempts. The roughly 07:20–07:30 interval
+had eight accepted creates versus 60 NOT_SENT creates. Candidate proposals
+included $2+ replacements. The earlier explanation that cooldowns alone account
+for the vacancies was incomplete.
+
+**VERIFIED offline:** Dispatch scored a book, awaited a portfolio read inside
+selection, then awaited another portfolio read after capturing the selection
+proof. A valid book update during either avoidable await could discard the
+candidate. A real-owner/injected-wire regression changes the candidate book on
+every portfolio read: old source rejects it at `entry_proposal_missing_or_changed`;
+D-124 submits once at the latest .52 bid, never the superseded .50/.51 prices.
+Each dispatch refresh now reads risk before management/price proof capture and
+uses the same current view for synchronous ranking. Two refreshes remain around
+quota reservation, with two total portfolio reads rather than four. Writer
+reservation, account age/revision, ranking and final send fences remain intact.
+
+**VERIFIED offline safety:** Updates after preparation or SENDING, sequence
+gaps, malformed books, pending private work, deadlines, oversized pending batches,
+expired account proof and mismatched portfolio revision still block submission.
+A newly ineligible thin book is not replaced by the older eligible quote.
+Detailed fixed-code diagnostics now distinguish a candidate missing from the
+ranked slate and changed sources at send time. Existing NOT_SENT recovery is
+unchanged: an aborted durable reservation still requires existing reconciliation.
+
+**Limitation:** Generic historical send failures do not identify their exact
+source, so this reproduction does not prove that every historical NOT_SENT
+attempt has the same cause. Synthetic 1,024-book verification reaches 30 and
+refills through normal recovery; STATUS owns the final suite and measurements.
+The running build remains unchanged. Live improvement and sustained occupancy
+remain unverified until a separately authorized deployment/restart.
+
 ## 186. Recovery progress, deadline logging and cleanup handoff stop the run — 2026-09-25
 
 **MEASURED:** Generation 158's diagnostic run `3e12e4a4a5fd44ef9fe305f46c49d4f5`

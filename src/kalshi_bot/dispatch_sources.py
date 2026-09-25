@@ -205,10 +205,7 @@ class InventoryDispatchSource:
     async def refresh(self, ticker, priority):
         def blocked(reason, details=()):
             if priority == ENTRY_PAIR:
-                self.last_entry_block = dict(ticker=ticker, reason=reason,
-                    details=list(details),
-                    observed_at=utc(self.runtime.now()).isoformat(), historical_only=True)
-                self.entry_block_counts[reason] = self.entry_block_counts.get(reason, 0)+1
+                self._record_entry_block(ticker, reason, details)
             return None
 
         # Concurrent refresh cannot leave either caller holding authority.
@@ -263,6 +260,10 @@ class InventoryDispatchSource:
             if (priority not in {SAFETY_CANCEL, QUOTE_CANCEL}
                     and not runtime.engine.catch_up_book(ticker)):
                 return blocked('entry_book_catchup_pending')
+            # Read durable risk BEFORE freezing a price/selection proof. Reading
+            # it inside proposal and again afterwards creates two unnecessary
+            # await windows in which valid incoming books invalidate that proof.
+            view = await runtime.risk_view() if priority == ENTRY_PAIR else None
             plan = await runtime.management.refresh(ticker)
             if priority == ENTRY_PAIR and runtime.selection is not None:
                 runtime.selection.refresh(ticker)
@@ -287,9 +288,10 @@ class InventoryDispatchSource:
                         or source is None or not inputs._fresh(source)
                         or plan.terms.taker_fee_per_contract_bound is None):
                     return blocked('entry_selection_or_metadata_unavailable')
-                proposal = await selection.propose(
+                proposal = selection._propose_current(
                     window=release.window,
-                    free_cash=report.snapshot.available_balance)
+                    free_cash=report.snapshot.available_balance,
+                    report=report, view=view)
                 rows = tuple(row for row in proposal.additions if row.ticker == ticker)
                 if (proposal.blockers or len(rows) != 1
                         or runtime.account.current_report(runtime.now()) is not report
@@ -297,7 +299,18 @@ class InventoryDispatchSource:
                         or inputs.values.get(('market', ticker)) is not source
                         or inputs.results.get(ticker) is not result
                         or not inputs._fresh(source)):
-                    return blocked('entry_proposal_missing_or_changed')
+                    details = []
+                    if proposal.blockers: details.append('proposal_blocked')
+                    if len(rows) != 1: details.append('candidate_not_selected')
+                    if runtime.account.current_report(runtime.now()) is not report:
+                        details.append('account_report_changed')
+                    if not selection.current(ticker): details.append('selection_changed')
+                    if inputs.values.get(('market', ticker)) is not source:
+                        details.append('metadata_source_changed')
+                    if inputs.results.get(ticker) is not result:
+                        details.append('metadata_result_changed')
+                    if not inputs._fresh(source): details.append('metadata_expired')
+                    return blocked('entry_proposal_missing_or_changed', details)
                 row = rows[0]
                 observation = selection._observation(ticker)
                 programs = () if observation is None else tuple(
@@ -323,7 +336,6 @@ class InventoryDispatchSource:
                                    exchange_index=source.value.exchange,
                                    expiration_time=expires)
                     requests.append(request)
-                view = await runtime.risk_view()
                 if (generation != self._generation
                         or not self._plan_current(plan, report.observed_at)
                         or runtime.account.current_report(runtime.now()) is not report
@@ -333,7 +345,7 @@ class InventoryDispatchSource:
                         or not inputs._fresh(source)
                         or (view.epoch, view.revision) !=
                            (runtime.writer.epoch, runtime.writer.revision)):
-                    return blocked('entry_sources_changed_after_risk_read',
+                    return blocked('entry_sources_changed_before_prepare',
                         self._entry_source_changes(plan, report, entry_selection, source, result, view))
                 candidate = EntryPairCandidate(ticker, priority, str(uuid4()),
                     tuple(requests), view, report.snapshot.available_balance,
@@ -433,7 +445,13 @@ class InventoryDispatchSource:
         finally:
             self._refreshing = False
 
-    def _entry_source_changes(self, plan, report, selection, source, result, view):
+    def _record_entry_block(self, ticker, reason, details=()):
+        self.last_entry_block = dict(ticker=ticker, reason=reason,
+            details=list(details), observed_at=utc(self.runtime.now()).isoformat(),
+            historical_only=True)
+        self.entry_block_counts[reason] = self.entry_block_counts.get(reason, 0)+1
+
+    def _entry_plan_changes(self, plan):
         """Bounded local attribution only; never new execution authority."""
         r, reasons = self.runtime, []
         now = utc(r.now())
@@ -450,6 +468,13 @@ class InventoryDispatchSource:
         if received is None or not 0 <= r.clock()-received <= 5:
             reasons.append('book_expired')
         if r.management._plans.get(plan.ticker) is not plan: reasons.append('plan_replaced')
+        if not timedelta(0) <= now-plan.observed_at <= timedelta(seconds=5):
+            reasons.append('plan_expired')
+        return reasons
+
+    def _entry_source_changes(self, plan, report, selection, source, result, view):
+        r, now = self.runtime, utc(self.runtime.now())
+        reasons = self._entry_plan_changes(plan)
         if r.account.current_report(now) is not report: reasons.append('account_report_changed')
         if (view.epoch, view.revision) != (r.writer.epoch, r.writer.revision):
             reasons.append('writer_revision_changed')
@@ -459,8 +484,6 @@ class InventoryDispatchSource:
         if r.market_inputs.results.get(plan.ticker) is not result:
             reasons.append('metadata_result_changed')
         if not r.market_inputs._fresh(source): reasons.append('metadata_expired')
-        if not timedelta(0) <= now-plan.observed_at <= timedelta(seconds=5):
-            reasons.append('plan_expired')
         return tuple(reasons)
 
     def validate_proof(self, kind, request):
@@ -490,7 +513,7 @@ class InventoryDispatchSource:
                 and self.runtime.writer.revision in {
                     proof.writer_revision+1, proof.writer_revision+2}
                 and self._available())
-        return (proof is not None and kind == proof.kind
+        valid = (proof is not None and kind == proof.kind
                 and encoded == proof.request_json
                 and (proof.maintenance_cycle is None
                      or (self.runtime.maintenance is not None
@@ -505,3 +528,19 @@ class InventoryDispatchSource:
                          and self.runtime.selection is not None
                          and self.runtime.selection.dispatch_proof_current(
                              proof.entry_selection))))
+        if not valid and kind == 'batch_create' and isinstance(proof, _Proof):
+            r, plan = self.runtime, proof.plan
+            reasons = self._entry_plan_changes(plan)
+            if not self._available(): reasons.append('runtime_unavailable')
+            if encoded != proof.request_json: reasons.append('request_changed')
+            if (plan.generation, plan.account_revision) != (r.account.generation, r.account.revision):
+                reasons.append('account_source_changed')
+            if not timedelta(0) <= utc(r.now())-proof.report_observed_at <= timedelta(seconds=5):
+                reasons.append('account_report_expired')
+            if r.writer.revision not in {plan.inventory.writer_revision+1, plan.inventory.writer_revision+2}:
+                reasons.append('writer_revision_changed')
+            if r.selection is None or not r.selection.dispatch_proof_current(proof.entry_selection):
+                reasons.append('selection_changed')
+            self._record_entry_block(plan.ticker, 'entry_send_proof_changed',
+                                     reasons or ('other_source_boundary',))
+        return valid

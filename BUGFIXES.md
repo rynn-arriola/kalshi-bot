@@ -1,5 +1,17 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — redundant risk reads invalidate replacement price proofs
+
+D-124 moves the existing portfolio read ahead of entry proof capture and shares
+the selector's unchanged synchronous admission body with dispatch. It removes
+the two post-score await windows, not the source checks. Both quota-side refreshes
+and every prepared/SENDING fence remain. The failing-before regression updates
+the book during each risk read and verifies one submission at the latest price;
+thin-book, stale-account, changed-writer and post-preparation changes still fail
+closed. Rejection telemetry now separates missing ranked candidates from exact
+send-proof source changes. No recovery bypass or strategy change. Finding 187
+owns evidence and limitations; STATUS owns release/deployment results.
+
 ## 2026-09-25 — recovery progress discarded, deadline event fatal, rebuild budget blocked
 
 D-123 recognizes completed cancel/reducer ACKs while an account pass is

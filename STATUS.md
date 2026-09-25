@@ -1,5 +1,27 @@
 # Current status
 
+## D-124 replacement refill repair — 2026-09-25
+
+**Release verification complete; not deployed.** Branch `fix/replacement-proof-churn`
+in `data/startup-recovery-dev` removes redundant portfolio awaits after entry
+price capture and adds discriminating rejection details. Finding 187 records
+the failing-before reproduction and corrects the cooldown-only explanation.
+The canonical checkout and running generation 160 remain on D-123. No restart,
+venue request, ledger modification or configuration change occurred in this task.
+
+The fast gate passed 301 tests before three additional negative fixtures. The
+final full gate passes **1,784 tests in 344.413 seconds**, with one expected
+Windows symlink-privilege skip. Its 1,024-book synthetic graph reaches 30 in
+11.070 seconds, refills in 0.856 seconds, and withdraws/reconciles/refills in
+0.855 seconds (cancel-pair ACK gap 0.042s). These are offline measurements, not
+live timing or profitability claims. Evidence: `data/d124-release-verified.log`
+inside the isolated checkout. Review also preserved initial-ranking timeout
+bookkeeping during account gaps; all 31 ranking tests pass. Exact source/test
+diff review and whitespace/secret checks pass. The local-link audit checks 787
+relative references; only four pre-existing ignored research artifacts are
+absent in isolation. No known blocking issue remains in this scoped repair.
+Actual improvement in live refill remains unverified until authorized deployment.
+
 ## D-123 stopped-bot repair — 2026-09-25
 
 **Running again.** Published code `0c46bac` was deployed while all three

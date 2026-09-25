@@ -534,16 +534,34 @@ class RuntimeSelection:
         every tick: it mutates writer risk state and revokes account leases.
         """
         r = self.runtime
-        # Record timeout/complete state, but do not let an incomplete timeout
-        # authorize fallback entries. A current all-$2 slate may open the gate
-        # early once it can fill every presently available two-order slot.
-        initial_ready = self.initial_ranking_ready()
+        # Keep timeout/coverage bookkeeping alive even when account proof is
+        # unavailable. The synchronous body rechecks readiness before admission.
+        self.initial_ranking_ready()
         if r.admission is not None and r.admission.transitioning:
             return self._record_proposal(SelectionReport((),(),(),('subscription_handoff_in_progress',)))
         report = r.account.current_report(r.now())
         if not self._available() or report is None:
             return self._record_proposal(SelectionReport((), (), (), ('selection_sources_unavailable',)))
         view = await r.risk_view()
+        return self._propose_current(window=window, free_cash=free_cash,
+                                     report=report, view=view)
+
+    def _propose_current(self, *, window, free_cash, report, view):
+        """Same ranked selection using an already-read, still-current portfolio.
+
+        Dispatch obtains inventory/risk I/O before scoring the latest book.
+        No cached authorization or timestamp renewal: all source, age, capacity
+        and ranking checks below still apply, and the writer rechecks admission.
+        """
+        r = self.runtime
+        # Record timeout/complete state, but do not let an incomplete timeout
+        # authorize fallback entries. A current all-$2 slate may open the gate
+        # early once it can fill every presently available two-order slot.
+        initial_ready = self.initial_ranking_ready()
+        if r.admission is not None and r.admission.transitioning:
+            return self._record_proposal(SelectionReport((),(),(),('subscription_handoff_in_progress',)))
+        if not self._available() or report is None:
+            return self._record_proposal(SelectionReport((), (), (), ('selection_sources_unavailable',)))
         if (not self._available() or r.account.current_report(r.now()) is not report
                 or (view.epoch, view.revision) != (r.writer.epoch, r.writer.revision)):
             return self._record_proposal(SelectionReport((), (), (), ('selection_sources_changed',)))

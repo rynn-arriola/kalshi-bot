@@ -79,9 +79,6 @@ class EntryInterleavingTests(unittest.IsolatedAsyncioTestCase):
             if mode in {'gap','malformed'}:
                 self.assertTrue(shard.failed)
                 self.assertEqual(r.engine.book_failures[name], 1)
-            if mode == 'changed' and edge == 'risk':
-                self.assertIn('book_revision_changed', f.source.last_entry_block['details'])
-                self.assertEqual(f.source.entry_block_counts['entry_sources_changed_after_risk_read'],1)
         finally:
             await f.asyncTearDown()
 
@@ -96,8 +93,13 @@ class EntryInterleavingTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(edge=edge): await self.scenario('unrelated',edge)
 
     async def test_changed_market_gap_malformed_private_deadline_and_stale_still_block(self):
-        for mode in ('changed','gap','malformed','private','deadline','stale','burst'):
+        # Risk I/O now precedes price capture. A change at that point is safely
+        # repriced (covered by LiveEntryTests), not a stale prepared command.
+        for mode in ('gap','malformed','private','deadline','stale'):
             with self.subTest(mode=mode): await self.scenario(mode)
+        for mode in ('changed','burst'):
+            for edge in ('prepare','sending'):
+                with self.subTest(mode=mode, edge=edge): await self.scenario(mode, edge)
 
 
 class RefillLoadTests(unittest.IsolatedAsyncioTestCase):

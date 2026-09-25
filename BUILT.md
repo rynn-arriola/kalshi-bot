@@ -1,5 +1,13 @@
 # What exists
 
+## Replacement proof handoff — D-124
+
+Existing dispatch reads durable risk before freezing entry prices, then uses
+the selector's shared synchronous ranking checks. No new cache, worker, schema
+or permission. Focused regressions cover moving books and unchanged send guards;
+source-specific rejection details improve the next live diagnosis. See Finding
+187 and STATUS for verification and the intentionally undeployed state.
+
 ## Recovery/deadline/cleanup-handoff repair — D-123
 
 Existing owners now expose durable safety-action progress, preserve its recovery

@@ -157,6 +157,81 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await service.close()
 
+    async def test_entry_prices_latest_book_after_each_portfolio_read(self):
+        # Portfolio I/O must precede the price proof, not invalidate a freshly
+        # scored candidate on every read. The final send fences stay strict.
+        original = self.runtime.risk_view
+        reads = 0
+        name = self.runtime.engine.market_shard['A']
+        shard = self.runtime.engine.shards[name]
+        async def moving_book():
+            nonlocal reads
+            view = await original()
+            reads += 1
+            self.runtime.engine.submit_book(name,
+                dict(type='orderbook_snapshot', sid=1, seq=reads+1,
+                     msg=dict(market_ticker='A',
+                              yes_dollars_fp=[[str(D('.50')+D('.01')*reads),'1000']],
+                              no_dollars_fp=[['.60','1000']])),
+                generation=shard.generation)
+            return view
+        with patch.object(self.runtime, 'risk_view', moving_book):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'ACK', (result.blockers, self.source.last_entry_block))
+        self.assertEqual(reads, 2)  # one fresh view per dispatch refresh
+        self.assertEqual(len(self.calls), 1)
+        bid = next(row for row in self.calls[0][1] if row['side']=='bid')
+        self.assertEqual(D(bid['price']), D('.52'))
+        self.assertEqual(shard.books['A'].revision, 3)
+
+    async def test_changed_book_that_fails_entry_gates_is_not_reused(self):
+        original = self.runtime.risk_view
+        name = self.runtime.engine.market_shard['A']
+        shard = self.runtime.engine.shards[name]
+        async def bad_book():
+            view = await original()
+            self.runtime.engine.submit_book(name,
+                dict(type='orderbook_snapshot', sid=1, seq=shard.sequences[1]+1,
+                     msg=dict(market_ticker='A', yes_dollars_fp=[['.50','1']],
+                              no_dollars_fp=[['.60','1']])),
+                generation=shard.generation)
+            return view
+        with patch.object(self.runtime, 'risk_view', bad_book):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertFalse(await self.f.writer.mutations())
+        self.assertIn('candidate_not_selected', self.source.last_entry_block['details'])
+
+    async def test_pre_read_portfolio_must_still_match_writer_revision(self):
+        original = self.runtime.risk_view
+        async def stale_view():
+            view = await original()
+            return replace(view, revision=view.revision-1)
+        with patch.object(self.runtime, 'risk_view', stale_view):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertFalse(await self.f.writer.mutations())
+
+    async def test_account_expiry_during_early_risk_read_blocks_entry(self):
+        original = self.runtime.risk_view
+        async def expire():
+            view = await original()
+            self.f.now += timedelta(seconds=6)
+            self.f.tick += 6
+            self.runtime.engine.book_received['A'] = self.f.tick
+            return view
+        with patch.object(self.runtime, 'risk_view', expire):
+            self.dispatcher.submit('A', ENTRY_PAIR)
+            result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'BLOCKED')
+        self.assertFalse(self.calls)
+        self.assertFalse(await self.f.writer.mutations())
+
     async def test_expired_quota_aborts_both_entry_legs_without_killing_dispatch(self):
         clock = [1]
         self.dispatcher.clock_pair = lambda:quota_now(clock[0])
@@ -282,6 +357,9 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.state, 'BLOCKED')
         self.assertFalse(self.calls)
         self.assertTrue(self.runtime.engine.wake.is_set())
+        self.assertEqual(self.source.last_entry_block['reason'], 'entry_send_proof_changed')
+        self.assertIn('book_revision_changed', self.source.last_entry_block['details'])
+        self.assertEqual(self.source.entry_block_counts['entry_send_proof_changed'], 1)
 
     async def test_entry_result_requeues_deferred_advisory_work(self):
         self.runtime.engine.dirty.take(1024)

@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-124 — Repair replacement-order proof churn
+
+- **Status:** ACCEPTED, 2026-09-25.
+- **Decision owner:** Operator: “Ok lets look into that and fix it,” after the
+  read-only audit found replacement candidates but excessive unsent attempts.
+- **Scope:** Reproduce avoidable selection-to-send invalidations, repair the
+  existing handoff, add discriminating diagnostics and verify active-book refill
+  in isolation. Publish reviewed, passing changes under D-065.
+- **Boundary:** Preserve fresh proofs, protective cancellations, reward ranking,
+  quantity/capital/loss limits and the 30-entry cap. No live source update,
+  restart, account modification or new worker is authorized by this assignment.
+
 ### D-123 — Repair stopped recovery and restore the existing bot
 
 - **Status:** ACCEPTED repair assignment, 2026-09-25.

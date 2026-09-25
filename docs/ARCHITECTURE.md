@@ -1,5 +1,13 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-124 performs the dispatch refresh's portfolio I/O before management/price
+proof capture. The normal advisory selector and dispatch share one synchronous
+ranking/admission body; it checks the supplied view's current writer revision,
+original age and account report, never manufactures a new timestamp. Both
+quota-side refreshes, atomic writer admission and prepared/SENDING source fences
+remain. No cached command, relaxed freshness, new worker or account-recovery
+bypass. Fixed-code diagnostics distinguish rank displacement and send-proof loss.
+
 D-123 recognizes durable safety-cancel/reducer ACKs as recovery scheduling
 progress, never as terminal/fill/account proof. Existing single-owner callbacks
 and bounded retry rounds remain. Verified-flat cleanup and its normal-child

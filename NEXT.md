@@ -1,5 +1,15 @@
 # Active work queue
 
+## D-124 replacement refill repair
+
+1. D-124 implementation, exact review and full release verification are finished;
+   see STATUS and Finding 187. Keep the running canonical source pinned to D-123
+   until the next authorized deployment, even after source publication.
+2. At a separately authorized deployment/restart, measure replacement latency,
+   remaining NOT_SENT attempts and new blocker details. Do not equate synthetic
+   refill with live acceptance or a guarantee of constant 30-order occupancy.
+3. Preserve separate unfinished Command 1 work; no unrelated merge.
+
 ## D-123 stopped-bot repair
 
 1. D-123 is verified, published and deployed; generation 160 is running and
