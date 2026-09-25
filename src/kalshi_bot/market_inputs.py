@@ -283,6 +283,8 @@ class ExitInputService:
         for review in self.reviews.values():
             self.event_markets.setdefault(review.event,set()).add(review.ticker)
         self.values, self.epochs, self.pending, self.results, self.overlays = {}, {}, {}, {}, {}
+        # D-130: exact publication counts, bounded by the reviewed scope.
+        self.publication_counts = {}
         self.pending_scopes, self.retiring = {}, set()
         self.epoch_serial = 0
         self.read_scope = object()
@@ -664,8 +666,16 @@ class ExitInputService:
                 return previous
             self.results[ticker] = result
             self.publish(terms)
-            self.diagnostics.emit('exit_inputs_published',market=ticker,generation=generation,
-                                  blockers=result.blockers,blocker_count=len(blockers))
+            if ticker not in self.publication_counts and len(self.publication_counts) >= 4096:
+                self.publication_counts.clear()  # Bounded diagnostic counter only.
+            count = self.publication_counts[ticker] = self.publication_counts.get(ticker,0)+1
+            # Routine renewals only move expiry; log first publication, any
+            # blocker/tradable change and power-of-two samples (Finding 195).
+            if (previous is None or previous.blockers != result.blockers
+                    or previous.terms.active != terms.active or count & (count-1) == 0):
+                self.diagnostics.emit('exit_inputs_published',market=ticker,generation=generation,
+                                      blockers=result.blockers,blocker_count=len(blockers),
+                                      count=count)
             return result
         except BaseException as exc:
             self._clear_terms(ticker)

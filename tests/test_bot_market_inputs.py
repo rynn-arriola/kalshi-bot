@@ -207,6 +207,21 @@ class InputTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(second.provenance, first.provenance)
         self.assertEqual(published, [second.terms])
 
+    async def test_routine_renewals_are_sampled_but_every_publication_counted(self):
+        # D-130: publication logs were 58% of all records; each routine
+        # renewal only moved expiry. Counts stay exact, logs are sampled.
+        events = []
+        class Log:
+            def emit(self, name, **fields): events.append((name, fields.get('count')))
+        self.service.diagnostics = Log()
+        for _ in range(8):
+            await self.service.refresh('A')
+            evidence = self.service.values[('market', 'A')]
+            self.service.values[('market', 'A')] = replace(evidence, revision=evidence.revision+1)
+        logged = [count for name, count in events if name == 'exit_inputs_published']
+        self.assertEqual(self.service.publication_counts['A'], 8)
+        self.assertEqual(logged, [1, 2, 4, 8])
+
     async def test_unreviewed_timing_is_explicit_not_inferred(self):
         self.service.reviews.clear()
         result=await self.service.refresh('A')
