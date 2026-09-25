@@ -33,6 +33,8 @@ EVENTS = {
     'fill_risk_cancel_ack': ('INFO', 'inventory'),
     'risk_cancel_deferred': ('INFO', 'execution'),
     'account_rebased_unsent': ('INFO', 'recovery'),
+    'maintenance_cycle_started': ('INFO', 'inventory'),
+    'maintenance_cycle_finished': ('INFO', 'inventory'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),
@@ -98,7 +100,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'checkpoint_failures', 'logging_backlog',
                      'ahead_hundredths', 'queue_hundredths', 'depth_hundredths',
                      'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms',
-                     'latch_ms', 'order_count', 'rejected_count'))
+                     'latch_ms', 'order_count', 'rejected_count', 'dwell_ms'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
 RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed
@@ -115,6 +117,9 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
                                  'queue_expired', 'book_unavailable', 'private_unavailable',
                                  'inventory_unavailable')),
          'cause': RECOVERY_CAUSES,
+         'maintenance_reason': frozenset(('fill_risk_withdrawal', 'restore_reference_pair',
+             'incomplete_pair_below_minimum', 'persistently_unscoring',
+             'earning_window_ended')),
          'phase': RECOVERY_PHASES,
          'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',
                               'timeout', 'io', 'recovered', 'checkpoint_failed')),

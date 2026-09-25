@@ -113,6 +113,12 @@ class QuoteMaintenance:
                 if c is not None and c.reenter else {})
 
     def _finish(self, ticker):
+        if self.cycle is not None:
+            # D-130: bounded cycle diagnostics; reason is a fixed vocabulary.
+            self.runtime.diagnostics.emit('maintenance_cycle_finished', market=self.cycle.ticker,
+                maintenance_reason=self.cycle.reason,
+                elapsed_ms=max(0, int((self.runtime.clock()-self._cycle_latched)*1000))
+                    if self._cycle_latched is not None else None)
         if self.cycle is not None and self.cycle.reason == 'fill_risk_withdrawal':
             self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
         self.cycle = None
@@ -334,6 +340,10 @@ class QuoteMaintenance:
         if evidence_valid_until is None:
             self._dwell.pop(plan.ticker, None)
         self.samples[plan.ticker]['action'] = reason
+        dwell = self._dwell.get(plan.ticker)
+        r.diagnostics.emit('maintenance_cycle_started', market=plan.ticker,
+            maintenance_reason=reason, count=len(ids),
+            dwell_ms=int(dwell.verified_seconds*1000) if isinstance(dwell, DriftEvidence) else None)
 
     def refresh(self, ticker):
         r, now = self.runtime, utc(self.runtime.now())
@@ -540,13 +550,38 @@ class QuoteMaintenance:
 
     def status(self):
         c = self.cycle
-        current = {t for t,p in self.runtime.management._plans.items()
+        r = self.runtime
+        current = {t for t,p in r.management._plans.items()
                    if p.inventory.orders or p.inventory.position}
+        # D-130: owned working orders stay visible while their plan is being
+        # rebuilt (for example during recovery), reported as UNKNOWN.
+        current.update(rc.order.ticker for rc in r.account.order_states.values()
+                       if rc.owned and not rc.order.terminal)
         if c is not None:
             current.add(c.ticker)
+        now = utc(r.now())
+        markets, observed, risk_current = {}, 0, 0
+        for ticker in sorted(current):
+            sample = self.samples.get(ticker)
+            entry = (dict(sample) if sample is not None else
+                     dict(state='UNKNOWN', action='retain_pending_evidence',
+                          reason='no_current_sample'))
+            until = entry.get('valid_until')
+            if until is not None:
+                fresh = now < datetime.fromisoformat(until)
+                entry['source_current'] = fresh
+                if fresh and entry.get('state') == 'OBSERVED':
+                    observed += 1
+            if any(0 <= r.clock()-row.get('observed_mono', -1e18) < 5
+                   for row in entry.get('fill_risk', ())):
+                risk_current += 1
+            if len(markets) < 30:
+                markets[ticker] = entry
         return dict(cycle=None if c is None else dict(ticker=c.ticker,
             program_id=c.program.program_id, reason=c.reason, reenter=c.reenter),
-            markets={t:self.samples[t] for t in sorted(current)[:30] if t in self.samples},
+            coverage=dict(owned_markets=len(current), reward_observed_current=observed,
+                          fill_risk_observed_last_5s=risk_current, historical_only=True),
+            markets=markets,
             historical_samples=True, reprice_dwell_seconds=self.REPRICE_DWELL_SECONDS,
             unscoring_dwell_seconds=self.UNSCORING_DWELL_SECONDS,
             evidence_gap_limit_seconds=self.MAX_EVIDENCE_GAP_SECONDS,

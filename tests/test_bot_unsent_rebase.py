@@ -167,5 +167,42 @@ class RiskLatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.m.cycle)
 
 
+
+class MaintenanceVisibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import test_bot_quote_maintenance as maintenance_fixture
+        self.f = maintenance_fixture.MaintenanceTests()
+        await self.f.asyncSetUp()
+        self.r, self.m = self.f.r, self.f.m
+
+    async def asyncTearDown(self):
+        await self.f.asyncTearDown()
+
+    async def test_owned_market_stays_visible_while_plan_is_rebuilt(self):
+        self.m.samples.clear()
+        self.r.management._plans.clear()
+        status = self.m.status()
+        self.assertIn('A', status['markets'])
+        self.assertEqual(status['markets']['A']['state'], 'UNKNOWN')
+        self.assertEqual(status['markets']['A']['reason'], 'no_current_sample')
+        self.assertEqual(status['coverage']['owned_markets'], 1)
+        self.assertEqual(status['coverage']['reward_observed_current'], 0)
+
+    async def test_cycle_start_and_finish_are_logged_with_fixed_reason(self):
+        with patch.object(self.r.diagnostics, 'emit') as emit:
+            await self.f.drift()
+            self.m._finish('A')
+        started = [c for c in emit.call_args_list if c.args[0] == 'maintenance_cycle_started']
+        finished = [c for c in emit.call_args_list if c.args[0] == 'maintenance_cycle_finished']
+        self.assertEqual(len(started), 1)
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(started[0].kwargs['maintenance_reason'], 'restore_reference_pair')
+        self.assertEqual(started[0].kwargs['count'], 2)
+        self.assertGreaterEqual(started[0].kwargs['dwell_ms'], 30000)
+        from kalshi_bot import observability
+        self.assertIn('restore_reference_pair',
+                      observability.ENUMS['maintenance_reason'])
+
+
 if __name__ == '__main__':
     unittest.main()
