@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-130 — Fix remaining engineering queue before deployment
+
+- **Status:** ACCEPTED, 2026-09-25.
+- **Decision owner:** Operator: “We will deploy later because i want to fix all
+  before we restart,” after the pending-work summary.
+- **Scope:** Implement, verify and publish the open engineering items before
+  any restart: the recovery/protective-cancel race (Finding 195 P1), refill
+  logging omissions and stage attribution, the lost entry retry, reward/
+  repricing coverage visibility, busy-shard evaluation starvation, startup
+  public 429s/metadata log volume, and the unfinished line-by-line review of
+  the remaining modules (fixing defects it finds).
+- **Boundary:** D-129 and these fixes deploy together later under a separate
+  explicit restart/Command 1. Concurrent risk withdrawals and ranking/threshold
+  changes remain undecided operator choices. No live action or restart.
+
 ### D-129 — Repair Finding 196 in priority order
 
 - **Status:** ACCEPTED source repair, 2026-09-25.

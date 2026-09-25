@@ -156,6 +156,27 @@ class LoggingTests(unittest.TestCase):
                     missing.append((path.name, node.lineno, node.args[0].value))
         self.assertEqual(missing, [])
 
+    def test_every_literal_emitted_field_and_entry_reason_is_retained(self):
+        # D-130: fields the sink silently discarded hid batch outcomes and
+        # entry-block reasons (Finding 194). Every literal must be allowlisted.
+        from kalshi_bot import observability as o
+        allowed = (set(o.NUMBERS) | set(o.ENUMS) | set(o.REFERENCES)
+                   | set(o.SAFE_CODES) | {'blockers', 'error'})
+        package = Path(__file__).resolve().parents[1]/'src'/'kalshi_bot'
+        dropped = []
+        for path in package.glob('*.py'):
+            for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == 'emit'):
+                    dropped.extend((path.name, node.lineno, k.arg) for k in node.keywords
+                                   if k.arg is not None and k.arg not in allowed)
+        self.assertEqual(dropped, [])
+        source = (package/'dispatch_sources.py').read_text(encoding='utf-8')
+        reasons = set(__import__('re').findall(
+            r"(?:blocked\(|details\.append\(|reasons\.append\()'([a-z_]+)'", source))
+        self.assertEqual(reasons-o.BLOCKERS, set())
+        self.assertIn('rejected_count', o.NUMBERS)
+
     def test_secrets_and_unknown_objects_are_never_formatted(self):
         class Poison:
             def __str__(self): raise AssertionError('formatted')

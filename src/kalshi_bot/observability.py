@@ -97,7 +97,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'checkpoint_failures', 'logging_backlog',
                      'ahead_hundredths', 'queue_hundredths', 'depth_hundredths',
                      'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms',
-                     'latch_ms'))
+                     'latch_ms', 'order_count', 'rejected_count'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
 RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed
@@ -149,7 +149,8 @@ BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit
     exit_book_unavailable exit_journal_unknown event_risk_time_unknown exit_fee_bound_unknown
     ioc_attempt_limit ioc_retry_window ordinary_exit_depth_or_loss forced_exit_insufficient_depth
     timing_review_missing timing_review_conflict milestone_binding_conflict fee_profile_missing
-    fee_model_unsupported identical_reduction_rejection_cooldown'''.split())
+    fee_model_unsupported identical_reduction_rejection_cooldown
+    candidate_not_selected proposal_blocked'''.split())
 
 
 def safe_error(exc):
