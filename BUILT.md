@@ -1,5 +1,15 @@
 # What exists
 
+## Order-scoped fill-risk observation — D-127
+
+Maintenance retains original-lived queue anchors before reward joins and checks
+them against current owned inventory and fresh books. Report/metadata renewal
+no longer hides otherwise valid depletion warnings. Existing exact-ID dispatch,
+terminal/fill reconciliation and entry gates remain. Bounded queue/depth/gap
+and cancellation timing events support future diagnosis without new polling.
+See [the contract](docs/BUILD_FILL_RISK.md), Finding 191 and STATUS for verification
+and the deliberately undeployed state.
+
 ## Recovery renewal and bounded diagnostics — D-126
 
 The existing refresh owner prioritizes accounting renewal at full capacity,

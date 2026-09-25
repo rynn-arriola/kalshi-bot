@@ -9,6 +9,30 @@ The identity join still requires all expected resting IDs, current account
 report/generation/revision and exact order terms. Queue age is bounded to five
 seconds from request start; a reconnect during a read cannot seed the new epoch.
 
+### D-127 order-scoped observation after publication
+
+The successful existing reflection read publishes a separate immutable queue
+anchor to maintenance **before** optional reward/metadata joins. A later account
+report replacement or reward-source gap does not erase this cancellation-only
+observation. Its original wall-clock expiry and request-start monotonic age
+(less than five seconds) are retained, never renewed by a cache read.
+
+Each use still requires current writer-issued inventory, identical order IDs,
+prices, remaining quantities and routes, the same writer/account/book epochs,
+a fresh WebSocket book and no pending private processing or inventory blockers.
+Foreign/reducing/terminal orders and fills cannot reuse the anchor; positions
+hand back to the existing exit policy. Program binding changes invalidate it.
+Queue anchors and depletion history are bounded by the existing 256-order
+estimator capacity and replaced/pruned on successful queue publication.
+
+Only detection and the existing exact-ID D-121 cancel path are independent of
+report renewal. Ordinary repricing, reward accounting, terminal completion and
+replacement entry retain their account/scoring gates. No new REST reads,
+subscription, task, writer, threshold or ranking policy is introduced. This does
+not provide monitoring before the first valid queue read, during expired/missing
+queue or book evidence, or while private fills are pending. It cannot guarantee
+avoiding an instantaneous sweep. See [bounded diagnostics](LOGGING_AND_ERRORS.md).
+
 Current normalized WebSocket books provide aggregate volume at equal/better
 prices, excluding this order. Between queue reads, observed decreases reduce
 estimated protection; additions do not invent same-price priority. A fresh exact
@@ -94,6 +118,13 @@ changes, no invented queue protection, warmup, stale/long reads, reconnects,
 bounded history and actual manager/dispatcher withdrawal. It verifies cancel
 ACK vs terminal reconciliation, partial-fill handling, cooldown and replacement
 ranking. Existing scoring/maintenance/reward/dispatch tests remain required.
+
+`tests/test_bot_risk_observation.py` exercises D-127 report and metadata gaps,
+runtime dispatch scheduling, exact pair cancellation without capacity release,
+expiry/clock regression, source identity, pending fills/private backlog,
+inventory handoff, bounded caches and sampled/correlated diagnostics. A same-
+fixture replay of baseline `5cf92c5` misses the zero-depth warning during report
+invalidation; the patched consumer latches withdrawal without changing inputs.
 
 Resource acceptance: 30/120 synthetic orders, 100 levels per side, 20 evaluations
 per order; p99 per estimate below 50 ms and traced peak below 4 MiB. These are

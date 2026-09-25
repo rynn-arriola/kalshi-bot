@@ -28,6 +28,9 @@ EVENTS = {
     'reward_checkpoint_failed': ('ERROR', 'rewards'),
     'entry_dispatch_blocked': ('INFO', 'execution'),
     'fill_risk_withdrawal': ('INFO', 'inventory'),
+    'fill_risk_sample': ('INFO', 'inventory'),
+    'fill_risk_observation_gap': ('INFO', 'inventory'),
+    'fill_risk_cancel_ack': ('INFO', 'inventory'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),
@@ -55,6 +58,7 @@ EVENTS = {
     'rest_close_failed': ('ERROR', 'rest'),
     'writer_failed': ('ERROR', 'writer'), 'writer_overflow': ('ERROR', 'writer'),
     'mutation_prepared': ('INFO', 'execution'), 'mutation_sending': ('INFO', 'execution'),
+    'cancel_submit_attempt': ('INFO', 'execution'),
     'mutation_ack': ('INFO', 'execution'), 'mutation_rejected': ('WARNING', 'execution'),
     'mutation_unknown': ('ERROR', 'execution'),
     'mutation_not_submitted': ('INFO', 'execution'),
@@ -89,7 +93,9 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'resting_orders', 'positions', 'entry_allowed', 'dispatch_queued',
                      'reflection_completed', 'reflection_failures', 'reflection_deferred',
                      'reflection_superseded', 'reflection_quota_deferred',
-                     'checkpoint_failures', 'logging_backlog'))
+                     'checkpoint_failures', 'logging_backlog',
+                     'ahead_hundredths', 'queue_hundredths', 'depth_hundredths',
+                     'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
 RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed
@@ -102,6 +108,9 @@ RECOVERY_PHASES = frozenset('''idle first_snapshot history pending_fills missing
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
 SAFE_CODES = frozenset(('venue_code',))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-2', 'book-3')),
+         'risk_state': frozenset(('observed', 'threat', 'queue_missing', 'identity_changed',
+                                 'queue_expired', 'book_unavailable', 'private_unavailable',
+                                 'inventory_unavailable')),
          'cause': RECOVERY_CAUSES,
          'phase': RECOVERY_PHASES,
          'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',

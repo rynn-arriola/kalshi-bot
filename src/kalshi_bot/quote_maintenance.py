@@ -32,6 +32,18 @@ class DriftEvidence:
     valid_until: float
 
 
+@dataclass(frozen=True)
+class RiskQueueAnchor:
+    writer_epoch: str
+    program: object
+    account_generation: int
+    book_generation: int
+    signature: tuple
+    queue_positions: tuple
+    queue_started_mono: float
+    valid_until: datetime
+
+
 class QuoteMaintenance:
     REPRICE_DWELL_SECONDS = 30
     UNSCORING_DWELL_SECONDS = 90
@@ -49,6 +61,9 @@ class QuoteMaintenance:
         self._risk_since = {}
         self._cycle_started = None
         self._cycle_acks = set()
+        self._risk_queues = {}
+        self._risk_log_at = {}
+        self._risk_gap_counts = {}
         self._actual = MarketSelector(1)
         self._target = MarketSelector(1)
 
@@ -60,10 +75,12 @@ class QuoteMaintenance:
         for old in tuple(self.bindings):
             if old not in self.runtime.engine.market_shard:
                 for table in (self.bindings, self.samples, self._dwell, self._cooldown,
-                              self._risk_cooldown, self._risk_since):
+                              self._risk_cooldown, self._risk_since, self._risk_queues,
+                              self._risk_log_at, self._risk_gap_counts):
                     table.pop(old, None)
         if self.bindings.get(program.ticker) != program:
             self._dwell.pop(program.ticker, None)
+            self._risk_queues.pop(program.ticker, None)
         self.bindings[program.ticker] = program
 
     def entry_allowed(self, ticker, program_id):
@@ -115,28 +132,92 @@ class QuoteMaintenance:
                 and result.order_id not in self._cycle_acks):
             self.fill_risk.cancel_ack(self.runtime.clock()-self._cycle_started)
             self._cycle_acks.add(result.order_id)
+            if c.reason == 'fill_risk_withdrawal':
+                self.runtime.diagnostics.emit('fill_risk_cancel_ack', market=c.ticker,
+                    order=result.order_id,
+                    elapsed_ms=max(0, int((self.runtime.clock()-self._cycle_started)*1000)))
+
+    def accept_risk_queues(self, proofs):
+        """Retain the original successful queue join for cancellation only.
+
+        Called synchronously by the existing reflection reader before optional
+        reward/metadata joins. No new read, lease renewal or entry authority.
+        """
+        r, anchors, count = self.runtime, {}, 0
+        for ticker, proof in proofs.items():
+            program = self.bindings.get(ticker)
+            if program is None or proof.queue_started_mono is None:
+                continue
+            count += len(proof.queue_positions)
+            if count > self.fill_risk.policy.capacity:
+                self._risk_queues.clear()
+                self.fill_risk.prune(())
+                return
+            anchors[ticker] = RiskQueueAnchor(r.writer.epoch, program,
+                proof.account_generation, proof.book_generation, proof.signature,
+                proof.queue_positions, proof.queue_started_mono, proof.valid_until)
+        self._risk_queues = anchors
+        self.fill_risk.prune(key for a in anchors.values() for key, _ in a.queue_positions)
+
+    def _risk_gap(self, ticker, code):
+        # Each fixed reason has an exact count; emit powers of two only.
+        counts = self._risk_gap_counts.setdefault(ticker, {})
+        count = counts[code] = min(counts.get(code, 0)+1, 2**62)
+        if count & (count-1) == 0:
+            self.runtime.diagnostics.emit('fill_risk_observation_gap', market=ticker,
+                                          risk_state=code, count=count)
+
+    def _risk_sample_log(self, ticker, samples):
+        now = self.runtime.clock()
+        threatened = any(row['withdraw'] for row in samples)
+        previous = self._risk_log_at.get(ticker)
+        if (previous is not None and now-previous[0] < 5
+                and threatened == previous[1]):
+            return
+        self._risk_log_at[ticker] = (now, threatened)
+        for row in samples:
+            eta = row['seconds_to_reach']
+            self.runtime.diagnostics.emit('fill_risk_sample', market=ticker,
+                order=row['order_id'], risk_state='threat' if row['withdraw'] else 'observed',
+                ahead_hundredths=int(Decimal(row['ahead_estimate'])*100),
+                queue_hundredths=int(Decimal(row['queue_ahead'])*100),
+                depth_hundredths=int(Decimal(row['visible_depth'])*100),
+                depletion_hundredths=int(Decimal(row['depletion_per_second'])*100),
+                queue_age_ms=max(0, int(row['queue_age_seconds']*1000)),
+                horizon_ms=int(row['horizon_seconds']*1000),
+                eta_ms=None if eta is None else int(Decimal(eta)*1000))
 
     def _fill_risk(self, plan, program):
         r, ticker = self.runtime, plan.ticker
-        rewards = r.rewards
-        source = rewards._sources(ticker) if rewards else None
-        if source is not None and program not in source[1].programs:
-            return False
-        proof = rewards.queue_evidence(ticker, plan) if source is not None else None
+        proof = self._risk_queues.get(ticker)
         if proof is None:
+            self._risk_gap(ticker, 'queue_missing')
             return False
-        book = source[3]
+        if (proof.writer_epoch != r.writer.epoch or proof.program != program
+                or proof.account_generation != r.account.generation
+                or proof.book_generation != plan.book_generation
+                or proof.signature != r.rewards._signature(plan)):
+            self._risk_queues.pop(ticker, None)
+            self._risk_gap(ticker, 'identity_changed')
+            return False
+        if (utc(r.now()) >= proof.valid_until
+                or not 0 <= r.clock()-proof.queue_started_mono < 5):
+            self._risk_queues.pop(ticker, None)
+            self._risk_gap(ticker, 'queue_expired')
+            return False
+        shard, book = r.management._book(ticker)
+        if book is None or shard.generation != proof.book_generation:
+            self._risk_gap(ticker, 'book_unavailable')
+            return False
         queue = dict(proof.queue_positions)
         samples = []
-        self.fill_risk.prune(o.order.order_id for p in r.management._plans.values()
-                             for o in p.inventory.orders)
         for row in plan.inventory.orders:
             if row.order.order_id not in queue:
                 return False
             sample = self.fill_risk.observe(order=row.order, book=book, program=program,
                 identity=(r.writer.epoch, r.account.generation, plan.book_generation),
                 ahead=queue[row.order.order_id], queue_at=proof.queue_started_mono,
-                now=r.clock(), interval=rewards.reflection_interval)
+                now=r.clock(), interval=r.rewards.reflection_interval)
             if sample is not None:
                 samples.append(sample)
         if not samples:
@@ -144,6 +225,7 @@ class QuoteMaintenance:
         self.samples[ticker] = dict(state='FILL_RISK_ESTIMATE',
             observed_at=utc(r.now()).isoformat(), valid_until=proof.valid_until.isoformat(),
             fill_risk=samples, action='retain')
+        self._risk_sample_log(ticker, samples)
         if not any(s['withdraw'] for s in samples):
             self._risk_since.pop(ticker, None)
             return False
@@ -233,13 +315,19 @@ class QuoteMaintenance:
         if program is None:
             return
         plan = r.management.current(ticker, require_market=False)
-        report = r.account.current_report(now)
-        if (plan is None or report is None or not report.positions_match
-                or report.audit.blockers or plan.inventory.blockers):
+        if (r.stop_requested.is_set() or r.engine.failed or r.writer.failed
+                or not r.account.connected or r.engine.private or r.account._processing):
+            if ticker in self._risk_queues:
+                self._risk_gap(ticker, 'private_unavailable')
+            return
+        if plan is None or plan.inventory.blockers:
+            if ticker in self._risk_queues:
+                self._risk_gap(ticker, 'inventory_unavailable')
             return
         inventory = plan.inventory
         c = self.cycle
         if inventory.position:
+            self._risk_queues.pop(ticker, None)
             if c is not None and c.ticker == ticker:
                 self._finish(ticker)
             self._dwell.pop(ticker, None)
@@ -249,6 +337,7 @@ class QuoteMaintenance:
         orders = inventory.orders
         if any(not o.owned or o.awaiting_fills or o.reducing or o.order.terminal
                for o in orders):
+            self._risk_queues.pop(ticker, None)
             return
         journal = inventory.exit_journal
         if journal is None or journal.cancel_ids or journal.unresolved_ioc:
@@ -256,6 +345,15 @@ class QuoteMaintenance:
         if orders and (c is None or c.ticker != ticker or c.reason != 'fill_risk_withdrawal'):
             self._fill_risk(plan, program)
             c = self.cycle
+        # Only a latched cancellation decision may bypass report/score renewal.
+        # Repricing, reentry, completion and capacity still need current account
+        # proof. The dispatcher independently rereads exact owned entry IDs.
+        if (c is not None and c.ticker == ticker and c.reason == 'fill_risk_withdrawal'
+                and set(c.order_ids) & {o.order.order_id for o in orders}):
+            return
+        report = r.account.current_report(now)
+        if report is None or not report.positions_match or report.audit.blockers:
+            return
         if c is not None and c.ticker == ticker:
             if orders:
                 if not set(c.order_ids) & {o.order.order_id for o in orders}:
@@ -430,4 +528,6 @@ class QuoteMaintenance:
             fill_risk=self.fill_risk.status(),
             risk_cooldowns={t:max(0, until-self.runtime.clock()) for t,until in self._risk_cooldown.items()
                             if until > self.runtime.clock()},
+            risk_observation=dict(retained_markets=len(self._risk_queues),
+                gap_counts={t:dict(c) for t,c in self._risk_gap_counts.items() if t in current}),
             replaces_for_better_rank=False, estimate_only=True)

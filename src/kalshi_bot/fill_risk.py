@@ -121,6 +121,7 @@ class FillRisk:
             reference_price=None if reference is None else str(reference),
             ahead_fraction_of_reference_depth=str(estimate/reference_depth),
             queue_ahead=str(ahead), depletion_per_second=str(rate),
+            visible_depth=str(depth),
             seconds_to_reach=None if seconds is None else str(seconds),
             cancel_budget_seconds=self.cancel_budget(), horizon_seconds=horizon,
             queue_age_seconds=now-queue_at,

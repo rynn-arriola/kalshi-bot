@@ -1,5 +1,16 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — reward/report joins suppressed fresh fill-risk warnings
+
+D-127 removes whole-report and reward-metadata dependencies from cancellation-
+only detection after successful queue publication. Baseline `5cf92c5` fails to
+latch withdrawal with fresh exact owned orders and zero visible protection while
+the report is invalidated; the patched path detects it under the same inputs.
+Original queue expiry, current owned terms, epochs, books and private-fill gates
+remain. Normal repricing/reentry still needs report/scoring proof. The diagnostic
+sink now retains bounded queue/depth samples, gap reasons and correlated cancel
+attempt/ACK timing. Finding 191 owns evidence; STATUS owns release results.
+
 ## 2026-09-25 — full-cap renewal churn and missing recovery diagnostics
 
 D-126 routes a valid accounting-renewal anchor ahead of the full-cap

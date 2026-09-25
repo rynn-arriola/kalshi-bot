@@ -1,11 +1,14 @@
 # Active work queue
 
-## Pending decision after fill-risk recheck
+## D-127 fill-risk observation release
 
-1. Finding 190 supersedes the prior shallow-queue causal claim and 117-second
-   protection-gap estimate. Review its recommended order-scoped risk detection
-   and bounded evidence scope before implementation; ranking changes are not
-   yet accepted. Preserve the current reward tiers and thresholds.
+1. D-127's source repair and release verification are complete. Deployment and
+   restart await separate operator authority; the running checkout is unchanged.
+   STATUS records the full gate and isolated release location.
+2. After an authorized deployment, inspect fresh queue/gap and decision-to-
+   attempt/ACK evidence. Synthetic success is not a measured live fill-avoidance
+   rate. Any depth/stability ranking change remains undecided; preserve current
+   reward tiers and thresholds.
 
 ## D-126 recovery renewal and logging
 

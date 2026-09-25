@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-127 — Preserve order-scoped fill-risk observation through report renewal
+
+- **Status:** ACCEPTED source repair, 2026-09-25.
+- **Decision owner:** Operator: “Ok add the fix,” after Finding 190's corrected
+  diagnosis and recommendation to repair detection before changing ranking.
+- **Scope:** Reuse existing queue reads with their original expiry, current
+  owned-order evidence and fresh WebSocket books for cancellation-only risk
+  observation during account/reward refresh gaps. Add bounded diagnostic
+  evidence, reproduce source-change/fill/reconnect races, review, verify and
+  publish the isolated release under D-065.
+- **Boundary:** No ranking, depth threshold, reward, price, risk-limit or queue
+  lifetime changes. Keep the sole writer and terminal/fill reconciliation.
+  No deployment, live account action or restart in this source task.
+
 ### D-126 — Recovery renewal repair and useful bounded diagnostics
 
 - **Status:** ACCEPTED source-only work, 2026-09-25.

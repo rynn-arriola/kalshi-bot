@@ -1,5 +1,31 @@
 # Findings — kalshi-bot
 
+## 191. Order-scoped warning survives report/reward renewal — 2026-09-25
+
+**VERIFIED offline:** A synthetic real-writer/manager fixture seeds an exact
+500-contract queue observation, invalidates the account report, refreshes owned
+inventory and reduces visible protection to zero. Replaying baseline `5cf92c5`'s
+maintenance method produces no withdrawal. The patched method, with unchanged
+inputs, latches the exact owned pair. Both cancellations ACK through the existing
+D-121 dispatcher without a report between legs; durable remaining quantity is
+still 20 and entry stays blocked until terminal/fill reconciliation.
+
+The 16 new observation regressions also cover missing reward metadata at queue
+publication, WebSocket evaluation scheduling, original wall/monotonic expiry,
+clock regression, changed writer/account/book/program/order identity, absent
+book/inventory proof, private backlog, pending fills, position handoff, cache
+capacity, cycle cleanup and bounded/correlated diagnostic events. Logging tests
+check fingerprint correlation and unknown-value exclusion; a canceled-before-
+submission fixture emits no transport-attempt event.
+
+**Boundary:** Successful queue publication still requires the existing complete
+account join; no extra read or longer lease is introduced. The consumer only
+removes unnecessary dependencies *after* that publication. Missing/expired queue
+or book evidence remains unknown. No live action, restart, ranking or threshold
+change was performed. This repair does not prove the cause of Finding 190's
+historical fill or promise avoidance of a future sweep. STATUS records final
+suite results and publication/deployment state.
+
 ## 190. Fill diagnosis recheck: causation unproved; report coupling reproduced — 2026-09-25
 
 **MEASURED:** Read-only ledger evidence for the generation-166 coal-market bid

@@ -267,6 +267,8 @@ class RuntimeRewards:
             raise InvalidData('invalid private resting-order scope')
         if not expected:
             self._invalidate_all()
+            if r.maintenance is not None:
+                r.maintenance.accept_risk_queues({})
             self.last_reflection_at = utc(r.now())
             return 0
         # Explicit complete market scope: the live endpoint can reject an
@@ -318,6 +320,8 @@ class RuntimeRewards:
                 queue_times[ticker], book_epochs.get(ticker))
         published = tuple(proofs)
         self._reflection = proofs
+        if r.maintenance is not None:
+            r.maintenance.accept_risk_queues(proofs)
         for ticker in tuple(self.tracker._by_market):
             if ticker not in proofs:
                 self.tracker.invalidate(ticker)

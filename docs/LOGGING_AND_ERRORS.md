@@ -1,5 +1,29 @@
 # D-033 — Logging and error-handling guide
 
+## D-127 fill-risk evidence
+
+- `fill_risk_sample`: one order batch per market per five seconds, plus changes
+  in the observed/threat state. Includes run-local market/order fingerprints,
+  estimated ahead, exact queue ahead, visible depth (own quantity excluded),
+  depletion rate, queue age, horizon and estimated time-to-reach. Quantity/rate
+  fields end in `_hundredths`; time fields use milliseconds. Integer conversion
+  truncates telemetry only; calculations retain Decimal precision. Unknown ETA
+  is omitted, not zero. Existing numeric bounds can omit oversized values.
+- `fill_risk_observation_gap`: fixed reason and count, emitted at counts
+  1, 2, 4, 8, etc. Maintenance status retains bounded per-market reason counts.
+  These count evaluations, **not seconds of unprotected time**. Missing samples
+  do not establish a safe queue or an uninterrupted reconstructed trajectory.
+- `fill_risk_withdrawal` marks the decision. `cancel_submit_attempt` identifies
+  the exact order and durable operation at the transport invocation boundary,
+  after final proof/quota checks. It is not proof of socket delivery or venue
+  acceptance; `mutation_sending` occurs earlier and may still be aborted.
+  `fill_risk_cancel_ack` correlates each owned risk-cancel order and elapsed
+  milliseconds since decision; ACK is not terminal/fill reconciliation.
+
+All events use the existing bounded asynchronous sink and retention policy.
+There is no new logging worker or API read. STATUS records deployment state;
+the [fill-risk contract](BUILD_FILL_RISK.md) owns observation validity.
+
 ## D-126 operational diagnostics (source-only until deployed)
 
 Use the current `runtime.logging.run_id` to select the run across the rotating

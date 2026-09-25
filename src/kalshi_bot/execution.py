@@ -879,6 +879,13 @@ class InjectedExecutor:
                     session.arm_single_create(receipt)
                 try:
                     async with asyncio.timeout(self.timeout):
+                        if receipt.kind == 'cancel':
+                            # After final synchronous fences; an invocation
+                            # attempt, not proof the venue received the request.
+                            self.diagnostics.emit('cancel_submit_attempt',
+                                operation=receipt.authorization_id,
+                                order=dispatch_request['order_id'])
+                            self.diagnostics.ensure_healthy()
                         reply = await self.invoke(receipt.kind, dispatch_request)
                 finally:
                     if self.offline_fixture is not True and receipt.kind == 'create':

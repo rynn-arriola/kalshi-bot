@@ -87,6 +87,25 @@ class LoggingTests(unittest.TestCase):
                      if row['event'] == 'candidate_scope_prepared')
         self.assertEqual(event['context']['reviewed_markets'], 1024)
 
+    def test_fill_risk_samples_and_ack_use_safe_correlated_fields(self):
+        log = self.start()
+        log.emit('fill_risk_sample', market=SECRET, order=SECRET, risk_state='threat',
+                 ahead_hundredths=100, queue_hundredths=500, depth_hundredths=100,
+                 depletion_hundredths=200, queue_age_ms=300, horizon_ms=7000, eta_ms=500)
+        log.emit('fill_risk_cancel_ack', market=SECRET, order=SECRET, elapsed_ms=250)
+        log.emit('cancel_submit_attempt', order=SECRET, operation=SECRET)
+        log.emit('fill_risk_observation_gap', risk_state='queue_expired', count=8)
+        log.emit('fill_risk_observation_gap', risk_state=SECRET, unknown_field=SECRET)
+        log.ensure_healthy()
+        log.close()
+        data = rows(self.directory)
+        self.assertNotIn(SECRET, json.dumps(data))
+        sample = next(r['context'] for r in data if r['event'] == 'fill_risk_sample')
+        ack = next(r['context'] for r in data if r['event'] == 'fill_risk_cancel_ack')
+        self.assertEqual(sample['order_ref'], ack['order_ref'])
+        self.assertEqual(sample['eta_ms'], 500)
+        self.assertEqual(sample['risk_state'], 'threat')
+
     def test_native_exit_code_is_recorded_without_exception_text(self):
         log = self.start()
         log.emit('supervisor_child_exited', operation='child-test', generation=4,

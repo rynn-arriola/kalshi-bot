@@ -1,14 +1,43 @@
 # Current status
 
+## D-127 order-scoped fill-risk observation — 2026-09-25
+
+Verified in the isolated `data/order-risk-dev` worktree; not deployed or
+restarted. Successful existing queue reads now seed maintenance-owned immutable
+anchors before reward joins. Exact current owned-order/book evidence can detect
+a threat during report or metadata renewal without extending queue lifetime.
+Entry, reward accounting and terminal/fill reconciliation keep their original
+gates. Bounded diagnostics record queue/depth samples, fixed gap reasons,
+transport invocation attempts and decision-to-durable-ACK timing.
+
+The baseline replay reproduces a missed zero-depth warning during report
+invalidation; the same fixture detects and drains the exact pair with the patch.
+All 16 new observation regressions, 25 existing fill-risk tests and 38 logging
+tests pass. The 308-test fast gate passes. The complete release gate runs
+**1,811 tests in 344.991 seconds**, with no failures and one expected Windows
+symlink-privilege skip. The existing synthetic four-shard/1,024-market fixture
+reaches 30 orders in 11.080 seconds, refills in 1.112 seconds and completes
+protective withdrawal/refill in 1.552 seconds (0.041-second cancel-pair ACK gap).
+These are offline measurements, not live latency promises. Ignored
+`data-fast-check.log` and `data-release-check.log` retain the gate output.
+
+Exact source/test diff review, staged whitespace and secret-pattern checks pass.
+The local-link audit checks 793 references, with only four pre-existing ignored
+research artifacts absent in isolation. No known blocking issue remains in this
+scoped source release. D-065 publication does not deploy it: the runtime checkout
+is deliberately left at `5cf92c5`, with the previously launched D-126 process
+untouched. No production state was changed. This is not evidence that the
+historical fill could have been avoided, nor a live escape-rate guarantee.
+Finding 191 owns the evidence.
+
 ## Fill-risk recommendation recheck — 2026-09-25
 
 Finding 190 corrects the prior causal diagnosis: the 206-second fill is verified,
 but shallow initial protection and 117 seconds of blind monitoring are unproved.
 Two synthetic probes distinguish a harmless plan blocker from actual account-
 report invalidation suppressing new risk detection; 25 existing tests pass.
-Recommended next work is an order-scoped protection design and bounded evidence,
-before deciding whether to change ranking. No strategy change is accepted or
-implemented by this review. At 12:13:47 ET, saved telemetry showed generation
+The recommended order-scoped protection/diagnostic repair was subsequently
+accepted as D-127 above; ranking remains unchanged. At 12:13:47 ET, saved telemetry showed generation
 166 running with 28 entries, no positions and healthy engine/logging.
 
 ## D-126 recovery diagnostics and renewal repair — 2026-09-25

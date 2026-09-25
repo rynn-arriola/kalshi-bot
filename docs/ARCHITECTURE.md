@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-127 gives maintenance an immutable, bounded cancellation-only copy of the
+existing validated queue read before reward joins. Current exact owned inventory,
+private continuity, fresh books and original queue expiry still bind each use;
+whole-account report replacement alone no longer suppresses a fresh warning.
+It adds no read or writer and grants no entry/reward/reconciliation authority.
+The [fill-risk contract](BUILD_FILL_RISK.md) owns the lifecycle and limitations.
+
 D-124 performs the dispatch refresh's portfolio I/O before management/price
 proof capture. The normal advisory selector and dispatch share one synchronous
 ranking/admission body; it checks the supplied view's current writer revision,
