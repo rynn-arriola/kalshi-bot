@@ -144,6 +144,10 @@ CREATE INDEX IF NOT EXISTS credits_episode ON command_credits(episode_id,state);
 CREATE INDEX IF NOT EXISTS credits_owner ON command_credits(owner_id,state,purpose);
 CREATE TABLE IF NOT EXISTS command_capacity_counters (
   resource TEXT PRIMARY KEY, used INTEGER NOT NULL, held INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS command_history_archives (
+  id TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL, intent_count INTEGER NOT NULL,
+  authorization_count INTEGER NOT NULL, credit_count INTEGER NOT NULL,
+  first_created_at TEXT NOT NULL, last_created_at TEXT NOT NULL, payload BLOB NOT NULL);
 CREATE TRIGGER IF NOT EXISTS mutation_capacity_insert AFTER INSERT ON mutation_attempts BEGIN
   UPDATE command_capacity_counters SET used=used+1 WHERE resource='mutation';
 END;

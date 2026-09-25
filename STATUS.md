@@ -1,5 +1,30 @@
 # Current status
 
+## D-125 command-capacity archive repair — 2026-09-25
+
+**Release verification complete; bot stopped with zero saved resting entries
+and zero saved positions.** Generation 162 loaded D-124 but every entry pair was
+blocked by `capacity_entries_held`: the durable ledger contained 4,124 mutation
+rows above the unchanged 4,096 ordinary-entry boundary. All 1,487 reclaimable
+rows are creates durably proved `NOT_SENT`, have aborted intents, no order
+evidence and retired episodes. The remaining ACK, rejected and unknown evidence
+is not eligible.
+
+D-125 adds bounded exact compressed archives and validates their digest,
+schema, metadata, decompressed size, hot-table disjointness and retired episode
+state at writer startup. The capacity path archives at most 512 eligible rows in
+one existing writer transaction before reassessing admission. A disposable
+SQLite backup of the stopped production ledger archived 512 rows in 0.249s,
+reduced hot mutation/intent counts from 4,124/2,886 to 3,612/2,374, passed
+`integrity_check` and cold reopen validation, and left a hash over all named
+financial/risk/accounting tables unchanged. This copy test did not modify the
+production ledger. Focused command-capacity and entry-dispatch tests pass. The
+complete release gate passes **1,787 tests in 361.473 seconds**, with one expected
+Windows symlink-privilege skip. Its 1,024-book fixture reaches 30 in 10.025s,
+refills in 0.507s and completes risk refill in 1.123s; these are synthetic, not
+live timing or profitability evidence. Exact deployment and live refill remain
+pending.
+
 ## D-124 replacement refill repair — 2026-09-25
 
 **Release verification complete; not deployed.** Branch `fix/replacement-proof-churn`

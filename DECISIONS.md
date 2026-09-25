@@ -10,6 +10,20 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-125 — Archive proven-unsent command evidence at the entry boundary
+
+- **Status:** ACCEPTED repair and Command 1 deployment, 2026-09-25.
+- **Decision owner:** Operator requested investigation and repair after the bot
+  repeatedly stopped below 30 orders, then invoked “Command 1.”
+- **Scope:** Preserve exact compressed evidence for creates durably proved
+  `NOT_SENT` in retired episodes, reclaim only those hot command rows, verify
+  the stopped production ledger through a disposable copy, publish, deploy and
+  restart through the supported supervisor.
+- **Boundary:** Keep the 4,096 ordinary-entry, 8,192 total-mutation and 4,096
+  intent/order limits. Never archive ACK, rejected, unknown, active-episode,
+  order, fill, P&L, position, risk or accounting evidence. No strategy, size,
+  capital, stop-loss, reward filter or venue API contract changes.
+
 ### D-124 — Repair replacement-order proof churn
 
 - **Status:** ACCEPTED, 2026-09-25.

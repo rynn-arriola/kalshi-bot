@@ -1,5 +1,16 @@
 # What exists
 
+## Exact proven-unsent command archive — D-125
+
+At the unchanged ordinary-entry mutation boundary, the single ledger writer can
+compress and content-address up to 512 exact `NOT_SENT` create records whose
+intents are aborted, episodes retired, ownership credits non-held and venue
+order evidence absent. It removes only those archived hot command rows in the
+same transaction. Startup validates every archive and rejects tampering,
+overlap, oversized decompression or an active episode. This reclaims bounded
+entry capacity without changing safety headroom or financial/risk history. See
+[the build record](docs/BUILD_COMMAND_HISTORY_ARCHIVE.md) and Finding 188.
+
 ## Replacement proof handoff — D-124
 
 Existing dispatch reads durable risk before freezing entry prices, then uses

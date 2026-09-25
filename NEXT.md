@@ -1,5 +1,15 @@
 # Active work queue
 
+## D-125 command-capacity archive repair
+
+1. The 1,787-test complete release gate passes; finish exact diff/security review.
+2. Publish under D-065, fast-forward the stopped canonical checkout, verify the
+   installed source, then use the already authorized Command 1 restart.
+3. Confirm one real archive, healthy account/dispatch/logging, and rebuilt
+   resting entries. Do not claim constant 30-order occupancy or profitability.
+4. Keep ACK/rejected/unknown and all financial evidence hot; archive only exact
+   `NOT_SENT` creates from retired episodes.
+
 ## D-124 replacement refill repair
 
 1. D-124 implementation, exact review and full release verification are finished;

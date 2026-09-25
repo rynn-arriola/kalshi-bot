@@ -1,5 +1,27 @@
 # Findings — kalshi-bot
 
+## 188. Deferred command-history rollover blocked every new entry — 2026-09-25
+
+**MEASURED:** After D-124 deployment, generation 162 had zero orders and zero
+positions while all entry attempts returned `capacity_entries_held`. The ledger
+held 4,124 mutations: 2,510 ACK, 1,487 NOT_SENT, 121 rejected and six unknown.
+The fixed ordinary-entry ceiling is 4,096; total safety-command capacity remains
+8,192. All 1,487 NOT_SENT rows are creates with unique client IDs, aborted
+authorizations/intents, null responses, no order evidence and retired episodes.
+
+**VERIFIED:** The command-capacity design intentionally retained all history and
+deferred rollover. Raising limits or starting a fresh ledger would violate its
+safety/accounting boundaries. D-125 instead archives only venue-unsent evidence
+with exact intents, authorizations and owned credits. A stopped-ledger copy
+archived 512 rows in 0.249s, passed digest/schema/counter/integrity/cold-reopen
+validation and preserved the financial/risk/accounting table hash. Hot mutation
+and intent counts fell to 3,612 and 2,374; order evidence remained 1,315.
+
+**Boundary:** Proven-unsent means the transport was never submitted; cancellation
+or absence is not enough. Active episodes, ACK, rejection, unknown sends, orders,
+fills and economics are ineligible. The copy measurement is not live refill or
+profitability evidence; STATUS owns final deployment observations.
+
 ## 187. Replacement selection freezes price proof before redundant risk reads — 2026-09-25
 
 **MEASURED, read-only local evidence:** Generation 160 had 28 resting entries

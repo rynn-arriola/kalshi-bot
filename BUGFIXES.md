@@ -1,5 +1,17 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-25 — terminal command history exhausted ordinary entry capacity
+
+Generation 162 started cleanly but could place no orders because 4,124 retained
+mutations exceeded the fixed 4,096 entry boundary. The boundary correctly
+preserved exit/cancel headroom; the missing piece was the explicitly deferred
+archive phase. D-125 content-addresses and compresses only exact `NOT_SENT`
+creates from retired episodes, then transactionally removes their hot mutation,
+aborted intent, authorization and owned non-held credit rows. ACK, rejected,
+unknown, active-episode and all economic evidence remain untouched. Startup
+validates archive integrity and overlap. Finding 188 owns the production-copy
+evidence; STATUS owns deployment and live results.
+
 ## 2026-09-25 — redundant risk reads invalidate replacement price proofs
 
 D-124 moves the existing portfolio read ahead of entry proof capture and shares

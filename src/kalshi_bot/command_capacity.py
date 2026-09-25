@@ -1,8 +1,10 @@
-"""Transactional command storage credits for the execution-disabled fixture."""
+"""Transactional command storage credits and exact proven-unsent archival."""
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 import json
 from uuid import uuid4
+import zlib
 
 from .command_types import CapacityStatus
 from .values import InvalidData, identity, integer, utc
@@ -11,6 +13,10 @@ MUTATION = 'mutation'
 INTENT = 'intent'
 ORDER = 'order'
 RESOURCES = (MUTATION, INTENT, ORDER)
+ARCHIVE_BATCH_ROWS = 512
+MAX_ARCHIVES = 128
+MAX_ARCHIVE_BYTES = 16 * 1024 * 1024
+MAX_ARCHIVE_DECOMPRESSED_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -72,8 +78,187 @@ def status(ledger):
         rows[ORDER]['used'], rows[ORDER]['held'])
 
 
+def _decode_archive(blob):
+    if not isinstance(blob, bytes) or not 0 < len(blob) <= MAX_ARCHIVE_BYTES:
+        raise InvalidData('command archive compressed size invalid')
+    try:
+        decoder = zlib.decompressobj()
+        encoded = decoder.decompress(blob, MAX_ARCHIVE_DECOMPRESSED_BYTES+1)
+        if (len(encoded) > MAX_ARCHIVE_DECOMPRESSED_BYTES or not decoder.eof
+                or decoder.unused_data or decoder.unconsumed_tail):
+            raise InvalidData('command archive decompressed size invalid')
+        source = json.loads(encoded)
+    except InvalidData:
+        raise
+    except (zlib.error, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        raise InvalidData('command archive payload invalid') from None
+    if (not isinstance(source, dict) or source.get('version') != 1
+            or not isinstance(source.get('records'), list)
+            or not 0 < len(source['records']) <= ARCHIVE_BATCH_ROWS):
+        raise InvalidData('command archive schema invalid')
+    return encoded, source['records']
+
+
+def _validate_archives(ledger):
+    rows = ledger.connection.execute(
+        'SELECT * FROM command_history_archives ORDER BY rowid').fetchall()
+    if len(rows) > MAX_ARCHIVES:
+        raise InvalidData('command archive capacity invalid')
+    seen_attempts, seen_clients = set(), set()
+    for row in rows:
+        encoded, records = _decode_archive(row['payload'])
+        if row['id'] != sha256(b'kalshi-command-archive-v1\0'+encoded).hexdigest():
+            raise InvalidData('command archive digest invalid')
+        attempts, clients, episodes, authorizations, credits, stamps = [], [], set(), 0, 0, []
+        for record in records:
+            if not isinstance(record, dict) or set(record) != {
+                    'mutation', 'intent', 'authorizations', 'credits'}:
+                raise InvalidData('command archive record invalid')
+            mutation, intent = record['mutation'], record['intent']
+            auths, owned_credits = record['authorizations'], record['credits']
+            client = None
+            try:
+                client = json.loads(mutation['request'])['client_order_id']
+                valid = (mutation['kind'] == 'create' and mutation['phase'] == 'NOT_SENT'
+                    and mutation['response'] is None and intent['client_id'] == client
+                    and intent['state'] == 'ABORTED' and intent['payload'] == mutation['request']
+                    and len(auths) == 1 and auths[0]['request'] == mutation['request']
+                    and auths[0]['mutation_id'] == mutation['id']
+                    and auths[0]['kind'] == 'create' and auths[0]['subject_id'] == client
+                    and auths[0]['state'] == 'ABORTED'
+                    and all(credit['owner_id'] == client
+                            and credit['state'] in {'SPENT', 'RELEASED'}
+                            for credit in owned_credits))
+            except (KeyError, TypeError, json.JSONDecodeError):
+                valid = False
+            if not valid or mutation['id'] in seen_attempts or client in seen_clients:
+                raise InvalidData('command archive evidence invalid')
+            attempts.append(mutation['id']); clients.append(client)
+            episodes.add(auths[0]['episode_id'])
+            authorizations += len(auths); credits += len(owned_credits)
+            stamps.append(mutation['created_at'])
+            seen_attempts.add(mutation['id']); seen_clients.add(client)
+        if (row['attempt_count'] != len(attempts)
+                or row['intent_count'] != len(clients)
+                or row['authorization_count'] != authorizations
+                or row['credit_count'] != credits
+                or row['first_created_at'] != min(stamps)
+                or row['last_created_at'] != max(stamps)):
+            raise InvalidData('command archive metadata invalid')
+        marks = ','.join('?' for _ in episodes)
+        retired = ledger.connection.execute(
+            f"SELECT COUNT(*) FROM command_episodes WHERE id IN ({marks}) AND state='RETIRED'",
+            tuple(episodes)).fetchone()[0]
+        if retired != len(episodes):
+            raise InvalidData('command archive episode is not retired')
+        marks = ','.join('?' for _ in attempts)
+        if ledger.connection.execute(
+                f'SELECT 1 FROM mutation_attempts WHERE id IN ({marks}) LIMIT 1',
+                attempts).fetchone():
+            raise InvalidData('command archive overlaps hot mutation evidence')
+        marks = ','.join('?' for _ in clients)
+        if ledger.connection.execute(
+                f'SELECT 1 FROM intents WHERE client_id IN ({marks}) LIMIT 1',
+                clients).fetchone():
+            raise InvalidData('command archive overlaps hot intent evidence')
+
+
+def _archive_proven_unsent(ledger):
+    """Reclaim only creates durably proven never submitted to the venue."""
+    count = ledger.connection.execute(
+        'SELECT COUNT(*) FROM command_history_archives').fetchone()[0]
+    if count >= MAX_ARCHIVES:
+        return 0
+    candidates = ledger.connection.execute(
+        "SELECT m.*,i.payload intent_payload,i.state intent_state,"
+        "i.created_at intent_created_at,json_extract(m.request,'$.client_order_id') client_id "
+        "FROM mutation_attempts m JOIN intents i ON "
+        "i.client_id=json_extract(m.request,'$.client_order_id') "
+        "WHERE m.kind='create' AND m.phase='NOT_SENT' AND i.state='ABORTED' "
+        "ORDER BY m.rowid LIMIT ?", (ARCHIVE_BATCH_ROWS,)).fetchall()
+    if not candidates:
+        return 0
+    candidate_clients = [row['client_id'] for row in candidates]
+    candidate_attempts = [row['id'] for row in candidates]
+    client_marks = ','.join('?' for _ in candidate_clients)
+    attempt_marks = ','.join('?' for _ in candidate_attempts)
+    mutation_counts = {row['client_id']: row['n'] for row in ledger.connection.execute(
+        f"SELECT json_extract(request,'$.client_order_id') client_id,COUNT(*) n "
+        f"FROM mutation_attempts WHERE json_extract(request,'$.client_order_id') "
+        f"IN ({client_marks}) GROUP BY client_id", candidate_clients)}
+    orders = {row[0] for row in ledger.connection.execute(
+        f'SELECT client_id FROM order_evidence WHERE client_id IN ({client_marks})',
+        candidate_clients)}
+    auths = {}
+    for row in ledger.connection.execute(
+            f'SELECT * FROM command_authorizations WHERE mutation_id IN ({attempt_marks}) '
+            'ORDER BY rowid', candidate_attempts):
+        auths.setdefault(row['mutation_id'], []).append(row)
+    episode_ids = tuple({row['episode_id'] for rows in auths.values() for row in rows})
+    episode_states = dict(ledger.connection.execute(
+        f'SELECT id,state FROM command_episodes WHERE id IN '
+        f'({",".join("?" for _ in episode_ids)})', episode_ids)) if episode_ids else {}
+    credits = {}
+    for row in ledger.connection.execute(
+            f'SELECT * FROM command_credits WHERE owner_id IN ({client_marks}) ORDER BY rowid',
+            candidate_clients):
+        credits.setdefault(row['owner_id'], []).append(row)
+    records, attempts, clients = [], [], []
+    for candidate in candidates:
+        mutation = {name: candidate[name] for name in
+                    ('id', 'kind', 'request', 'phase', 'response', 'created_at')}
+        client = candidate['client_id']
+        owned_auths, owned_credits = auths.get(mutation['id'], []), credits.get(client, [])
+        if (client in orders or mutation_counts.get(client) != 1
+                or len(owned_auths) != 1
+                or owned_auths[0]['kind'] != 'create'
+                or owned_auths[0]['subject_id'] != client
+                or owned_auths[0]['state'] != 'ABORTED'
+                or owned_auths[0]['request'] != mutation['request']
+                or candidate['intent_payload'] != mutation['request']
+                or episode_states.get(owned_auths[0]['episode_id']) != 'RETIRED'
+                or any(row['state'] == 'HELD' for row in owned_credits)):
+            continue
+        intent = dict(client_id=client, payload=candidate['intent_payload'],
+                      state=candidate['intent_state'],
+                      created_at=candidate['intent_created_at'])
+        records.append(dict(mutation=mutation, intent=intent,
+                            authorizations=[dict(row) for row in owned_auths],
+                            credits=[dict(row) for row in owned_credits]))
+        attempts.append(mutation['id']); clients.append(client)
+    if not records:
+        return 0
+    source = dict(version=1, records=records)
+    encoded = json.dumps(source, sort_keys=True, separators=(',', ':'),
+                         allow_nan=False).encode()
+    payload = zlib.compress(encoded, 9)
+    if len(payload) > MAX_ARCHIVE_BYTES:
+        raise InvalidData('command archive exceeds byte capacity')
+    archive_id = sha256(b'kalshi-command-archive-v1\0'+encoded).hexdigest()
+    ledger.connection.execute(
+        'INSERT INTO command_history_archives VALUES (?,?,?,?,?,?,?,?)',
+        (archive_id, len(records), len(clients),
+         sum(len(row['authorizations']) for row in records),
+         sum(len(row['credits']) for row in records),
+         min(row['mutation']['created_at'] for row in records),
+         max(row['mutation']['created_at'] for row in records), payload))
+    marks = ','.join('?' for _ in attempts)
+    ledger.connection.execute(
+        f'DELETE FROM command_authorizations WHERE mutation_id IN ({marks})', attempts)
+    marks = ','.join('?' for _ in clients)
+    ledger.connection.execute(
+        f'DELETE FROM command_credits WHERE owner_id IN ({marks})', clients)
+    ledger.connection.execute(
+        f'DELETE FROM mutation_attempts WHERE id IN ({",".join("?" for _ in attempts)})',
+        attempts)
+    ledger.connection.execute(
+        f'DELETE FROM intents WHERE client_id IN ({marks})', clients)
+    return len(records)
+
+
 def validate_capacity(ledger, policy=DEFAULT_POLICY, *, full=True):
     if full:
+        _validate_archives(ledger)
         malformed = ledger.connection.execute(
             "SELECT 1 FROM command_credits c LEFT JOIN command_episodes e "
             "ON e.id=c.episode_id WHERE e.id IS NULL "
@@ -188,6 +373,8 @@ def reserve_entry_capacity(ledger, policy, request, now):
     ticker, scope, client = request['ticker'], request['subaccount'], request['client_order_id']
     episode = _active_episode(ledger, scope, ticker)
     total_need, _ = _requirements(policy, episode is None)
+    if _used(ledger, MUTATION) >= policy.entry_mutation_limit:
+        _archive_proven_unsent(ledger)
     current = {resource: (_used(ledger, resource), _held(ledger, resource))
                for resource in RESOURCES}
     blockers = []

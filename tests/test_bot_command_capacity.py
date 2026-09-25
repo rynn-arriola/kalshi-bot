@@ -69,6 +69,67 @@ class CommandCapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.writer.failed)
         self.assertEqual((await self.writer.command_capacity()).mutation_used, 2)
 
+    async def test_proven_unsent_entries_archive_at_boundary_and_admission_continues(self):
+        policy = CapacityPolicy(entry_mutation_limit=2, mutation_limit=16,
+                                intent_limit=8, order_limit=8)
+        await self.start(policy)
+        for client in ('one', 'two'):
+            prepared = await self.reserve(client)
+            self.assertTrue(prepared.reserved, prepared.blockers)
+            await self.writer.abort_prepared(prepared.receipt)
+        admitted = await self.reserve('three')
+        self.assertTrue(admitted.reserved, admitted.blockers)
+        self.assertEqual((await self.writer.command_capacity()).mutation_used, 1)
+        await self.writer.close(); self.writer = None
+        db = Ledger(self.path)
+        try:
+            archive = db.connection.execute(
+                'SELECT attempt_count,intent_count,authorization_count '
+                'FROM command_history_archives').fetchone()
+            self.assertEqual(tuple(archive), (2, 2, 2))
+            self.assertEqual(db.connection.execute(
+                "SELECT COUNT(*) FROM intents WHERE state='ABORTED'").fetchone()[0], 0)
+        finally:
+            db.close()
+
+    async def test_command_archive_tampering_blocks_startup(self):
+        policy = CapacityPolicy(entry_mutation_limit=1, mutation_limit=16,
+                                intent_limit=8, order_limit=8)
+        await self.start(policy)
+        prepared = await self.reserve('one')
+        await self.writer.abort_prepared(prepared.receipt)
+        self.assertTrue((await self.reserve('two')).reserved)
+        await self.writer.close(); self.writer = None
+        connection = __import__('sqlite3').connect(self.path)
+        with connection:
+            connection.execute("UPDATE command_history_archives SET payload=x'00'")
+        connection.close()
+        self.writer = LedgerWriter(self.path, command_policy=policy)
+        with self.assertRaisesRegex(InvalidData, 'ledger startup failed'):
+            await self.writer.start()
+
+    async def test_proven_unsent_active_episode_is_not_archived(self):
+        policy = CapacityPolicy(entry_mutation_limit=1, mutation_limit=16,
+                                intent_limit=8, order_limit=8)
+        await self.start(policy)
+        prepared = await self.reserve('one')
+        await self.writer.abort_prepared(prepared.receipt)
+        await self.writer.close(); self.writer = None
+        connection = __import__('sqlite3').connect(self.path)
+        with connection:
+            connection.execute("UPDATE command_episodes SET state='ACTIVE'")
+        connection.close()
+        await self.start(policy)
+        denied = await self.reserve('two')
+        self.assertEqual(denied.blockers, ('capacity_entries_held',))
+        await self.writer.close(); self.writer = None
+        db = Ledger(self.path)
+        try:
+            self.assertEqual(db.connection.execute(
+                'SELECT COUNT(*) FROM command_history_archives').fetchone()[0], 0)
+        finally:
+            db.close()
+
     async def test_valid_cancel_prepares_at_real_4096_entry_highwater(self):
         await self.start()
         await self.make_working()
