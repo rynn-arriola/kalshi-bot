@@ -1,5 +1,12 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-122 treats temporary pre-send quota revocation as scheduling, not a transport
+retry. The dispatcher retains original issued permit terms across preparation,
+checks current quota/revision, and may requeue only after the writer confirms
+NOT_SENT for the entire command/batch. Existing quota-owner notifications wake
+reevaluation; no new polling owner or stale-permit reuse. Send-edge consumption,
+integrity failures and uncertain-submission recovery remain unchanged.
+
 D-121 joins the sole dispatcher before recovery snapshots begin. Immediate
 outcome invalidation is preserved; persistence and recovery no longer race.
 An already-latched fill-risk pair drains its exact owned entry IDs through

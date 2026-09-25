@@ -20,6 +20,7 @@ from kalshi_bot.write_budget import WriteBudget
 from kalshi_bot.writer import LedgerWriter
 from test_bot_write_budget import snapshot, now as budget_now
 from test_bot_command_handoff import request as entry_request
+from quota_dispatch_fixture import ObservedQuotaFixture
 
 
 NOW = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
@@ -210,6 +211,164 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.state, 'ACK', result.blockers)
         self.assertEqual(len(self.invoked), 1)
         self.assertFalse(self.dispatcher.status().failed)
+
+    async def quota_refresh_during_prepare(self, *, complete=False):
+        await self.working_order()
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.budget = await fixture.attach(self.dispatcher)
+        original = self.writer.prepare_cancel
+        async def refreshing(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            await fixture.begin_refresh()
+            if complete:
+                await fixture.finish_refresh()
+            return result
+        self.writer.prepare_cancel = refreshing
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        result = await self.dispatcher.run_one()
+        reason = 'write_quota_replaced' if complete else 'write_quota_refreshing'
+        self.assertEqual((result.state, result.blockers), ('WAITING', (reason,)))
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertFalse(self.invoked)
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertEqual(self.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
+        self.writer.prepare_cancel = original
+        if not complete:
+            # An unfinished refresh cannot send or prepare another command.
+            self.assertEqual((await self.dispatcher.run_one()).state, 'WAITING')
+            self.assertEqual(len(await self.writer.mutations()), 2)
+            await fixture.finish_refresh()
+        old = self.candidates[('A', SAFETY_CANCEL)]
+        self.candidates[('A', SAFETY_CANCEL)] = replace(old, attempt_id='fresh-quota',
+            evidence=await self.writer.cancel_evidence('order-a'))
+        self.assertEqual((await self.dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(len(self.invoked), 1)
+
+    async def test_observed_quota_refresh_during_prepare_waits_then_recovers(self):
+        await self.quota_refresh_during_prepare()
+
+    async def test_completed_quota_refresh_during_prepare_replaces_revoked_permit(self):
+        await self.quota_refresh_during_prepare(complete=True)
+
+    async def observed_quota_loss_during_prepare(self, reason, *, fatal):
+        await self.working_order()
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.budget = await fixture.attach(self.dispatcher)
+        original = self.writer.prepare_cancel
+        async def unavailable(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            if reason == 'write_quota_stale':
+                fixture.clock.t += 301
+            elif reason == 'write_quota_clock_fault':
+                fixture.clock.offset += 3
+            elif reason == 'write_quota_stopped':
+                fixture.source.stop()
+            else:
+                fixture.source.invalidate(reason)
+            return result
+        self.writer.prepare_cancel = unavailable
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        if fatal:
+            with self.assertRaises(QuotaUnavailable) as raised:
+                await self.dispatcher.run_one()
+            self.assertEqual(raised.exception.reason, reason)
+            self.assertTrue(self.dispatcher.status().failed)
+        else:
+            result = await self.dispatcher.run_one()
+            self.assertEqual((result.state, result.blockers), ('WAITING', (reason,)))
+            self.assertIsNone(result.retry_after)
+            self.assertFalse(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+
+    async def test_observed_quota_stale_aborts_and_waits(self):
+        await self.observed_quota_loss_during_prepare('write_quota_stale', fatal=False)
+
+    async def test_failed_quota_refresh_aborts_and_waits(self):
+        await self.observed_quota_loss_during_prepare('write_quota_refresh_failed', fatal=False)
+
+    async def test_observed_quota_clock_fault_is_not_retried(self):
+        await self.observed_quota_loss_during_prepare('write_quota_clock_fault', fatal=True)
+
+    async def test_observed_quota_stop_is_not_retried(self):
+        await self.observed_quota_loss_during_prepare('write_quota_stopped', fatal=True)
+
+    async def test_refresh_after_sending_keeps_unknown_and_never_invokes(self):
+        await self.working_order()
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.budget = await fixture.attach(self.dispatcher)
+        original = self.writer.begin_send
+        async def refreshing(receipt):
+            result = await original(receipt)
+            await fixture.begin_refresh()
+            return result
+        self.writer.begin_send = refreshing
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(QuotaUnavailable):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertTrue(self.executor.failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+
+    async def test_same_revision_discarded_permit_still_fails(self):
+        await self.working_order()
+        original = self.writer.prepare_cancel
+        async def discarded(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            permit = next(iter(self.budget._permits.values()))[0]
+            self.budget.discard(permit, now=budget_now(self.clock))
+            return result
+        self.writer.prepare_cancel = discarded
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(InvalidData):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+
+    async def test_altered_permit_cannot_hide_behind_completed_refresh(self):
+        await self.working_order()
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.budget = await fixture.attach(self.dispatcher)
+        original = self.writer.prepare_cancel
+        async def altered(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            permit = next(iter(self.budget._permits.values()))[0]
+            object.__setattr__(permit, 'route', '/portfolio/events/orders/another')
+            await fixture.begin_refresh()
+            await fixture.finish_refresh()
+            return result
+        self.writer.prepare_cancel = altered
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaisesRegex(InvalidData, 'altered dispatch write permit'):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+
+    async def test_refresh_cannot_requeue_an_already_sending_receipt(self):
+        await self.working_order()
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.budget = await fixture.attach(self.dispatcher)
+        original = self.writer.prepare_cancel
+        async def advanced(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            await self.writer.begin_send(result.receipt)
+            await fixture.begin_refresh()
+            return result
+        self.writer.prepare_cancel = advanced
+        self.dispatcher.submit('A', SAFETY_CANCEL)
+        with self.assertRaises(QuotaUnavailable):
+            await self.dispatcher.run_one()
+        self.assertTrue(self.dispatcher.status().failed)
+        self.assertFalse(self.invoked)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'SENDING')
 
     async def test_quota_expiry_during_sending_never_invokes_transport(self):
         await self.working_order()

@@ -1,5 +1,21 @@
 # Bugfixes — kalshi-bot
 
+## 2026-09-24 — routine quota refresh crashed pre-send dispatch
+
+D-118 only recognized base-budget expiry/429 exceptions. The live shared quota
+source revokes reservations as `write_quota_refreshing`; if refresh completes
+before preparation returns, the now-absent old permit instead fails as invalid.
+Both sequences match the two child crash sites in Finding 185 and reproduce
+offline with the actual shared read/quota owners and an injected blocked wire.
+
+D-122 captures issued permit terms before awaits, checks quota availability and
+revision after preparation, and aborts the exact command/both batch legs. Only
+confirmed PREPARED-to-NOT_SENT plus an enumerated temporary quota reason retains
+a reevaluation key. Refresh completion does not revive the old permit or receipt.
+Clock/scope/health/stopped failures, altered or consumed permits and SENDING/
+UNKNOWN states remain closed. No generic InvalidData catch, new worker, quota
+relaxation or transport retry was added. STATUS owns release/deployment evidence.
+
 ## 2026-09-24 — premature recovery, serialized risk cancellation and public bursts
 
 D-121 makes recovery wait for the single dispatcher's durable result; the prior

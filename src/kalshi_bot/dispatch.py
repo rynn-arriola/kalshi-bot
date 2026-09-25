@@ -7,7 +7,7 @@ hands the exact receipt to the writer's sole injected executor.
 """
 import asyncio
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .command_types import (CancelEvidence, CommandDenied, ReductionEvidence)
 from .execution import (InjectedExecutor, encoded_request, validate_entry_pair,
@@ -25,6 +25,10 @@ PASSIVE_REDUCER = 'passive_reducer'
 ENTRY_PAIR = 'entry_pair'
 QUOTE_CANCEL = 'quote_cancel'
 _PRIORITY = {SAFETY_CANCEL: 0, DUE_IOC: 1, PASSIVE_REDUCER: 2, QUOTE_CANCEL: 3, ENTRY_PAIR: 4}
+_TEMPORARY_QUOTA = frozenset({
+    'write_quota_expired', 'write_429_pause', 'write_quota_refreshing',
+    'write_quota_refresh_failed', 'write_quota_stale', 'write_quota_replaced',
+})
 
 
 @dataclass(frozen=True)
@@ -256,6 +260,9 @@ class MutationDispatcher:
             self.submit(ticker, priority)
             return DispatchResult('WAITING', ticker, priority,
                 first.attempt_id, ('write_budget_unavailable',), delay)
+        # Capture only the terms of this owner's freshly issued permit. A
+        # refresh may revoke it during either awaited preparation step.
+        issued_permit = replace(permit)
         receipt = None
         consumed = False
         try:
@@ -315,6 +322,15 @@ class MutationDispatcher:
                 return DispatchResult('BLOCKED', ticker, priority,
                     current.attempt_id, prepared.blockers)
             try:
+                if permit != issued_permit:
+                    raise InvalidData('altered dispatch write permit')
+                quota = self.budget.status(now=self.clock_pair())
+                if quota.reason is not None:
+                    raise QuotaUnavailable(quota.reason)
+                if quota.revision != issued_permit.revision:
+                    # A completed refresh restored quota but not the old
+                    # reservation. Never use that permit at the send edge.
+                    raise QuotaUnavailable('write_quota_replaced')
                 self.budget.check_permit(permit, method, route,
                     shard=current.budget_shard, units=current.units,
                     now=self.clock_pair())
@@ -325,7 +341,7 @@ class MutationDispatcher:
                     aborted = await self.writer.abort_prepared(receipt)
                 receipt = None
                 if (isinstance(exc, QuotaUnavailable)
-                        and exc.reason in {'write_quota_expired', 'write_429_pause'}
+                        and exc.reason in _TEMPORARY_QUOTA
                         and aborted.blockers == ('prepared_aborted',)):
                     # Only a durable PREPARED -> NOT_SENT transition permits
                     # retry. Retain a reevaluation key, never this command.

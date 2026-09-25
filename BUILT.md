@@ -1,5 +1,15 @@
 # What exists
 
+## Temporary quota-loss dispatch recovery — D-122
+
+The original dispatcher distinguishes a revoked preparation from an uncertain
+submission. It keeps only a reevaluation key after durable NOT_SENT, including
+both batch legs; fresh shared quota and current candidates remain required.
+Twelve additional regressions exercise actual observed-quota refresh across
+cancel/batch preparation, completed refresh, stale/failed evidence, integrity
+failures and the SENDING boundary. No new runtime owner or live endpoint.
+See Finding 185 and STATUS for observed failures and final verification.
+
 ## Startup/recovery handoff and risk-pair drain — D-121
 
 The dispatcher exposes an event-based persistence join to recovery. Exact

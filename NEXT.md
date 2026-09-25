@@ -1,5 +1,17 @@
 # Active work queue
 
+## D-122 quota-refresh failure
+
+1. D-122 implementation, review and the 1,771-test full release gate are finished.
+   Publish the verified source and complete the authorized stopped deployment.
+2. Deploy the cumulative verified D-121 plus D-122 source as subsequently
+   authorized, keeping the bot stopped. At a separately authorized restart,
+   let normal recovery reconcile the external cancellations. Measure quota-refresh
+   survival, decision-to-cancel latency and ranked refill; offline tests are not live proof.
+3. Preserve the separate unfinished command-1 worktree.
+
+Earlier queues below are historical and do not authorize repeat operations.
+
 ## D-121 startup/recovery/refill repair
 
 1. D-121 implementation, review and clean full verification are finished; see

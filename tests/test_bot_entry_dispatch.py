@@ -35,6 +35,7 @@ from kalshi_bot.writer import LedgerWriter
 from test_bot_command_handoff import request
 from test_bot_write_budget import now as quota_now, snapshot
 from test_bot_selection import program, terms
+from quota_dispatch_fixture import ObservedQuotaFixture
 
 
 NOW = datetime(2026, 9, 21, 12, tzinfo=timezone.utc)
@@ -127,6 +128,52 @@ class EntryPairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status.buckets[1][1], 100)
         self.assertEqual({row['phase'] for row in await self.writer.mutations()},
                          {'ACK'})
+
+    async def quota_refresh_during_pair(self, *, complete=False):
+        wire = BatchWire()
+        dispatcher, _ = await self.dispatcher(wire)
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.addAsyncCleanup(dispatcher.close)
+        await fixture.attach(dispatcher)
+        # Mutation outcome accounting must use the same observed budget owner.
+        dispatcher.executor.invoke.budget = dispatcher.budget
+        dispatcher.executor.invoke.clock_pair = dispatcher.clock_pair
+        original = self.writer.reserve_entry_pair
+        async def refreshing(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            await fixture.begin_refresh()
+            if complete:
+                await fixture.finish_refresh()
+            return result
+        self.writer.reserve_entry_pair = refreshing
+        dispatcher.submit('A', ENTRY_PAIR)
+        result = await dispatcher.run_one()
+        self.assertEqual(result.state, 'WAITING')
+        self.assertEqual(result.blockers, ('write_quota_replaced' if complete
+                                          else 'write_quota_refreshing',))
+        self.assertFalse(wire.calls)
+        self.assertFalse(dispatcher.status().failed)
+        self.assertEqual({row['phase'] for row in await self.writer.mutations()}, {'NOT_SENT'})
+        self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
+        capacity = await self.writer.command_capacity()
+        self.assertEqual((capacity.mutation_held, capacity.intent_held, capacity.order_held), (0, 0, 0))
+        self.writer.reserve_entry_pair = original
+        if not complete:
+            await fixture.finish_refresh()
+        async def fresh(ticker, priority):
+            requests = tuple(dict(row, client_order_id=row['client_order_id']+'-fresh') for row in pair())
+            return EntryPairCandidate('A', ENTRY_PAIR, 'fresh-quota', requests,
+                await self.writer.portfolio(subaccount=0, now=NOW), D(500), D(0), 1)
+        dispatcher.refresh = fresh
+        self.assertEqual((await dispatcher.run_one()).state, 'ACK')
+        self.assertEqual(len(wire.calls), 1)
+
+    async def test_pair_quota_refresh_aborts_both_then_reevaluates(self):
+        await self.quota_refresh_during_pair()
+
+    async def test_pair_completed_quota_refresh_replaces_revoked_permit(self):
+        await self.quota_refresh_during_pair(complete=True)
 
     async def test_batch_proof_change_before_transport_aborts_both_commands(self):
         prepared = await self.reserve()

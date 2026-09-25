@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-122 — Audit live withdrawal and repair quota-refresh dispatch failure
+
+- **Status:** ACCEPTED, 2026-09-24.
+- **Decision owner:** Operator requests current-run log verification, especially
+  cancellation to avoid fills, and fixes for observed defects. After the crash
+  left orders resting, explicitly authorizes: “Yes—cancel all resting orders;
+  keep bot stopped.”
+- **Scope:** Cancel and independently verify the stopped account, preserve the
+  ledger, reproduce the live quota-refresh/unsent-preparation race, and repair
+  only confirmed defects with focused and full offline verification.
+- **Follow-up:** “Make sure we all deploy all fixes we did earlier” authorizes
+  deployment of the cumulative verified release, including D-121 and D-122,
+  after publication and release checks. Keep the bot stopped; this is not a
+  trading restart or permission to include unfinished/unverified work.
+- **Boundary:** No trading restart, no new entries/liquidation,
+  no risk or selection changes. Retry only a reevaluation key after durable
+  NOT_SENT proof; ambiguous/SENDING commands keep existing recovery behavior.
+
 ### D-121 — Repair startup recovery and slow risk-pair refill
 
 - **Status:** ACCEPTED, 2026-09-24.

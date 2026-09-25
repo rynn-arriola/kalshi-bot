@@ -1,5 +1,50 @@
 # Findings — kalshi-bot
 
+## 185. Live withdrawal triggered, but quota refresh ended the run — 2026-09-24
+
+**MEASURED:** Current supervisor-run logs from 22:40:11 to 23:34:39 ET contain
+24 `fill_risk_withdrawal` events (7 in the first trading child, 17 in the last).
+The final child's historical telemetry contains 36 cancellation samples and a
+157.989-second p95 decision-to-ACK budget. These samples include scheduling and
+reconciliation delay, not just venue/network time. The signed account read at
+23:40:06 ET found no fills since that run start, 28 resting entries and no
+nonzero positions. No observed fills is not proof that withdrawal prevented
+them, a calibrated escape probability, or profitability evidence.
+Across 131 matched mutation send/ACK events (all command types, not cancels
+alone), the median is 0.258 seconds, p95 0.362 seconds and maximum 0.503 seconds.
+That interval excludes earlier scheduling and later reconciliation; it must not
+be substituted for the much larger decision-to-cancel budget.
+
+**VERIFIED source reproduction; live attribution supported by timing/frames:**
+At 22:54:40.697 ET quota refresh completed; at 22:54:41.147 the first trading
+child failed in `check_permit`'s missing-permit branch. At 23:34:33.638 another
+refresh started; at 23:34:33.891 the last child failed in the quota-unavailable
+branch before transport. The guard intentionally revokes outstanding permits
+during refresh. The dispatcher only handled base expiry/429, not observed-source
+refresh states or a completed replacement. Actual owner/writer fixture tests
+reproduce both failures before the fix and pass after it. The production ledger's
+last two creates were already NOT_SENT; it was not modified during investigation.
+Raw exception reasons are not logged, so the exact historical reason text is
+inferred from the source/timeline, not claimed as a captured log field.
+
+**VERIFIED cancellation, separately authorized:** With the bot stopped and all
+three account/process ownership leases held, an exact owned-order cancel-only
+operation acknowledged 28 cancellations (each reduced by 10 contracts). The
+first-to-last send interval was 31.985 seconds, including deliberately conservative
+one-request/second pacing after fresh quota/cost verification. The immediate list
+still returned one row; a separate signed enumeration at 23:46:07 ET returned
+zero resting and zero nonzero positions. Do not attribute the entire operator
+workflow delay to venue reconciliation. No entry, liquidation, restart, ledger
+write or Polymarket operation occurred. Private operation evidence stays ignored.
+The mutation contract was checked against the current official
+[Cancel Order V2 documentation](https://docs.kalshi.com/api-reference/orders/cancel-order-v2).
+
+**Deployment limitation:** This run used canonical `31950e1`/D-120, not the
+published D-121 speed repair `bb1003f`. Those earlier fixes and D-122 remain
+undeployed at the audit. The operator subsequently authorized cumulative source
+deployment while keeping the bot stopped; live latency after a future restart
+remains unverified. STATUS owns release and deployment checks.
+
 ## 184. Startup and risk refill contain avoidable scheduling delays — 2026-09-24
 
 **Correction to Finding 183:** Reaching 30 eventually did not establish an

@@ -1,5 +1,40 @@
 # Current status
 
+## D-122 stopped-account audit and quota-refresh repair — not deployed
+
+**Current operation:** The bot is stopped. The operator explicitly authorized
+canceling all remaining orders and keeping it stopped. The cancel-only operation
+received 28 HTTP 200 acknowledgments; a separate signed account enumeration at
+**2026-09-24 23:46:07 ET** returned **zero resting orders and zero nonzero position
+rows**. No bot start, position-closing trade, ledger edit or source deployment
+was performed. Ignored `data/trader/cancel-stopped-20260925-*.json` retains the
+operation/verification evidence. A future start must reconcile those external
+cancellations through the existing owner; stale saved DRAINING status is not
+current venue exposure.
+
+Finding 185 records two quota-refresh dispatch failures, fill-risk activity and
+the remaining live timing limitation. Isolated `fix/quota-refresh-dispatch`,
+based on published `bb1003f`, repairs pre-send temporary quota loss and completed
+refresh revocation. Only durable NOT_SENT preparations can return to fresh
+reevaluation. The canonical checkout remains clean at `31950e1`; D-121 and this
+repair have **not yet** been deployed. The operator's subsequent instruction
+authorizes deploying all completed verified fixes after the release gate, while
+keeping the bot stopped. No trading restart is authorized by this task.
+
+Focused cancellation/batch regressions and the 293-test fast gate pass. Exact
+source/test review checks both legs, no send under revoked quota, no capacity
+leak, fresh replacement IDs, altered/used permits and preserved SENDING/UNKNOWN
+failure handling. The complete isolated release gate passes **1,771 tests in
+359.882 seconds**, with one expected Windows symlink-privilege skip. Its synthetic
+1,024-book/four-shard run fills 30 in 12.564 seconds, refills in 1.064 seconds,
+and finishes risk withdrawal/refill in 1.216 seconds (0.037-second cancel-pair
+gap). These are fixture results, not promised live latency. Whitespace/secret
+checks and 787 local documentation links pass, excluding four known ignored
+research artifacts. Evidence: ignored `data/quota-refresh-release.log`.
+Publication and the authorized stopped-source deployment are next.
+
+Older deployment and process snapshots below are historical.
+
 ## D-121 startup/recovery/refill repair — isolated source, not deployed
 
 `data/startup-recovery-dev` / `fix/startup-recovery-refill`, based on `31950e1`,
