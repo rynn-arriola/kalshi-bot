@@ -1,5 +1,51 @@
 # Findings — kalshi-bot
 
+## 190. Fill diagnosis recheck: causation unproved; report coupling reproduced — 2026-09-25
+
+**MEASURED:** Read-only ledger evidence for the generation-166 coal-market bid
+shows a post-only ten-contract order at $0.41 acknowledged at 15:29:10.218 UTC,
+filled at 15:32:36.510456 UTC (206.292 seconds later), and received durably at
+15:32:36.642097 UTC. Its recorded fee is zero. There is no cancellation attempt
+for that exact bid. This proves execution before a submitted cancellation, not
+why protection failed to request one or whether cancellation could have won.
+
+**CORRECTION:** The prior explanation attributed the fill to absent pre-entry
+queue scoring and called 117 seconds of `incomplete_order_scope` logs unprotected
+time. Neither causal claim is established. That logged field belongs to the
+managed exit plan; maintenance checks inventory blockers and current source
+joins separately. Two disposable real-owner probes demonstrate the distinction:
+adding only that plan blocker still allows zero-depth withdrawal; invalidating
+the account report suppresses a new withdrawal despite a fresh zero-depth book.
+The latter is a verified coupling, not proof of this particular fill's cause.
+
+**VERIFIED code/API:** Maintenance obtains queue evidence through reward-source
+joins, which require current account, management, metadata and book evidence.
+Exact queue evidence also binds the current report object. Previously latched
+D-121 cancels have a separate exact-order drain path; these probes concern
+detection before latching. The official [queue endpoint](https://docs.kalshi.com/api-reference/orders/get-queue-positions-for-orders)
+returns positions for existing resting orders. Pre-entry protection can only be
+estimated from visible depth, with a race before acceptance. Reference quoting
+already uses cumulative target/5 depth; it does not guarantee continued queue
+protection. More competing full-weight volume can reduce our normalized reward
+share under the [official scoring rules](https://help.kalshi.com/en/articles/13823851-liquidity-incentive-program).
+Both sources were rechecked on September 25.
+
+**Recommendation, not an accepted strategy change:** First design and reproduce
+an order-scoped risk-observation path that is not unnecessarily coupled to reward
+or whole-account renewal, preserving fresh book/queue identity, exact ownership,
+fill/reconnect handling and the sole cancellation writer. Add bounded evidence
+for detection gaps, queue/depth observations and decision-to-send/ACK timing.
+Then evaluate an advisory depth/stability tie-breaker within existing reward
+tiers. Do not introduce an uncalibrated hard depth threshold or rank by raw
+queue size alone. Greater competition and uncertain depth persistence are real
+tradeoffs. Historical pre-fill queue trajectories were not retained, so a sudden
+sweep versus missed earlier warning remains UNKNOWN.
+
+**Verification:** Both new in-memory probes pass, and all 25 existing fill-risk
+tests pass against disposable synthetic fixtures. No trading code, configuration
+or process was changed. At 12:13:47 ET, saved live telemetry reported RUNNING,
+28 resting entries, no positions, a nonfailed engine and healthy logging.
+
 ## 189. Full-cap snapshot refresh bypasses accounting renewal — 2026-09-25
 
 **MEASURED, read-only local telemetry:** At 11:07 ET, generation 164 reported

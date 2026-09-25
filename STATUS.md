@@ -1,5 +1,16 @@
 # Current status
 
+## Fill-risk recommendation recheck — 2026-09-25
+
+Finding 190 corrects the prior causal diagnosis: the 206-second fill is verified,
+but shallow initial protection and 117 seconds of blind monitoring are unproved.
+Two synthetic probes distinguish a harmless plan blocker from actual account-
+report invalidation suppressing new risk detection; 25 existing tests pass.
+Recommended next work is an order-scoped protection design and bounded evidence,
+before deciding whether to change ranking. No strategy change is accepted or
+implemented by this review. At 12:13:47 ET, saved telemetry showed generation
+166 running with 28 entries, no positions and healthy engine/logging.
+
 ## D-126 recovery diagnostics and renewal repair — 2026-09-25
 
 **Published, deployed and running.** The original source task prohibited a

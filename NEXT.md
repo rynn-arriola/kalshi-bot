@@ -1,5 +1,12 @@
 # Active work queue
 
+## Pending decision after fill-risk recheck
+
+1. Finding 190 supersedes the prior shallow-queue causal claim and 117-second
+   protection-gap estimate. Review its recommended order-scoped risk detection
+   and bounded evidence scope before implementation; ranking changes are not
+   yet accepted. Preserve the current reward tiers and thresholds.
+
 ## D-126 recovery renewal and logging
 
 1. Generation 166 is running on published release `1777e41`; do not restart
