@@ -664,6 +664,7 @@ class ExitInputService:
             previous = self.current_result(ticker)
             if previous is not None and previous == result:
                 return previous
+            last = self.results.get(ticker)  # Last publication, even if expired.
             self.results[ticker] = result
             self.publish(terms)
             if ticker not in self.publication_counts and len(self.publication_counts) >= 4096:
@@ -671,8 +672,8 @@ class ExitInputService:
             count = self.publication_counts[ticker] = self.publication_counts.get(ticker,0)+1
             # Routine renewals only move expiry; log first publication, any
             # blocker/tradable change and power-of-two samples (Finding 195).
-            if (previous is None or previous.blockers != result.blockers
-                    or previous.terms.active != terms.active or count & (count-1) == 0):
+            if (last is None or last.blockers != result.blockers
+                    or last.terms.active != terms.active or count & (count-1) == 0):
                 self.diagnostics.emit('exit_inputs_published',market=ticker,generation=generation,
                                       blockers=result.blockers,blocker_count=len(blockers),
                                       count=count)
