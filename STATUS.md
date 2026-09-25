@@ -1,5 +1,32 @@
 # Current status
 
+## Command 1: flat account verified; D-117 deployed — 2026-09-24
+
+The operator invoked Command 1. Before any action, both managed processes were
+absent; the prior recovery child had stopped flat and the parent exhausted its
+restart budget. A fresh direct venue read at 20:31:24 ET confirmed zero resting
+orders and zero positions. No cancellation or liquidation was necessary, and no
+one-off closer was used. This operation does not verify the unfinished automatic
+emergency-command implementation in `data/command1-dev`.
+
+With ownership absent and the checkout clean, canonical master was fast-forwarded
+to tested release `3ba5270`. The supported launcher started parent PID 24752 and
+normal generation 146/PID 43680. At 20:35:12 ET its matching fresh snapshot showed
+eight resting entries, zero positions, current account proof, no accounting/risk
+blockers and healthy logging. All six readers had connected. Ranking completed
+1,024/1,024 in 89.0 seconds after `priority_capacity_met` early release; all four
+acknowledged pairs were in the projected $2+ priority tier. The supervisor moves
+through healthy/recovering during normal account renewal. Full occupancy and
+live cross-market maintenance acceptance are not established yet.
+
+The old generation 144 stopped on `QuotaUnavailable` from the post-prepare
+`write_budget.check_permit` path at 20:22:27 ET. Its recovery canceled the entries
+and reached flat before the parent stopped. D-117 fixes maintenance admission,
+not this quota-expiry failure. Track it separately; no quota/risk bypass or
+unreviewed command-1 code was deployed during this restart.
+
+Older source-only/deployment instructions below are superseded by this operation.
+
 ## D-117 repricing isolation — source fixed, not deployed, 2026-09-24
 
 Finding 179's account-wide maintenance admission gate is now market-local.

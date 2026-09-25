@@ -1,5 +1,20 @@
 # Active work queue
 
+## After Command 1 / D-117 deployment
+
+1. D-117 is deployed on generation 146; do not repeat this restart. Verify actual
+   refill and market-local maintenance behavior from current telemetry, without
+   claiming every historical ranked market is currently executable.
+2. Investigate the old generation's post-prepare `QuotaUnavailable` shutdown:
+   distinguish temporary revoked quota from fatal integrity errors and preserve
+   prepared-command abort/ambiguity semantics. No bypass or automatic retry of
+   uncertain sends. Evidence is in STATUS; this is not fixed by D-117.
+3. Command-1 software remains isolated in `data/command1-dev`; finish its own
+   corrected-environment verification/review before integration. The operator's
+   latest operation needed no flattening because the venue was already flat.
+
+Earlier publication/deployment tasks below are historical, not repeat actions.
+
 ## D-117 release handoff — market-local repricing admission
 
 1. D-117 implementation/review and full release verification are finished;
