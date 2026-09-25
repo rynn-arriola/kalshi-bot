@@ -99,7 +99,7 @@ class TerminalEpisodeArchiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((after.mutation_used, after.intent_used, after.order_used), (1, 1, 0))
         await self.stop()
         self.assertEqual(self.count("SELECT COUNT(*) FROM command_episodes "
-                                    "WHERE state='ARCHIVED'"), 2)
+                                    "WHERE ticker='A' AND state<>'ACTIVE'"), 0)
         self.assertEqual(self.count('SELECT COUNT(*) FROM order_evidence'), 0)
         # A cold start revalidates exact archive digests and hot disjointness.
         await self.start()
@@ -151,8 +151,12 @@ class TerminalEpisodeArchiveTests(unittest.IsolatedAsyncioTestCase):
         await self.stop()
         connection = sqlite3.connect(self.path)
         with connection:
-            connection.execute("UPDATE command_episodes SET state='RETIRED' "
-                               "WHERE state='ARCHIVED'")
+            # Restoring an archived episode row to the hot table must fail closed.
+            archive = connection.execute("SELECT payload FROM command_history_archives").fetchone()[0]
+            import json as _json, zlib as _zlib
+            episode = _json.loads(_zlib.decompress(archive))['episodes'][0]['episode']
+            connection.execute("INSERT INTO command_episodes VALUES (?,?,?,'RETIRED',?)",
+                (episode['id'], episode['subaccount'], episode['ticker'], episode['created_at']))
         connection.close()
         self.writer = LedgerWriter(self.path, command_policy=POLICY)
         with self.assertRaisesRegex(InvalidData, 'ledger startup failed'):
@@ -202,6 +206,24 @@ class TerminalEpisodeArchiveTests(unittest.IsolatedAsyncioTestCase):
                 await self.writer.start()
             self.writer = None
 
+
+    async def test_orphan_fee_bounds_are_swept_but_owned_bounds_kept(self):
+        await self.start()
+        await self.cycle('one')
+        await self.stop()
+        connection = sqlite3.connect(self.path)
+        with connection:
+            connection.executemany('INSERT INTO accounting_fees VALUES (?,?)',
+                [('gone-'+str(i), '0.02') for i in range(10)] + [('one', '0.02')])
+        connection.close()
+        await self.start()
+        await self.cycle('two')
+        self.assertTrue((await self.reserve('three', now=LATER)).reserved)
+        await self.stop()
+        self.assertEqual(self.count("SELECT COUNT(*) FROM accounting_fees "
+                                    "WHERE client_id LIKE 'gone-%'"), 0)
+        await self.start()
+        self.assertFalse(self.writer.failed)
 
     async def test_archival_failure_never_poisons_writer_or_admits_past_limits(self):
         from kalshi_bot.values import InvalidData as Invalid

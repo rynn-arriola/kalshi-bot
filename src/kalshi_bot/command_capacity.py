@@ -157,11 +157,12 @@ def _validate_episode_archive(ledger, row, episodes, seen):
                 raise InvalidData('command episode archive record invalid')
             episode = record['episode']
             episode_id, ticker = identity(episode['id']), identity(episode['ticker'])
+            # D-131: the archived episode row itself leaves the hot table.
             hot = ledger.connection.execute(
-                'SELECT * FROM command_episodes WHERE id=?', (episode_id,)).fetchone()
-            if (hot is None or hot['state'] != 'ARCHIVED' or episode_id in seen['episodes']
-                    or (hot['subaccount'], hot['ticker'], hot['created_at']) !=
-                       (episode['subaccount'], ticker, episode['created_at'])):
+                'SELECT 1 FROM command_episodes WHERE id=?', (episode_id,)).fetchone()
+            if (hot is not None or episode_id in seen['episodes']
+                    or type(episode['subaccount']) is not int
+                    or not isinstance(episode['created_at'], str)):
                 raise InvalidData('command archive episode invalid')
             seen['episodes'].add(episode_id)
             credits = record['credits']
@@ -319,9 +320,10 @@ def _validate_archives(ledger):
         marks = ','.join('?' for _ in episodes)
         retired = ledger.connection.execute(
             f"SELECT COUNT(*) FROM command_episodes WHERE id IN ({marks}) "
-            "AND state IN ('RETIRED','ARCHIVED')",
-            tuple(episodes)).fetchone()[0]
-        if retired != len(episodes):
+            "AND state<>'RETIRED'", tuple(episodes)).fetchone()[0]
+        # A retired episode may later be fully archived (row absent); an
+        # active or unknown-state episode may never own archived evidence.
+        if retired:
             raise InvalidData('command archive episode is not retired')
         marks = ','.join('?' for _ in attempts)
         if ledger.connection.execute(
@@ -588,8 +590,7 @@ def _archive_terminal_episodes(ledger, now, *, min_batch=EPISODE_MIN_BATCH):
             values = rows[name]
             if values:
                 conn.execute(f'DELETE FROM {table} WHERE {column} IN ({_marks(values)})', values)
-        changed = conn.execute("UPDATE command_episodes SET state='ARCHIVED' "
-                               "WHERE id=? AND state='RETIRED'",
+        changed = conn.execute("DELETE FROM command_episodes WHERE id=? AND state='RETIRED'",
                                (record['episode']['id'],)).rowcount
         if changed != 1:
             raise InvalidData('command archive episode state conflict')
@@ -619,6 +620,11 @@ def reclaim_command_capacity(ledger, policy, now):
     ledger.connection.execute("INSERT OR REPLACE INTO meta VALUES "
                               "('command_reclaim_checked_at',?)", (stamp.isoformat(),))
     forced = at_boundary or pressure >= RECLAIM_FORCE
+    # D-131: fee bounds of archived clients are local derived data with no
+    # remaining owner; obligations only read fees of hot intents.
+    ledger.connection.execute(
+        'DELETE FROM accounting_fees WHERE rowid IN (SELECT f.rowid FROM accounting_fees f '
+        'LEFT JOIN intents i ON i.client_id=f.client_id WHERE i.client_id IS NULL LIMIT 4096)')
     archived = _archive_proven_unsent(ledger, 1 if forced else UNSENT_MIN_BATCH)
     archived += _archive_terminal_episodes(ledger, stamp, min_batch=1 if forced else EPISODE_MIN_BATCH)
     return archived

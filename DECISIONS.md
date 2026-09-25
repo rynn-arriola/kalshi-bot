@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-131 — Fix remaining issues 2–9 before deployment
+
+- **Status:** ACCEPTED, 2026-09-25.
+- **Decision owner:** Operator: “Ok fix all 2-9”, “Ok do 2-6 then”, then
+  “Do 2-6 then review it after, then start working on 7-9 then review it”.
+  The operator declined a clarifying question on 7–9, so the recommended
+  conservative options apply: at most 4 concurrent risk-withdrawal cycles;
+  repeat withdrawals are instrumented, not re-tuned, until post-deploy data;
+  finish the explicit-only Command 1 cancel/flatten/restart path.
+- **Scope:** (2) bounded full-recovery history cost, (3) recovery-fill
+  evidence ceiling, (4) entry prepare/abort churn, (5) unbounded episode and
+  fee-bound rows, (6) finish the line-by-line review of remaining modules.
+- **Boundary:** Each group is reviewed before the next. Moving the history proof
+  start forward would change D-035's receipt-provenance rule; that remains an
+  operator decision — this work adds measurement, early warning and cost
+  reductions within existing rules. No live action, deployment or restart.
+
 ### D-130 — Fix remaining engineering queue before deployment
 
 - **Status:** ACCEPTED, 2026-09-25.
