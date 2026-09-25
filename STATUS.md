@@ -1,5 +1,17 @@
 # Current status
 
+## Source review — 2026-09-25
+
+**Review complete; nothing changed.** Finding 196: at 21:48 UTC 3,867 of 3,905
+hot command rows are non-archivable against the 4,096 ordinary-entry boundary,
+growing roughly 80–230 per hour. INFERRED: entries block around 23:00–01:00
+UTC, after which occupancy decays with no error. Order/intent evidence limits
+follow in about 1–2 days. This needs an operator decision. Also found: a
+fill-risk cancel-budget feedback loop (live budget 8.667 s vs 2 s floor) and an
+unpruned in-memory order projection that fails the engine at 4,096 orders per
+account connection. Generation 170 was running with 28 resting entries and no
+positions at 21:43 UTC. No tests were run (documentation only).
+
 ## Overall log review — 2026-09-25
 
 **Review complete; issues queued, not fixed.** Finding 195 audits generation

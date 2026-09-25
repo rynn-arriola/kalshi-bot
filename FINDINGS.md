@@ -1,5 +1,75 @@
 # Findings — kalshi-bot
 
+## 196. Source review: command-ledger entry capacity will run out again — 2026-09-25
+
+**Scope:** Read-only source review plus read-only (`mode=ro`) SQLite counts from
+the live ledger and saved `status.json` at 21:48 UTC. Read in full: `values`,
+`ledger`, `accounting`, `account_release`, `risk`, `orders`, `portfolio`,
+`exits`, `adapters`, `books`, `quoting`, `execution`, `writer`,
+`command_capacity`, `dispatch`, `dispatch_sources`, `runtime`,
+`quote_maintenance`, `fill_risk`, `engine`, `mutation_outcomes`,
+`mutation_transport` and `account.py` lines 1–420. Selection/reward/metadata,
+REST/quota/write budget, transport, supervisor/Windows IPC and live composition
+were checked only by targeted search for capacity-failure sites, not line by
+line. No code, configuration, order, restart or test run.
+
+**P0 — entries will block on `capacity_entries_held` within hours.** VERIFIED
+counts; INFERRED timing. `reserve_entry_capacity` blocks every entry once hot
+`mutation_attempts` reaches the 4,096 ordinary-entry boundary; D-125 archives
+only `NOT_SENT` creates. At 21:48:08 UTC hot mutations were 3,905 (140 held).
+Of these, 3,867 are not archivable: 1,947 ACK creates, 1,793 ACK cancels, 121
+rejected and 6 unknown; only 38 are `NOT_SENT`. Non-archivable rows added per
+UTC hour 15–21 were 166, 160, 232, 160, 128, 94 and 78 (48 minutes). The 229-row
+headroom implies exhaustion around 23:00–01:00 UTC at these rates. Pre-funded
+cancel/reducer credits remain, so existing orders still drain, but no new pair
+can be admitted and occupancy decays silently — the Finding 188 symptom again.
+Further walls follow: `order_evidence` 1,947 used + 56 held and `intents`
+2,069 + 56 against 4,096 each (about 1–2 days at today's ~980 orders), and
+`command_history_archives` 9/128 at roughly one per hour (about 5 days), after
+which even `NOT_SENT` reclamation stops. Keeping all ACK/rejected/unknown rows
+hot is incompatible with continuous churn. Raising limits only delays this;
+archiving exact terminal evidence of retired episodes would need its own
+operator decision and digest/validation contract.
+
+**P1 — fill-risk cancel budget absorbs serialization delay.** VERIFIED code;
+MEASURED live value; HYPOTHESIS effect. `QuoteMaintenance` holds one global
+`cycle`; `_fill_risk` returns without latching a second threatened market while
+a withdrawal cycle exists, and the cycle ends only after terminal/fill proof
+plus a current account report. `_start` sets `_cycle_started` to the first
+warning (`_risk_since`), and `dispatch_result` feeds warning-to-ACK time into
+`FillRisk.cancel_seconds`, whose p95 (floor 2 s, last 128) sets every order's
+withdrawal horizon. Waiting behind another market's cycle/recovery therefore
+widens all horizons. Saved status at 21:43 UTC: `cancel_budget_seconds` 8.667,
+horizons 16.3–17.5 s. Wider horizons can cause more withdrawals and more
+serialization. This is a plausible contributor to the 25.9-second latch delay
+and repeated withdrawals in Findings 194–195; replay two concurrent threats and
+compare budgets measured from latch versus warning before changing policy.
+
+**P2 — account order projection is never pruned.** VERIFIED code; INFERRED
+timing. `AccountCoordinator.order_states` clears only on account reconnect.
+`_store_order` raises at 4,096 distinct orders inside `on_event` /
+`apply_pending_fill`; that exception leaves the engine's private handler, fails
+the engine and ends the runtime. The current account epoch (opened 17:52:36 UTC)
+holds 268 orders; at roughly 70/hour, about 2.4 days of continuous connection
+would trigger it. Frequent restarts currently mask it.
+
+**P3 — lower-severity observations:**
+
+- `execution.py:857` raises `CommandDenied('accounting_lease_stale')` after
+  SENDING without the proven-unsent abort used by the adjacent checks and the
+  batch path; the command is recorded UNKNOWN and the executor stays held. The
+  window is synchronous and narrow.
+- `_ranked_entry_turn` clears `_entry_dirty` before `propose` and does not
+  restore it on a blocked proposal; this confirms the existing refill item.
+- `EventEngine.step` re-marks evaluations while their shard queue is nonempty;
+  a continuously busy shard can starve evaluations (HYPOTHESIS contributor to
+  `book_queue_pending`).
+- `WindowRisk.release_previous` commits with `with ledger.connection` rather
+  than `ledger.transaction()`; callers were not checked for nesting.
+
+No defect was found in matched P&L/cash arithmetic, order-version regression
+checks, exit crossing/IOC direction or the pair reservation transaction.
+
 ## 195. Overall generation-170 log review — 2026-09-25
 
 **Scope:** Local read-only review of child run

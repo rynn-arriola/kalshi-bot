@@ -1,5 +1,21 @@
 # Active work queue
 
+## Source review — capacity wall first (Finding 196)
+
+0. **Operator decision needed now:** entries will hit `capacity_entries_held`
+   within hours; ACK/rejected/unknown command rows are never reclaimed.
+   Recommend exact archival of terminal evidence for retired episodes (same
+   digest/validation model as D-125), covering mutations, intents and order
+   evidence, plus the 128-archive rollover. Raising limits only delays it.
+   Until repaired, expect occupancy to decay; do not restart merely to retry.
+1. Reproduce and measure the fill-risk cancel-budget feedback (global single
+   cycle plus warning-based ACK timing) alongside item 1 below. Budget
+   semantics and concurrent withdrawals are strategy-affecting decisions.
+2. Bound `AccountCoordinator.order_states` (prune terminal, reconciled orders)
+   so a long-connected account stream cannot fail the engine at 4,096 orders.
+3. Make the single-create `accounting_lease_stale` send-edge check use the
+   proven-unsent abort path, matching the batch path.
+
 ## Overall run review — prioritized work saved for later
 
 Finding 195 covers the full current run through 16:07:03 ET and separate later
