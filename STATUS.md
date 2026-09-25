@@ -2,7 +2,7 @@
 
 ## D-128 protective-cancel scheduling repair — 2026-09-25
 
-**Verified source release; not deployed.** Finding 192 reproduces a lost
+**Verified, published and deployed by Command 1.** Finding 192 reproduces a lost
 second-cancel key and premature recovery. Cycle-scoped pending intent now
 survives temporary private/source fences, wakes through existing event/timer
 owners, and prevents false drain completion. Deferred warnings are reevaluated
@@ -27,6 +27,24 @@ No live action or restart occurred. At 13:25:46 ET, generation 168's saved
 telemetry reported RUNNING, 30 resting entries, no positions and healthy logging
 with zero dropped records; its account report was not current at that instant,
 so this is local telemetry, not a fresh venue/account reconciliation.
+
+The operator then invoked `Command 1`. Generation 168 drained 24 resting entry
+orders to zero in about 17 seconds, reached current `STOPPED_FLAT` evidence with
+zero positions/exposure, and both managed processes exited without termination.
+The canonical checkout fast-forwarded to `15b710e`; 135 focused post-deployment
+tests pass. Generation 170 started with build fingerprint
+`a02e1676f8c682bc776db7a94606fc2a02acef56cbe538404611021ca97d3b70`,
+connected all six readers, and completed 1,024/1,024 initial rankings with zero
+missing markets in 84.049 seconds.
+
+At 13:57:04 ET, generation 170 had 20 resting entries, zero positions, current
+account evidence, nonfailed/idle dispatch and healthy logging with zero drops.
+Three live protective withdrawals ACKed all six cancel legs; warning-to-ACK was
+0.345–2.037 seconds and submission-to-durable-ACK was 0.193–0.238 seconds.
+The new bounded path recorded six deferrals and ended with no pending risk drain,
+no duplicate-send indication and no ERROR/CRITICAL event. The supervisor was in
+ordinary mutation recovery at that instant; these initial samples do not prove
+future fill avoidance, constant occupancy or profitability.
 
 ## D-127 order-scoped fill-risk observation — 2026-09-25
 

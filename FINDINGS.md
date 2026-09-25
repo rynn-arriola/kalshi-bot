@@ -37,6 +37,14 @@ blocked second leg without manually submitting another key: ACK-pair gap
 0.510 s, two transport calls, no duplicate and no intervening recovery. This is
 a synthetic scheduler measurement, not a live venue latency guarantee.
 
+**INITIAL LIVE CONTROL:** After Command 1 deployed `15b710e`, generation 170
+completed three risk withdrawals. All six legs have correlated submission and
+durable ACK records; warning-to-ACK ranges 0.345–2.037 seconds and
+submission-to-ACK 0.193–0.238 seconds. Six temporary deferrals were retained,
+the final status has no pending risk drain, and the run has no ERROR/CRITICAL
+event through 13:57:04 ET. This demonstrates the repaired path operating in the
+initial live window, not a future latency bound or fill-avoidance rate.
+
 **Correction/limits:** Observation-gap emission counts are not seconds of blind
 monitoring and do not directly prove the cause of churn. Missing observations
 block that detection path; they do not automatically cancel resting orders.
@@ -44,8 +52,9 @@ Successful queue publication still requires the existing account join, with
 original five-second expiry. D-128 does not loosen it or change reward ranking,
 thresholds, capacity or the latency-based protection horizon. Sparse health
 records with missing order counts are UNKNOWN, not zero occupancy. No absence
-of ERROR logs proves cancellation efficiency. Live improvement remains unmeasured
-until a separately authorized deployment. STATUS owns final verification.
+of ERROR logs alone proves cancellation efficiency. Initial live control evidence
+is recorded above; sustained improvement remains unmeasured. STATUS owns
+deployment and final verification.
 
 ## 191. Order-scoped warning survives report/reward renewal — 2026-09-25
 

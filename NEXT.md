@@ -2,14 +2,15 @@
 
 ## D-128 protective-cancel scheduling repair
 
-1. D-128 is source-verified with the complete release gate and diff review.
-   Deploy only on separate operator instruction; the runtime remains D-127.
-2. After a separately authorized deployment, measure warning-to-latch,
+1. D-128 is published and deployed as generation 170 after Command 1 completed
+   a verified-flat drain. Do not restart merely to prove deployment again.
+2. Continue measuring warning-to-latch,
    latch-to-submit and submit-to-ACK separately, plus retry counts, recovery
    ordering and occupancy. Synthetic success is not a live fill-avoidance rate.
 3. Treat remaining queue-publication/account gaps as unknown coverage, not
    earned rewards or a reason to lengthen queue expiry. Reassess their impact
-   after removing the reproduced scheduling delay.
+   after removing the reproduced scheduling delay. The first three live pairs
+   completed in 0.345–2.037 seconds warning-to-ACK, but the sample is small.
 
 ## D-127 fill-risk observation release
 

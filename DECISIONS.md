@@ -22,6 +22,8 @@ and explicitly withdraws the proposed fixed 60-market pool.
 - **Boundary:** No live action, deployment or restart. Keep exact ownership,
   single-writer/quota fences, reconciliation, queue expiry and strategy unchanged.
   Missing observations are unknown, not permission to cancel or credit rewards.
+- **Later operation:** The operator separately invoked `Command 1`, authorizing
+  the established flat drain and restart. STATUS owns deployment/live evidence.
 
 ### D-127 — Preserve order-scoped fill-risk observation through report renewal
 
