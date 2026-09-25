@@ -1,5 +1,30 @@
 # Current status
 
+## Command 1 completed; D-118 running — 2026-09-24 21:11 ET
+
+The operator invoked Command 1 again. The verified generation-146 owner had
+18 resting entries and no positions. Supported stop was requested at 21:06:39
+ET; its snapshot reached STOPPED_FLAT at 21:06:51, and both managed processes
+exited normally. Direct venue inspection at 21:07:22 confirmed zero orders and
+positions. No forced process termination or liquidation was necessary.
+
+The clean canonical checkout fast-forwarded to tested release `350e073`, and
+the supported live launcher started parent PID 46332 / session
+`fc8bfec072954db7baf7bb45082d1352` and generation 148 / child PID 18684. The
+matching fresh 21:11:26 snapshot shows eight resting entries, zero positions,
+healthy supervisor/logging, all six readers subscribed and no accounting/risk
+blockers. Account proof renews between mutation cycles; it was unavailable in
+that individual snapshot, so this is not a permanent-current-account claim.
+Ranking covered 1,024/1,024; its priority-capacity early release occurred after
+104.45 seconds. All four acknowledged entry pairs were projected $2+ tier.
+The bounded 1,231-event current-run sample through 21:10:53 had no ERROR/CRITICAL
+events. This verifies launch and first orders, not 30-order refill or earnings.
+
+No logic changed during this operation; the existing 1,719-test release gate
+applies. The separate command-1 software worktree remains unfinished/unmodified:
+an operation with an already-flat inventory does not test emergency liquidation.
+Earlier source-only deployment instructions below are superseded.
+
 ## D-118 refresh/quota repair — verified source, not deployed, 2026-09-24
 
 Implementation is in `data/refresh-quota-dev`, branch

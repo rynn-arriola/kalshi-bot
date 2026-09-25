@@ -1,5 +1,16 @@
 # Active work queue
 
+## After Command 1 / D-118 deployment
+
+1. D-118 is deployed on generation 148. Do not repeat the restart. Measure live
+   refill and remaining source-driven deferrals; eight initial orders and full
+   historical ranking coverage do not establish full 30-order occupancy.
+2. Preserve the separate `data/command1-dev` worktree. Its automatic emergency
+   liquidation still needs its own verification/integration; this operation
+   canceled entries with inventory already flat and does not validate that path.
+
+Older deployment instructions below are historical, not repeat actions.
+
 ## D-118 source release — current queue
 
 1. D-118 implementation, review and focused/fast/full verification are finished.

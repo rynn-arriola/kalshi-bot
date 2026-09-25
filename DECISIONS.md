@@ -25,6 +25,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
 - **Boundary:** No widened freshness windows, changed risk/reward policy,
   retry of ambiguous sends, clock/integrity bypass, extra writer or restart.
   Publish verified source separately from the currently running package.
+- **Later operation:** Operator “Command 1” explicitly authorizes the supported
+  cancel/flatten/restart and deployment of verified D-118 release `350e073`.
+  Operational results belong in STATUS; unfinished emergency-command code is
+  not included merely because the command was invoked.
 
 ### D-117 — Market-local repricing admission
 
