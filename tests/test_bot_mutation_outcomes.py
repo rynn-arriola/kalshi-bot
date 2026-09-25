@@ -218,7 +218,11 @@ class OutcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((result.state, result.blockers),
                          ('BLOCKED', ('proof_changed_before_submission',)))
         self.assertEqual((await self.f.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        # D-130: the supervisor's post-turn step owns the fallback; a real
+        # source change (revoke) cannot be re-audited, so recovery is requested.
+        await self.f.source.after_turn(result)
         self.assertTrue(self.f.runtime.recovery_requested.is_set())
+        self.assertEqual(self.f.runtime.unsent_rebases, 0)
         self.assertFalse(self.f.calls)
 
     async def test_failed_ack_persistence_does_not_leave_owner_healthy(self):

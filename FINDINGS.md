@@ -1,5 +1,66 @@
 # Findings — kalshi-bot
 
+## 198. Recovery churn blinded fill-risk checks; D-130 repairs — 2026-09-25
+
+**Scope:** Read-only analysis of generation 170's retained child log (run
+`587e5d6e…`, 17:51:44–22:19:41 UTC, 230,105 records) plus offline repairs.
+
+**MEASURED — recovery occupied 37% of the run.** 1,121 full-recovery starts
+(907 `mutation_persisted`) and 1,048 repaired passes totalling 6,011 s of
+16,077 s. Of the 907 `mutation_persisted` passes, 606 followed a command that
+never reached transport (pre-send proof denial) and 33 a post-send proven
+abort; only 268 followed an ACK. 436 commands reached SENDING. VERIFIED code
+path: every non-failed denial called `after_outcome` → `_revoke()` +
+`request_recovery('mutation_persisted')`, and any prepare/abort advances the
+writer revision, which invalidates the account report.
+
+**VERIFIED — why threats latched late.** At 18:06:34.015 both legs of one
+market showed zero protection ahead (`fill_risk_sample` threat), but four
+back-to-back ~5.5 s recoveries followed and the withdrawal latched only at
+18:06:59.911 (25.9 s). Queue-position reflection requires a current account
+report; each recovery removes it, and the 5 s queue proof then expires
+(`queue_expired`/`queue_missing` gaps). `_start` also refused to latch any
+withdrawal while any command (e.g. another market's entry) was in flight.
+
+**D-130 repairs (offline, verified by regressions that fail when reverted):**
+1. After a turn with no transport call, the dispatch owner re-audits the
+   unchanged venue snapshot at the new writer revision (new read-only writer
+   command) and re-anchors routine renewal. Original observation time and
+   5 s bound are kept; any private ingress, reconciliation, stale snapshot,
+   interleaved write or transport call falls back to the old full recovery.
+2. Every recovery cause joins a pending protective drain before starting a
+   pass (bounded 5 s; never suppressed).
+3. A fill-risk withdrawal latches during another market's command (it still
+   joins a command for its own market).
+4. A continuously busy book shard no longer defers all of its markets'
+   evaluations: one bounded catch-up is applied and the market evaluated
+   only if that drains the queue.
+5. Diagnostics: batch `order_count`/`rejected_count` and two entry-block
+   reasons are retained (a static test now rejects any dropped literal field);
+   maintenance cycle start/finish events with a fixed reason vocabulary;
+   owned markets stay visible (UNKNOWN) while plans are rebuilt, with a
+   coverage summary; routine metadata publications (58% of all log records)
+   are sampled with exact per-market counts.
+
+**Verification:** complete release suite 1,851 tests in 331.1 s, no failures,
+one expected Windows symlink-privilege skip. Synthetic four-shard/1,024-market
+fixture: 30 orders in 10.351 s, refill 0.805 s, risk refill 0.931 s,
+cancel-pair gap 0.040 s (offline only). Three existing tests that encoded the
+old behavior were updated deliberately (engine stale-book wait, send-edge
+UNKNOWN, recovery request timing).
+
+**Reviewed, no change:** the lost entry retry (existing recovery, renewal,
+dispatch-result and maintenance wakes re-arm it; blocked proposals are
+intentionally not hot-looped); five startup `/markets` 429s (adaptive pacer
+recovered within 6 s; no documented unauthenticated limit to target).
+
+**Open (not fixed):** full recovery still re-enumerates all fills since the
+opening boundary inside a 5 s evidence token; fine at 34 fills, unbounded over
+time. Remaining modules (supervisor/Windows IPC, selection/ranking, rewards,
+incentives, REST/quota internals, startup wiring) were not all read line by
+line. Live effect of these repairs is a HYPOTHESIS until measured after an
+authorized deployment.
+
 ## 197. D-129 repairs for Finding 196 — 2026-09-25
 
 **P0 capacity:** Reproduced offline: a tiny-policy ledger with two terminal,

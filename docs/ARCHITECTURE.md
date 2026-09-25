@@ -1,5 +1,15 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+D-130 separates proven-unsent local writes from venue change. After a
+dispatcher turn in which no command reached transport, the sole dispatch owner
+asks the writer for a read-only audit of the unchanged venue snapshot at the
+new revision and re-anchors routine renewal; the snapshot keeps its original
+five-second bound and the lease is untouched. Private ingress, reconciliation,
+interleaved writes or any transport call keep the ordinary full recovery.
+Recovery passes join a pending protective drain (bounded 5 s). A risk
+withdrawal may latch during another market's command. Busy shards receive one
+bounded ordered catch-up before a market evaluation is deferred.
+
 D-127 gives maintenance an immutable, bounded cancellation-only copy of the
 existing validated queue read before reward joins. Current exact owned inventory,
 private continuity, fresh books and original queue expiry still bind each use;

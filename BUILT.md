@@ -1,5 +1,15 @@
 # What exists
 
+## Recovery-churn and visibility repairs — D-130
+
+Proven-unsent dispatcher turns re-audit the unchanged account snapshot (new
+read-only writer `reaudit`) instead of forcing full recovery; recovery joins a
+pending protective drain; risk withdrawals latch during other markets'
+commands; busy shards get a bounded catch-up before deferring evaluation.
+Diagnostics retain batch counts and entry-block reasons, log maintenance
+cycles, keep owned markets visible and sample routine metadata publications.
+See Finding 198 and STATUS; not deployed.
+
 ## Terminal-episode command archive and Finding 196 repairs — D-129
 
 The ledger writer now also archives exact command evidence of retired, flat,

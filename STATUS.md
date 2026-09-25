@@ -1,5 +1,19 @@
 # Current status
 
+## D-130 pre-deployment repairs — 2026-09-25
+
+**Implemented and verified offline; not deployed (operator: fix all before
+restarting).** Finding 198: in generation 170 full recovery ran 37% of the
+time, 70% of passes triggered by commands that never reached the exchange,
+blinding queue-based fill-risk checks and blocking entries. Repairs: re-audit
+instead of full recovery after proven-unsent turns, recovery waits for a
+pending protective drain, risk latch during other markets' commands, busy-shard
+catch-up evaluation, retained diagnostic fields, maintenance visibility and
+sampled metadata logs. D-129 (Finding 197) ships with them. Concurrent risk
+withdrawals and ranking/threshold changes remain operator decisions. The live
+bot still runs the old code and is expected to be capacity-blocked for new
+entries until deployment; it continues safe cancellation.
+
 ## D-129 Finding 196 repairs — 2026-09-25
 
 **Verified and published; not deployed.** Terminal-episode command archival

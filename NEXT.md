@@ -1,16 +1,18 @@
 # Active work queue
 
-## D-129 deployment and follow-up (Findings 196–197)
+## Deploy D-129 + D-130 together (Findings 196–198)
 
-1. **Awaiting operator authority:** deploy D-129 through the supported
-   Command 1/restart path. Until then entries will block on capacity. After
-   deployment, verify the first reclamation in live logs/status, hot counters
-   below the 75% trigger, unchanged financial evidence and continued refill.
-2. Measure withdrawal frequency and `latch_ms` vs `elapsed_ms` after
-   deployment; the single global withdrawal cycle is unchanged, and allowing
-   concurrent risk withdrawals would be a separate operator decision.
-3. Still open from Finding 196: `_ranked_entry_turn` dirty-flag retry (see
-   refill item 3) and possible evaluation starvation on a busy shard.
+1. **Awaiting operator authority:** Command 1/restart deploys both. After
+   deployment verify: first terminal-episode archival and counters below 75%;
+   `account_rebased_unsent` events replacing most `mutation_persisted`
+   recoveries; recovery time share well below 37%; `latch_ms` vs
+   `elapsed_ms`; `awaiting_risk_drain` waits; withdrawal frequency; refill.
+2. **Operator decisions pending:** concurrent risk withdrawals (still one
+   global cycle) and any ranking/threshold change for repeated withdrawals.
+3. Open engineering: bound full-recovery history re-enumeration (receipt
+   chain instead of opening boundary); finish line-by-line review of the
+   supervisor/Windows, selection/ranking, rewards/incentives and REST/quota
+   modules (Finding 198 scope note).
 
 ## Overall run review — prioritized work saved for later
 
