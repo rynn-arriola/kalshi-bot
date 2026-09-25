@@ -68,6 +68,11 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
                              [1, 2, 4, 8, 16, 32, 64, 128, 256, 512])
         self.assertEqual(self.source.entry_block_counts['entry_send_proof_changed'], 1000)
         self.assertEqual(self.source.last_entry_block['details'], ['book_queue_pending'])
+        # D-131: exact per-detail counts, not only power-of-two log samples.
+        self.assertEqual(self.source.entry_block_detail_counts, {'book_queue_pending': 1000})
+        for index in range(100):
+            self.source._record_entry_block('A', 'x', (f'd{index}',))
+        self.assertEqual(len(self.source.entry_block_detail_counts), 64)  # Bounded.
 
     async def books(self):
         for name, shard in self.runtime.engine.shards.items():

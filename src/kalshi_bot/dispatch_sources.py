@@ -58,6 +58,8 @@ class InventoryDispatchSource:
         self._stopped = False
         self.last_entry_block = None
         self.entry_block_counts = {}
+        # D-131: exact counts per detail reason (fixed vocabulary, bounded).
+        self.entry_block_detail_counts = {}
         self._paused_cancel_notice = None
         self._risk_cancel_notice = None
         # Scheduling intent only, never execution authority. A popped key is
@@ -559,6 +561,11 @@ class InventoryDispatchSource:
             details=list(details), observed_at=utc(self.runtime.now()).isoformat(),
             historical_only=True)
         self.entry_block_counts[reason] = self.entry_block_counts.get(reason, 0)+1
+        for detail in details:
+            if (detail in self.entry_block_detail_counts
+                    or len(self.entry_block_detail_counts) < 64):
+                self.entry_block_detail_counts[detail] = (
+                    self.entry_block_detail_counts.get(detail, 0)+1)
         count = self.entry_block_counts[reason]
         # Keep exact counters in status, representative explanations in logs.
         # A moving public book can reject many candidates in a single second.

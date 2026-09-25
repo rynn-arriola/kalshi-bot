@@ -140,4 +140,5 @@ class DispatchSupervisor:
             last_outcome=self.last_outcome, last_entry_block=self.source.last_entry_block,
             risk_drain_pending=self.source.risk_drain_pending,
             risk_cancel_deferrals=self.source.risk_cancel_deferrals,
-            entry_block_counts=dict(self.source.entry_block_counts))
+            entry_block_counts=dict(self.source.entry_block_counts),
+            entry_block_detail_counts=dict(self.source.entry_block_detail_counts))
