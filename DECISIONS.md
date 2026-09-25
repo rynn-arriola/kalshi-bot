@@ -22,6 +22,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
 - **Boundary:** No running-package update, bot restart, order/account action,
   new poller, freshness relaxation or strategy/risk change. Unknown reward
   periods and actual payouts remain separate from estimated accrual.
+- **Follow-up deployment authority:** After release verification and publication,
+  the operator separately invoked `Command 1`. That authorizes only the existing
+  supported drain, verified deployment and restart; it does not expand D-126's
+  strategy, risk, freshness or reward-accounting scope.
 
 ### D-125 — Archive proven-unsent command evidence at the entry boundary
 

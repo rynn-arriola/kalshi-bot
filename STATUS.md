@@ -2,12 +2,13 @@
 
 ## D-126 recovery diagnostics and renewal repair — 2026-09-25
 
-**Verified release; not deployed.** The operator explicitly prohibits restart.
-`data/recovery-diagnostics-dev` / `fix/recovery-diagnostics` contains a full-cap
-renewal-priority repair and bounded diagnostics. The canonical running checkout
-remains at `e5e3bdd`, generation 164. Finding 189 distinguishes the reproduced
-defect from necessary post-mutation recovery; the prior aggregate attempt count
-is not a count of failures or proof of why every order vacancy occurred.
+**Published, deployed and running.** The original source task prohibited a
+restart. The operator later invoked `Command 1`, independently authorizing the
+supported drain/deploy/restart after release verification. Commit `1777e41`
+contains the full-cap renewal-priority repair and bounded diagnostics. Finding
+189 distinguishes the reproduced defect from necessary post-mutation recovery;
+the prior aggregate attempt count is not a count of failures or proof of why
+every order vacancy occurred.
 
 Full-cap trading renewal now uses the existing empty-tail/accounting-release
 path before the snapshot-only scheduling optimization. Temporary reward quota
@@ -15,8 +16,7 @@ loss suspends current proof and retains only bounded historical interpolation
 endpoints. Readable recovery reasons/stages, minute health summaries, sampled
 entry rejections, quota deferral/resumption, checkpoint failures and all four
 book shard names use the existing safe structured sink. No API, schema, strategy,
-risk, retry, source-age or retention limit changes. Live improvement requires
-a later authorized deployment.
+risk, retry, source-age or retention limit changes.
 
 The 307-test fast gate and 37 focused logging tests pass. The final complete
 release gate runs **1,794 tests in 335.894 seconds**, with no failures and one
@@ -31,11 +31,21 @@ branch ordering; the repaired real-owner 30-order timer fixture passes twice.
 Exact source/test diff review, staged whitespace and secret-pattern checks pass.
 The local-link audit checks 789 references, with only four pre-existing ignored
 research artifacts absent in isolation. No known blocking issue remains in this
-scoped release. The canonical source remains clean at `e5e3bdd`; live PID 50868
-still has its original 09:27:45 start time and reported 30 resting orders with
-zero positions at 11:19 ET. No live source, configuration or ledger was modified.
-Publish this release under D-065; parity refers to this isolated release checkout
-and GitHub, not the intentionally older running checkout.
+scoped release. Local, origin and GitHub parity were verified at `1777e41`.
+
+Command 1 drained generation 164 from 28 resting orders to zero, confirmed zero
+positions throughout, and stopped its child and parent in approximately 18
+seconds. The canonical checkout was fast-forwarded to `1777e41`; 54 focused
+post-deployment tests pass. Generation 166 then started under parent launch
+`3ee80740-246a-4a57-bb20-ca5a9e25a958`, child PID 37908 and diagnostic run
+`42eccbfd87c54673b96bdd65a8260cca`. All six WebSocket readers subscribed and
+initial ranking completed 1,024/1,024 markets in 83.3 seconds. Resting orders
+rebuilt from zero to 28 with zero positions. Thirty routine account refreshes
+completed with zero escalation, confirming the repaired branch is active. The
+run has no ERROR/CRITICAL event; six startup REST 429 retries all recovered.
+The final pair remained safely deferred by queued/changed public-book proof at
+the observation time. Twenty-eight is a live observation, not a changed cap or
+guarantee of constant occupancy.
 
 ## D-125 command-capacity archive repair — 2026-09-25
 

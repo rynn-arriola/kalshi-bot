@@ -27,10 +27,19 @@ stage and outcome vocabularies, records checkpoint failures and samples repeated
 entry blocks. Quota deferral removes operational reflection proof but retains
 the old bounded endpoint; a six-second gap test remains entirely UNKNOWN.
 
-**Limitations:** This is source verification, not proof of improved live rates,
-fill avoidance, minimum reward attainment or actual payouts. The current bot and
-its ledger are untouched. Historical generic logs cannot attribute every prior
-recovery request. STATUS owns final verification and publication state.
+**MEASURED deployment:** A later, separately authorized Command 1 operation
+drained 28 orders to zero with no position, deployed `1777e41`, and started
+generation 166. Its first observed 30 routine refreshes completed with zero
+escalations. All six readers subscribed, 1,024 markets were ranked and 28 orders
+were rebuilt with zero positions. Six startup REST 429 retries recovered; no
+ERROR/CRITICAL event was present at the observation time.
+
+**Limitations:** The initial source task left the live bot untouched; the later
+Command 1 provided distinct deployment authority. Early live evidence is not
+proof of indefinite uptime, fill avoidance, minimum reward attainment, actual
+payouts or constant 30-order occupancy. Historical generic logs cannot attribute
+every prior recovery request. STATUS owns final verification and publication
+state.
 
 ## 188. Deferred command-history rollover blocked every new entry — 2026-09-25
 

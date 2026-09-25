@@ -2,10 +2,12 @@
 
 ## D-126 recovery renewal and logging
 
-1. Keep generation 164 running unchanged; do not deploy or restart for this task.
-2. After a separately authorized deployment, compare full recovery reasons,
-   routine renewal counts, order occupancy, reward coverage and quota deferrals.
-   Offline regression success does not establish sustained live improvement.
+1. Generation 166 is running on published release `1777e41`; do not restart
+   merely to prove the deployment again.
+2. Monitor sustained full-recovery reasons, routine renewal escalation count,
+   order occupancy, reward coverage, quota deferrals and public-book proof churn.
+   Initial live and offline regression success do not establish indefinite
+   improvement or guaranteed 30-order occupancy.
 3. Actual Kalshi reward credits still need independent verification; UNKNOWN
    tracking intervals must not be reconstructed as earned rewards.
 
