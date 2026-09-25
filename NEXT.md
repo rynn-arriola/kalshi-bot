@@ -2,10 +2,9 @@
 
 ## D-127 fill-risk observation release
 
-1. D-127's source repair and release verification are complete. Deployment and
-   restart await separate operator authority; the running checkout is unchanged.
-   STATUS records the full gate and isolated release location.
-2. After an authorized deployment, inspect fresh queue/gap and decision-to-
+1. D-127 is published, deployed and running as generation 168. Do not restart
+   merely to prove deployment again.
+2. Inspect fresh queue/gap and decision-to-
    attempt/ACK evidence. Synthetic success is not a measured live fill-avoidance
    rate. Any depth/stability ranking change remains undecided; preserve current
    reward tiers and thresholds.

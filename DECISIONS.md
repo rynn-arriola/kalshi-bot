@@ -23,6 +23,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
 - **Boundary:** No ranking, depth threshold, reward, price, risk-limit or queue
   lifetime changes. Keep the sole writer and terminal/fill reconciliation.
   No deployment, live account action or restart in this source task.
+- **Follow-up deployment authority:** After release verification and publication,
+  the operator separately instructed “Restart.” Under D-112 this authorized the
+  supported exact-owner drain, deployment of `221a85a` and replacement launch;
+  it did not expand D-127's strategy, limits or evidence lifetime.
 
 ### D-126 — Recovery renewal repair and useful bounded diagnostics
 

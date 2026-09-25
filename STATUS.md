@@ -2,9 +2,9 @@
 
 ## D-127 order-scoped fill-risk observation — 2026-09-25
 
-Verified in the isolated `data/order-risk-dev` worktree; not deployed or
-restarted. Successful existing queue reads now seed maintenance-owned immutable
-anchors before reward joins. Exact current owned-order/book evidence can detect
+**Published, deployed and running.** Successful existing queue reads now seed
+maintenance-owned immutable anchors before reward joins. Exact current
+owned-order/book evidence can detect
 a threat during report or metadata renewal without extending queue lifetime.
 Entry, reward accounting and terminal/fill reconciliation keep their original
 gates. Bounded diagnostics record queue/depth samples, fixed gap reasons,
@@ -24,11 +24,23 @@ These are offline measurements, not live latency promises. Ignored
 Exact source/test diff review, staged whitespace and secret-pattern checks pass.
 The local-link audit checks 793 references, with only four pre-existing ignored
 research artifacts absent in isolation. No known blocking issue remains in this
-scoped source release. D-065 publication does not deploy it: the runtime checkout
-is deliberately left at `5cf92c5`, with the previously launched D-126 process
-untouched. No production state was changed. This is not evidence that the
-historical fill could have been avoided, nor a live escape-rate guarantee.
-Finding 191 owns the evidence.
+scoped source release. Source publication initially left the runtime checkout at
+`5cf92c5`. The operator then separately instructed
+“Restart,” authorizing D-112's supported operation. Generation 166 drained from
+30 resting entries to zero, reported `STOPPED_FLAT`, and both exact managed
+processes exited. The canonical checkout fast-forwarded to `221a85a`; 79 focused
+post-deployment tests pass. Generation 168 started under parent launch
+`02b44f47-3653-4cc6-91c8-815d32de5402`.
+
+At 12:47:00 ET, generation 168 had completed all 1,024 ranking evaluations in
+71.060 seconds with no missing markets. All six readers were subscribed, all
+four shard failure counts and reward-reflection failures were zero, dispatch and
+logging were healthy, and logging had dropped zero records. It had zero positions
+and 20 resting entries after reaching 24: two threatened pairs had exercised the
+new withdrawal path, producing four cancel-ACK samples, while ordinary refill/
+reconciliation continued. This is an initial live control observation, not a
+guarantee of constant occupancy, profitability or future fill avoidance.
+Finding 191 owns the source evidence.
 
 ## Fill-risk recommendation recheck — 2026-09-25
 
