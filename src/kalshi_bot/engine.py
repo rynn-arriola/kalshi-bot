@@ -272,6 +272,11 @@ class EventEngine:
                 shard = self.shards[owner]
                 if shard.failed or ticker not in shard.books:
                     continue
+                # Awaited work may receive a private update or a stop: defer
+                # before any catch-up (which fails closed on a stopped owner).
+                if self.private or self.stopped:
+                    self.dirty.mark(ticker)
+                    continue
                 if self.public[owner]:
                     # D-130: a continuously busy shard must not postpone all of
                     # its markets. Apply one bounded ordered batch (the same
@@ -286,10 +291,6 @@ class EventEngine:
                     shard = self.shards[owner]
                     if shard.failed or ticker not in shard.books:
                         continue
-                # Awaited work may receive a private update: defer entry decisions.
-                if self.private or self.stopped:
-                    self.dirty.mark(ticker)
-                    continue
                 await self.evaluate(ticker, shard.books[ticker], shard.generation)
                 self.decisions += 1
                 # Ranking/Decimal work may have no internal await. Give readers,

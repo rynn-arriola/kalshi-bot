@@ -34,7 +34,9 @@ class UnsentRebaseTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_proven_unsent_command_rebases_report_without_full_recovery(self):
         before = self.r.writer.revision
-        await self.denied_turn()
+        with patch.object(self.r.rewards, 'request_reflection') as rejoin:
+            await self.denied_turn()
+        rejoin.assert_called_once_with()  # Reward join rebinds immediately.
         self.assertGreater(self.r.writer.revision, before)  # prepare + abort
         self.assertFalse(self.r.recovery_requested.is_set())
         current = self.r.account.current_report(self.r.now())

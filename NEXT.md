@@ -2,7 +2,11 @@
 
 ## Deploy D-129 + D-130 together (Findings 196–198)
 
-1. **Awaiting operator authority:** Command 1/restart deploys both. After
+1. **Awaiting operator authority (bot left running by request):** deploy
+   only through Command 1/supported restart — stop to verified flat, back up
+   `account.db` (integrity-checked), fast-forward the canonical checkout,
+   start. Never update the checkout under a running bot (fingerprint and
+   lazy-import hazards, Finding 199); rollback after trading is unsupported. After
    deployment verify: first terminal-episode archival and counters below 75%;
    `account_rebased_unsent` events replacing most `mutation_persisted`
    recoveries; recovery time share well below 37%; `latch_ms` vs

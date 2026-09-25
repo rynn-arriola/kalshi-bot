@@ -1,5 +1,15 @@
 # Current status
 
+## Pre-deployment review — 2026-09-25
+
+**D-129 + D-130 reviewed, repaired and verified; published, not deployed.**
+Finding 199: three review defects fixed (stop-during-evaluation engine
+failure, archive housekeeping able to poison the writer, delayed reward
+rejoin after rebase). Complete release gate 1,853 tests, no failures. The
+operator asked to leave the bot running: the canonical checkout and running
+generation 170 were not touched. Deploy only via stop → fast-forward → start
+with a pre-start ledger backup; do not update files under a running bot.
+
 ## D-130 pre-deployment repairs — 2026-09-25
 
 **Implemented and verified offline; not deployed (operator: fix all before

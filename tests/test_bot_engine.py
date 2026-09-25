@@ -367,6 +367,28 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.engine.shards["a"].books["A"].revision, 11)
         self.assertGreaterEqual(self.engine.evaluation_catchups, 1)
 
+    async def test_stop_during_evaluation_is_not_an_engine_failure(self):
+        # D-130 review: a stop while one market is evaluated must still defer,
+        # not turn the next market's catch-up into an engine failure.
+        self.engine.submit_book("a", snapshot(), generation=self.ga)
+        self.engine.submit_book("b", {**snapshot("B"), "sid": 2}, generation=self.gb)
+        self.engine.cursor = 0
+        await self.engine.step()
+        self.engine.cursor = 1
+        await self.engine.step()
+        self.calls.clear()
+        self.engine.submit_book("a", delta(2), generation=self.ga)
+        self.engine.dirty.mark("B")
+        self.engine.dirty.mark("A")
+        async def stopping(ticker, book, generation):
+            self.calls.append(("quote", ticker))
+            self.engine.stopped = True  # engine.stop() from another task.
+        self.engine.evaluate = stopping
+        self.engine.cursor = 1
+        await self.engine.step()
+        self.assertFalse(self.engine.failed)
+        self.assertEqual(self.calls, [("quote", "B")])
+
     async def test_catch_up_never_overtakes_private_work(self):
         self.submit()
         await self.engine.step()

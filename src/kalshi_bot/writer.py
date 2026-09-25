@@ -80,6 +80,7 @@ class LedgerWriter:
         self._accounting_prepared = None
         self._accounting_enabled = live_session is not None
         self._max_backlog_observed = 0
+        self._reclaim_failures = 0
         self._thread = Thread(target=self._run, name="kalshi-ledger", daemon=False)
 
     @property
@@ -1008,6 +1009,8 @@ class LedgerWriter:
         try:
             ledger = Ledger(self.path)  # Construct/use/close on this thread only.
             validate_capacity(ledger, self.command_policy)
+            from .command_capacity import reclaim_failures
+            self._reclaim_failures = reclaim_failures(ledger)
             self._accounting_enabled = bool(ledger.connection.execute(
                 'SELECT 1 FROM accounting_baseline WHERE id=1').fetchone())
             self._ready.set_result(None)
@@ -1047,6 +1050,12 @@ class LedgerWriter:
                     if command not in read_only and command not in post_revision:
                         self._revision += 1
                     result = self._execute(ledger, command, args)
+                    if command in {'reserve_entry', 'reserve_entry_pair'}:
+                        from .command_capacity import reclaim_failures
+                        failures = reclaim_failures(ledger)
+                        if failures != self._reclaim_failures:
+                            self._reclaim_failures = failures
+                            self.diagnostics.emit('command_reclaim_failed', count=failures)
                     if command in {'reserve_entry', 'reserve_entry_pair', 'prepare_cancel',
                                    'prepare_reduction', 'capture_accounting',
                                    'release_accounting'}:

@@ -1,5 +1,52 @@
 # Findings — kalshi-bot
 
+## 199. Pre-deployment review of D-129/D-130 — 2026-09-25
+
+**Scope:** Exact review of every source change since `b8ef3a8`, plus a fresh
+disposable copy of the live ledger. No live action; the canonical runtime
+checkout was not modified.
+
+**Defects found and fixed (each reproduced by a failing test first):**
+- The busy-shard catch-up ran the engine's fail-closed owner check before the
+  existing stop/private deferral, so a normal stop landing during a market
+  evaluation would have been recorded as an engine failure. The deferral now
+  precedes catch-up.
+- Command-archive housekeeping ran inside the entry reservation; any
+  unexpected validation error would have poisoned the sole ledger writer and
+  stopped the bot. It now runs in its own savepoint; a failure rolls back only
+  the archive attempt, is counted process-locally, emits
+  `command_reclaim_failed`, retries after 60 s, and ordinary capacity limits
+  still bound entries.
+- After a rebase, reward-scoring joins (bound to the exact report object)
+  would read UNKNOWN until the next timer; the rebase now requests an
+  immediate rejoin, as routine renewal does. Fill-risk queue anchors were
+  already independent of report identity.
+
+**Checked, no change needed:** rebase never extends the accounting lease or
+the snapshot's 5 s bound; the report is already non-current between prepare
+and abort, so deferring the fallback recovery to the post-turn step exposes
+no stale proof; routine renewal/recovery in progress owns the gap; transport
+invocations, failed owners and ACK/REJECTED/UNKNOWN turns keep the old path;
+archived episodes carry no fills, positions or pending evidence, so cash,
+settlement, history and audit paths are unaffected.
+
+**Deployment constraints (VERIFIED):** the supervisor recomputes the build
+fingerprint from the package files and refuses an automatic child respawn on
+mismatch, and the running child imports some modules lazily. Updating the
+canonical checkout while the bot runs could therefore mix code versions or
+turn an automatic crash recovery into an attention stop. Deploy only through
+the supported stop → fast-forward → start path. Once a version-2 archive or
+`ARCHIVED` episode exists, pre-D-129 code cannot open the ledger; take the
+usual integrity-checked backup before the first start, and treat rollback
+after trading as unsupported.
+
+**Verification:** fresh production-ledger copy (3,990/2,119/1,981 hot use):
+first pass archived 182 rows in 248 ms; `integrity_check` ok; financial,
+risk, accounting and history hash unchanged; cold writer start validated.
+Complete release suite: 1,853 tests in 340.7 s, no failures, one expected
+Windows symlink-privilege skip. Synthetic fixture: 30 orders in 10.094 s,
+refill 0.829 s, risk refill 0.992 s, cancel-pair gap 0.03 s (offline only).
+
 ## 198. Recovery churn blinded fill-risk checks; D-130 repairs — 2026-09-25
 
 **Scope:** Read-only analysis of generation 170's retained child log (run

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 import json
+import time
 from uuid import uuid4
 import zlib
 
@@ -38,6 +39,9 @@ _CANCEL_PHASES = frozenset({'ACK', 'REJECTED', 'UNKNOWN', 'NOT_SENT'})
 _INTENT_STATES = frozenset({'TERMINAL', 'REJECTED', 'ABORTED'})
 _AUTH_STATES = frozenset({'ACK', 'REJECTED', 'UNKNOWN', 'ABORTED'})
 _CREDIT_STATES = frozenset({'SPENT', 'RELEASED'})
+# Process-local housekeeping state, touched only by the single writer thread.
+_RECLAIM_STATE = {'failures': 0, 'retry_at': 0.0}
+_monotonic = time.monotonic
 _PREFIX = {1: b'kalshi-command-archive-v1\0', 2: b'kalshi-command-archive-v2\0'}
 
 
@@ -620,6 +624,11 @@ def reclaim_command_capacity(ledger, policy, now):
     return archived
 
 
+def reclaim_failures(ledger=None):
+    """Process-local count of isolated archive failures (diagnostics only)."""
+    return _RECLAIM_STATE['failures']
+
+
 def validate_capacity(ledger, policy=DEFAULT_POLICY, *, full=True):
     if full:
         _validate_archives(ledger)
@@ -737,7 +746,17 @@ def reserve_entry_capacity(ledger, policy, request, now):
     ticker, scope, client = request['ticker'], request['subaccount'], request['client_order_id']
     episode = _active_episode(ledger, scope, ticker)
     total_need, _ = _requirements(policy, episode is None)
-    reclaim_command_capacity(ledger, policy, now)
+    if _monotonic() >= _RECLAIM_STATE['retry_at']:
+        try:
+            # Housekeeping in its own savepoint: a failure rolls back only the
+            # archive attempt, is counted (process-local, not transactional)
+            # and never poisons the writer. The unchanged capacity checks
+            # below still bound entries; retry after a cooldown.
+            with ledger.transaction():
+                reclaim_command_capacity(ledger, policy, now)
+        except InvalidData:
+            _RECLAIM_STATE['failures'] += 1
+            _RECLAIM_STATE['retry_at'] = _monotonic()+RECLAIM_CHECK_SECONDS
     current = {resource: (_used(ledger, resource), _held(ledger, resource))
                for resource in RESOURCES}
     blockers = []

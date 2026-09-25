@@ -672,6 +672,10 @@ class RecoveryRuntime:
             self._record_steady_account_scope(rebased)
             self.unsent_rebases += 1
             self._entry_dirty = True  # One fresh ranked turn; never a hot loop.
+            if self.rewards is not None:
+                # Reward joins bind the exact report object; rejoin now, as
+                # routine renewal does, instead of waiting for the timer.
+                self.rewards.request_reflection()
         self.diagnostics.emit('account_rebased_unsent',
             outcome='recovered' if (rebased is not None or anchored) else 'source_changed')
         return rebased is not None or anchored

@@ -203,6 +203,27 @@ class TerminalEpisodeArchiveTests(unittest.IsolatedAsyncioTestCase):
             self.writer = None
 
 
+    async def test_archival_failure_never_poisons_writer_or_admits_past_limits(self):
+        from kalshi_bot.values import InvalidData as Invalid
+        await self.start()
+        await self.cycle('one')
+        await self.cycle('two')
+        state = dict(command_capacity._RECLAIM_STATE)
+        try:
+            with mock.patch.object(command_capacity, '_archive_terminal_episodes',
+                                   side_effect=Invalid('synthetic archive fault')):
+                denied = await self.reserve('three', now=LATER)
+            self.assertEqual(denied.blockers, ('capacity_entries_held',))
+            self.assertFalse(self.writer.failed)
+            self.assertEqual(command_capacity.reclaim_failures(), state['failures']+1)
+            # After the cooldown the next reservation archives normally.
+            command_capacity._RECLAIM_STATE['retry_at'] = 0.0
+            admitted = await self.reserve('four', now=LATER+timedelta(minutes=1))
+            self.assertTrue(admitted.reserved, admitted.blockers)
+        finally:
+            command_capacity._RECLAIM_STATE.update(state)
+
+
 class OrderProjectionTests(unittest.TestCase):
     def test_terminal_reconciled_orders_do_not_exhaust_projection(self):
         from kalshi_bot.account import AccountCoordinator
