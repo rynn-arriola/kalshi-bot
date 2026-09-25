@@ -36,6 +36,12 @@ class DirtyScheduler:
             self._dirty.add(ticker)
             self._queue[ticker] = None
 
+    def clear(self, ticker: str):
+        """Drop a pending evaluation mark (not timers) already being served."""
+        self._dirty.discard(ticker)
+        self._queue.pop(ticker, None)
+        self._priority.pop(ticker, None)
+
     def unregister(self, ticker: str):
         self.managed.discard(ticker)
         self._dirty.discard(ticker)

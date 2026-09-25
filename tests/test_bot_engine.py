@@ -349,6 +349,36 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
     def submit(self):
         self.engine.submit_book("a", snapshot(), generation=self.ga)
 
+    async def test_busy_shard_market_is_evaluated_after_bounded_catch_up(self):
+        # D-130: queued frames on another shard used to defer the market's
+        # evaluation to a later step; a continuously busy shard could starve.
+        self.submit()
+        self.engine.cursor = 0
+        await self.engine.step()  # Applies shard "a" snapshot; evaluates A.
+        self.calls.clear()
+        self.engine.submit_book("b", {**snapshot("B"), "sid": 2}, generation=self.gb)
+        for seq in range(2, 12):
+            self.engine.submit_book("a", delta(seq), generation=self.ga)
+        self.engine.dirty.mark("A")  # Earlier applied frames left it dirty.
+        self.engine.cursor = 1  # This step's round-robin batch drains shard "b".
+        await self.engine.step()
+        self.assertIn(("quote", "A"), self.calls)
+        self.assertFalse(self.engine.public["a"])
+        self.assertEqual(self.engine.shards["a"].books["A"].revision, 11)
+        self.assertGreaterEqual(self.engine.evaluation_catchups, 1)
+
+    async def test_catch_up_never_overtakes_private_work(self):
+        self.submit()
+        await self.engine.step()
+        self.calls.clear()
+        for seq in range(2, 5):
+            self.engine.submit_book("a", delta(seq), generation=self.ga)
+        self.engine.dirty.mark("A")
+        self.engine.cursor = 1
+        self.assertFalse(self.engine.catch_up_book("A") is None)
+        self.engine.private.append(('{"id":1}', 8, self.pa))
+        self.assertFalse(self.engine.catch_up_book("A"))
+
     async def test_four_book_shards_are_owned_by_one_bounded_engine(self):
         async def noop(*_): pass
         shards = {f'book-{i}':BookConnection((f'M-{i}',)) for i in range(4)}
@@ -378,7 +408,11 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         self.submit()
         for seq in range(2, 80): self.engine.submit_book("a", delta(seq), generation=self.ga)
         await self.engine.step()
-        self.assertFalse(self.calls)
+        # D-130: evaluated once, only after the bounded catch-up drained every
+        # queued frame; never on the intermediate book.
+        self.assertEqual(self.calls, [("quote", "A")])
+        self.assertFalse(self.engine.public["a"])
+        self.assertEqual(self.engine.shards["a"].books["A"].revision, 79)
         await self.engine.step()
         await self.engine.step()
         self.assertEqual(self.calls, [("quote", "A")])

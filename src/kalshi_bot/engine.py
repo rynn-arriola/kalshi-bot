@@ -57,6 +57,7 @@ class EventEngine:
         self.book_failures = {name: 0 for name in shards}
         self.book_received = {}  # bounded by subscribed markets, ingress not dequeue clock
         self.send_edge_drains = self.send_edge_events = 0
+        self.evaluation_catchups = 0
 
     def _time(self):
         now = self.clock()
@@ -272,8 +273,19 @@ class EventEngine:
                 if shard.failed or ticker not in shard.books:
                     continue
                 if self.public[owner]:
-                    self.dirty.mark(ticker)
-                    continue
+                    # D-130: a continuously busy shard must not postpone all of
+                    # its markets. Apply one bounded ordered batch (the same
+                    # synchronous catch-up used at the send edge) and evaluate
+                    # only if that fully drains the shard.
+                    self.evaluation_catchups += 1
+                    if not self.catch_up_book(ticker):
+                        self.dirty.mark(ticker)
+                        continue
+                    # This evaluation observes every frame just applied.
+                    self.dirty.clear(ticker)
+                    shard = self.shards[owner]
+                    if shard.failed or ticker not in shard.books:
+                        continue
                 # Awaited work may receive a private update: defer entry decisions.
                 if self.private or self.stopped:
                     self.dirty.mark(ticker)
@@ -333,4 +345,5 @@ class EventEngine:
                     processed=self.processed, decisions=self.decisions,
                     send_edge_drains=self.send_edge_drains,
                     send_edge_events=self.send_edge_events,
+                    evaluation_catchups=self.evaluation_catchups,
                     book_failures=dict(self.book_failures))

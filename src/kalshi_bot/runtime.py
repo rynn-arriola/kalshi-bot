@@ -671,6 +671,7 @@ class RecoveryRuntime:
         if rebased is not None:
             self._record_steady_account_scope(rebased)
             self.unsent_rebases += 1
+            self._entry_dirty = True  # One fresh ranked turn; never a hot loop.
         self.diagnostics.emit('account_rebased_unsent',
             outcome='recovered' if (rebased is not None or anchored) else 'source_changed')
         return rebased is not None or anchored
