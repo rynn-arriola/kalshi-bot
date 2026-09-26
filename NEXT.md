@@ -1,21 +1,22 @@
 # Active work queue
 
-## Pending issues in operator priority order (2026-09-26)
+## Pending work (2026-09-26 14:25 UTC; D-145–D-148 live, build 4979a14)
 
-0. **After D-133–D-135 deployment (run `de0b24bd`):** (a)+(b) done as
-   D-136 (published, not deployed; ship with the next authorized restart).
-   (c) Measure lockout downtime, withdrawals per market-hour and fills after
-   re-entry over hours; then the contract-size analysis the operator asked for.
-
-1. **Full-recovery time after accepted orders:** D-133 and D-134 items 1–5
-   done (published, not deployed). Deploy once together (item 6) after
-   operator confirmation, then measure against Finding 203.
-2. Measure generation 172 over hours (item 0 below).
-3. Post-fill market cooldown: operator strategy decision with data.
-4. Repeat withdrawals: D-135 adaptive lockout done (Finding 206); measure
-   after deployment before any ranking/threshold change.
-5. History-proof start: done as D-134 item 4 (chained recovery).
-8. Finish the line-by-line review of modules listed in Finding 200.
+1. **Measure D-145–D-148 over hours** (WATCHLIST item 10): fills, protective
+   pulls per market-hour, blind withdrawals, order-group state, full recoveries
+   vs `post_drain_renewals` / `routine_own_fallbacks` (first 32 min: 24 full
+   recoveries, 59 post-drain renewals, 17 routine hand-overs, 72 pulls, 0 fills).
+2. **Reward payout reconciliation** when Kalshi pays: profitability is unproven
+   (realized −$31.94 since 2026-09-22 incl. the 2026-09-26 manual close).
+3. **Fill avoidance (strategy, operator decision):** reward-vs-risk rule and
+   the ~2,000 contracts/week volume screen (Finding 210) in shadow mode first;
+   post-fill market cooldown (WYCOAL was swept twice in one day).
+4. **Contract-size result** at 30 vs 10 (item 0c below), after enough hours.
+5. Optional: order-group fire drill (empty group, manual trigger); a real
+   reboot test of the autostart chain (task + auto sign-in + Claude startup).
+6. Polymarket handover note if the operator wants auto-resume after reboot
+   (that project flattens and stays paused by design).
+7. Finish the line-by-line review of modules listed in Finding 200.
 
 ## Deploy D-129–D-132 together (Findings 196–202)
 
