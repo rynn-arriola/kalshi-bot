@@ -146,5 +146,81 @@ class EntryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(rows(self.path, 'entry_ends')[0][1]['withdrawn'])
 
 
+class FillContextTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.f = entry_fixture.EntrySourceTests('test_ranked_market_becomes_exact_source_bound_pair')
+        await self.f.asyncSetUp()
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.r = self.f.runtime
+        self.r.research = self.store
+
+    async def asyncTearDown(self):
+        self.store.close()
+        await self.f.asyncTearDown()
+        self.temp.cleanup()
+
+    def fill(self, trade='t1'):
+        from kalshi_bot.ledger import Fill
+        return Fill(trade, 'o1', 'A', 'bid', D(30), D('0.82'), D(0), 1790401936916817)
+
+    async def test_fill_records_context_and_later_marks(self):
+        self.r.RESEARCH_MARK_SECONDS = (0.01, 0.02)
+        self.r.maintenance = SimpleNamespace(
+            fill_risk=SimpleNamespace(samples={'o1': SimpleNamespace(ahead=D(200), rate=D(0), at=self.r.clock())}),
+            _anchors={'o1': SimpleNamespace(ahead=D(230), read_mono=self.r.clock())},
+            risk_cycle_for=lambda ticker: None)
+        receipt = SimpleNamespace(order=SimpleNamespace(reducing=False))
+        self.r._research_fill(self.fill(), receipt)
+        import asyncio
+        await asyncio.sleep(.1)
+        self.store.close()
+        [(key, row)] = rows(self.path, 'fills')
+        self.assertEqual(key, 'o1/t1')
+        self.assertEqual((row['role'], row['estimated_ahead'], row['anchor_ahead'], row['price']),
+                         ('entry', '200', '230', '0.82'))
+        self.assertIn('best_bid', row)
+        self.assertFalse(row['withdrawal_in_progress'])
+        marks = rows(self.path, 'fill_marks')
+        self.assertEqual(sorted(m['delay_seconds'] for _, m in marks), [0.01, 0.02])
+        self.assertEqual(self.r._research_marks_pending, 0)
+
+    async def test_exit_fills_are_labelled_and_pending_marks_are_bounded(self):
+        self.r.RESEARCH_MAX_PENDING_MARKS = 3
+        self.r.RESEARCH_MARK_SECONDS = (60, 300, 1800)
+        receipt = SimpleNamespace(order=SimpleNamespace(reducing=True))
+        self.r._research_fill(self.fill('t1'), receipt)
+        self.r._research_fill(self.fill('t2'), receipt)  # Over the bound: no marks.
+        self.assertEqual(self.r._research_marks_pending, 3)
+        self.store.close()
+        self.assertEqual([r['role'] for _, r in rows(self.path, 'fills')], ['exit', 'exit'])
+
+    async def test_a_research_failure_never_stops_fill_processing(self):
+        from kalshi_bot.runtime import RecoveryRuntime
+        calls = []
+        async def apply_pending_fill(key, **_):
+            return SimpleNamespace(order=None)
+        async def refresh(ticker):
+            calls.append(('refresh', ticker))
+        stub = SimpleNamespace(account_lock=__import__('asyncio').Lock(),
+            account=SimpleNamespace(apply_pending_fill=apply_pending_fill),
+            management=SimpleNamespace(refresh=refresh), research=self.store,
+            research_failures=0, now=lambda: None,
+            _request_inventory_dispatch=lambda t: calls.append(('dispatch', t)),
+            _resume_risk_drain=lambda: calls.append('drain'),
+            request_recovery=lambda *a: calls.append('recover'))
+        stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
+        def broken(*_):
+            raise RuntimeError('research bug')
+        stub._research_fill = broken
+        event = dict(type='fill', msg=dict(trade_id='t9', order_id='o9', market_ticker='A',
+            book_side='bid', count_fp='1.00', yes_price_dollars='0.5', fee_cost='0',
+            ts=1790401936))
+        await RecoveryRuntime._private(stub, event, 1)
+        self.assertEqual(calls, [('refresh', 'A'), ('dispatch', 'A'), 'drain'])
+        self.assertEqual(stub.research_failures, 1)
+
+
 if __name__ == '__main__':
     unittest.main()

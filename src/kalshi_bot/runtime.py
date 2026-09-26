@@ -65,6 +65,9 @@ class RecoveryRuntime(AccountProofMixin):
     routine_own_fallbacks = 0
     order_groups = None
     research = None  # D-151 research dataset; opt-in, never authority.
+    research_failures = 0
+    RESEARCH_MARK_SECONDS = (60, 300, 1800)
+    RESEARCH_MAX_PENDING_MARKS = 600
     last_full_recovery_mono = None
     _recovery_blocked_at = None
 
@@ -186,6 +189,7 @@ class RecoveryRuntime(AccountProofMixin):
         self.maintenance = None  # Opt-in same-market policy, never a writer.
         self.order_groups = None  # D-145 venue-side entry fill cap; opt-in.
         self._research_ended = {}  # D-151: order ids whose end was recorded.
+        self._research_marks_pending = 0
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -904,11 +908,14 @@ class RecoveryRuntime(AccountProofMixin):
             if event.get("type") == "fill":
                 # Reader callback staged before enqueue. Old epochs keep positive
                 # evidence in the inbox, but cannot update current projections.
-                key = parse_fill(event).key
+                fill = parse_fill(event)
+                key = fill.key
                 receipt = await self.account.apply_pending_fill(key, generation=generation, now=self.now())
                 if receipt is None:
                     self.request_recovery('private_fill_pending')
                 else:
+                    if getattr(self, 'research', None) is not None:
+                        self._research_safely(self._research_fill, fill, receipt)
                     await self.management.refresh(event["msg"]["market_ticker"])
                     self._request_inventory_dispatch(event["msg"]["market_ticker"])
                 self._resume_risk_drain()
@@ -917,7 +924,7 @@ class RecoveryRuntime(AccountProofMixin):
                 return  # Old order/position projection will be re-enumerated.
             result = await self.account.on_event(event, generation=generation, received_at=self.now())
             if result is not None and getattr(self, 'research', None) is not None:
-                self._research_entry_end(result)
+                self._research_safely(self._research_entry_end, result)
             if isinstance(result, UnscopedPositionUpdate):
                 self._epoch_ambiguous = True
                 if not self._unscoped_position_requested:
@@ -945,6 +952,59 @@ class RecoveryRuntime(AccountProofMixin):
                 await self.management.refresh(ticker)
                 self._request_inventory_dispatch(ticker)
             self._resume_risk_drain()
+
+    def _research_safely(self, record, *args):
+        """D-151: research must never disturb account processing."""
+        try:
+            record(*args)
+        except Exception:
+            self.research_failures += 1
+
+    @staticmethod
+    def _research_top(book):
+        if book is None:
+            return dict(best_bid=None, best_ask=None)
+        return dict(best_bid=book.bids.best(bid=True), best_ask=book.asks.best(bid=False))
+
+    def _research_fill(self, fill, receipt):
+        """D-151 #2: context at the moment of a fill, then price mark-outs."""
+        order = getattr(receipt, 'order', None)
+        role = ('unknown' if order is None
+                else 'exit' if getattr(order, 'reducing', False) else 'entry')
+        sample = anchor = None
+        withdrawing = False
+        maintenance = self.maintenance
+        if maintenance is not None:
+            sample = maintenance.fill_risk.samples.get(fill.order_id)
+            anchor = maintenance._anchors.get(fill.order_id)
+            cycle = maintenance.risk_cycle_for(fill.ticker)
+            withdrawing = cycle is not None and fill.order_id in cycle.order_ids
+        now = self.clock()
+        key = f'{fill.order_id}/{fill.trade_id}'
+        self.research.record('fills', key, ticker=fill.ticker, order_id=fill.order_id,
+            side=fill.book_side, price=fill.yes_price, quantity=fill.quantity, fee=fill.fee,
+            executed_us=fill.executed_us, role=role, withdrawal_in_progress=withdrawing,
+            estimated_ahead=None if sample is None else sample.ahead,
+            depletion_per_second=None if sample is None else sample.rate,
+            estimate_age_seconds=None if sample is None else max(0.0, now-sample.at),
+            anchor_ahead=None if anchor is None else anchor.ahead,
+            anchor_age_seconds=None if anchor is None else max(0.0, now-anchor.read_mono),
+            **self._research_top(self.management._book(fill.ticker)[1]))
+        if self._research_marks_pending + len(self.RESEARCH_MARK_SECONDS) > self.RESEARCH_MAX_PENDING_MARKS:
+            return
+        loop = asyncio.get_running_loop()
+        for delay in self.RESEARCH_MARK_SECONDS:
+            self._research_marks_pending += 1
+            loop.call_later(delay, self._research_mark, key, fill.ticker, fill.book_side,
+                            fill.yes_price, delay)
+
+    def _research_mark(self, key, ticker, side, price, delay):
+        self._research_marks_pending = max(0, self._research_marks_pending-1)
+        if self.research is None or self.stop_requested.is_set():
+            return
+        self._research_safely(lambda: self.research.record(
+            'fill_marks', f'{key}@{delay}', ticker=ticker, side=side, fill_price=price,
+            delay_seconds=delay, **self._research_top(self.management._book(ticker)[1])))
 
     def _research_entry_end(self, result):
         """D-151: record once how each owned entry order ended (never reducers)."""
@@ -2025,7 +2085,9 @@ class RecoveryRuntime(AccountProofMixin):
             maintenance=self.maintenance.status() if self.maintenance is not None else None,
             order_groups=(self.order_groups.status()
                           if self.order_groups is not None else None),
-            research=self.research.status() if self.research is not None else None,
+            research=(dict(self.research.status(), failures_in_runtime=self.research_failures,
+                           pending_marks=self._research_marks_pending)
+                      if self.research is not None else None),
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 
