@@ -1,16 +1,16 @@
 # Current status
 
-## D-146 running; D-147 ready — 2026-09-26
+## D-147 and D-148 running — 2026-09-26
 
-**Running** D-146 (build `ba3bf43`) since 13:10 UTC after an operator-approved
-stop (clean: zero orders, zero positions) and restart. D-145 fill protection is
-unchanged: order group active, queue reader current. Earlier today: the
-operator's manual close was reconciled (net −$18.3604) and the 10:38 UTC
-send-edge crash (Finding 211) is fixed by D-146. **D-147** (own-order renewal
-instead of a full recovery after protective-cancel drains) is built and
-tested, awaiting an authorized restart, together with **D-148** (a routine
-renewal overtaken only by a private update hands over to own-order renewal).
-Full suite 2,002 tests and the native gate pass.
+**Running** build `3223f7a` since 13:53 UTC (operator-approved stop: clean, zero
+orders and positions; restart). First 6 minutes: 50 orders at 30 contracts, no
+positions, order group active, 7 protective pulls. After drains, 6 lighter
+own-order renewals versus 1 full recovery (was one full recovery per drain);
+2 routine renewals handed over to own renewal; own renewals 35 of 36 completed
+with 0 escalations. Full recoveries: 6 in ~6 min (≈18 per 6 min before).
+Earlier today: D-145 (fill protection), D-146 (send-edge crash fix), manual
+close reconciled (net −$18.3604). Operator action still pending: install the
+autostart task (`scripts\Install-LiquidityBotAutostart.ps1`).
 
 ## Bot stopped after an adverse fill; D-145 fill protection ready — 2026-09-26
 
