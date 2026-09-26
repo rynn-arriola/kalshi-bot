@@ -10,6 +10,17 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-149 — Routine telemetry rotates separately from events
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Ok lets do all of it” (architecture review #4).
+- **Scope:** seven routine INFO events (about 95% of log bytes) go to
+  `telemetry.jsonl`; everything else stays in `events.jsonl`. Same rotation
+  sizes; one run id and sequence. `events.jsonl` retention in production grows
+  from ~3 hours to ~6 days at current volume (0.65 MB/h vs 29 MB/h).
+- **Boundary:** no event, field or trading change.
+
 ### D-148 — A routine renewal overtaken by a private update hands over to own-order renewal
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

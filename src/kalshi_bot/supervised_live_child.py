@@ -40,7 +40,7 @@ _LIFETIME_HANDLE = None  # Deliberately retained until process termination.
 # at the measured generation-92 event rate.  Current file + seven archives is
 # capped at 96 MiB; financial authority remains in SQLite, never these logs.
 PRODUCTION_LOG_MAX_BYTES = 12*1024*1024
-PRODUCTION_LOG_BACKUPS = 7
+PRODUCTION_LOG_BACKUPS = 7  # D-149: each of events.jsonl and telemetry.jsonl.
 
 
 def _envelope(args, kind, sequence, payload):

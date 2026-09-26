@@ -29,8 +29,9 @@ from test_bot_recovery_runtime import AccountReads, FakeReader
 SECRET = 'SENTINEL_DO_NOT_LOG_this_private_key_or_response'
 
 
-def rows(directory):
-    return [json.loads(line) for path in sorted(Path(directory).glob('events.jsonl*'))
+def rows(directory, pattern='*.jsonl*'):
+    # D-149: events.jsonl plus the separate routine telemetry.jsonl.
+    return [json.loads(line) for path in sorted(Path(directory).glob(pattern))
             for line in path.read_text(encoding='utf-8').splitlines()]
 
 
@@ -224,6 +225,38 @@ class LoggingTests(unittest.TestCase):
         self.assertTrue(all(p.stat().st_size <= 32768 for p in paths))
         self.assertIsNone(log.status()['failure'])
         self.assertTrue(rows(self.directory))
+
+    def test_routine_telemetry_rotates_separately_from_events(self):
+        # D-149: a telemetry flood cannot rotate warnings/errors out of events.jsonl.
+        log = self.start(max_bytes=32768, backups=2, capacity=8192,
+                         telemetry_max_bytes=32768, telemetry_backups=1)
+        log.emit('reader_failed', attempt=1, operation='kept')
+        for i in range(700):
+            log.emit('fill_risk_sample', market='A', order='o-'+str(i), risk_state='observed',
+                     ahead_hundredths=i)
+            log.emit('inventory_plan_changed', market='A', mode='flat', revision=i)
+        log.emit('recovery_exhausted', attempt=3)
+        log.close()
+        events = rows(self.directory, 'events.jsonl*')
+        names = [r['event'] for r in events]
+        self.assertIn('reader_failed', names)
+        self.assertIn('recovery_exhausted', names)
+        self.assertNotIn('fill_risk_sample', names)
+        self.assertNotIn('inventory_plan_changed', names)
+        telemetry = rows(self.directory, 'telemetry.jsonl*')
+        self.assertTrue(telemetry)
+        self.assertEqual({r['event'] for r in telemetry},
+                         {'fill_risk_sample', 'inventory_plan_changed'})
+        self.assertEqual(len(list(self.directory.glob('telemetry.jsonl*'))), 2)  # Bounded.
+        self.assertEqual(log.status()['telemetry_retention_bytes'], 32768*2)
+        # One global sequence across both files keeps the run's order recoverable.
+        sequences = sorted(r['sequence'] for r in events+telemetry)
+        self.assertEqual(len(sequences), len(set(sequences)))
+
+    def test_telemetry_events_are_routine_info_only(self):
+        from kalshi_bot.observability import EVENTS, TELEMETRY_EVENTS
+        # Warnings/errors must never be routed out of events.jsonl.
+        self.assertEqual({EVENTS[name][0] for name in TELEMETRY_EVENTS}, {'INFO'})
 
     def test_restart_has_new_run_and_private_reference_salt(self):
         first = self.start()

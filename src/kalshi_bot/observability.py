@@ -226,6 +226,14 @@ class NullDiagnostics:
 
 NO_LOG = NullDiagnostics()
 
+# D-149: routine, high-volume INFO telemetry (about 95% of log bytes) rotates in
+# its own telemetry.jsonl so warnings, errors, orders, recoveries and lifecycle
+# events in events.jsonl are retained for days instead of hours.
+TELEMETRY_EVENTS = frozenset((
+    'fill_risk_sample', 'fill_risk_observation_gap', 'inventory_plan_changed',
+    'exit_inputs_published', 'exit_inputs_superseded', 'exit_inputs_deferred',
+    'history_enumerated'))
+
 
 class StrictRotatingHandler(RotatingFileHandler):
     def handleError(self, record):
@@ -235,11 +243,17 @@ class StrictRotatingHandler(RotatingFileHandler):
 
 
 class Diagnostics:
-    def __init__(self, directory, *, capacity=1024, max_bytes=5*1024*1024, backups=4):
+    def __init__(self, directory, *, capacity=1024, max_bytes=5*1024*1024, backups=4,
+                 telemetry_max_bytes=None, telemetry_backups=None):
         self.directory = Path(directory).resolve()
         self.capacity = integer(capacity, 1, 8192)
         self.max_bytes = integer(max_bytes, 32768, 64*1024*1024)
         self.backups = integer(backups, 1, 16)
+        self.telemetry_max_bytes = integer(
+            self.max_bytes if telemetry_max_bytes is None else telemetry_max_bytes,
+            32768, 64*1024*1024)
+        self.telemetry_backups = integer(
+            self.backups if telemetry_backups is None else telemetry_backups, 1, 16)
         self.run_id = uuid4().hex
         self._salt = uuid4().bytes
         self._queue = Queue(self.capacity)
@@ -281,6 +295,7 @@ class Diagnostics:
                         failure=self._failure, failure_detail=self._failure_detail,
                         max_bytes=self.max_bytes, backups=self.backups,
                         retention_bytes=self.max_bytes*(self.backups+1),
+                        telemetry_retention_bytes=self.telemetry_max_bytes*(self.telemetry_backups+1),
                         accepted=self._accepted, written=self._written,
                         dropped=self._dropped, backlog=self._queue.qsize(), high_water=self._high_water,
                         closed=self._stop.is_set(),
@@ -337,8 +352,9 @@ class Diagnostics:
                     self._failure = 'record_overflow'
                     self._dropped += 1
                     return False
+                stream = 'telemetry' if event in TELEMETRY_EVENTS else 'events'
                 try:
-                    self._queue.put_nowait(encoded)
+                    self._queue.put_nowait((stream, encoded))
                 except Full:
                     self._failure = 'queue_overflow'
                     self._dropped += 1
@@ -353,33 +369,37 @@ class Diagnostics:
             return False
 
     def _run(self):
-        handler = None
+        handlers = {}
         try:
             # Exclusive native Windows ownership prevents overlapping rotation.
             with WindowsLease('diagnostics:'+str(self.directory)):
                 self.directory.mkdir(parents=True, exist_ok=True)
-                handler = StrictRotatingHandler(self.directory/'events.jsonl', maxBytes=self.max_bytes,
-                                               backupCount=self.backups, encoding='utf-8')
+                handlers['events'] = StrictRotatingHandler(self.directory/'events.jsonl',
+                    maxBytes=self.max_bytes, backupCount=self.backups, encoding='utf-8')
+                handlers['telemetry'] = StrictRotatingHandler(self.directory/'telemetry.jsonl',
+                    maxBytes=self.telemetry_max_bytes, backupCount=self.telemetry_backups,
+                    encoding='utf-8')
                 self._ready.set()
                 while not self._stop.is_set() or not self._queue.empty():
                     try:
-                        encoded = self._queue.get(timeout=.05)
+                        stream, encoded = self._queue.get(timeout=.05)
                     except Empty:
                         continue
                     try:
-                        handler.emit(logging.LogRecord('kalshi', logging.INFO, '', 0, encoded, (), None))
+                        handlers[stream].emit(logging.LogRecord(
+                            'kalshi', logging.INFO, '', 0, encoded, (), None))
                         with self._lock:
                             self._written += 1
                     finally:
                         self._queue.task_done()
-                handler.close()
-                handler = None
+                while handlers:
+                    handlers.popitem()[1].close()
         except BaseException as exc:
             self._fail('sink_failure', exc)
         finally:
-            if handler is not None:
+            while handlers:
                 try:
-                    handler.close()
+                    handlers.popitem()[1].close()
                 except Exception as exc:
                     self._fail('sink_close_failure', exc)
             self._ready.set()

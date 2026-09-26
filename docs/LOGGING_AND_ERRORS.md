@@ -85,7 +85,13 @@ return a stable `cli_failed` code rather than echoing untrusted file/error text.
 
 `events.jsonl` contains one JSON object per line; `.1` is the newest archive.
 Default retention is current file plus four backups, each up to 5 MiB (25 MiB
-total for these files, including across restarts). Rotation replaces oldest log
+total for these files, including across restarts). D-149: routine high-volume
+INFO telemetry (`fill_risk_sample`, `fill_risk_observation_gap`,
+`inventory_plan_changed`, `exit_inputs_*`, `history_enumerated`) is written to a
+separate `telemetry.jsonl` with its own identical rotation, so warnings, errors,
+orders, recoveries and lifecycle events stay in `events.jsonl` for days. Both
+files share one run id and sequence. Production child logs: 12 MiB × 8 each
+(~6 days of `events.jsonl`, ~3 hours of telemetry at current volume). Rotation replaces oldest log
 segments only, never databases. Use a dedicated local log directory, not OneDrive
 or a network share. A Windows named lease prevents simultaneous writers/rotation
 in the same directory. Logs are gitignored; no existing data was removed.
