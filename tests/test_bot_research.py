@@ -173,6 +173,7 @@ class FillContextTests(unittest.IsolatedAsyncioTestCase):
             risk_cycle_for=lambda ticker: None)
         receipt = SimpleNamespace(order=SimpleNamespace(reducing=False))
         self.r._research_fill(self.fill(), receipt)
+        self.assertEqual(self.r.research_fills_recorded, 1)
         import asyncio
         await asyncio.sleep(.1)
         self.store.close()
@@ -267,7 +268,11 @@ class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
         from kalshi_bot.runtime import RecoveryRuntime
         import asyncio
         stub = SimpleNamespace(rewards=self.rewards(), research=self.store, research_failures=0,
-            stop_requested=asyncio.Event(), now=self.r.now, RESEARCH_TICK_SECONDS=.01)
+            stop_requested=asyncio.Event(), now=self.r.now, RESEARCH_TICK_SECONDS=.01,
+            RESEARCH_TRADE_SECONDS=0, clock=__import__('time').monotonic)
+        stub.samples, stub.health = [], []
+        stub._research_sample_health = lambda: stub.samples.append(1)
+        stub._research_health = lambda hour: stub.health.append(hour)
         stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
         stub._research_reward_estimates = (
             lambda hour: RecoveryRuntime._research_reward_estimates(stub, hour))
@@ -297,6 +302,7 @@ class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(task, 2)
         self.assertEqual(self.store.status()['accepted'], 1)  # Several ticks, one hour.
         self.assertGreaterEqual(len(polls), 2)  # Trades are polled every tick.
+        self.assertGreaterEqual(len(stub.samples), 2)  # Health is sampled every tick.
         self.assertEqual(stub.research_failures, 1)  # Only the stub's broken program.
         self.store.close()
         self.assertEqual(len(rows(self.path, 'reward_estimates')), 1)
@@ -395,7 +401,7 @@ class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
         stub = SimpleNamespace(reads=SimpleNamespace(read=read), research=self.store,
             research_failures=0, stop_requested=asyncio.Event(), now=lambda: now,
             management=SimpleNamespace(_plans=plans), maintenance=None,
-            _research_trade_since={}, RESEARCH_TICK_SECONDS=60,
+            _research_trade_since={}, RESEARCH_TRADE_SECONDS=60,
             RESEARCH_TRADE_MARKETS=64, RESEARCH_TRADE_LIMIT=200, RESEARCH_TRADE_OVERLAP=30)
         stub._research_trade_tickers = lambda: RecoveryRuntime._research_trade_tickers(stub)
         self.stub, self.runtime = stub, RecoveryRuntime
@@ -459,6 +465,75 @@ class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidData):
             request_path('trades', dict(ticker='A'), 'metadata')
         self.assertIn('research', ENDPOINTS['trades'].reasons)
+
+
+class HealthSummaryTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.f = entry_fixture.EntrySourceTests('test_ranked_market_becomes_exact_source_bound_pair')
+        await self.f.asyncSetUp()
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.r = self.f.runtime
+        self.r.research = self.store
+
+    async def asyncTearDown(self):
+        self.store.close()
+        await self.f.asyncTearDown()
+        self.temp.cleanup()
+
+    async def test_hour_summary_has_fractions_and_counter_changes(self):
+        r = self.r
+        for _ in range(4):
+            r._research_sample_health()
+        r._recovery_state = 'recovering'
+        r._research_sample_health()
+        hour1 = datetime(2026, 9, 26, 17, tzinfo=timezone.utc)
+        r.recovery_request_counts['post_drain'] = 7
+        r._research_health(hour1)
+        r._recovery_state = None
+        r._research_sample_health()
+        r.recovery_request_counts['post_drain'] = 10
+        r.research_fills_recorded = 2
+        r._research_health(hour1.replace(hour=18))
+        self.store.close()
+        [(k1, h1), (k2, h2)] = rows(self.path, 'health_hourly')
+        self.assertEqual((k1, h1['samples'], h1['recovering_fraction'], h1['since_start']),
+                         ('2026-09-26T17:00:00+00:00', 5, 0.2, True))
+        self.assertIn('entry_allowed_fraction', h1)
+        self.assertEqual(h1['counters']['recovery.post_drain'], 7)
+        self.assertEqual((h2['samples'], h2['recovering_fraction'], h2['since_start']), (1, 0.0, False))
+        self.assertEqual((h2['counters']['recovery.post_drain'], h2['counters']['fills_recorded']), (3, 2))
+
+    async def test_empty_hour_reports_no_fraction(self):
+        self.r._research_health(datetime(2026, 9, 26, 17, tzinfo=timezone.utc))
+        self.store.close()
+        [(_, h)] = rows(self.path, 'health_hourly')
+        self.assertEqual((h['samples'], h['entry_allowed_fraction'], h['average_resting_entries']),
+                         (0, None, None))
+
+    async def test_loop_closes_the_previous_hour_when_the_hour_changes(self):
+        import asyncio
+        from kalshi_bot.runtime import RecoveryRuntime
+        clock = [datetime(2026, 9, 26, 17, 59, 59, tzinfo=timezone.utc)]
+        stub = SimpleNamespace(research=self.store, research_failures=0, rewards=None,
+            stop_requested=asyncio.Event(), now=lambda: clock[0], clock=__import__('time').monotonic,
+            RESEARCH_TICK_SECONDS=.01, RESEARCH_TRADE_SECONDS=999)
+        closed = []
+        stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
+        stub._research_reward_estimates = lambda hour: None
+        stub._research_sample_health = lambda: None
+        stub._research_health = closed.append
+        async def trades():
+            pass
+        stub._research_trades = trades
+        task = asyncio.create_task(RecoveryRuntime._research_loop(stub))
+        await asyncio.sleep(.03)
+        clock[0] = clock[0]+timedelta(seconds=2)
+        await asyncio.sleep(.03)
+        stub.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertEqual(closed, [datetime(2026, 9, 26, 17, tzinfo=timezone.utc)])
 
 
 if __name__ == '__main__':

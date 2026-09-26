@@ -191,6 +191,9 @@ class RecoveryRuntime(AccountProofMixin):
         self._research_ended = {}  # D-151: order ids whose end was recorded.
         self._research_marks_pending = 0
         self._research_trade_since = {}  # D-151 #5: ticker -> last seen trade second.
+        self._research_health_acc = self._research_empty_health()  # D-151 #6
+        self._research_prev_counters = None
+        self.research_fills_recorded = 0
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -987,6 +990,7 @@ class RecoveryRuntime(AccountProofMixin):
             withdrawing = cycle is not None and fill.order_id in cycle.order_ids
         now = self.clock()
         key = f'{fill.order_id}/{fill.trade_id}'
+        self.research_fills_recorded += 1
         self.research.record('fills', key, ticker=fill.ticker, order_id=fill.order_id,
             side=fill.book_side, price=fill.yes_price, quantity=fill.quantity, fee=fill.fee,
             executed_us=fill.executed_us, role=role, withdrawal_in_progress=withdrawing,
@@ -1012,26 +1016,88 @@ class RecoveryRuntime(AccountProofMixin):
             'fill_marks', f'{key}@{delay}', ticker=ticker, side=side, fill_price=price,
             delay_seconds=delay, **self._research_top(self.management._book(ticker)[1])))
 
-    RESEARCH_TICK_SECONDS = 60
+    RESEARCH_TICK_SECONDS = 10   # health sampling
+    RESEARCH_TRADE_SECONDS = 60  # public trade polling
 
     async def _research_loop(self):
         """D-151: periodic research records; never touches trading state."""
-        last_hour = None
+        last_hour = last_trades = None
         while not self.stop_requested.is_set():
             hour = utc(self.now()).replace(minute=0, second=0, microsecond=0)
             if hour != last_hour:
+                if last_hour is not None:
+                    self._research_safely(self._research_health, last_hour)
                 last_hour = hour
                 self._research_safely(self._research_reward_estimates, hour)
-            try:
-                await self._research_trades()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self.research_failures += 1
+            self._research_safely(self._research_sample_health)
+            mono = self.clock()
+            if last_trades is None or mono-last_trades >= self.RESEARCH_TRADE_SECONDS:
+                last_trades = mono
+                try:
+                    await self._research_trades()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    self.research_failures += 1
             try:
                 await asyncio.wait_for(self.stop_requested.wait(), self.RESEARCH_TICK_SECONDS)
             except TimeoutError:
                 pass
+
+    @staticmethod
+    def _research_empty_health():
+        return dict(samples=0, entry_allowed=0, recovering=0, venue_paused=0,
+                    resting_samples=0, resting_sum=0)
+
+    def _research_sample_health(self):
+        """D-151 #6: one cheap health sample (every RESEARCH_TICK_SECONDS)."""
+        acc = self._research_health_acc
+        acc['samples'] += 1
+        acc['entry_allowed'] += bool(self.entry_allowed)
+        acc['recovering'] += self.recovery_state == 'recovering'
+        acc['venue_paused'] += bool(self._venue_paused)
+        rows = self.current_entry_orders()
+        if rows is not None:
+            acc['resting_samples'] += 1
+            acc['resting_sum'] += len(rows)
+
+    def _research_counters(self):
+        counters = {f'recovery.{cause}': count
+                    for cause, count in self.recovery_request_counts.items()}
+        counters.update({f'own_renewal.{name}': value
+                         for name, value in self.own_order_renewal.items()})
+        counters.update(routine_completed=self.routine_refresh_completed,
+                        routine_escalations=self.routine_refresh_escalations,
+                        post_drain_renewals=self.post_drain_renewals,
+                        routine_own_fallbacks=self.routine_own_fallbacks,
+                        fills_recorded=self.research_fills_recorded,
+                        research_failures=self.research_failures)
+        if self.maintenance is not None:
+            counters.update({f'pulls.{name}': value
+                             for name, value in self.maintenance.risk_triggers.items()})
+            counters.update(queue_reads=self.maintenance.queue_reads,
+                            queue_read_failures=self.maintenance.queue_read_failures)
+        if self.order_groups is not None:
+            counters.update(group_triggers=self.order_groups.triggers,
+                            group_failures=self.order_groups.failures)
+        return counters
+
+    def _research_health(self, hour):
+        """D-151 #6: the finished hour's sampled fractions and counter changes."""
+        acc, counters = self._research_health_acc, self._research_counters()
+        previous = self._research_prev_counters or {}
+        samples = acc['samples']
+        fraction = (lambda n: None if not samples else n/samples)
+        self.research.record('health_hourly', hour.isoformat(), hour=hour, samples=samples,
+            entry_allowed_fraction=fraction(acc['entry_allowed']),
+            recovering_fraction=fraction(acc['recovering']),
+            venue_paused_fraction=fraction(acc['venue_paused']),
+            average_resting_entries=(acc['resting_sum']/acc['resting_samples']
+                                     if acc['resting_samples'] else None),
+            since_start=self._research_prev_counters is None,
+            counters={name: value-previous.get(name, 0) for name, value in counters.items()})
+        self._research_health_acc = self._research_empty_health()
+        self._research_prev_counters = counters
 
     RESEARCH_TRADE_MARKETS = 64
     RESEARCH_TRADE_LIMIT = 200
@@ -1057,7 +1123,7 @@ class RecoveryRuntime(AccountProofMixin):
         for ticker in self._research_trade_tickers():
             if self.stop_requested.is_set():
                 return
-            since = self._research_trade_since.get(ticker, now_s-self.RESEARCH_TICK_SECONDS)
+            since = self._research_trade_since.get(ticker, now_s-self.RESEARCH_TRADE_SECONDS)
             try:
                 result = await self.reads.read('trades', reason='research', ticker=ticker,
                                                min_ts=since, limit=self.RESEARCH_TRADE_LIMIT)
