@@ -38,7 +38,7 @@ Kalshi REST GET (rest.py, quota-budgeted) ───────► account / rec
   UNKNOWN and blocks until proven (D-143 absence rule); a refusal before the
   transport is NOT_SENT (D-143, D-146).
 
-### Account proof lifecycle (`runtime`, `account`, `account_release`)
+### Account proof lifecycle (`account_proof`, `runtime`, `account`, `account_release`)
 
 | Path | When | Cost |
 |---|---|---|
@@ -80,11 +80,12 @@ local files outside git; nothing logs them.
 
 ### Known structural debt (review 2026-09-26)
 
-`runtime.RecoveryRuntime` is a 2.5k-line class that other modules reach into;
-several functions exceed 200 lines (`writer._execute`, `dispatch_sources.refresh`,
-`runtime._connection_round`, `runtime._repair`). Module docstrings from the
-offline build era still say "offline"/"no live authority" for modules that are
-now live. See `NEXT.md` for the incremental plan.
+`runtime.RecoveryRuntime` (2.0k lines after moving the account-proof lifecycle
+to `account_proof.AccountProofMixin`) is still reached into by other modules.
+Long state machines remain: `dispatch_sources.refresh`, `runtime._connection_round`,
+`runtime._repair`, `runtime._recover`; `writer._execute` is a flat command router.
+Module docstrings from the offline build era still say "offline"/"no live
+authority" for modules that are now live.
 
 ## Decision-by-decision design notes (newest first)
 
