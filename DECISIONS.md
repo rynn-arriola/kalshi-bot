@@ -10,6 +10,35 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-139 — Unattended 2-hour status scheduler with restart and fix authority
+
+- **Status:** ACCEPTED, 2026-09-26.
+- **Decision owner:** In the Polymarket liquidity-bot session, the operator
+  created a 2-hour Claude status check. The operator's words:
+  - "i want you to check bot status and check the logs, and write findings on md file … if bot is not trading or crashed i want you to fix it and restart";
+  - "Count down should start on latest chat";
+  - "When theres issue like fixing something just fix it so you can run the bot during that status check";
+  - then "Can you add the same rules to kalshi".
+- **Scope:** A Claude scheduled task, "Kalshi bot status scheduler", runs 2 hours after the operator's latest Kalshi chat or its own last check. It:
+  - reads local status and logs;
+  - records findings in `C:\Users\rynna\Bots\kalshi bot status 2 hour check.md`.
+
+  If the bot crashed, stopped trading or is stuck, it may do an ordinary restart: `scripts\Stop-LiquidityBot.ps1` drain, then `scripts\Start-LiquidityBot.ps1 -Live`. This is a standing restart authorization for this purpose, under D-112's process scope.
+
+  It may also fix operational problems and code bugs that prevent running. Each code fix must:
+  - carry a regression test;
+  - pass the affected tests, `Test-Bot.ps1 -Fast` and the complete `Test-Bot.ps1` (`-NativeSupervisor` when supervisor/IPC code changed);
+  - be recorded in BUGFIXES/STATUS/NEXT, committed and pushed under D-065 before the restart.
+- **Boundary:**
+  - Only restore existing behavior. Never change strategy, risk limits or holds, size, market selection, pricing, exits or timing.
+  - Never use `-Initialize` or Command 1 (`-Flatten`).
+  - Never force-kill or use D-112 exact-child termination.
+  - Never edit the ledger, attribute cash or clear accounting, ownership or loss blockers. These stay operator decisions.
+  - Never place, cancel or modify orders.
+  - Never restart a manual operator stop, a loss hold, or a state whose blocker is financial or ownership-related.
+  - Never restart over uncommitted tracked changes, or when the checkout's `production_build_fingerprint()` differs from the last armed `build_fingerprint` for any reason other than its own reviewed fix.
+  - At most one restart per 6 hours. Any failed or uncertain gate leaves the bot stopped and notifies the operator.
+
 ### D-138 — Raise the resting entry-order cap to 50
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
