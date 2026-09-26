@@ -7,6 +7,13 @@ own-order renewal logs why it falls back and retries only the not-yet-listed
 case. Running generation (run `de0b24bd`) is unchanged; deploy with the next
 authorized restart. Finding 207.
 
+**Process slip, corrected (2026-09-26 ~02:33 UTC):** publishing WATCHLIST.md
+fast-forwarded the canonical checkout to `40303e9`, briefly placing undeployed
+D-136 code under the running bot. It was reset to `cf648ce` within minutes; its
+`src/` is identical to the running build `0265983`. Supervisor generation 177,
+build fingerprint `ec620732…`, 30 orders and zero errors were unchanged.
+Canonical now stays behind origin until the next authorized deployment.
+
 ## D-133–D-135 deployed by Command 1 — 2026-09-26
 
 **Deployed and running** (run `de0b24bd`, supervisor generation 177, build
