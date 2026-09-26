@@ -212,7 +212,9 @@ hold remains; this release does not introduce an automatic retry of that command
 
 Ignored local `data/trader/` holds `account.db` (single financial writer),
 `account.rewards.json` (estimated reward checkpoint), atomic `status.json` and
-rotating `logs/events.jsonl` (routine telemetry in `telemetry.jsonl`, D-149). `data/trader/supervisor/` holds the separate
+rotating `logs/events.jsonl` (routine telemetry in `telemetry.jsonl`, D-149).
+`research.db` (D-151) is the calibration dataset; summarise it with
+`python -B scripts/research_report.py --days 7` (writes `data/trader/reports/`). `data/trader/supervisor/` holds the separate
 protected control journal and bounded parent/child diagnostics. `RUNNING` means process activity, not that any
 order exists; inspect resting entries, positions, account/dispatch blockers and
 timestamps. Saved status is explicitly historical, not proof the PID is alive.

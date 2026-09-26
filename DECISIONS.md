@@ -10,6 +10,29 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-151 — Research dataset for calibration
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Do all but review it per number you finish then
+  do the same to the next number”.
+- **Scope:** `data/trader/research.db`, separate from the financial ledger,
+  written by one background thread (never blocks or raises; drops are
+  counted; 120-day retention). Records: (1) every acknowledged entry pair with
+  its placement context and how each entry order ended; (2) each fill with
+  queue/anchor context and 1/5/30-minute mark-outs; (3) hourly per-program
+  reward estimates and every external cash credit; (4) every protective pull
+  with triggers and a 30/60-second market check; (5) public trades for up to
+  64 quoted or held markets once a minute (background read, 30-s overlap); (6)
+  10-second health samples summarised hourly with counter changes.
+  `scripts/research_report.py` turns it into a weekly Markdown calibration
+  report (read-only).
+- **Payout timing (operator-supplied community evidence):** liquidity rewards
+  arrive around 2–4 AM ET the day after a program's end; the report matches
+  credits in that window to programs that ended.
+- **Boundary:** no trading, size, selection or protection change; research
+  failures are counted and never affect account or order processing.
+
 ### D-150 — Shadow-only fill-avoidance screen on every prepared entry
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
