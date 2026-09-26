@@ -295,5 +295,76 @@ class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
         self.store.close()
         self.assertEqual(len(rows(self.path, 'reward_estimates')), 1)
 
+class WithdrawalOutcomeTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import test_bot_fill_protection as protection
+        self.p = protection.AnchoredProtectionTests('test_cancel_ahead_then_join_behind_is_never_netted')
+        await self.p.asyncSetUp()
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.p.r.research = self.store
+
+    async def asyncTearDown(self):
+        self.store.close()
+        await self.p.asyncTearDown()
+        self.temp.cleanup()
+
+    async def test_primary_pull_records_trigger_orders_and_later_market(self):
+        import asyncio
+        self.p.m.RESEARCH_MARK_SECONDS = (0.01,)
+        self.p.remove('.5', 495)  # Short queue: fewer than one entry ahead.
+        self.p.m.refresh('A')
+        self.assertIsNotNone(self.p.m.cycle)
+        self.p.book.bids.set(D('.5'), D(0))  # Our bid level is gone afterwards.
+        await asyncio.sleep(.1)
+        self.store.close()
+        [(key, row)] = rows(self.path, 'withdrawals')
+        self.assertEqual((row['kind'], row['ticker'], row['triggers']),
+                         ('primary', 'A', ['short_queue']))
+        self.assertEqual({o['side'] for o in row['orders']}, {'bid', 'ask'})
+        self.assertTrue(any(s['trigger'] == 'short_queue' for s in row['samples']))
+        self.assertEqual(row['repeats_last_hour'], 1)
+        [(mark_key, mark)] = rows(self.path, 'withdrawal_marks')
+        self.assertEqual(mark_key, key+'@0.01')
+        self.assertEqual(mark['level_gone'], [self.p.bid])
+        self.assertEqual(self.p.m._research_marks_pending, 0)
+
+    async def test_a_level_still_there_is_not_counted_as_reached(self):
+        import asyncio
+        self.p.m.RESEARCH_MARK_SECONDS = (0.01,)
+        self.p.remove('.5', 495)  # 15 contracts still bid at our price.
+        self.p.m.refresh('A')
+        await asyncio.sleep(.1)
+        self.store.close()
+        [(_, mark)] = rows(self.path, 'withdrawal_marks')
+        self.assertEqual(mark['best_bid'], '0.5')
+        self.assertEqual(mark['level_gone'], [])
+
+    async def test_pending_marks_are_bounded_and_no_research_means_no_record(self):
+        self.p.m.RESEARCH_MAX_PENDING_MARKS = 1
+        self.p.remove('.5', 495)
+        self.p.m.refresh('A')
+        self.assertEqual(self.p.m._research_marks_pending, 0)  # Two marks exceed the bound.
+        self.p.r.research = None
+        self.p.m._research_withdrawal(SimpleNamespace(ticker='A'), 'primary')  # No-op.
+        self.assertEqual(self.p.r.research_failures, 0)
+        self.store.close()
+        self.assertEqual(len(rows(self.path, 'withdrawals')), 1)
+
+    async def test_secondary_latch_is_recorded(self):
+        import test_bot_concurrent_withdrawals as concurrent
+        c = concurrent.ConcurrentWithdrawalTests('test_bounded_to_four_concurrent_cycles')
+        await c.asyncSetUp()
+        try:
+            c.r.research = self.store
+            self.assertTrue(c.latch_b())
+        finally:
+            await c.asyncTearDown()
+        self.store.close()
+        kinds = [(r['ticker'], r['kind']) for _, r in rows(self.path, 'withdrawals')]
+        self.assertIn(('B', 'secondary'), kinds)
+
+
 if __name__ == '__main__':
     unittest.main()

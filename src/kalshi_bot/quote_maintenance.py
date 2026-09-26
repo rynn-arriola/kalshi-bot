@@ -104,6 +104,7 @@ class QuoteMaintenance:
         self._risk_log_at = {}
         self._risk_gap_counts = {}
         self._anchors = {}      # order_id -> QueueAnchor (D-145)
+        self._research_marks_pending = 0  # D-151 #4
         self._blind_since = {}  # order_id -> first clock seen without an anchor
         self.queue_reader_active = False
         self._queue_wake = None
@@ -184,6 +185,7 @@ class QuoteMaintenance:
         self._risk_cooldown[ticker] = now+self._risk_cooldown_seconds(ticker)
         if ticker in self.samples:
             self.samples[ticker]['action'] = 'fill_risk_withdrawal'
+        self._research_withdrawal(plan, 'secondary')
         r.diagnostics.emit('fill_risk_withdrawal', market=ticker, count=repeats)
         r.diagnostics.emit('maintenance_cycle_started', market=ticker,
             maintenance_reason='fill_risk_withdrawal', count=len(ids))
@@ -191,6 +193,55 @@ class QuoteMaintenance:
         if source is not None:
             source.request_risk_drain(ticker)  # Never depend on the caller's wake.
         return True
+
+    RESEARCH_MARK_SECONDS = (30, 60)
+    RESEARCH_MAX_PENDING_MARKS = 200
+
+    def _research_withdrawal(self, plan, kind):
+        """D-151 #4: why a protective pull fired; the market is checked later."""
+        r = self.runtime
+        if getattr(r, 'research', None) is None:
+            return
+        r._research_safely(self._record_research_withdrawal, plan, kind)
+
+    def _record_research_withdrawal(self, plan, kind):
+        from uuid import uuid4
+        r, ticker = self.runtime, plan.ticker
+        rows = [row for row in (self.samples.get(ticker) or {}).get('fill_risk', ())
+                if row.get('withdraw')]
+        orders = [dict(order_id=o.order.order_id, side=o.order.side, price=o.order.yes_price,
+                       remaining=o.order.remaining) for o in plan.inventory.orders]
+        key = uuid4().hex
+        r.research.record('withdrawals', key, ticker=ticker, kind=kind, orders=orders,
+            triggers=sorted({row.get('trigger') for row in rows} - {None}),
+            samples=[{field: row.get(field) for field in (
+                'order_id', 'trigger', 'ahead_estimate', 'queue_ahead', 'depletion_per_second',
+                'seconds_to_reach', 'horizon_seconds', 'blind_seconds', 'anchored')}
+                for row in rows],
+            repeats_last_hour=len(self._withdrawals.get(ticker, ())),
+            **r._research_top(r.management._book(ticker)[1]))
+        if self._research_marks_pending + len(self.RESEARCH_MARK_SECONDS) > self.RESEARCH_MAX_PENDING_MARKS:
+            return
+        loop = asyncio.get_running_loop()
+        for delay in self.RESEARCH_MARK_SECONDS:
+            self._research_marks_pending += 1
+            loop.call_later(delay, self._research_withdrawal_mark, key, ticker, orders, delay)
+
+    def _research_withdrawal_mark(self, key, ticker, orders, delay):
+        """Did the market reach our prices after the pull? (level gone = yes)."""
+        self._research_marks_pending = max(0, self._research_marks_pending-1)
+        r = self.runtime
+        if getattr(r, 'research', None) is None or r.stop_requested.is_set():
+            return
+        def mark():
+            top = r._research_top(r.management._book(ticker)[1])
+            bid, ask = top['best_bid'], top['best_ask']
+            reached = [o['order_id'] for o in orders
+                       if (o['side'] == 'bid' and (bid is None or bid < o['price']))
+                       or (o['side'] == 'ask' and (ask is None or ask > o['price']))]
+            r.research.record('withdrawal_marks', f'{key}@{delay}', ticker=ticker,
+                              delay_seconds=delay, level_gone=reached, **top)
+        r._research_safely(mark)
 
     REPEAT_WINDOW_SECONDS = 3600
 
@@ -641,6 +692,7 @@ class QuoteMaintenance:
             self._risk_cooldown = {t:until for t,until in self._risk_cooldown.items()
                                    if until > r.clock()}
             repeats = self._record_withdrawal(plan.ticker)
+            self._research_withdrawal(plan, 'primary')
             self._risk_cooldown[plan.ticker] = r.clock()+self._risk_cooldown_seconds(plan.ticker)
             r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker, count=repeats)
         if evidence_valid_until is None:
