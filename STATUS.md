@@ -8,7 +8,9 @@ unchanged: order group active, queue reader current. Earlier today: the
 operator's manual close was reconciled (net −$18.3604) and the 10:38 UTC
 send-edge crash (Finding 211) is fixed by D-146. **D-147** (own-order renewal
 instead of a full recovery after protective-cancel drains) is built and
-tested, awaiting an authorized restart.
+tested, awaiting an authorized restart, together with **D-148** (a routine
+renewal overtaken only by a private update hands over to own-order renewal).
+Full suite 2,002 tests and the native gate pass.
 
 ## Bot stopped after an adverse fill; D-145 fill protection ready — 2026-09-26
 

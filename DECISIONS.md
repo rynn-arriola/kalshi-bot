@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-148 — A routine renewal overtaken by a private update hands over to own-order renewal
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Ok do recommendation” (fix the routine-renewal
+  fallback together with D-147 before deploying).
+- **Scope:** when a routine account renewal fails only because a private account
+  event arrived mid-read (same connection, writer epoch and stream epoch;
+  history tail fetched empty and complete; snapshot otherwise matched) and the
+  last released proof is still a valid own-order chain anchor, the live
+  refresh owner runs the D-134 own-order renewal instead of a full recovery.
+  Cash, position, tail, omitted-history, writer-only, slow-read and reconnect
+  failures still escalate at once. Status reports `routine_own_fallbacks`.
+- **Evidence:** Finding 211: 85 routine renewals in 1 h 50 min fell back to full
+  recovery on a concurrent source change (~221 s, ~3% of the time).
+- **Boundary:** no risk, size, strategy or protection threshold change.
+
 ### D-147 — Renew the account proof after a protective-cancel drain
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

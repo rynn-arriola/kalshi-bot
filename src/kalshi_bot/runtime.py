@@ -1018,6 +1018,20 @@ class RecoveryRuntime:
             return self._snapshot_signature(report) == proof.snapshot_signature
         return self._own_order_unexplained(report, proof) is None
 
+    def _raced_by_private(self, proof, history):
+        """D-148: a clean tail, and only private account ingress moved the source.
+
+        Same connection, writer epoch and private stream epoch, and the account
+        revision advanced (a private event arrived mid-read). A write with no
+        private event, a slow read, a reconnect or any tail evidence is not.
+        """
+        source = self._routine_source()
+        clean = (not history.enumeration.omitted_rows if history is not None
+                 else self.account.__dict__.get('tail_fetched_empty') is True)
+        return (clean
+                and source[0] == proof.source[0] and source[1] != proof.source[1]
+                and source[2] == proof.source[2] and source[5] == proof.source[5])
+
     def _current_routine_proof(self):
         proof = self._routine_account_proof
         owner = self.dispatch_supervisor
@@ -1064,6 +1078,7 @@ class RecoveryRuntime:
         released = None
         unexplained = False
         audit_blockers = ()  # D-146: which audit check blocked an own renewal.
+        raced = False  # D-148: clean evidence, only the source moved mid-read.
         async with self.recovery_lock:
             try:
                 async with asyncio.timeout(20):
@@ -1088,6 +1103,9 @@ class RecoveryRuntime:
                         if isinstance(value, BaseException):
                             raise value
                     if reconciled is None:
+                        # The snapshot was superseded mid-read (source or
+                        # writer moved); with a clean tail that is a race.
+                        raced = not own and self._raced_by_private(proof, history)
                         return False
                     report, prepared = reconciled
                     expected = start_source if own else proof.source
@@ -1097,6 +1115,8 @@ class RecoveryRuntime:
                         unexplained = self._own_order_unexplained(report, proof)
                         if unexplained == 'audit_blocked' and report.audit is not None:
                             audit_blockers = tuple(report.audit.blockers)
+                    raced = (not own and report is not None and not unexplained
+                             and self._raced_by_private(proof, history))
                     if (history is None or report is None
                             or history.enumeration.omitted_rows
                             or (self._chain_anchor() if own else self._routine_account_proof) is not proof
@@ -1159,6 +1179,18 @@ class RecoveryRuntime:
                         # the same bounded renewal instead of a full recovery.
                         self._own_renewal_retries += 1
                         self.own_order_renewal['retries'] += 1
+                    elif (raced and failure is None and released is None
+                          and self._chain_anchor() is not None):
+                        # D-148: a routine renewal whose tail was empty and whose
+                        # snapshot matched, overtaken only by a source change
+                        # (typically the bot's own order update) while nothing
+                        # economic happened since the last released proof.
+                        # Hand over to the own-order renewal, which
+                        # re-verifies positions, cash and audit from a fresh
+                        # snapshot and escalates to full recovery itself.
+                        self._routine_account_proof = None
+                        self._account_ingress_at = self.clock()
+                        self.routine_own_fallbacks = self.__dict__.get('routine_own_fallbacks', 0)+1
                     else:
                         self._own_renewal_retries = 0
                         if own:
@@ -2375,6 +2407,7 @@ class RecoveryRuntime:
             exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
             unknown_creates_resolved=self.__dict__.get('unknown_creates_resolved', 0),
             post_drain_renewals=self.__dict__.get('post_drain_renewals', 0),
+            routine_own_fallbacks=self.__dict__.get('routine_own_fallbacks', 0),
             venue_paused=bool(self.__dict__.get('_venue_paused', False)),
             venue_pauses=self.__dict__.get('venue_pauses', 0),
             exchange_status_failures=self.__dict__.get('exchange_status_failures', 0),

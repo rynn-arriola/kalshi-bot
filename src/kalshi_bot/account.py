@@ -569,10 +569,12 @@ class AccountCoordinator:
         self._check_owner()
         started_at = utc(now())
         generation, revision = self.generation, self.revision
+        self.tail_fetched_empty = None  # D-148: known only once the tail is read.
         if not self.connected or self._processing or self.writer.failed:
             return None
         evidence = await fetch_history(reads, start=start, end=end,
                                        subaccount=self.subaccount)
+        self.tail_fetched_empty = not evidence.records
         if (evidence.records or not self.connected or self._processing
                 or (generation, revision) != (self.generation, self.revision)):
             return None

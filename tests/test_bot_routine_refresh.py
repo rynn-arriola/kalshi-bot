@@ -141,6 +141,84 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
                     and self.writer._accounting_lease.fence.current())
                 runtime.reads.read = original
 
+    async def own_update_mid_read(self, runtime, *, economic):
+        self.advance()
+        original = runtime.reads.read
+        changed = False
+        async def racing(name, **kwargs):
+            nonlocal changed
+            result = await original(name, **kwargs)
+            if name == 'balance' and not changed:
+                changed = True
+                runtime.account._invalidate(economic=economic)
+            return result
+        runtime.reads.read = racing
+        try:
+            return await runtime._refresh_routine_account()
+        finally:
+            runtime.reads.read = original
+
+    async def test_own_update_mid_read_hands_over_to_own_order_renewal(self):
+        # D-148: a clean routine renewal overtaken only by a non-economic own
+        # order update is renewed by the own-order path, not a full recovery.
+        runtime = await self.runtime()
+        self.assertFalse(await self.own_update_mid_read(runtime, economic=False))
+        self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertIsNone(runtime._routine_account_proof)
+        self.assertEqual(runtime.status()['routine_own_fallbacks'], 1)
+        self.assertFalse(self.writer._accounting_lease is not None
+            and self.writer._accounting_lease.fence.current())  # Entries wait.
+        anchor = runtime._current_own_order_anchor()
+        self.assertIsNotNone(anchor)
+        self.advance()
+        self.assertTrue(await runtime._refresh_routine_account(anchor=anchor))
+        self.assertIsNotNone(runtime._current_routine_proof())
+        self.assertFalse(runtime.recovery_requested.is_set())
+
+    async def test_private_update_with_a_nonempty_tail_still_fully_recovers(self):
+        runtime = await self.runtime()
+        self.advance()
+        async def fills_in_tail(*args, **kwargs):
+            runtime.account.tail_fetched_empty = False  # The venue listed fills.
+            runtime.account._invalidate(economic=False)
+            return None
+        with patch.object(runtime.account, 'extend_empty_history', fills_in_tail):
+            self.assertFalse(await runtime._refresh_routine_account())
+        self.assertTrue(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.status()['routine_own_fallbacks'], 0)
+
+    async def test_private_update_with_omitted_history_still_fully_recovers(self):
+        runtime = await self.runtime()
+        history = runtime.last_reports[0]
+        omitted = replace(history, enumeration=replace(history.enumeration,
+            remembered_count=history.enumeration.row_count+1))
+        with patch.object(runtime.account, 'extend_empty_history', AsyncMock(return_value=omitted)):
+            self.assertFalse(await self.own_update_mid_read(runtime, economic=False))
+        self.assertTrue(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.status()['routine_own_fallbacks'], 0)
+
+    async def test_tail_emptiness_is_recorded_only_after_the_read(self):
+        runtime = await self.runtime()
+        account = runtime.account
+        with patch('kalshi_bot.account.fetch_history',
+                   AsyncMock(return_value=SimpleNamespace(records=(object(),)))):
+            self.assertIsNone(await account.extend_empty_history(runtime.reads,
+                start=self.now, end=self.now, now=lambda: self.now))
+        self.assertIs(account.tail_fetched_empty, False)
+        async def empty_but_raced(*args, **kwargs):
+            account._invalidate(economic=False)
+            return SimpleNamespace(records=())
+        with patch('kalshi_bot.account.fetch_history', empty_but_raced):
+            self.assertIsNone(await account.extend_empty_history(runtime.reads,
+                start=self.now, end=self.now, now=lambda: self.now))
+        self.assertIs(account.tail_fetched_empty, True)
+
+    async def test_economic_update_mid_read_still_fully_recovers(self):
+        runtime = await self.runtime()
+        self.assertFalse(await self.own_update_mid_read(runtime, economic=True))
+        self.assertTrue(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.status()['routine_own_fallbacks'], 0)
+
     async def test_history_chain_is_bounded_and_source_fenced(self):
         runtime = await self.runtime()
         proof = runtime._routine_account_proof
