@@ -26,8 +26,13 @@ ZERO = Decimal(0)
 
 class SourceFence:
     """Created by the account owner; revoked synchronously before its awaits."""
-    def __init__(self, *, generation, revision, observed_at, clock, now, started=None, revoked=None):
+    def __init__(self, *, generation, revision, observed_at, clock, now, started=None, revoked=None,
+                 history_floor=None):
         self.generation, self.revision = generation, revision
+        # D-134: oldest source revision whose history receipts remain valid.
+        self.history_floor = revision if history_floor is None else history_floor
+        if not 0 <= self.history_floor <= revision:
+            raise InvalidData('history floor outside source revision')
         self.observed_at = utc(observed_at)
         self.clock, self.now = clock, now
         self.started = clock() if started is None else started
@@ -511,7 +516,7 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
         spans.append((item['start_us'], min(item['end_us'], item['read_started_us'])))
         provenance_invalid = (item['writer_epoch'] != epoch or item['generation'] != fence.generation
                 or item['subaccount'] != 0 or item['remembered_count'] != item['row_count']
-                or item['source_revision'] != fence.revision
+                or not fence.history_floor <= item['source_revision'] <= fence.revision
                 or (private and item['read_started_us'] < timestamp_us(private['opened_at'])))
         if provenance_invalid:
             blockers.append('accounting_history_receipt_invalid')

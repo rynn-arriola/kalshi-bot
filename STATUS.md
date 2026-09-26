@@ -1,5 +1,14 @@
 # Current status
 
+## D-134 recovery efficiency — 2026-09-26 (published, not deployed)
+
+All six recommendations were authorized (“Lets do all recommendations”).
+Items 1–5 are implemented and verified (Findings 204–205); item 6 is a single
+deployment of D-133 and D-134 together, awaiting operator confirmation.
+After deployment compare full-recovery count/time, `own_order_renewal`
+completed vs escalations, `chained_recoveries` and entry-allowed time with
+Finding 203.
+
 ## D-133 full-recovery re-audit — 2026-09-26 (published, not deployed)
 
 Generation 172 keeps running unchanged. Finding 203 measured full recovery at

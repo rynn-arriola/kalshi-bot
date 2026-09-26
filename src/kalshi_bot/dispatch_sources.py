@@ -72,6 +72,7 @@ class InventoryDispatchSource:
         self.entry_block_detail_counts = {}
         self._paused_cancel_notice = None
         self._risk_cancel_notice = None
+        self._own_ack = None
         # Scheduling intent only, never execution authority. A popped key is
         # not proof that the latched pair has no further cancelable orders.
         # D-131 item 7: one retry/backoff record per latched protective cycle.
@@ -192,6 +193,15 @@ class InventoryDispatchSource:
                 self.runtime.engine.wake.set()
 
     def _mutation_observed(self, notice=None):
+        # D-134: a turn is an own acknowledgement only if every notice in it
+        # (each leg of a batch) was acknowledged; the post-persistence callback
+        # (notice None) consumes that verdict.
+        if notice is not None:
+            ack = notice.outcome == 'ack' and notice.http_status is None
+            self._own_ack = ack if self._own_ack is None else (self._own_ack and ack)
+            own_ack = self._own_ack
+        else:
+            own_ack, self._own_ack = bool(self._own_ack), None
         risk = self._proof if isinstance(self._proof, _RiskCancelProof) else None
         paused_cancel = isinstance(self._proof, _PausedCancelProof)
         self._proof = None
@@ -201,8 +211,9 @@ class InventoryDispatchSource:
         if notice is not None and risk is not None and notice.kind == 'cancel':
             # The exact risk pair was already latched while account proof was
             # current. Revoke all entry authority now; only its remaining owned
-            # entry ID may drain before the final account reconciliation.
-            self.runtime._revoke()
+            # entry ID may drain before the final account reconciliation. An
+            # acknowledged cancel is not economic evidence (D-134).
+            self.runtime._revoke(economic=not own_ack)
             self._risk_cancel_notice = (notice, risk.cycle)
             return
         if notice is None and self._risk_cancel_notice is not None:
@@ -255,7 +266,13 @@ class InventoryDispatchSource:
             # already revoked above.
             self._rebase_requested = True
             return
-        self.runtime._revoke()
+        # D-134: an acknowledged own command is not economic evidence. While
+        # the last released proof survives under the history floor, the live
+        # refresh owner renews it (positions unchanged, only working orders
+        # differ, empty tail); everything else keeps ordinary full recovery.
+        self.runtime._revoke(economic=not own_ack)
+        if own_ack and self.runtime.own_order_acknowledged():
+            return
         self.runtime.request_recovery('mutation_observed' if notice is not None
                                       else 'mutation_persisted')
         if notice is not None and notice.http_status is not None:
@@ -272,6 +289,7 @@ class InventoryDispatchSource:
         """
         requested, self._rebase_requested = self._rebase_requested, False
         invoked, self._transport_invoked = self._transport_invoked, False
+        self._own_ack = None  # Never carry an acknowledgement verdict across turns.
         runtime = self.runtime
         if self._stopped or runtime.stop_requested.is_set():
             return

@@ -103,6 +103,14 @@ transaction-local managed-exit classification set, preserving all individual
 order, fill and intent checks. Full recovery collects financial documents with
 its final snapshot; paused refresh gives the supervisor the normal fresh-report
 interval to finish its flat check before any further renewal.
+D-134: the account owner keeps a history floor, the revision of the last
+economic invalidation. The bot's own acknowledged, fully settled orders do not
+move it; release accepts receipts from [floor, current]. After such orders the
+live refresh owner renews from the last released proof (positions unchanged,
+only working orders and cash with them may differ, consistent audit, empty
+tail) instead of full recovery, and full recovery enumerates only after that
+chain while the floor is unchanged.
+
 D-133: when only local history/settlement work ran after a full pass's first
 snapshot, that snapshot is re-audited within its original five-second bound
 instead of being read again; the mandatory tail snapshot must still match it.

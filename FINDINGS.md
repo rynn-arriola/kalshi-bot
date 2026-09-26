@@ -1,5 +1,47 @@
 # Findings — kalshi-bot
 
+## 205. Own-order renewal and chained recovery (D-134 items 1, 4) — 2026-09-26
+
+**Root cause (VERIFIED in code):** every private event and every command
+acknowledgement advanced the account revision, and release accepted only
+history receipts bound to the current revision. Each accepted order therefore
+discarded the whole receipt chain and forced a full recovery that re-enumerated
+fills from the opening boundary (Finding 203: median 4.28 s, ~27% of time).
+
+**Repair:**
+- *History floor.* The account owner keeps the revision of the last economic
+  invalidation. Only an order update whose durable receipt is owned and has
+  no fill gap, and the transport acknowledgement of the bot's own command
+  (every leg of a batch), advance the revision without moving it. Fills,
+  positions, foreign/unsettled orders, rejected/uncertain outcomes,
+  reconnects and every other invalidation move it. Release accepts receipts
+  from source revisions in [floor, current]; generation, writer epoch,
+  private-epoch and all coverage checks are unchanged.
+- *Own-order renewal (item 1).* After an acknowledged own command, the live
+  refresh owner waits 0.3 s for the venue's order updates, then runs the
+  existing routine renewal from the last released proof: fresh snapshot,
+  empty history tail from the chain end, fresh cash/settlement/transfer
+  sources and the unchanged writer release. Positions must equal the proof's,
+  only working orders (and cash only with them) may differ, and the writer
+  audit must be consistent. A changed position or cash, a nonempty tail or a
+  rejected release escalates to full recovery immediately; a racing
+  non-economic update retries at most three times.
+- *Chained recovery (item 4).* While the floor is unchanged, full recovery
+  enumerates only after the last released chain instead of from the opening
+  boundary. Chains are capped at 100 receipts; a failed chained pass always
+  restarts from the boundary; economic events always re-prove from it.
+
+**Residual (unchanged class, D-068):** a fill hidden from both the private
+stream and REST history can go unnoticed until either reports it; the old rule
+re-read history after each own order but could not detect a fill neither
+source reported either.
+
+**Verification:** 16 focused tests (renewal success, changed position with and
+without ledger agreement, cash without order change, bounded race retries,
+floor movement per event kind, release rejection of pre-floor receipts,
+chained and failed-chained recovery, batch acknowledgement ordering); five
+guard mutations each caught. Live effect is a HYPOTHESIS until measured.
+
 ## 204. Ledger query cost and recovery overlap (D-134 items 2, 3, 5) — 2026-09-26
 
 **Scope:** Read-only copy of the live `account.db` (1,581 orders, 3,183

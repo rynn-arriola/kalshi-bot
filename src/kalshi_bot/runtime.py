@@ -168,6 +168,14 @@ class RecoveryRuntime:
         self._safety_recovery_retries = set()
         self._steady_account_scope = None
         self._routine_account_proof = None
+        # D-134: the last released proof and the history floor it was bound
+        # to. It survives only the bot's own acknowledged order updates.
+        self._last_proof = None
+        self._account_ingress_at = None
+        self._own_renewal_retries = 0
+        self.own_order_renewal = dict(attempts=0, completed=0, retries=0, escalations=0)
+        self.chained_recoveries = 0
+        self._chained_pass = False
         self.routine_refresh_attempts = 0
         self.routine_refresh_completed = 0
         self.routine_refresh_escalations = 0
@@ -724,12 +732,12 @@ class RecoveryRuntime:
                 self.diagnostics.emit('history_scope_high', count=rows,
                                       elapsed_ms=elapsed_ms)
 
-    def _revoke(self):
+    def _revoke(self, economic=True):
         self._steady_account_scope = None
         self._routine_account_proof = None
         self.ingress_revision += 1
         self.last_reports = None
-        self.account._invalidate()
+        self.account._invalidate(economic=economic)
         for ticker in self.engine.market_shard:
             self._invalidate_market(ticker)
         self._refresh_continuity()
@@ -761,6 +769,68 @@ class RecoveryRuntime:
         self._routine_account_proof = _RoutineAccountProof(self._routine_source(),
             self._snapshot_signature(report), tuple(receipt_ids),
             history.enumeration.eligible_end_us, result.window.end)
+        self._last_proof = (self._routine_account_proof, self.account.history_floor)
+
+    # D-134: bound the carried receipt chain well below the 128-receipt proof
+    # cap; beyond it, full recovery re-proves from the opening boundary.
+    CHAIN_RECEIPT_LIMIT = 100
+    # Let the venue's own order updates for an acknowledged command arrive
+    # before renewing, instead of racing them.
+    OWN_ORDER_SETTLE_SECONDS = .3
+    OWN_ORDER_RETRIES = 3
+
+    def _chain_anchor(self):
+        """D-134: the last released proof, while nothing economic happened since.
+
+        Valid only in the same account connection, writer epoch and private
+        stream epoch, with an unchanged history floor. Fills, positions,
+        foreign or unsettled orders, reconnects and every other invalidation
+        move the floor and end reuse.
+        """
+        last = self._last_proof
+        if last is None:
+            return None
+        proof, floor = last
+        source = self._routine_source()
+        if (floor != self.account.history_floor or self._epoch_ambiguous
+                or (proof.source[0], proof.source[2], proof.source[5]) !=
+                   (source[0], source[2], source[5])
+                or len(proof.receipt_ids) >= self.CHAIN_RECEIPT_LIMIT):
+            return None
+        return proof
+
+    def _current_own_order_anchor(self):
+        proof = self._chain_anchor()
+        owner = self.dispatch_supervisor
+        state = owner.dispatcher.status() if owner is not None else None
+        if (proof is None or self._routine_account_proof is not None
+                or utc(self.now()) >= proof.window_end
+                or not self.account_subscribed or not self.account.connected
+                or self.engine.private or self.account._processing
+                or self.writer.failed or self.engine.failed or self.engine.stopped
+                or self.stop_requested.is_set() or self.recovery_requested.is_set()
+                or (state is not None and (state.active is not None or state.queued
+                    or state.stopping or state.failed))):
+            return None
+        return proof
+
+    def own_order_acknowledged(self):
+        """An acknowledged own command: renew instead of full recovery if possible."""
+        self._account_ingress_at = self.clock()
+        return (self._chain_anchor() is not None and not self.recovery_requested.is_set()
+                and not self.recovery_lock.locked())
+
+    def _snapshot_explained(self, report, proof, *, own_orders):
+        signature = self._snapshot_signature(report)
+        if not own_orders:
+            return signature == proof.snapshot_signature
+        positions, orders, balance, subaccount = proof.snapshot_signature
+        # Only working orders may differ, and cash only with them. The writer
+        # audit must bind every visible order to a settled owned command.
+        audit = report.audit
+        return (signature[0] == positions and signature[3] == subaccount
+                and (signature[2] == balance or signature[1] != orders)
+                and report.positions_match and audit is not None and audit.consistent)
 
     def _current_routine_proof(self):
         proof = self._routine_account_proof
@@ -777,22 +847,36 @@ class RecoveryRuntime:
             return None
         return proof
 
-    async def _refresh_routine_account(self):
+    async def _refresh_routine_account(self, anchor=None):
         """Renew through existing release checks; never replay full startup work.
 
         A bounded receipt chain preserves the complete original interval. Every
         tail is empty, omission-free and checked by the writer at release.
         Fresh cash/funding/settlement enumeration remains mandatory: unchanged
         balance alone cannot establish unchanged economics.
+
+        D-134: with ``anchor`` (the last released proof, still valid under the
+        history floor) the same renewal runs after the bot's own acknowledged
+        orders: positions must be unchanged, only working orders (and cash
+        with them) may differ, the writer audit must be consistent and the
+        elapsed history tail must be empty.
         """
-        proof = self._current_routine_proof()
+        own = anchor is not None
+        proof = anchor if own else self._current_routine_proof()
         if proof is None or self.recovery_lock.locked():
             return False
+        start_source = self._routine_source()
+        writer_source = (start_source[2], start_source[3]) if own else (proof.source[2], proof.source[3])
         started = self.clock()
         self.routine_refresh_phase_ms = {}
-        self.routine_refresh_attempts += 1
+        if own:
+            self.own_order_renewal['attempts'] += 1
+        else:
+            self.routine_refresh_attempts += 1
         succeeded = False
         failure = None
+        released = None
+        unexplained = False
         async with self.recovery_lock:
             try:
                 async with asyncio.timeout(20):
@@ -808,7 +892,7 @@ class RecoveryRuntime:
                     history, reconciled = await asyncio.gather(
                         self.account.extend_empty_history(reads, start=start, end=end, now=self.now),
                         self.account.reconcile(reads, now=self.now,
-                            expected_writer_source=(proof.source[2], proof.source[3]),
+                            expected_writer_source=writer_source,
                             prepare_accounting_boundary=self.accounting_boundary),
                         return_exceptions=True)
                     self.routine_refresh_phase_ms['snapshot_and_tail'] = max(
@@ -819,14 +903,17 @@ class RecoveryRuntime:
                     if reconciled is None:
                         return False
                     report, prepared = reconciled
+                    expected = start_source if own else proof.source
+                    unexplained = (report is not None and self.account.current_report(self.now()) is report
+                                   and not self._snapshot_explained(report, proof, own_orders=own))
                     if (history is None or report is None
                             or history.enumeration.omitted_rows
-                            or self._routine_account_proof is not proof
+                            or (self._chain_anchor() if own else self._routine_account_proof) is not proof
                             or self.recovery_requested.is_set()
                             or self._routine_source()[:3]+self._routine_source()[4:] !=
-                               proof.source[:3]+proof.source[4:]
+                               expected[:3]+expected[4:]
                             or self.account.current_report(self.now()) is not report
-                            or self._snapshot_signature(report) != proof.snapshot_signature):
+                            or not self._snapshot_explained(report, proof, own_orders=own)):
                         return False
                     self.last_reports = (history, report)
                     self.history_ingress_revision = self.ingress_revision
@@ -836,6 +923,7 @@ class RecoveryRuntime:
                     release_started = self.clock()
                     self.accounting_result = await self.account.release_prepared_accounting(
                         prepared, continuity=continuity, now=self.now)
+                    released = self.accounting_result.released
                     self.routine_refresh_phase_ms['accounting_release'] = max(
                         0, int((self.clock()-release_started)*1000))
                     # Release advances writer revision itself. The account owner
@@ -852,7 +940,11 @@ class RecoveryRuntime:
                     self._schedule_account_refresh(scope)
                     if self.rewards is not None:
                         self.rewards.request_reflection()
-                    self.routine_refresh_completed += 1
+                    if own:
+                        self.own_order_renewal['completed'] += 1
+                        self._own_renewal_retries = 0
+                    else:
+                        self.routine_refresh_completed += 1
                     succeeded = True
                     return True
             except (InvalidData, QuotaUnavailable, TimeoutError, OSError) as exc:
@@ -864,10 +956,26 @@ class RecoveryRuntime:
                 self.routine_refresh_phase = 'idle'
                 if not succeeded:
                     self.account.revoke_accounting()
-                    self.routine_refresh_escalations += 1
-                    self.request_recovery('routine_refresh_failed')
+                    cause = 'own_order_renewal_failed' if own else 'routine_refresh_failed'
+                    if own and released is False:
+                        self._last_proof = None  # Release rejected the chain itself.
+                    if (own and failure is None and released is None and not unexplained
+                            and self._own_renewal_retries < self.OWN_ORDER_RETRIES
+                            and self._chain_anchor() is not None):
+                        # A non-economic source change raced this attempt (for
+                        # example the venue's own order update arriving). Retry
+                        # the same bounded renewal instead of a full recovery.
+                        self._own_renewal_retries += 1
+                        self.own_order_renewal['retries'] += 1
+                    else:
+                        self._own_renewal_retries = 0
+                        if own:
+                            self.own_order_renewal['escalations'] += 1
+                        else:
+                            self.routine_refresh_escalations += 1
+                        self.request_recovery(cause)
                     self.diagnostics.emit('account_refresh_failed', error=failure,
-                        cause='routine_refresh_failed', phase=failed_phase,
+                        cause=cause, phase=failed_phase,
                         elapsed_ms=self.routine_refresh_elapsed_ms,
                         outcome=('quota_wait' if isinstance(failure, QuotaUnavailable)
                             else 'timeout' if isinstance(failure, TimeoutError)
@@ -1122,7 +1230,10 @@ class RecoveryRuntime:
                 if kind == 'fill':
                     await self._stage(event)
                 raise InvalidData('private event before complete subscription')
-            self._revoke()  # At ingestion, before queue/disk waits; not at dispatch.
+            # At ingestion, before queue/disk waits; not at dispatch. An order
+            # update's economics are classified by the account owner (D-134).
+            self._revoke(economic=kind != 'user_order')
+            self._account_ingress_at = self.clock()
             if kind == "fill":
                 await self._stage(event)  # Acknowledged durable evidence before enqueue.
                 self._epoch_fills += 1
@@ -1393,10 +1504,20 @@ class RecoveryRuntime:
         async with self.recovery_lock:
             started = self.clock()
             self.recovery_phase = 'history'
+            self._chained_pass = False
+            repaired = False
             try:
                 await self._load_continuity_history()
-                return await self._repair()
+                repaired = await self._repair()
+                return repaired
             finally:
+                if self._chained_pass:
+                    if repaired:
+                        self.chained_recoveries += 1
+                    else:
+                        # Never retry a chained pass: the next attempt re-proves
+                        # from the opening boundary (e.g. an archived receipt).
+                        self._last_proof = None
                 self.recovery_last_phase = self.recovery_phase
                 self.recovery_elapsed_ms = max(0, int((self.clock()-started)*1000))
                 self.recovery_phase = 'idle'
@@ -1414,7 +1535,18 @@ class RecoveryRuntime:
         # import still runs after the snapshot under the ordinary token; any
         # private event in between discards it and fetches again.
         history_end = self.now()
-        prefetched = self.account.prefetch_history(reads, start=self.history_start,
+        # D-134: while nothing economic happened since the last release, its
+        # receipt chain still proves [opening boundary, chain end); enumerate
+        # only after it. Otherwise re-prove from the opening boundary.
+        chain, history_start = self._chain_anchor(), self.history_start
+        chained_ids = ()
+        if chain is not None:
+            chain_end = datetime.fromtimestamp(chain.end_us//1_000_000,
+                tz=timezone.utc).replace(microsecond=chain.end_us%1_000_000)
+            if self.history_start < chain_end < utc(history_end):
+                history_start, chained_ids = chain_end, chain.receipt_ids
+        self._chained_pass = bool(chained_ids)
+        prefetched = self.account.prefetch_history(reads, start=history_start,
                                                    end=history_end, now=self.now)
         history_started = self.clock()
         try:
@@ -1428,14 +1560,14 @@ class RecoveryRuntime:
         first_mark, lookups = self.account.report_mark(first), reads.order_lookups
         history_ingress = self.ingress_revision
         self.recovery_phase = 'history'
-        history = await self.account.recover_history(reads, start=self.history_start,
+        history = await self.account.recover_history(reads, start=history_start,
                                                     end=history_end, now=self.now,
                                                     prefetched=prefetched)
         if history is None:
             return False
         self._observe_history_scope(history, self.clock()-history_started)
         history_reports = [history]
-        release_receipt_ids = (history.enumeration.receipt_id,)
+        release_receipt_ids = chained_ids+(history.enumeration.receipt_id,)
         self.recovery_phase = 'pending_fills'
         pending = await self.writer.pending_fills(self.account.subaccount)
         attempted = set()
@@ -1799,8 +1931,15 @@ class RecoveryRuntime:
                     # Full-cap scope limits optional market work; it does not
                     # renew accounting. A snapshot-only refresh writes new audit
                     # revisions and invalidates the retained renewal proof/lease.
+                    anchor = self._current_own_order_anchor()
                     if self._current_routine_proof() is not None:
                         await self._refresh_routine_account()
+                    elif anchor is not None:
+                        # D-134: renew after the bot's own acknowledged orders
+                        # once their venue updates have had time to arrive.
+                        if (self._account_ingress_at is None or self.clock()-self._account_ingress_at
+                                >= self.OWN_ORDER_SETTLE_SECONDS):
+                            await self._refresh_routine_account(anchor=anchor)
                     elif self._current_steady_account_scope() is not None and report is not None:
                         refreshed = await self._refresh_steady_account()
                         if (not refreshed and self._current_steady_account_scope() is None
@@ -2018,6 +2157,9 @@ class RecoveryRuntime:
             history_scope_warnings=self.history_scope_warnings,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
+            own_order_renewal=dict(self.own_order_renewal),
+            chained_recoveries=self.chained_recoveries,
+            history_floor=self.account.history_floor,
             routine_account_refresh=dict(attempts=self.routine_refresh_attempts,
                 completed=self.routine_refresh_completed,
                 escalations=self.routine_refresh_escalations,

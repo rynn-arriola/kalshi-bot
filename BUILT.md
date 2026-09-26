@@ -1,5 +1,16 @@
 # What exists
 
+## Own-order renewal, history floor and recovery efficiency — D-134
+
+Acknowledged own orders renew through routine renewal (positions unchanged,
+empty tail, fresh cash proof) instead of full recovery; release accepts
+history receipts since the last economic event; full recovery continues the
+receipt chain instead of re-proving from the opening boundary when nothing
+economic happened. Also: history download concurrent with the first
+snapshot, cheaper order scans and four hot-path indexes. Status adds
+`own_order_renewal`, `chained_recoveries`, `history_floor`. Findings
+204–205; not deployed.
+
 ## Full-recovery first-snapshot re-audit — D-133
 
 Full recovery skips its second venue snapshot when only local history work ran

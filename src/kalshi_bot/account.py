@@ -170,6 +170,10 @@ class AccountCoordinator:
         self.clock = clock
         self.generation = 0
         self.revision = 0
+        # D-134: history receipts from source revisions at or after this floor
+        # remain valid at release. Only the bot's own acknowledged, fully
+        # settled order updates advance ``revision`` without moving it.
+        self.history_floor = 0
         self.connected = False
         self.report = None
         self.latest_fill = None
@@ -191,9 +195,11 @@ class AccountCoordinator:
         if loop is not self._loop:
             raise InvalidData("account owner cannot cross event loops")
 
-    def _invalidate(self):
+    def _invalidate(self, economic=True):
         self.revoke_accounting()
         self.revision += 1
+        if economic:
+            self.history_floor = self.revision
         self.report = None
         self._token = None
         self.history_report = None
@@ -228,7 +234,10 @@ class AccountCoordinator:
             self.disconnect()
             raise InvalidData("account consumer unavailable or concurrent")
         self._processing = True
-        self._invalidate()  # Before the first await, including malformed events.
+        # Before the first await, including malformed events. An order update
+        # is provisionally non-economic until its durable receipt proves it is
+        # owned and fully settled; everything else moves the history floor.
+        self._invalidate(economic=not (isinstance(event, dict) and event.get("type") == "user_order"))
         try:
             now = utc(received_at)
             kind = event["type"]
@@ -259,6 +268,8 @@ class AccountCoordinator:
                 result = await self.writer.order(update, now)
                 if not self.connected or generation != self.generation:
                     raise InvalidData("account epoch lost during order persistence")
+                if not result.owned or result.awaiting_fills:
+                    self.history_floor = self.revision
                 self._store_order(result)
                 return result
             if kind == "market_position":
@@ -920,7 +931,8 @@ class AccountCoordinator:
                 await self.writer.capture_accounting(evidence, report, source_current=False)
                 return ReleaseResult(False, ('accounting_source_stale',))
             fence = SourceFence(generation=prepared.generation,
-                revision=prepared.revision, observed_at=report.observed_at,
+                revision=prepared.revision, history_floor=self.history_floor,
+                observed_at=report.observed_at,
                 clock=self.clock, now=now, started=prepared.started_monotonic,
                 revoked=cancelled)
             self._accounting_fence = fence
@@ -1053,6 +1065,7 @@ class AccountCoordinator:
             if release and source_current:
                 from .account_release import SourceFence
                 fence = SourceFence(generation=generation, revision=revision,
+                    history_floor=self.history_floor,
                     observed_at=report.observed_at, clock=self.clock, now=now,
                     started=self._report_monotonic, revoked=cancelled)
                 self._accounting_fence = fence

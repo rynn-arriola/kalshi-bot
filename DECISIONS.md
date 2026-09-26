@@ -12,7 +12,8 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-134 — Implement all recovery-efficiency recommendations
 
-- **Status:** ACCEPTED, 2026-09-26; items 2, 3, 5 implemented and verified.
+- **Status:** ACCEPTED, 2026-09-26; items 1–5 implemented and verified
+  (Findings 204–205); item 6 (deployment) pending operator confirmation.
 - **Decision owner:** Operator: “Lets do all recommendations”, after the D-133
   report ranked: (1) accept the bot's own acknowledged orders in routine
   renewal instead of full recovery (relaxes D-113), (2) cheaper order scans,
@@ -24,6 +25,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   snapshot difference or uncertainty, and keep fresh cash/settlement proof.
 - **Boundary:** Deployment (item 6) is a live restart and is confirmed with
   the operator at that time. No other risk, ranking or limit change.
+- **Supersedes in part:** D-113's "source changes require ordinary recovery"
+  no longer applies to the bot's own acknowledged, fully settled orders; and
+  D-035/D-068 receipt provenance now accepts revisions since the last
+  economic event (history floor) instead of only the current revision.
 
 ### D-133 — Re-audit an unchanged first snapshot in full recovery
 
