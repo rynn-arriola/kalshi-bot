@@ -260,6 +260,6 @@ Install once (it changes a Windows setting, so run it yourself):
 Two minutes after you sign in, `scripts\Start-LiquidityBotOnBoot.ps1` waits for the
 network and runs `python -m kalshi_bot.supervised_live boot --live`, which starts
 the bot only if it was running before (never after a manual stop or an
-attention state). Results are appended to `data	raderutostart.log`.
+attention state). Results are appended to `data\trader\autostart.log`.
 Remove with `-Remove`. For unattended recovery after a power cut the PC must
 sign in by itself and must not sleep on AC power.
