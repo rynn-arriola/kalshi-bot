@@ -1,5 +1,21 @@
 # Current status
 
+## D-136–D-143 deployed; trading at 50 × 30 contracts — 2026-09-26
+
+**Running** (build `f45d9a4`, trading child run `cce01ccf`). Sequence: the
+$300 deposit blocked D-135 (Finding 208); the operator stopped the bot; D-141
+deployed and credited the deposit (`cash_adjusted` $300.00), but the first
+30-contract pair hit a hard-coded size gate and became UNKNOWN (Finding 209);
+D-143 was deployed after an operator-approved restart (stop timed out; exact
+child PID 50596 terminated). The recovery-only child resolved both phantom
+creates (`unknown_create_resolved` ×2) and proved the account; the trading
+child started 05:10:34 UTC (56 s startup).
+
+First minute: 20 resting entries at 30 contracts, $249.60 collateral,
+13 acknowledgements, own-order renewal 9/10, full recovery ~2.0 s, no
+positions, no ERROR, no accounting blockers. Backups:
+`data/trader/d142-backup-20260926T044034Z/`, `d143-backup-20260926T050814Z/`.
+
 ## D-136 startup allowance and renewal reasons — 2026-09-26 (published, not deployed)
 
 Supervisor startup allowance 180 s (starts measured 56–58 s vs 60 s limit);
