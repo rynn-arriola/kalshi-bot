@@ -190,6 +190,7 @@ class RecoveryRuntime(AccountProofMixin):
         self.order_groups = None  # D-145 venue-side entry fill cap; opt-in.
         self._research_ended = {}  # D-151: order ids whose end was recorded.
         self._research_marks_pending = 0
+        self._research_trade_since = {}  # D-151 #5: ticker -> last seen trade second.
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -1022,9 +1023,72 @@ class RecoveryRuntime(AccountProofMixin):
                 last_hour = hour
                 self._research_safely(self._research_reward_estimates, hour)
             try:
+                await self._research_trades()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.research_failures += 1
+            try:
                 await asyncio.wait_for(self.stop_requested.wait(), self.RESEARCH_TICK_SECONDS)
             except TimeoutError:
                 pass
+
+    RESEARCH_TRADE_MARKETS = 64
+    RESEARCH_TRADE_LIMIT = 200
+    RESEARCH_TRADE_OVERLAP = 30
+
+    def _research_trade_tickers(self):
+        """Markets we quote or hold: where sweeps can reach us."""
+        tickers = [t for t, plan in self.management._plans.items()
+                   if plan.inventory.orders or plan.inventory.position]
+        if self.maintenance is not None:
+            tickers += [t for t in self.maintenance.bindings if t not in tickers]
+        return sorted(tickers)[:self.RESEARCH_TRADE_MARKETS]
+
+    async def _research_trades(self):
+        """D-151 #5: new public trades per watched market, once a tick.
+
+        One background read per market; failures count and never raise. Rows
+        are keyed by trade id, so an overlapping window is harmless.
+        """
+        if self.reads is None:
+            return
+        now_s = int(utc(self.now()).timestamp())
+        for ticker in self._research_trade_tickers():
+            if self.stop_requested.is_set():
+                return
+            since = self._research_trade_since.get(ticker, now_s-self.RESEARCH_TICK_SECONDS)
+            try:
+                result = await self.reads.read('trades', reason='research', ticker=ticker,
+                                               min_ts=since, limit=self.RESEARCH_TRADE_LIMIT)
+                trades = result.payload.get('trades') or ()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.research_failures += 1
+                continue
+            latest = since
+            for trade in trades:
+                trade_id = trade.get('trade_id')
+                if not isinstance(trade_id, str):
+                    continue
+                self.research.record('trades', trade_id, ticker=ticker,
+                    created_time=trade.get('created_time'), taker_side=trade.get('taker_side'),
+                    count=trade.get('count_fp'), yes_price=trade.get('yes_price_dollars'))
+                try:
+                    created = int(datetime.fromisoformat(
+                        str(trade['created_time']).replace('Z', '+00:00')).timestamp())
+                    latest = max(latest, created)
+                except (KeyError, TypeError, ValueError):
+                    pass
+            # Advance even for a quiet market; the overlap covers late-listed
+            # trades (duplicates are ignored by trade id).
+            self._research_trade_since[ticker] = max(latest, now_s-self.RESEARCH_TRADE_OVERLAP)
+            await asyncio.sleep(0)
+        for ticker in tuple(self._research_trade_since):
+            if len(self._research_trade_since) <= 4*self.RESEARCH_TRADE_MARKETS:
+                break
+            self._research_trade_since.pop(ticker)
 
     def _research_reward_estimates(self, hour):
         """D-151 #3: one estimate per tracked program per hour (final one kept)."""

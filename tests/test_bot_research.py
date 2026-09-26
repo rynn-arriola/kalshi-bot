@@ -287,11 +287,17 @@ class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
     async def test_loop_writes_the_current_hour_then_stops(self):
         import asyncio
         stub, runtime = self.stub()
+        polls = []
+        async def trades():
+            polls.append(1)
+        stub._research_trades = trades
         task = asyncio.create_task(runtime._research_loop(stub))
         await asyncio.sleep(.05)
         stub.stop_requested.set()
         await asyncio.wait_for(task, 2)
         self.assertEqual(self.store.status()['accepted'], 1)  # Several ticks, one hour.
+        self.assertGreaterEqual(len(polls), 2)  # Trades are polled every tick.
+        self.assertEqual(stub.research_failures, 1)  # Only the stub's broken program.
         self.store.close()
         self.assertEqual(len(rows(self.path, 'reward_estimates')), 1)
 
@@ -364,6 +370,95 @@ class WithdrawalOutcomeTests(unittest.IsolatedAsyncioTestCase):
         self.store.close()
         kinds = [(r['ticker'], r['kind']) for _, r in rows(self.path, 'withdrawals')]
         self.assertIn(('B', 'secondary'), kinds)
+
+
+class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import asyncio
+        from kalshi_bot.runtime import RecoveryRuntime
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.calls, self.failing = [], set()
+        self.trades = {'A': [dict(trade_id='t1', created_time='2026-09-26T05:52:16.916817Z',
+                                  taker_side='no', count_fp='488.00', yes_price_dollars='0.82')],
+                       'B': []}
+        async def read(name, **params):
+            self.calls.append((name, params))
+            if params['ticker'] in self.failing:
+                raise OSError('down')
+            return SimpleNamespace(payload={'trades': self.trades.get(params['ticker'], [])})
+        plans = {'A': SimpleNamespace(inventory=SimpleNamespace(orders=(1,), position=0)),
+                 'B': SimpleNamespace(inventory=SimpleNamespace(orders=(), position=5)),
+                 'C': SimpleNamespace(inventory=SimpleNamespace(orders=(), position=0))}
+        now = datetime(2026, 9, 26, 6, tzinfo=timezone.utc)
+        stub = SimpleNamespace(reads=SimpleNamespace(read=read), research=self.store,
+            research_failures=0, stop_requested=asyncio.Event(), now=lambda: now,
+            management=SimpleNamespace(_plans=plans), maintenance=None,
+            _research_trade_since={}, RESEARCH_TICK_SECONDS=60,
+            RESEARCH_TRADE_MARKETS=64, RESEARCH_TRADE_LIMIT=200, RESEARCH_TRADE_OVERLAP=30)
+        stub._research_trade_tickers = lambda: RecoveryRuntime._research_trade_tickers(stub)
+        self.stub, self.runtime = stub, RecoveryRuntime
+
+    async def asyncTearDown(self):
+        self.store.close()
+        self.temp.cleanup()
+
+    async def test_trades_for_quoted_or_held_markets_are_stored_once(self):
+        await self.runtime._research_trades(self.stub)
+        await self.runtime._research_trades(self.stub)  # Overlapping window.
+        self.store.close()
+        [(key, trade)] = rows(self.path, 'trades')
+        self.assertEqual((key, trade['ticker'], trade['count'], trade['taker_side']),
+                         ('t1', 'A', '488.00', 'no'))
+        self.assertEqual(sorted({p['ticker'] for _, p in self.calls}), ['A', 'B'])  # Not C.
+        self.assertTrue(all(name == 'trades' and p['reason'] == 'research'
+                            for name, p in self.calls))
+
+    async def test_the_next_read_starts_at_the_latest_trade(self):
+        await self.runtime._research_trades(self.stub)
+        first = {p['ticker']: p['min_ts'] for _, p in self.calls}
+        self.assertEqual(first['A'], int(datetime(2026, 9, 26, 5, 59, tzinfo=timezone.utc).timestamp()))
+        self.calls.clear()
+        await self.runtime._research_trades(self.stub)
+        second = {p['ticker']: p['min_ts'] for _, p in self.calls}
+        # A quiet window still advances, keeping a 30 s overlap for late trades.
+        overlap = int(datetime(2026, 9, 26, 5, 59, 30, tzinfo=timezone.utc).timestamp())
+        self.assertEqual((second['A'], second['B']), (overlap, overlap))
+        # A newer trade moves the window to that trade's second.
+        self.trades['A'].append(dict(trade_id='t2', created_time='2026-09-26T05:59:50Z',
+                                     taker_side='yes', count_fp='5.00', yes_price_dollars='0.2'))
+        self.calls.clear()
+        await self.runtime._research_trades(self.stub)
+        await self.runtime._research_trades(self.stub)
+        third = {p['ticker']: p['min_ts'] for _, p in self.calls[-2:]}
+        self.assertEqual(third['A'], int(datetime(2026, 9, 26, 5, 59, 50, tzinfo=timezone.utc).timestamp()))
+
+    async def test_one_market_failing_does_not_stop_the_others(self):
+        self.failing.add('A')
+        await self.runtime._research_trades(self.stub)
+        self.assertEqual(self.stub.research_failures, 1)
+        self.assertIn('B', self.stub._research_trade_since)
+        self.assertNotIn('A', self.stub._research_trade_since)
+
+    async def test_market_count_is_bounded_and_no_reads_means_no_work(self):
+        self.stub.RESEARCH_TRADE_MARKETS = 1
+        await self.runtime._research_trades(self.stub)
+        self.assertEqual([p['ticker'] for _, p in self.calls], ['A'])
+        self.stub.reads = None
+        await self.runtime._research_trades(self.stub)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.stub.research_failures, 0)
+
+    def test_endpoint_is_public_background_research_only(self):
+        from kalshi_bot.rest import ENDPOINTS, request_path
+        from kalshi_bot.values import InvalidData
+        spec, path = request_path('trades', dict(ticker='A', min_ts=1, limit=200), 'research')
+        self.assertFalse(spec.authenticated)
+        self.assertTrue(path.startswith('/markets/trades?'))
+        with self.assertRaises(InvalidData):
+            request_path('trades', dict(ticker='A'), 'metadata')
+        self.assertIn('research', ENDPOINTS['trades'].reasons)
 
 
 if __name__ == '__main__':
