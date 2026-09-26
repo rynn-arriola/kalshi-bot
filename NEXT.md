@@ -1,10 +1,9 @@
 # Active work queue
 
-## Pending work (2026-09-26; build ac4ff9f live, D-151 ready on the branch)
+## Pending work (2026-09-26; build 32d1934 live with D-151)
 
-00. **Deploy D-151** (operator-approved restart), then check `research.db`
-    exists, `entries` / `health_hourly` rows appear and the `research` status
-    shows `alive`, no drops and no failures.
+00. **Check D-151 after a few hours:** `health_hourly` rows each hour,
+    `withdrawal_marks` after pulls, research status `alive` with no drops.
 0. **Shadow screen evaluation (D-150):** after 1–2 days, run
    `scripts/research_report.py` (verdict × fills × reward); the 25%
    reward-to-risk cut flags ~80% of entries at 30 contracts, so it needs

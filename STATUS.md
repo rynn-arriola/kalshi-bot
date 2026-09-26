@@ -1,8 +1,13 @@
 # Current status
 
-## D-151 research dataset built, not deployed — 2026-09-26
+## D-151 research dataset deployed — 2026-09-26
 
-Branch `fix/d129-capacity-archive` (not yet on master). Adds `research.db`
+**Running** build `32d1934` since 19:15 UTC (operator-approved stop: clean, zero
+orders and positions; restart). First 4 minutes: healthy, 28+ entries, no
+positions, order group active, 0 errors, read budget 0 throttles; research
+writer alive, 0 drops, 0 failures (22 entries, 4 entry ends, 2 pulls, 379 reward
+estimates; trades 0 because the quoted markets had no trades, confirmed against
+Kalshi). Hourly health rows start at the next UTC hour. Adds `research.db`
 beside the ledger, written by one background thread that never blocks or
 raises into trading: entry lifecycles with screen context, fills with 1/5/30
 minute mark-outs, protective pulls with a 30/60 s "was the level reached?"
@@ -11,8 +16,7 @@ minute, at most 64), hourly health and counter deltas, hourly reward estimates
 and reward-like cash credits; 120-day retention. `scripts/research_report.py`
 writes a weekly Markdown calibration report (read-only). Review fixes: a
 failing prune no longer ends the writer; a check with no book is unknown, not
-"reached". Running build is still `ac4ff9f`; deploying needs an
-operator-approved restart.
+"reached".
 
 ## Architecture review deployed — 2026-09-26
 
