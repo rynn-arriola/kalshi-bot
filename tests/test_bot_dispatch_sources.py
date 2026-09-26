@@ -595,9 +595,11 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
             original(*args, **kwargs)
             self.dispatcher.stop()
         self.budget.consume = stopped
-        with self.assertRaises(CommandDenied):
-            await self.run_priority()
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        # D-146: refused before the transport, so proven unsent.
+        result = await self.run_priority()
+        self.assertEqual((result.state, result.blockers),
+                         ('BLOCKED', ('send_edge_refused_before_submission',)))
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.calls)
 
     async def test_caller_cancellation_retains_injected_outcome_owner(self):
@@ -631,7 +633,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.calls)
 
-    async def test_dispatcher_stop_during_sending_records_unknown_no_invoke(self):
+    async def test_dispatcher_stop_during_sending_is_unsent_no_invoke(self):
         await self.ready()
         original = self.writer.begin_send
         async def stopped(receipt):
@@ -639,9 +641,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
             self.dispatcher.stop()
             return result
         self.writer.begin_send = stopped
-        with self.assertRaises(CommandDenied):
-            await self.run_priority()
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        await self.run_priority()  # D-146: refused before the transport.
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
         self.assertFalse(self.calls)
 
     async def test_concurrent_refresh_revokes_both_without_second_read(self):

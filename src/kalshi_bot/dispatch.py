@@ -357,6 +357,13 @@ class MutationDispatcher:
                 nonlocal consumed
                 if self._stopping:
                     raise CommandDenied(('dispatcher_stopping',))
+                # D-146: a quota refresh that started or completed since the
+                # pre-send check is the same temporary refusal, here unsent.
+                quota = self.budget.status(now=self.clock_pair())
+                if quota.reason is not None:
+                    raise QuotaUnavailable(quota.reason)
+                if quota.revision != issued_permit.revision:
+                    raise QuotaUnavailable('write_quota_replaced')
                 self.budget.consume(permit, method, route,
                     shard=current.budget_shard, units=current.units,
                     now=self.clock_pair())
@@ -381,6 +388,19 @@ class MutationDispatcher:
                 receipt = None
                 if self.executor.failed:
                     raise
+                cause = getattr(exc, 'cause', None)
+                if isinstance(cause, QuotaUnavailable):
+                    # D-146: refused at the send edge, durably NOT_SENT. Same
+                    # policy as before SENDING: temporary waits, others fatal.
+                    if cause.reason not in _TEMPORARY_QUOTA:
+                        raise cause
+                    await self._discard(permit)
+                    self.submit(ticker, priority)
+                    return DispatchResult('WAITING', ticker, priority,
+                        current.attempt_id, (cause.reason,),
+                        self.budget.ready_delay(method, route,
+                            shard=current.budget_shard, units=current.units,
+                            now=self.clock_pair()))
                 await self._discard(permit)
                 return DispatchResult('BLOCKED', ticker, priority,
                     current.attempt_id, exc.blockers)

@@ -10,6 +10,29 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-146 — A send-edge refusal is proven unsent; name audit blockers in logs
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Fix everything that is an issue, check logs and
+  fix it”.
+- **Scope:**
+  - When the write-budget check at the send edge (quota refresh, 429 pause,
+    expiry) or dispatcher stop refuses a command after SENDING but before the
+    transport call, the command is aborted as NOT_SENT instead of UNKNOWN. The
+    dispatcher applies its existing pre-send quota policy: temporary reasons
+    wait and re-evaluate; clock faults and stopped quota stay fatal. This
+    supersedes the earlier conservative rule that any send-edge exception is
+    UNKNOWN; transport exceptions remain UNKNOWN. The send edge also repeats
+    the pre-send quota checks synchronously (refresh in progress, or a refresh
+    completed since the permit: `write_quota_replaced`), so both refresh races
+    become temporary refusals instead of permit errors.
+  - A failed own-order renewal with outcome `audit_blocked` logs the exact
+    audit blockers (bounded vocabulary).
+- **Evidence:** Finding 211 (10:38 UTC runtime crash and ~11 min without
+  trading from one quota-refresh race).
+- **Boundary:** no risk, size, strategy or protection change.
+
 ### D-145 — Fill protection: continuous queue tracking, new triggers, order groups
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

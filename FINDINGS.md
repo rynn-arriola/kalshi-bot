@@ -1,5 +1,23 @@
 # Findings — kalshi-bot
 
+## 211. Quota refresh at the send edge crashed the runtime; D-145 first hours — 2026-09-26
+
+**VERIFIED (live logs, generation 188).** 10:38:09 UTC a write-quota refresh
+began while an entry pair was SENDING; the send-edge budget check raised
+`QuotaUnavailable` before any transport call, the pair was recorded UNKNOWN and
+the runtime failed. The supervisor's recovery-only child waited the D-143
+600-s absence rule, resolved both phantom creates and trading resumed 10:49
+(~11 min lost). Nothing reached Kalshi. Fixed by D-146.
+
+D-145 since 06:46 UTC: zero fills; 237 protective withdrawals in the 1 h 50 min
+after 10:49 (236 time-to-fill, 1 short-queue, 0 blind); order group active, never
+triggered; queue reader 43 failures in 6,072 reads. Full account recoveries
+took ~810 s of 7,000 s (~12%); 208 of 319 followed a protective cancel drain
+(`post_drain`, median 2.3 s) — a candidate efficiency change (own-order renewal
+instead of a full pass), not yet made. Routine renewal fell back 83 times on a
+concurrent source change; `audit_blocked` renewals (6) did not log which audit
+check failed (now logged, D-146).
+
 ## 210. Every entry fill this week was a one-shot sweep; heavy markets get swept — 2026-09-26
 
 **VERIFIED (public trades + ledger).** 05:52:16.9 UTC one taker sold 488 YES

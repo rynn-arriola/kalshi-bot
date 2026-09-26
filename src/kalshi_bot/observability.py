@@ -164,7 +164,10 @@ BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit
     metadata_expired runtime_unavailable request_changed account_source_changed
     account_report_expired other_source_boundary
     current_candidate_missing stale_writer_evidence entry_order_group_unavailable risk_account_book_proof_stale
-    proof_changed_before_submission
+    proof_changed_before_submission send_edge_refused_before_submission
+    foreign_resting_orders owned_order_fill_gap owned_order_terms_mismatch
+    owned_working_order_missing position_ledger_mismatch position_order_scope_unproven
+    unbound_order_intents
     incomplete_order_scope unowned_order_or_unaccounted_fills no_passive_touch
     await_terminal_cancellation_and_fill_proof live_authorization_missing inventory_age_unknown
     inventory_clock_regressed exit_terms_missing ioc_terminal_fill_proof_pending cancel_confirmation_pending

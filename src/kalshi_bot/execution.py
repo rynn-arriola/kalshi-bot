@@ -12,10 +12,24 @@ from .command_capacity import (DEFAULT_POLICY, active_episode_evidence,
 from .command_types import (CancelEvidence, CommandDenied, MutationHTTPFailure,
     PreparationResult, PreparedBatch, PreparedMutation, ReductionEvidence, SendResult)
 from .values import InvalidData, count, decimal, identity, integer, price, utc
+from .quota import QuotaUnavailable
 from .observability import NO_LOG
 
 REJECTED_REDUCTION_RETRY_BASE_SECONDS = 10
 REJECTED_REDUCTION_RETRY_MAX_SECONDS = 60
+
+
+def _send_edge_denial(refused):
+    """D-146: the denial for a proven-unsent abort at the send edge.
+
+    ``cause`` carries a send-edge refusal so the dispatcher applies the same
+    temporary/fatal quota policy it applies before SENDING.
+    """
+    if refused is None:
+        return CommandDenied(('proof_changed_before_submission',))
+    denied = CommandDenied(('send_edge_refused_before_submission',))
+    denied.cause = refused
+    return denied
 
 
 def validate_request(kind, request):
@@ -921,17 +935,26 @@ class InjectedExecutor:
                 if encoded_request(dispatch_request) != receipt.request_json:
                     raise InvalidData('dispatch terms differ from durable authorization')
                 # Synchronous: no await may separate quota consumption from
-                # entering the injected transport. An exception is durably
-                # UNKNOWN after SENDING, never a permission to retry blindly.
+                # entering the injected transport. A transport exception is
+                # durably UNKNOWN after SENDING, never a permission to retry
+                # blindly; a refusal before the transport is proven unsent.
+                edge_refused = None
                 if before_invoke is not None:
-                    edge_result = before_invoke()
+                    try:
+                        edge_result = before_invoke()
+                    except (QuotaUnavailable, CommandDenied) as exc:
+                        # D-146: the write-budget/stopping check at the send
+                        # edge refused before any transport call, so nothing
+                        # was submitted; never record that as UNKNOWN.
+                        edge_result, edge_refused = None, exc
                     if inspect.isawaitable(edge_result):
                         if inspect.iscoroutine(edge_result):
                             edge_result.close()
                         raise InvalidData('send-edge check must not await')
                 # D-129: a lease lost at the send edge is proven unsent, exactly
                 # like the batch path; never record it as an UNKNOWN submission.
-                if (not self.writer.entry_accounting_current(receipt)
+                if (edge_refused is not None
+                        or not self.writer.entry_accounting_current(receipt)
                         or self.writer.revision != send.writer_revision
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
                     aborted, outcome_cancelled = await self._retain(
@@ -949,7 +972,7 @@ class InjectedExecutor:
                         raise
                     if outcome_cancelled:
                         raise asyncio.CancelledError
-                    raise CommandDenied(('proof_changed_before_submission',))
+                    raise _send_edge_denial(edge_refused)
                 session = self.writer.live_session
                 if self.offline_fixture is not True and receipt.kind == 'create':
                     session.arm_single_create(receipt)
@@ -1101,13 +1124,21 @@ class InjectedExecutor:
                 if tuple(encoded_request(row) for row in requests) != tuple(
                         receipt.request_json for receipt in batch.receipts):
                     raise InvalidData('batch dispatch terms differ from durable authorization')
+                edge_refused = None
                 if before_invoke is not None:
-                    edge_result = before_invoke()
+                    try:
+                        edge_result = before_invoke()
+                    except (QuotaUnavailable, CommandDenied) as exc:
+                        # D-146: the write-budget/stopping check at the send
+                        # edge refused before any transport call, so nothing
+                        # was submitted; never record that as UNKNOWN.
+                        edge_result, edge_refused = None, exc
                     if inspect.isawaitable(edge_result):
                         if inspect.iscoroutine(edge_result):
                             edge_result.close()
                         raise InvalidData('send-edge check must not await')
-                if (not self.writer.entry_accounting_current(batch)
+                if (edge_refused is not None
+                        or not self.writer.entry_accounting_current(batch)
                         or self.writer.revision != send.writer_revision
                         or self.validate_proof('batch_create', requests) is not True):
                     aborted, outcome_cancelled = await self._retain(
@@ -1124,7 +1155,7 @@ class InjectedExecutor:
                         raise
                     if outcome_cancelled:
                         raise asyncio.CancelledError
-                    raise CommandDenied(('proof_changed_before_submission',))
+                    raise _send_edge_denial(edge_refused)
                 preflight = getattr(self.invoke, 'preflight', None)
                 refused = False
                 if callable(preflight):

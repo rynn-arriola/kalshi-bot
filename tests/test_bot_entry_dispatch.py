@@ -169,6 +169,35 @@ class EntryPairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await dispatcher.run_one()).state, 'ACK')
         self.assertEqual(len(wire.calls), 1)
 
+    async def test_pair_quota_refresh_at_send_edge_is_not_sent_not_unknown(self):
+        # D-146: 2026-09-26 10:38 UTC a quota refresh began while an entry pair
+        # was SENDING; the send-edge check refused before the transport and the
+        # pair was recorded UNKNOWN, crashing the runtime. It is proven unsent.
+        wire = BatchWire()
+        dispatcher, _ = await self.dispatcher(wire)
+        fixture = ObservedQuotaFixture()
+        self.addAsyncCleanup(fixture.close)
+        self.addAsyncCleanup(dispatcher.close)
+        await fixture.attach(dispatcher)
+        dispatcher.executor.invoke.budget = dispatcher.budget
+        dispatcher.executor.invoke.clock_pair = dispatcher.clock_pair
+        original = self.writer.begin_batch_send
+        async def refreshing(batch):
+            result = await original(batch)
+            await fixture.begin_refresh()
+            return result
+        self.writer.begin_batch_send = refreshing
+        dispatcher.submit('A', ENTRY_PAIR)
+        result = await dispatcher.run_one()
+        self.assertEqual((result.state, result.blockers), ('WAITING', ('write_quota_refreshing',)))
+        self.assertFalse(wire.calls)
+        self.assertFalse(dispatcher.status().failed)
+        self.assertFalse(dispatcher.executor.failed)
+        self.assertEqual({row['phase'] for row in await self.writer.mutations()}, {'NOT_SENT'})
+        self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
+        self.writer.begin_batch_send = original
+        await fixture.finish_refresh()
+
     async def test_pair_quota_refresh_aborts_both_then_reevaluates(self):
         await self.quota_refresh_during_pair()
 

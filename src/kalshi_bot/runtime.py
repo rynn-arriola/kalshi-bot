@@ -1053,6 +1053,7 @@ class RecoveryRuntime:
         failure = None
         released = None
         unexplained = False
+        audit_blockers = ()  # D-146: which audit check blocked an own renewal.
         async with self.recovery_lock:
             try:
                 async with asyncio.timeout(20):
@@ -1084,6 +1085,8 @@ class RecoveryRuntime:
                                    and not self._snapshot_explained(report, proof, own_orders=own))
                     if unexplained and own:
                         unexplained = self._own_order_unexplained(report, proof)
+                        if unexplained == 'audit_blocked' and report.audit is not None:
+                            audit_blockers = tuple(report.audit.blockers)
                     if (history is None or report is None
                             or history.enumeration.omitted_rows
                             or (self._chain_anchor() if own else self._routine_account_proof) is not proof
@@ -1154,7 +1157,7 @@ class RecoveryRuntime:
                             self.routine_refresh_escalations += 1
                         self.request_recovery(cause)
                     self.diagnostics.emit('account_refresh_failed', error=failure,
-                        cause=cause, phase=failed_phase,
+                        cause=cause, phase=failed_phase, blockers=audit_blockers,
                         elapsed_ms=self.routine_refresh_elapsed_ms,
                         outcome=('quota_wait' if isinstance(failure, QuotaUnavailable)
                             else 'timeout' if isinstance(failure, TimeoutError)

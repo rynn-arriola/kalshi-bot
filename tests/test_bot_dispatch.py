@@ -295,7 +295,9 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_observed_quota_stop_is_not_retried(self):
         await self.observed_quota_loss_during_prepare('write_quota_stopped', fatal=True)
 
-    async def test_refresh_after_sending_keeps_unknown_and_never_invokes(self):
+    async def test_refresh_at_send_edge_is_proven_unsent_and_waits(self):
+        # D-146: the send-edge budget check refused before the transport, so
+        # the command is NOT_SENT and retried later, never UNKNOWN (10:38 crash).
         await self.working_order()
         fixture = ObservedQuotaFixture()
         self.addAsyncCleanup(fixture.close)
@@ -307,12 +309,13 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.writer.begin_send = refreshing
         self.dispatcher.submit('A', SAFETY_CANCEL)
-        with self.assertRaises(QuotaUnavailable):
-            await self.dispatcher.run_one()
-        self.assertTrue(self.dispatcher.status().failed)
-        self.assertTrue(self.executor.failed)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'WAITING')
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertFalse(self.executor.failed)
         self.assertFalse(self.invoked)
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertIn((SAFETY_CANCEL, 'A'), self.dispatcher.status().queued)
 
     async def test_same_revision_discarded_permit_still_fails(self):
         await self.working_order()
@@ -370,7 +373,7 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.invoked)
         self.assertEqual((await self.writer.mutations())[-1]['phase'], 'SENDING')
 
-    async def test_quota_expiry_during_sending_never_invokes_transport(self):
+    async def test_quota_expiry_during_sending_is_unsent_and_waits(self):
         await self.working_order()
         original = self.writer.begin_send
         async def delayed(receipt):
@@ -380,13 +383,28 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.writer.begin_send = delayed
         self.dispatcher.submit('A', SAFETY_CANCEL)
+        result = await self.dispatcher.run_one()
+        self.assertEqual(result.state, 'WAITING')
+        self.assertFalse(self.invoked)
+        self.assertFalse(self.dispatcher.status().failed)
+        self.assertFalse(self.executor.failed)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
+        self.assertEqual(self.budget.status(now=budget_now(300)).outstanding, 0)
+
+    async def test_send_edge_clock_fault_is_unsent_but_still_fatal(self):
+        await self.working_order()
+        original = self.writer.begin_send
+        async def regressed(receipt):
+            result = await original(receipt)
+            self.clock = 0
+            return result
+        self.writer.begin_send = regressed
+        self.dispatcher.submit('A', SAFETY_CANCEL)
         with self.assertRaises(QuotaUnavailable):
             await self.dispatcher.run_one()
         self.assertFalse(self.invoked)
         self.assertTrue(self.dispatcher.status().failed)
-        self.assertTrue(self.executor.failed)
-        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'UNKNOWN')
-        self.assertEqual(self.budget.status(now=budget_now(300)).outstanding, 0)
+        self.assertEqual((await self.writer.mutations())[-1]['phase'], 'NOT_SENT')
 
     async def test_pre_send_clock_fault_remains_fatal_after_abort(self):
         await self.working_order()

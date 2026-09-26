@@ -340,10 +340,10 @@ class ObservedDispatcherTests(unittest.IsolatedAsyncioTestCase):
             self.clock.t += 301
             return result
         self.fixture.writer.begin_send = expired
-        with self.assertRaises(QuotaUnavailable):
-            await self.fixture.run_priority()
+        result = await self.fixture.run_priority()  # D-146: proven unsent, waits.
+        self.assertEqual(result.state, 'WAITING')
         self.assertFalse(self.fixture.calls)
-        self.assertEqual((await self.fixture.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.fixture.writer.mutations())[-1]['phase'], 'NOT_SENT')
 
     async def test_refresh_during_sending_revokes_old_permit_without_replacing_owner(self):
         original = self.fixture.writer.begin_send
@@ -353,8 +353,10 @@ class ObservedDispatcherTests(unittest.IsolatedAsyncioTestCase):
             await self.reads.refresh_budget()
             return result
         self.fixture.writer.begin_send = refreshed
-        with self.assertRaises(InvalidData):
-            await self.fixture.run_priority()
+        result = await self.fixture.run_priority()
+        # D-146: a refresh that completed mid-send is a temporary refusal at
+        # the send edge: proven unsent, re-evaluated, never UNKNOWN.
+        self.assertEqual((result.state, result.blockers), ('WAITING', ('write_quota_replaced',)))
         self.assertIs(self.source.budget, budget)
         self.assertFalse(self.fixture.calls)
-        self.assertEqual((await self.fixture.writer.mutations())[-1]['phase'], 'UNKNOWN')
+        self.assertEqual((await self.fixture.writer.mutations())[-1]['phase'], 'NOT_SENT')

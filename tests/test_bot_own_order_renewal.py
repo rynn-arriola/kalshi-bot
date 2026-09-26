@@ -164,6 +164,8 @@ class OwnOrderRenewalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.own_order_renewal['retries'], 0)
         failed = [c for n, c in events if n == 'account_refresh_failed']
         self.assertEqual(failed[-1]['outcome'], 'audit_blocked')
+        # D-146: the log names the audit check that blocked the renewal.
+        self.assertIn('foreign_resting_orders', failed[-1]['blockers'])
 
     async def test_economic_event_ends_chain_reuse(self):
         runtime = await self.runtime()
