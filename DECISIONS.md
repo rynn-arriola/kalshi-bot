@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-152 — Measure before retuning protective pulls
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: "Ok do recommended make sure we are tracking
+  all this so we dont forget" (collect a day, compare, then switch).
+- **Scope:** (1) the calibration report replays every protective pull against
+  Kalshi's recorded trades (trade-backed vs cancel-driven, and "skipped but
+  gone" = a trade-evidence rule's misses), from data already collected, with no
+  bot change; (2) `health_hourly.entry_blocked_fraction` names which
+  `entry_allowed` term was false; (3) research failures are counted by site
+  and exception type in status (`failure_sites`, `last_failure`).
+- **Not done yet, on purpose:** no trigger change. A live trade feed would be
+  a separate public `trade` subscription, never mixed into the proof-critical
+  book readers (they reject any other channel), and would need admission and
+  restart checks to ignore it. Built only if the report supports it.
+- **Boundary:** diagnostics only; no trading, size, selection or protection
+  change.
+
 ### D-151 — Research dataset for calibration
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

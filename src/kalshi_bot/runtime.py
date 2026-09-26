@@ -44,6 +44,18 @@ def readonly_reader_factory(signer, *, connector=None):
     return create
 
 
+def research_failed(owner, site, exc):
+    """D-152: count a research failure by site and exception type; never raises."""
+    owner.research_failures += 1
+    sites = getattr(owner, 'research_failure_sites', None)
+    if sites is None:
+        sites = owner.research_failure_sites = {}
+    key = f'{site}:{type(exc).__name__}'
+    if key in sites or len(sites) < 32:
+        sites[key] = sites.get(key, 0)+1
+    owner.research_last_failure = f'{key}: {str(exc)[:160]}'
+
+
 class RecoveryRuntime(AccountProofMixin):
     # Review #1: immutable defaults for counters, flags and late-bound owners.
     # Instances overwrite them; lightweight test stubs built without __init__
@@ -66,6 +78,8 @@ class RecoveryRuntime(AccountProofMixin):
     order_groups = None
     research = None  # D-151 research dataset; opt-in, never authority.
     research_failures = 0
+    research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
+    research_last_failure = None
     RESEARCH_MARK_SECONDS = (60, 300, 1800)
     RESEARCH_MAX_PENDING_MARKS = 600
     last_full_recovery_mono = None
@@ -966,8 +980,24 @@ class RecoveryRuntime(AccountProofMixin):
         """D-151: research must never disturb account processing."""
         try:
             record(*args)
-        except Exception:
-            self.research_failures += 1
+        except Exception as exc:
+            name = getattr(record, '__qualname__', '') or getattr(record, '__name__', 'unknown')
+            research_failed(self, name.split('.<locals>')[0].rsplit('.', 1)[-1], exc)
+
+    def _entry_blockers(self):
+        """D-152: which ``entry_allowed`` terms are false (diagnostic only)."""
+        from .live_session import permits
+        lease = self.writer._accounting_lease
+        result = self.accounting_result
+        return [name for name, ok in (
+            ('session', permits(self.live_session, self.writer)),
+            ('entry_pause', not self.entry_pause_active),
+            ('venue_paused', not self._venue_paused),
+            ('accounting_missing', result is not None),
+            ('accounting_unreleased', result is None or result.released),
+            ('lease_missing', lease is not None),
+            ('lease_stale', lease is None or lease.fence.current()),
+            ('stopping', not self.stop_requested.is_set())) if not ok]
 
     @staticmethod
     def _research_top(book):
@@ -1037,8 +1067,8 @@ class RecoveryRuntime(AccountProofMixin):
                     await self._research_trades()
                 except asyncio.CancelledError:
                     raise
-                except Exception:
-                    self.research_failures += 1
+                except Exception as exc:
+                    research_failed(self, '_research_trades', exc)
             try:
                 await asyncio.wait_for(self.stop_requested.wait(), self.RESEARCH_TICK_SECONDS)
             except TimeoutError:
@@ -1047,13 +1077,17 @@ class RecoveryRuntime(AccountProofMixin):
     @staticmethod
     def _research_empty_health():
         return dict(samples=0, entry_allowed=0, recovering=0, venue_paused=0,
-                    resting_samples=0, resting_sum=0)
+                    resting_samples=0, resting_sum=0, blocked={})
 
     def _research_sample_health(self):
         """D-151 #6: one cheap health sample (every RESEARCH_TICK_SECONDS)."""
         acc = self._research_health_acc
         acc['samples'] += 1
-        acc['entry_allowed'] += bool(self.entry_allowed)
+        allowed = bool(self.entry_allowed)
+        acc['entry_allowed'] += allowed
+        if not allowed:  # D-152: which gate term closed entries.
+            for term in self._entry_blockers() or ['unexplained']:
+                acc['blocked'][term] = acc['blocked'].get(term, 0)+1
         acc['recovering'] += self.recovery_state == 'recovering'
         acc['venue_paused'] += bool(self._venue_paused)
         rows = self.current_entry_orders()
@@ -1090,6 +1124,7 @@ class RecoveryRuntime(AccountProofMixin):
         fraction = (lambda n: None if not samples else n/samples)
         self.research.record('health_hourly', hour.isoformat(), hour=hour, samples=samples,
             entry_allowed_fraction=fraction(acc['entry_allowed']),
+            entry_blocked_fraction={term: fraction(n) for term, n in sorted(acc['blocked'].items())},
             recovering_fraction=fraction(acc['recovering']),
             venue_paused_fraction=fraction(acc['venue_paused']),
             average_resting_entries=(acc['resting_sum']/acc['resting_samples']
@@ -1130,8 +1165,8 @@ class RecoveryRuntime(AccountProofMixin):
                 trades = result.payload.get('trades') or ()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                self.research_failures += 1
+            except Exception as exc:
+                research_failed(self, 'trades_read', exc)
                 continue
             latest = since
             for trade in trades:
@@ -1164,8 +1199,8 @@ class RecoveryRuntime(AccountProofMixin):
         for program_id in tuple(self.rewards.tracker.records):
             try:
                 progress = asdict(self.rewards.progress(program_id))
-            except Exception:
-                self.research_failures += 1
+            except Exception as exc:
+                research_failed(self, 'reward_progress', exc)
                 continue
             self.research.record('reward_estimates', f'{program_id}@{hour.isoformat()}',
                                  hour=hour, **progress)
@@ -2253,6 +2288,8 @@ class RecoveryRuntime(AccountProofMixin):
             order_groups=(self.order_groups.status()
                           if self.order_groups is not None else None),
             research=(dict(self.research.status(), failures_in_runtime=self.research_failures,
+                           failure_sites=dict(self.research_failure_sites or {}),
+                           last_failure=self.research_last_failure,
                            pending_marks=self._research_marks_pending)
                       if self.research is not None else None),
             admission=self.admission.status() if self.admission is not None else None,

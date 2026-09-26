@@ -1,5 +1,14 @@
 # Current status
 
+## D-152 measurement build ready — 2026-09-26
+
+Built on `fix/d129-capacity-archive`, not deployed (running build `32d1934`).
+Adds `entry_blocked_fraction` to `health_hourly` and research failure sites to
+status, plus the report's pull-vs-real-trades replay (works on data already
+collected). Finding 213: pulls ~97% false alarms, but Finding 206 shows the one
+real save came from cancels before a sweep, so no trigger change until the
+2026-09-27 report. Tracked in NEXT (dated follow-ups) and WATCHLIST 11–13.
+
 ## D-151 research dataset deployed — 2026-09-26
 
 **Running** build `32d1934` since 19:15 UTC (operator-approved stop: clean, zero

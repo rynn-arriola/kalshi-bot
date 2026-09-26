@@ -107,6 +107,43 @@ class ReportTests(unittest.TestCase):
         self.assertIn('Goal: improve the bot.', text)
         self.assertIn('Reward truth', text)
 
+    def test_pulls_are_split_by_real_trades_on_our_side(self):
+        t0 = datetime(2026, 9, 26, 20, 0, tzinfo=timezone.utc)
+        iso = lambda seconds: (t0+timedelta(seconds=seconds)).isoformat()
+        order = lambda side, price: dict(side=side, price=price)
+        data = dict(
+            trades=[(None, 'x', dict(ticker='A', created_time=iso(-10).replace('+00:00', 'Z'),
+                                     taker_side='no', yes_price='0.50', count='5')),   # hits bids >= .50
+                    (None, 'y', dict(ticker='B', created_time=iso(-10), taker_side='yes',
+                                     yes_price='0.50', count='5')),                  # wrong side for a bid
+                    (None, 'z', dict(ticker='C', created_time=iso(-45), taker_side='no',
+                                     yes_price='0.60', count='5')),                  # too early
+                    (None, 'q', dict(ticker='D', created_time=iso(-5), taker_side='yes',
+                                     yes_price='0.75', count='5')),                  # lifts asks at .75
+                    (None, 'r', dict(ticker='F', created_time=iso(3), taker_side='no',
+                                     yes_price='0.50', count='5')),                  # after the pull
+                    (None, 's', dict(ticker='G', created_time=iso(0), taker_side='no',
+                                     yes_price='0.30', count='30'))],                # the fill's own sweep
+            withdrawals=[(iso(0), 'wA', dict(ticker='A', triggers=['time_to_fill'], orders=[order('bid', '0.5')])),
+                         (iso(0), 'wB', dict(ticker='B', triggers=['time_to_fill'], orders=[order('bid', '0.5')])),
+                         (iso(0), 'wC', dict(ticker='C', triggers=['time_to_fill'], orders=[order('bid', '0.5')])),
+                         (iso(0), 'wD', dict(ticker='D', triggers=['short_queue'], orders=[order('ask', '0.75')])),
+                         (iso(0), 'wE', dict(ticker='E', triggers=['time_to_fill'], orders=[order('bid', '0.4')])),
+                         (iso(0), 'wF', dict(ticker='F', triggers=['time_to_fill'], orders=[order('bid', '0.5')]))],
+            withdrawal_marks=[(None, 'wA@60', dict(level_gone=['o'])), (None, 'wB@60', dict(level_gone=['o'])), (None, 'wC@60', dict(level_gone=None)),
+                              (None, 'wE@30', dict(level_gone=['o']))],
+            fills=[(None, 'f1', dict(ticker='A', side='bid', price='0.50',
+                                     executed_us=(t0+timedelta(seconds=5)).timestamp()*1e6)),
+                   (None, 'f2', dict(ticker='E', side='bid', price='0.40', executed_us=t0.timestamp()*1e6)),
+                   (None, 'f3', dict(ticker='G', side='bid', price='0.30', executed_us=t0.timestamp()*1e6))])
+        text = calibration_report.trade_evidence_section(data)
+        line = lambda start: next(l for l in text.splitlines() if l.startswith(start))
+        # A backed (and gone, which is not a skip); B wrong side, C too early, E no
+        # trades, F only a later trade -> skipped; only B of those was gone at 60 s.
+        self.assertEqual(line('| time_to_fill'), '| time_to_fill | 5 | 1 | 4 | 1 |')
+        self.assertEqual(line('| short_queue'), '| short_queue | 1 | 1 | 0 | 0 |')
+        self.assertIn('3 fills; 1 had trades on our side in the 30 s before', text)
+
     def test_hourly_health(self):
         self.assertIn('| 2026-10-08T00 | 360 | 90% | 48 | 3 | 7 | 1 |', self.text)
 

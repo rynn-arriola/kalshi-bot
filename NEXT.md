@@ -1,6 +1,32 @@
 # Active work queue
 
-## Pending work (2026-09-26; build 32d1934 live with D-151)
+## Pending work (2026-09-26; build 32d1934 live with D-151; D-152 built)
+
+**Dated follow-ups — do not drop:**
+
+- **2026-09-27 ~20:00 UTC — pull retune decision (D-152, Finding 213).** Run
+  `python -B scripts/calibration_report.py --days 2`. Read "Protective pulls"
+  precision and "Pull trigger vs real trades": trade-backed share and
+  **skipped but gone** (a trade-only rule's misses; Finding 206's KXWMTCC save
+  was exactly such a case). Then choose with the operator: (a) trade-evidence
+  trigger (needs a separate `trade` feed), (b) stricter thresholds (e.g.
+  sustained depletion over longer than the 10 s trend), or (c) short-queue +
+  blind only, relying on the 31-contract cap. Run the new rule in shadow first.
+- **After the D-152 deploy — entry gate.** Read `entry_blocked_fraction` in
+  the next `health_hourly` rows; if `accounting_unreleased`/`lease_stale`
+  dominates, find why the proof is unreleased between renewals.
+- **After the D-152 deploy — research failures.** `research.failure_sites` in
+  status: fix any real bug behind the ~6/hour failures.
+- **Storage (operator phrase "run storage management").** Run every 1–2 days
+  until the backlog clears (~13 Polymarket daily backups and ~80k test
+  folders; 8 GB per run). Daily schedule declined 2026-09-26. The 4.5 GB old
+  OneDrive copy is in the Recycle Bin (operator empties it).
+- **Cross-project, operator's call:** (1) Polymarket test leak, a one-line fix
+  in `liquidity-bot/tests/test_live_commissioning.py:478` (declined for now);
+  (2) Polymarket runner crash 20:24 UTC 2026-09-26, `RuntimeInvariantViolation:
+  working order has no owned place intent` after "Order not found" 404s from
+  19:56, to hand to that project's operator.
+
 
 00. **Check D-151 after a few hours:** `health_hourly` rows each hour,
     `withdrawal_marks` after pulls, research status `alive` with no drops.

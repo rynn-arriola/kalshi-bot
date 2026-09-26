@@ -15,6 +15,10 @@ from kalshi_bot.research import ResearchStore
 import test_bot_entry_dispatch as entry_fixture
 
 
+def _broken_mark():
+    raise KeyError('ticker')
+
+
 def rows(path, table):
     with closing(sqlite3.connect(path)) as conn:
         return [(key, json.loads(payload)) for key, payload in
@@ -550,6 +554,58 @@ class HealthSummaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(h1['counters']['recovery.post_drain'], 7)
         self.assertEqual((h2['samples'], h2['recovering_fraction'], h2['since_start']), (1, 0.0, False))
         self.assertEqual((h2['counters']['recovery.post_drain'], h2['counters']['fills_recorded']), (3, 2))
+
+    async def test_blockers_explain_exactly_when_entries_are_closed(self):
+        """D-152: the breakdown names every false ``entry_allowed`` term."""
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        r = self.r
+        with mock.patch('kalshi_bot.live_session.permits', return_value=True):
+            r.writer._accounting_lease = NS(fence=NS(current=lambda: True))
+            r._accounting_result = NS(released=True, window=None)
+            self.assertEqual((r._entry_blockers(), r.entry_allowed), ([], True))
+            for term, close, reopen in (
+                    ('accounting_unreleased', lambda: setattr(r, '_accounting_result', NS(released=False, window=None)),
+                     lambda: setattr(r, '_accounting_result', NS(released=True, window=None))),
+                    ('venue_paused', lambda: setattr(r, '_venue_paused', True),
+                     lambda: setattr(r, '_venue_paused', False)),
+                    ('lease_stale', lambda: setattr(r.writer, '_accounting_lease', NS(fence=NS(current=lambda: False))),
+                     lambda: setattr(r.writer, '_accounting_lease', NS(fence=NS(current=lambda: True)))),
+                    ('stopping', r.stop_requested.set, r.stop_requested.clear),
+                    ('entry_pause', lambda: setattr(r, '_recovery_safety_pause', True),
+                     lambda: setattr(r, '_recovery_safety_pause', False))):
+                close()
+                self.assertEqual((r._entry_blockers(), r.entry_allowed), ([term], False), term)
+                reopen()
+                self.assertEqual((r._entry_blockers(), r.entry_allowed), ([], True), term)
+            r._accounting_result = None
+            self.assertEqual((r._entry_blockers(), r.entry_allowed), (['accounting_missing'], False))
+            r.writer._accounting_lease = None
+            self.assertIn('lease_missing', r._entry_blockers())
+        self.assertIn('session', r._entry_blockers())  # Offline fixture: no live session.
+
+    async def test_hour_summary_says_which_gate_term_closed_entries(self):
+        from types import SimpleNamespace as NS
+        r = self.r
+        r._accounting_result = NS(released=False, window=None)
+        for _ in range(3):
+            r._research_sample_health()
+        r._research_health(datetime(2026, 9, 26, 17, tzinfo=timezone.utc))
+        self.store.close()
+        [(_, h)] = rows(self.path, 'health_hourly')
+        self.assertEqual(h['entry_allowed_fraction'], 0.0)
+        self.assertEqual(h['entry_blocked_fraction']['accounting_unreleased'], 1.0)
+
+    async def test_failures_are_counted_by_site_and_type(self):
+        r = self.r
+        r._research_safely(_broken_mark)
+        r._research_safely(_broken_mark)
+        r._research_safely(lambda: 1/0)
+        self.assertEqual(r.research_failures, 3)
+        sites = r.status()['research']['failure_sites']
+        self.assertEqual(sites['_broken_mark:KeyError'], 2)
+        self.assertEqual(sites['test_failures_are_counted_by_site_and_type:ZeroDivisionError'], 1)
+        self.assertIn('ZeroDivisionError', r.status()['research']['last_failure'])
 
     async def test_empty_hour_reports_no_fraction(self):
         self.r._research_health(datetime(2026, 9, 26, 17, tzinfo=timezone.utc))

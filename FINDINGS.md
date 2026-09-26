@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 213. D-145 pulls are still ~97% false alarms; entries closed about half the time — 2026-09-26
+
+**Scope:** first 1.6 h of the D-151 research dataset (build `32d1934`, 19:15–20:55
+UTC), the calibration report and `runtime_health` since 13:21 UTC.
+
+**MEASURED — pulls.** 121 protective pulls; 3 of 115 checked (3%) had our price
+level gone 60 s later. Replayed against Kalshi's own trade records, 1 of 131
+`time_to_fill` pulls had any trade on our side of the book in the 30 s before;
+the rest were driven by other makers cancelling ahead. About 60% of entry
+orders ended by being pulled. No fills in the window.
+
+**Caution (Finding 206):** the one real save measured before D-145 (KXWMTCC)
+fired on makers pulling liquidity *before* a sweep, with no trade first. A
+trade-only trigger would have missed it. Cancels ahead are mostly noise but
+sometimes the only warning, so the trade-evidence rule is a HYPOTHESIS until a
+day of data shows how many skipped pulls preceded a real sweep ("skipped but
+gone" in the report).
+
+**MEASURED — entry gate.** `entry_allowed` true in ~40–50% of `runtime_health`
+samples all day, on the previous build too; first `health_hourly` row 51%, yet
+48.1 of 50 entries resting on average. Session, pause, venue and stop were
+ruled out from status; the remaining terms are the accounting proof not
+released or its lease not current. D-152 samples which one.
+
 ## 212. Architecture review 2026-09-26: exception audit and CPU profile
 
 **VERIFIED (static audit + profiling).** Broad handlers in `src/kalshi_bot`: 115

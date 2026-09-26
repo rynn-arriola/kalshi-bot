@@ -141,6 +141,78 @@ def withdrawals_section(data):
               [(t, s[0], s[1], s[2], pct(s[2], s[1])) for t, s in sorted(stats.items())])])
 
 
+TRADE_LOOKBACK = timedelta(seconds=30)
+
+
+def _when(value):
+    try:
+        return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def _consumes(trade, side, price):
+    """A trade eats the queue at our level: takers selling YES hit bids at or
+    above our bid; takers buying YES lift asks at or below our ask."""
+    _, taker, traded, _ = trade
+    if traded is None or price is None:
+        return False
+    return ((side == 'bid' and taker == 'no' and traded >= price)
+            or (side == 'ask' and taker == 'yes' and traded <= price))
+
+
+def trade_evidence_section(data):
+    """D-152 counterfactual: would a trade-evidence rule have pulled?
+
+    For each protective pull, look for real trades on our side of the book in
+    the 30 s before it. Pulls without any were driven by cancellations ahead;
+    a trade-evidence trigger would have skipped them. The risk column counts
+    skipped pulls whose price level was then really gone 60 s later.
+    """
+    trades = defaultdict(list)
+    for _, _, t in data['trades']:
+        when = _when(t.get('created_time'))
+        if when is not None:
+            trades[t['ticker']].append((when, t.get('taker_side'), dec(t.get('yes_price')),
+                                        dec(t.get('count')) or 0))
+    gone = {}
+    for _, key, mark in data['withdrawal_marks']:
+        base, _, delay = key.rpartition('@')
+        if delay.startswith('60') and mark.get('level_gone') is not None:
+            gone[base] = bool(mark['level_gone'])
+    stats = defaultdict(lambda: [0, 0, 0, 0])  # pulls, trade-backed, skipped, skipped but gone
+    for at, key, row in data['withdrawals']:
+        when = _when(at)
+        orders = [(o.get('side'), dec(o.get('price'))) for o in row.get('orders') or ()]
+        backed = when is not None and any(
+            when-TRADE_LOOKBACK <= trade[0] <= when and _consumes(trade, side, price)
+            for trade in trades.get(row.get('ticker'), ()) for side, price in orders)
+        for trigger in row.get('triggers') or ['none']:
+            s = stats[trigger]
+            s[0] += 1
+            s[1] += backed
+            s[2] += not backed
+            s[3] += (not backed) and gone.get(key, False)
+    fills = []
+    for _, _, fill in data['fills']:
+        executed = fill.get('executed_us')
+        when = (datetime.fromtimestamp(executed/1e6, timezone.utc) if isinstance(executed, (int, float))
+                else None)
+        side, price = fill.get('side'), dec(fill.get('price'))
+        before = when is not None and any(
+            when-TRADE_LOOKBACK <= trade[0] < when-timedelta(seconds=1) and _consumes(trade, side, price)
+            for trade in trades.get(fill.get('ticker'), ()))
+        fills.append(before)
+    return '\n'.join(['## Pull trigger vs real trades (D-152 counterfactual)',
+        'A pull is trade-backed when Kalshi recorded a trade on our side of the book, at our '
+        'price or better, in the 30 s before it. A trade-evidence trigger would skip the '
+        'others; "skipped but gone" counts those where our level really was gone 60 s later.',
+        table(['trigger', 'pulls', 'trade-backed', 'would skip', 'skipped but gone'],
+              [(t, *s) for t, s in sorted(stats.items())]),
+        '', f'{len(fills)} fills; {sum(fills)} had trades on our side in the 30 s before '
+            f'(the rest were single sweeps no trigger could see coming).'])
+
+
 def sweeps_section(data):
     per_market = defaultdict(lambda: defaultdict(Decimal))
     for _, _, trade in data['trades']:
@@ -199,7 +271,7 @@ def report(data, *, days, now):
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
         entries_section(data), fills_section(data), withdrawals_section(data),
-        sweeps_section(data), rewards_section(data), health_section(data)])+'\n'
+        trade_evidence_section(data), sweeps_section(data), rewards_section(data), health_section(data)])+'\n'
 
 
 def main():
