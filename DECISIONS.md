@@ -25,8 +25,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   with triggers and a 30/60-second market check; (5) public trades for up to
   64 quoted or held markets once a minute (background read, 30-s overlap); (6)
   10-second health samples summarised hourly with counter changes.
-  `scripts/research_report.py` turns it into a weekly Markdown calibration
-  report (read-only).
+  `scripts/calibration_report.py` turns it into the **calibration report**
+  (weekly by default, read-only), whose goal is to improve the bot: evidence
+  for tuning entry gates, fill protection and reward estimates.
 - **Payout timing (operator-supplied community evidence):** liquidity rewards
   arrive around 2–4 AM ET the day after a program's end; the report matches
   credits in that window to programs that ended.

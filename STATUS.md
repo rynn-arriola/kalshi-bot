@@ -13,8 +13,8 @@ raises into trading: entry lifecycles with screen context, fills with 1/5/30
 minute mark-outs, protective pulls with a 30/60 s "was the level reached?"
 check, public trades in quoted markets (one background read per market per
 minute, at most 64), hourly health and counter deltas, hourly reward estimates
-and reward-like cash credits; 120-day retention. `scripts/research_report.py`
-writes a weekly Markdown calibration report (read-only). Review fixes: a
+and reward-like cash credits; 120-day retention. `scripts/calibration_report.py`
+writes the calibration report (goal: improve the bot; read-only). Review fixes: a
 failing prune no longer ends the writer; a check with no book is unknown, not
 "reached".
 

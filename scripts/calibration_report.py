@@ -1,11 +1,13 @@
-"""Weekly calibration report from the D-151 research dataset (read-only).
+"""Calibration report: evidence for improving the bot (D-151 dataset, read-only).
 
-Usage:  python scripts/research_report.py [--days 7] [--db data/trader/research.db]
-                                          [--out data/trader/reports]
+Usage:  python scripts/calibration_report.py [--days 7] [--db data/trader/research.db]
+                                             [--out data/trader/reports]
 
-Reads research.db only (never the ledger or the venue) and writes a Markdown
-report to stdout and to ``--out``. Tables, not decisions: every threshold change
-remains an operator decision.
+Its goal is to improve the bot: it shows how entries, fills, protective pulls
+and rewards actually turned out, so gates and thresholds can be tuned on
+evidence. Reads research.db only (never the ledger or the venue) and writes a
+Markdown report to stdout and to ``--out``. Tables, not decisions: every
+threshold change remains an operator decision.
 """
 import argparse
 from collections import defaultdict
@@ -193,7 +195,9 @@ def health_section(data):
 
 
 def report(data, *, days, now):
-    return '\n\n'.join([f'# Research calibration report — {now:%Y-%m-%d} (last {days} days)',
+    return '\n\n'.join([f'# Calibration report — {now:%Y-%m-%d} (last {days} days)',
+        'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
+        'and reward estimates; every change remains an operator decision.',
         entries_section(data), fills_section(data), withdrawals_section(data),
         sweeps_section(data), rewards_section(data), health_section(data)])+'\n'
 
@@ -208,7 +212,7 @@ def main():
     text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out/f'research-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')
+    (out/f'calibration-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')
     # The Windows console code page cannot print the report's typography.
     sys.stdout.reconfigure(encoding='utf-8')
     print(text)

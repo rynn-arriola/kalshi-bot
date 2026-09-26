@@ -5,7 +5,7 @@
 00. **Check D-151 after a few hours:** `health_hourly` rows each hour,
     `withdrawal_marks` after pulls, research status `alive` with no drops.
 0. **Shadow screen evaluation (D-150):** after 1–2 days, run
-   `scripts/research_report.py` (verdict × fills × reward); the 25%
+   the calibration report, `scripts/calibration_report.py` (verdict × fills × reward); the 25%
    reward-to-risk cut flags ~80% of entries at 30 contracts, so it needs
    calibration first.
 1. **Measure D-145–D-148 over hours** (WATCHLIST item 10): fills, protective

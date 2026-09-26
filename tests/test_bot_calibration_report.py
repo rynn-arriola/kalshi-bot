@@ -1,4 +1,4 @@
-"""D-151 weekly calibration report over a synthetic research dataset."""
+"""D-151 calibration report over a synthetic research dataset."""
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
 import importlib.util
@@ -8,10 +8,10 @@ import unittest
 
 from kalshi_bot.research import ResearchStore
 
-SCRIPT = Path(__file__).resolve().parents[1]/'scripts'/'research_report.py'
-spec = importlib.util.spec_from_file_location('research_report', SCRIPT)
-research_report = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(research_report)
+SCRIPT = Path(__file__).resolve().parents[1]/'scripts'/'calibration_report.py'
+spec = importlib.util.spec_from_file_location('calibration_report', SCRIPT)
+calibration_report = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(calibration_report)
 
 NOW = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
 
@@ -62,7 +62,7 @@ class ReportTests(unittest.TestCase):
                      counters={'recovery.post_drain': 3, 'pulls.time_to_fill': 7,
                                'fills_recorded': 1})
         store.close()
-        self.text = research_report.report(research_report.load(self.db, NOW-timedelta(days=7)),
+        self.text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
                                            days=7, now=NOW)
 
     def tearDown(self):
@@ -101,8 +101,11 @@ class ReportTests(unittest.TestCase):
                                  '--out', str(out), '--days', '3650'],
                                 capture_output=True, env=env, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
-        [written] = list(out.glob('research-*.md'))
-        self.assertIn('Reward truth', written.read_text(encoding='utf-8'))
+        [written] = list(out.glob('calibration-*.md'))
+        text = written.read_text(encoding='utf-8')
+        self.assertTrue(text.startswith('# Calibration report'))
+        self.assertIn('Goal: improve the bot.', text)
+        self.assertIn('Reward truth', text)
 
     def test_hourly_health(self):
         self.assertIn('| 2026-10-08T00 | 360 | 90% | 48 | 3 | 7 | 1 |', self.text)
