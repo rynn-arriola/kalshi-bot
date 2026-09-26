@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-147 — Renew the account proof after a protective-cancel drain
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Ok finish and restart then do the other issue”
+  (the recommended post-drain efficiency fix).
+- **Scope:** after protective withdrawals drain, when the entry path is not
+  paused (no stop drain, no safety pause) and the last released account proof
+  is still a valid own-order chain anchor (nothing economic since), the live
+  refresh owner runs the D-134 own-order renewal instead of a full recovery.
+  Any fill, position, cash or audit change escalates to the full pass as
+  before. Status reports `post_drain_renewals`.
+- **Evidence:** Finding 211: 208 of 319 full recoveries in 1 h 50 min followed a
+  drain (median 2.3 s each); full recoveries covered ~12% of the time.
+- **Boundary:** no risk, size, strategy or protection threshold change.
+
 ### D-146 — A send-edge refusal is proven unsent; name audit blockers in logs
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

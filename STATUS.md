@@ -1,15 +1,14 @@
 # Current status
 
-## D-145 running; D-146 ready — 2026-09-26
+## D-146 running; D-147 ready — 2026-09-26
 
-**Running** D-145 (build `986c9a8`) since 06:46 UTC after the operator-approved
-stop, exact child PID 51884 termination, reconciliation of the operator's manual
-close (`reconcile_D145_close.py`, net −$18.3604, backup
-`account.before-D145-close-20260926T064511Z.db`) and restart. One runtime crash
-at 10:38 UTC (quota refresh at the send edge, Finding 211) self-healed by 10:49.
-Zero fills since the deploy; 50 orders at 30 contracts; the 10:00 window reset
-restored the 50-order cap. **D-146** (send-edge refusal is NOT_SENT; audit
-blocker logging) is built and tested, awaiting an authorized restart.
+**Running** D-146 (build `ba3bf43`) since 13:10 UTC after an operator-approved
+stop (clean: zero orders, zero positions) and restart. D-145 fill protection is
+unchanged: order group active, queue reader current. Earlier today: the
+operator's manual close was reconciled (net −$18.3604) and the 10:38 UTC
+send-edge crash (Finding 211) is fixed by D-146. **D-147** (own-order renewal
+instead of a full recovery after protective-cancel drains) is built and
+tested, awaiting an authorized restart.
 
 ## Bot stopped after an adverse fill; D-145 fill protection ready — 2026-09-26
 

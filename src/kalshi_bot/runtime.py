@@ -828,6 +828,16 @@ class RecoveryRuntime:
         if state.active is not None or state.queued or state.failed or state.stopping:
             return False
         self._post_drain_recovery_pending = False
+        # A stop drain or safety pause (both entry pauses) keeps a full pass.
+        if not self.entry_pause_active and self._current_own_order_anchor() is not None:
+            # D-147: the drained protective cancels were the bot's own
+            # acknowledged commands and nothing economic happened since the
+            # last released proof. The live refresh owner renews that proof
+            # (any fill, position or cash change still escalates to a full
+            # recovery) instead of a full pass after every withdrawal.
+            self.post_drain_renewals = self.__dict__.get('post_drain_renewals', 0)+1
+            self._account_ingress_at = self.clock()  # Let venue updates settle.
+            return True
         self.request_recovery('post_drain')
         return True
 
@@ -2364,6 +2374,7 @@ class RecoveryRuntime:
             recovery_safety_pauses=self.__dict__.get('recovery_safety_pauses', 0),
             exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
             unknown_creates_resolved=self.__dict__.get('unknown_creates_resolved', 0),
+            post_drain_renewals=self.__dict__.get('post_drain_renewals', 0),
             venue_paused=bool(self.__dict__.get('_venue_paused', False)),
             venue_pauses=self.__dict__.get('venue_pauses', 0),
             exchange_status_failures=self.__dict__.get('exchange_status_failures', 0),
