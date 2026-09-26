@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 212. Architecture review 2026-09-26: exception audit and CPU profile
+
+**VERIFIED (static audit + profiling).** Broad handlers in `src/kalshi_bot`: 115
+`except Exception/BaseException` blocks; 61 re-raise, 44 record the failure
+(counter, diagnostics, failure flag), 10 swallow silently. All 10 are
+best-effort secondary actions (diagnostics emission, a secondary UNKNOWN
+persistence attempt, child-result IPC) inside a path that re-raises the primary
+error; none hides a safety fault. If a secondary UNKNOWN write fails the command
+stays durably SENDING, which recovery already treats as unresolved.
+
+CPU (live, generation 188 child): 0.58–0.70 of one core, ~320 book events/s,
+backlog 0. Profile of the 1,024-market load test: per-evaluation cost 0.84 ms;
+about half is selection re-ranking on every book change, a quarter inventory
+plans; hot-path validators rebuilt constants on every call. Review #5 cut
+evaluation cost to 0.70 ms (validators −37%). Remaining lever: coalescing
+selection re-ranking per market, a behavior change needing a decision.
+
 ## 211. Quota refresh at the send edge crashed the runtime; D-145 first hours — 2026-09-26
 
 **VERIFIED (live logs, generation 188).** 10:38:09 UTC a write-quota refresh
