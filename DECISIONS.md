@@ -146,6 +146,13 @@ and explicitly withdraws the proposed fixed 60-market pool.
   - Never restart over uncommitted tracked changes, or when the checkout's `production_build_fingerprint()` differs from the last armed `build_fingerprint` for any reason other than its own reviewed fix.
   - At most one restart per 6 hours. Any failed or uncertain gate leaves the bot stopped and notifies the operator.
 
+- **Amendment (2026-09-26, operator):**
+  - The operator's words: "the point of this is to fix an issue unattended", and "if you think the fix is critical then you should fix it, but if bot is running and this is not urgent then no need to restart."
+  - Critical problems (crashed, stuck, cannot trade): the scheduler fixes, tests, ships and deploys unattended through fixed scripts, with automatic rollback.
+  - Non-urgent problems while the bot runs: the fix is shipped but not deployed.
+  - Protected strategy/risk/selection/quoting/exit files are never edited unattended.
+  - Every D-139 boundary above still applies.
+
 ### D-138 — Raise the resting entry-order cap to 50
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
