@@ -222,5 +222,78 @@ class FillContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stub.research_failures, 1)
 
 
+class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.f = entry_fixture.EntrySourceTests('test_ranked_market_becomes_exact_source_bound_pair')
+        await self.f.asyncSetUp()
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.r = self.f.runtime
+        self.r.research = self.store
+
+    async def asyncTearDown(self):
+        self.store.close()
+        await self.f.asyncTearDown()
+        self.temp.cleanup()
+
+    async def test_cash_credits_are_recorded_once(self):
+        from kalshi_bot.cash_attribution import CashAdjustment
+        result = SimpleNamespace(cash_adjustments=(
+            CashAdjustment('credit-1', 0, D('1.25'), 'unattributed_credit'),
+            CashAdjustment('deposit-1', 0, D('300'), 'deposit')))
+        self.r.accounting_result = result
+        self.r.accounting_result = result  # Same adjustments in a later release.
+        self.store.close()
+        credits = rows(self.path, 'reward_credits')
+        self.assertEqual(sorted(k for k, _ in credits), ['credit-1', 'deposit-1'])
+        self.assertEqual({r['kind']: r['amount'] for _, r in credits},
+                         {'unattributed_credit': '1.25', 'deposit': '300'})
+
+    def rewards(self):
+        from dataclasses import dataclass
+        @dataclass
+        class Progress:
+            program_id: str
+            sampled_gross_usd: D
+        def progress(program_id):
+            if program_id == 'broken':
+                raise KeyError(program_id)
+            return Progress(program_id, D('0.5'))
+        return SimpleNamespace(tracker=SimpleNamespace(records={'p1': 1, 'broken': 2}),
+                               progress=progress)
+
+    def stub(self):
+        from kalshi_bot.runtime import RecoveryRuntime
+        import asyncio
+        stub = SimpleNamespace(rewards=self.rewards(), research=self.store, research_failures=0,
+            stop_requested=asyncio.Event(), now=self.r.now, RESEARCH_TICK_SECONDS=.01)
+        stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
+        stub._research_reward_estimates = (
+            lambda hour: RecoveryRuntime._research_reward_estimates(stub, hour))
+        return stub, RecoveryRuntime
+
+    async def test_hourly_estimates_skip_failures_and_repeat_per_hour_once(self):
+        stub, runtime = self.stub()
+        hour = datetime(2026, 9, 26, 17, tzinfo=timezone.utc)
+        runtime._research_reward_estimates(stub, hour)
+        runtime._research_reward_estimates(stub, hour)  # Restart within the hour.
+        self.store.close()
+        estimates = rows(self.path, 'reward_estimates')
+        self.assertEqual([k for k, _ in estimates], ['p1@2026-09-26T17:00:00+00:00'])
+        self.assertEqual(estimates[0][1]['sampled_gross_usd'], '0.5')
+        self.assertEqual(stub.research_failures, 2)
+
+    async def test_loop_writes_the_current_hour_then_stops(self):
+        import asyncio
+        stub, runtime = self.stub()
+        task = asyncio.create_task(runtime._research_loop(stub))
+        await asyncio.sleep(.05)
+        stub.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertEqual(self.store.status()['accepted'], 1)  # Several ticks, one hour.
+        self.store.close()
+        self.assertEqual(len(rows(self.path, 'reward_estimates')), 1)
+
 if __name__ == '__main__':
     unittest.main()

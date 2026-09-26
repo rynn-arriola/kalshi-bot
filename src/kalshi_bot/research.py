@@ -21,7 +21,8 @@ TABLES = frozenset((
     'entries', 'entry_ends', 'fills', 'fill_marks', 'withdrawals', 'withdrawal_marks',
     'trades', 'health_hourly', 'reward_estimates', 'reward_credits'))
 # Rows whose key is a venue identity are stored once (re-delivery is ignored).
-UNIQUE_KEY_TABLES = frozenset(('entry_ends', 'fills', 'trades'))
+UNIQUE_KEY_TABLES = frozenset(('entry_ends', 'fills', 'trades', 'reward_credits',
+                               'reward_estimates', 'health_hourly'))
 RETENTION_DAYS = 120
 BATCH = 256
 

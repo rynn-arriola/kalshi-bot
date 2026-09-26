@@ -749,6 +749,11 @@ class RecoveryRuntime(AccountProofMixin):
             if diagnostics is not None:
                 diagnostics.emit('cash_adjusted', cash_kind=item.kind,
                                  amount_cents=int(item.amount*100))
+            if self.research is not None:
+                # D-151 #3: reward payouts arrive as unattributed credits.
+                self._research_safely(lambda item=item: self.research.record(
+                    'reward_credits', item.source_key, kind=item.kind, amount=item.amount,
+                    exchange_index=item.exchange_index))
 
     @property
     def entry_allowed(self):
@@ -1005,6 +1010,35 @@ class RecoveryRuntime(AccountProofMixin):
         self._research_safely(lambda: self.research.record(
             'fill_marks', f'{key}@{delay}', ticker=ticker, side=side, fill_price=price,
             delay_seconds=delay, **self._research_top(self.management._book(ticker)[1])))
+
+    RESEARCH_TICK_SECONDS = 60
+
+    async def _research_loop(self):
+        """D-151: periodic research records; never touches trading state."""
+        last_hour = None
+        while not self.stop_requested.is_set():
+            hour = utc(self.now()).replace(minute=0, second=0, microsecond=0)
+            if hour != last_hour:
+                last_hour = hour
+                self._research_safely(self._research_reward_estimates, hour)
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), self.RESEARCH_TICK_SECONDS)
+            except TimeoutError:
+                pass
+
+    def _research_reward_estimates(self, hour):
+        """D-151 #3: one estimate per tracked program per hour (final one kept)."""
+        from dataclasses import asdict
+        if self.rewards is None:
+            return
+        for program_id in tuple(self.rewards.tracker.records):
+            try:
+                progress = asdict(self.rewards.progress(program_id))
+            except Exception:
+                self.research_failures += 1
+                continue
+            self.research.record('reward_estimates', f'{program_id}@{hour.isoformat()}',
+                                 hour=hour, **progress)
 
     def _research_entry_end(self, result):
         """D-151: record once how each owned entry order ended (never reducers)."""
@@ -1904,6 +1938,9 @@ class RecoveryRuntime(AccountProofMixin):
                     # D-145: fill protection has its own queue reader.
                     tasks.append(asyncio.create_task(self.maintenance.run_queue_reader(),
                                                      name='kalshi-fill-protection'))
+                if self.research is not None:
+                    tasks.append(asyncio.create_task(self._research_loop(),
+                                                     name='kalshi-research'))
                 if self.order_groups is not None:
                     tasks.append(asyncio.create_task(self.order_groups.run(),
                                                      name='kalshi-order-groups'))
