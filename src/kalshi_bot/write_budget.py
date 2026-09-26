@@ -19,6 +19,9 @@ from .values import InvalidData, integer
 ORDERS = '/portfolio/events/orders'
 BATCH_ORDERS = ORDERS + '/batched'
 CANCEL = ORDERS + '/{order_id}'
+# D-145: entry order-group writes share the same per-shard write bucket.
+GROUP_CREATE = '/portfolio/order_groups/create'
+GROUP_RESET = '/portfolio/order_groups/{order_group_id}/reset'
 _METHODS = frozenset(('GET', 'POST', 'DELETE', 'PUT', 'PATCH', 'HEAD', 'OPTIONS'))
 _SEGMENT = re.compile(
     r'(?:[A-Za-z0-9_.-]+|\{[A-Za-z_][A-Za-z0-9_]*\}|:[A-Za-z_][A-Za-z0-9_]*|\*[A-Za-z_][A-Za-z0-9_]*)')
@@ -62,6 +65,13 @@ def _operation_cached(method, route):
         if (order_id != 'batched' and
                 re.fullmatch(r'[A-Za-z0-9_-]+', order_id)):
             return route, CANCEL
+    if method == 'POST' and route == GROUP_CREATE:
+        return route, route
+    prefix = '/portfolio/order_groups/'
+    if method == 'PUT' and route.startswith(prefix) and route.endswith('/reset'):
+        group_id = route[len(prefix):-len('/reset')]
+        if re.fullmatch(r'[A-Za-z0-9_-]+', group_id):
+            return route, GROUP_RESET
     raise InvalidData('unsupported single event-order operation')
 
 

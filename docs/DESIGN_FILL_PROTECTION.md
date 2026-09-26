@@ -1,6 +1,7 @@
-# Fill protection — final design (proposed D-145)
+# Fill protection — final design (D-145)
 
-Status: PROPOSED, 2026-09-26. Replaces nothing until the operator accepts it.
+Status: ACCEPTED and implemented 2026-09-26 (D-145); not yet deployed.
+Implementation notes that refine this design are marked **Implemented:**.
 Evidence: Finding 206 (withdrawal outcomes vs public trades) and the generation
 run `cce01ccf` (05:09–05:31 UTC, 46 entries × 30 contracts, 9,198 risk samples).
 
@@ -30,10 +31,15 @@ bot is slow, blind or offline.
 
 ### Layer 1 — Kalshi-side fill cap (order group) · NEW
 Every **entry** order is created in the shard's current order group
-(`order_group_id`). The group's `contracts_limit` is one entry's size (30).
-When 30 contracts fill across the group within Kalshi's rolling 15 s window,
-**Kalshi cancels every other entry in that group itself and blocks new ones**
-until reset — no reaction latency, and it works while we are offline.
+(`order_group_id`). When the group's `contracts_limit` fills across the group
+within Kalshi's rolling 15 s window, **Kalshi cancels every other entry in that
+group itself and blocks new ones** until reset — no reaction latency, and it
+works while we are offline.
+
+**Implemented:** the limit is one entry plus one contract (31), accepted by the
+operator. Finding 210 showed every fill this week was a single isolated
+sweep; a limit of 30 would cancel the whole shard after each of them for no
+benefit. 31 never triggers on one fill and stops a second within 15 s.
 
 - One group per exchange shard used by entries; created at startup and
   persisted (id + state) in the ledger; exits/reducers are never in a group.
@@ -56,11 +62,19 @@ discarding it after 5 s. Between readings:
 
     ahead_now = max(0, anchor − Σ every book decrease at our price or better since the anchor)
 
-counted **per delta message** as it arrives (a per-shard cumulative-decrease
+counted **per delta message** as it arrives (a per-price cumulative-decrease
 counter), not from depth snapshots, so a cancel ahead followed by a join
 behind is never netted away. Increases never raise the estimate; decreases
 we caused ourselves (deltas carrying our `client_order_id`) are excluded.
 The estimate is therefore always ≤ the true queue ahead (conservative).
+
+**Implemented:** only removals at exactly our price consume the reading; size at
+better prices is read live from the book (it is always ahead of us, and makers
+requoting above us would otherwise erase our queue). The reading is treated as
+possibly including better prices (reading − better size at read), a lower bound
+under either interpretation. Kalshi's quiet-book refresh snapshots arrive inside
+the same proven sequence, so they keep the tally (a book "lineage"); only a
+reconnect or gap starts over.
 
 - A fresh queue reading replaces the anchor (it is the truth).
 - The anchor is valid while the book stream is continuous (same shard

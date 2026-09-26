@@ -49,6 +49,15 @@ class RecoveryReauditTests(unittest.IsolatedAsyncioTestCase):
                              set(runtime.recovery_phase_ms))
         self.assertEqual(runtime.status()['recovery_final_reaudits'], 1)
 
+    async def test_full_recovery_records_its_completion_for_order_group_resets(self):
+        # D-145: a triggered order group resets only after a later full recovery.
+        runtime = await self.runtime()
+        before = runtime.__dict__.get('last_full_recovery_mono')
+        repaired, _ = await self.recover(runtime)
+        self.assertTrue(repaired)
+        self.assertEqual(runtime.last_full_recovery_mono, runtime.clock())
+        self.assertNotEqual(runtime.last_full_recovery_mono, before)
+
     async def test_private_event_since_first_snapshot_reads_venue_again(self):
         runtime = await self.runtime()
         def private_event():

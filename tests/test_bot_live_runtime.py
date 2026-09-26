@@ -893,7 +893,7 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
         from test_bot_quota import LIMITS, COSTS, Signer
         base, start = metadata.NOW, time.monotonic()
         now = lambda: base+timedelta(seconds=time.monotonic()-start)
-        closed, calls = [], []
+        closed, calls, groups = [], [], []
         market = metadata.market()
         docs = {
             '/account/limits': LIMITS, '/account/endpoint_costs': COSTS,
@@ -943,6 +943,11 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 finally: closed.append(self.spec.name)
         class Wire:
             async def __call__(self, *_): raise AssertionError('unexpected single command')
+            async def order_group(self, kind, request):
+                # D-145: the composed graph creates one entry group per shard.
+                session.check(kind, request)
+                groups.append((kind, request))
+                return {'order_group_id': f"og-{request['exchange_index']}", 'subaccount': 0}
             async def batch(self, requests):
                 session.check('batch_create', requests)
                 calls.append(requests)
@@ -991,6 +996,10 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                     return
                 self.assertEqual(len(calls), 1)
                 self.assertEqual({row['ticker'] for row in calls[0]}, {'B' if discover else 'A'})
+                # D-145: every entry leg joined its shard's order group.
+                self.assertEqual({row['order_group_id'] for row in calls[0]},
+                                 {f"og-{calls[0][0]['exchange_index']}"})
+                self.assertEqual({k for k, _ in groups}, {'group_create'})
                 self.assertTrue(all(D(row['count']) == 10 for row in calls[0]))
                 async with asyncio.timeout(2):
                     while sum(r['phase'] == 'ACK' for r in await writer.mutations()) != 2:

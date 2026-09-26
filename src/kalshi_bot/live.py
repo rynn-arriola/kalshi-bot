@@ -262,6 +262,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
+    if not session.entries_paused:
+        # D-145: entries are capped by a Kalshi order group per shard.
+        runtime.attach_order_groups(transport, inputs.exchange_indices)
     # Discovery is automatic within the reviewed universe. Fresh metadata and
     # snapshots still gate ranking; a catalog row never grants order authority.
     return runtime

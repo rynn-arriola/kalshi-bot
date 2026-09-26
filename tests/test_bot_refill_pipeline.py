@@ -198,6 +198,10 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 cancel_recoveries.append(runtime.recovery_attempts)
                 cancel_times.append(time.monotonic())
                 return dict(order_id=row['order_id'],reduced_by='10',ts_ms=2)
+            async def order_group(self, kind, req):
+                # D-145: one entry order group per shard, as Kalshi would return.
+                session.check(kind, req)
+                return {'order_group_id': f"og-{req['exchange_index']}", 'subaccount': 0}
             async def batch(self, requests):
                 session.check('batch_create', requests)
                 batches.append(requests)

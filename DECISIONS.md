@@ -10,6 +10,40 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-145 — Fill protection: continuous queue tracking, new triggers, order groups
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator approved the design in
+  `docs/DESIGN_FILL_PROTECTION.md` (“Approve as designed”), then “Lets just
+  improve the cancel logic”, “Ok do it”; group limit 31: “Do recommended”.
+- **Scope:**
+  - A dedicated queue reader (every 2 s, sooner for unanchored orders such as
+    a just-acknowledged entry) anchors every resting entry. Between readings
+    the estimate is live size at better prices plus the at-price reading less
+    every removal by others at our price since the read (per book delta; joins
+    never net it; own-order deltas excluded; refresh snapshots in the same
+    proven sequence keep the tally). The anchor never expires by age.
+  - Withdraw a pair on time-to-fill (existing), fewer than one entry's
+    contracts ahead (new), or no valid anchor for more than 10 s (new). No new
+    entry is placed while the reader has not succeeded within 10 s.
+  - Every entry joins its shard's Kalshi order group; a shard without a known
+    active group places no entries (fail closed); creation retries 30 s, 1, 2,
+    5 min. Exits and reducers never join a group. A trigger blocks the shard,
+    requests a full recovery, and the group resets only after a full recovery
+    since the trigger, every position has a non-blocked exit plan, entries are
+    otherwise allowed and 60 s have passed. A new private stream abandons old
+    groups and creates fresh ones.
+- **Group limit (accepted):** the design said 30 (one entry). Implemented as
+  one entry plus one contract (31): this week's 16 fills were all single,
+  isolated sweeps, so a limit of 30 would have cancelled every other entry on
+  the shard after each of them with no benefit; 31 never triggers on one fill
+  and still stops a second fill within Kalshi's 15-second window, including
+  while the bot is offline. One constant (`GROUP_LIMIT_EXTRA`).
+- **Evidence limit:** all 16 entry fills this week were one-shot sweeps with no
+  prior trade in 15 of 16; no cancel logic can prevent those (Finding 210).
+- **Boundary:** no size, order-count or market-selection change.
+
 ### D-144 — 24/7 resilience: order lease, Kalshi status, supervisor self-heal, auto-start
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.

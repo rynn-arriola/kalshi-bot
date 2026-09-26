@@ -31,7 +31,7 @@ def validate_request(kind, request):
     required = {'ticker', 'client_order_id', 'side', 'count', 'price', 'time_in_force',
                 'self_trade_prevention_type', 'post_only', 'reduce_only',
                 'cancel_order_on_pause', 'subaccount', 'exchange_index'}
-    if not required <= set(request) or set(request)-required-{'expiration_time'}:
+    if not required <= set(request) or set(request)-required-{'expiration_time', 'order_group_id'}:
         raise InvalidData('unsupported create fields')
     identity(request['ticker']); identity(request['client_order_id'])
     count(request['count']); price(request['price'])
@@ -48,6 +48,11 @@ def validate_request(kind, request):
         raise InvalidData('only passive or exact reduce-only IOC mechanics supported')
     if 'expiration_time' in request:
         integer(request['expiration_time'], 1, 2**63-1)
+    if 'order_group_id' in request:
+        # D-145: only resting passive orders join a group; an IOC exit never does.
+        if not passive:
+            raise InvalidData('order groups are for passive entries only')
+        identity(request['order_group_id'])
 
 
 def acknowledgement(kind, request, response):

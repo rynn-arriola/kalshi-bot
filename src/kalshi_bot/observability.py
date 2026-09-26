@@ -40,6 +40,10 @@ EVENTS = {
     'cash_adjusted': ('WARNING', 'accounting'),
     'unknown_create_resolved': ('WARNING', 'recovery'),
     'venue_paused': ('WARNING', 'runtime'),
+    'order_group_created': ('INFO', 'execution'),
+    'order_group_triggered': ('WARNING', 'execution'),
+    'order_group_reset': ('WARNING', 'execution'),
+    'order_group_failed': ('WARNING', 'execution'),
     'venue_resumed': ('WARNING', 'runtime'),
     'recovery_safety_pause': ('WARNING', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
@@ -110,7 +114,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'latch_ms', 'order_count', 'rejected_count', 'dwell_ms', 'amount_cents'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
-RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed exhausted_retry venue_resumed
+RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed exhausted_retry venue_resumed order_group_triggered
     steady_refresh_failed mutation_observed mutation_persisted safety_mutation_persisted
     risk_cancel_outcome risk_cancel_retry_exhausted post_drain quota_restored private_fill_pending private_position
     private_scope_ambiguous private_order_pending account_subscribed opening_approved
@@ -159,7 +163,7 @@ BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit
     writer_revision_changed selection_changed metadata_source_changed metadata_result_changed
     metadata_expired runtime_unavailable request_changed account_source_changed
     account_report_expired other_source_boundary
-    current_candidate_missing stale_writer_evidence risk_account_book_proof_stale
+    current_candidate_missing stale_writer_evidence entry_order_group_unavailable risk_account_book_proof_stale
     proof_changed_before_submission
     incomplete_order_scope unowned_order_or_unaccounted_fills no_passive_touch
     await_terminal_cancellation_and_fill_proof live_authorization_missing inventory_age_unknown

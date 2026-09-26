@@ -53,6 +53,13 @@ class MutationSigner(Signer):
                    or (method == 'DELETE' and suffix is not None
                        and suffix.startswith('/') and suffix != '/batched'
                        and '/' not in suffix[1:] and len(suffix) > 1))
+        # D-145: create and reset of entry order groups, nothing else.
+        groups = '/trade-api/v2/portfolio/order_groups/'
+        if clean.startswith(groups):
+            rest = clean[len(groups):]
+            allowed = ((method == 'POST' and rest == 'create')
+                       or (method == 'PUT' and rest.endswith('/reset')
+                           and rest.count('/') == 1 and len(rest) > len('/reset')))
         if not allowed or '://' in path:
             raise InvalidData('mutation signer is restricted to event-order paths')
         return self._headers(method, path, timestamp_ms)

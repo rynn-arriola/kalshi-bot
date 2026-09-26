@@ -44,6 +44,13 @@ class LiveSession:
     def check(self, kind, requests):
         if not permits(self):
             raise InvalidData('live session closed or unbound')
+        if kind in {'group_create', 'group_reset'}:
+            # D-145: entry order groups on the primary account only.
+            from .order_groups import group_contracts_limit
+            if (requests['subaccount'] != 0 or (kind == 'group_create'
+                    and requests['contracts_limit'] != group_contracts_limit())):
+                raise InvalidData('order group outside live session scope')
+            return
         rows = requests if kind == 'batch_create' else (requests,)
         for row in rows:
             ticker = row['market_ticker'] if kind == 'cancel' else row['ticker']
@@ -55,6 +62,8 @@ class LiveSession:
                         or row['reduce_only']):
                     raise InvalidData('new entry disabled or outside approved size')
             elif kind == 'create':
+                if 'order_group_id' in row:
+                    raise InvalidData('exits and reducers never join an order group')
                 from .execution import encoded_request
                 if self._armed_single_create != encoded_request(row):
                     raise InvalidData('single create is reserved for prepared inventory reducers')

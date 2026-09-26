@@ -1,5 +1,22 @@
 # Current status
 
+## Bot stopped after an adverse fill; D-145 fill protection ready — 2026-09-26
+
+**Stopped (operator request, ~06:32 UTC).** 05:52:16.9 UTC a one-shot 488-contract
+sweep filled a 30-contract bid at 0.82 in KXBROSFT-26OCT08-T107 (Finding 210).
+The operator stopped the bot: all 50 entries cancelled; the stop reached
+`shutdown_timeout` because the position remained. The operator then sold the 30
+manually at 0.22 (06:35:17 UTC, fees $0.36; position loss ≈ $18.36) and the
+exit order was cancelled. The child (PID 51884) is still alive in
+`attention_required` with zero orders; it cannot see the manual sale as its own,
+so it cannot prove flat. Before the next start: end that exact child (operator
+approval), record the manual close with the existing operator-close adoption,
+then deploy D-145.
+
+**D-145 built, not deployed:** continuous queue tracking with short-queue and
+blind triggers (Unit A) and Kalshi order groups at limit 31 per shard (Unit B).
+Full suite and native supervisor gate pass; 44/44 mutations killed.
+
 ## D-136–D-143 deployed; trading at 50 × 30 contracts — 2026-09-26
 
 **Running** (build `f45d9a4`, trading child run `cce01ccf`). Sequence: the

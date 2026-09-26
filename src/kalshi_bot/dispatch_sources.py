@@ -492,6 +492,12 @@ class InventoryDispatchSource:
                     utc(runtime.now())+timedelta(seconds=ENTRY_LEASE_SECONDS)).timestamp())
                 if expires <= utc(runtime.now()).timestamp():
                     return blocked('entry_horizon_ended')
+                groups = runtime.__dict__.get('order_groups')
+                group_id = None
+                if groups is not None:
+                    group_id = groups.group_for(source.value.exchange)
+                    if group_id is None:
+                        return blocked('entry_order_group_unavailable')
                 requests = []
                 for quote in sorted(row.quotes, key=lambda value: value.side):
                     request = create_payload(ticker=ticker,
@@ -503,6 +509,8 @@ class InventoryDispatchSource:
                     request.update(subaccount=runtime.account.subaccount,
                                    exchange_index=source.value.exchange,
                                    expiration_time=expires)
+                    if group_id is not None:
+                        request['order_group_id'] = group_id
                     requests.append(request)
                 if (generation != self._generation
                         or not self._plan_current(plan, report.observed_at)

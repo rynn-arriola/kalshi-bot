@@ -202,6 +202,7 @@ class RecoveryRuntime:
         self.incentives = None  # One shared-budget catalog; explicit offline opt-in.
         self.rewards = None  # Actual-order telemetry only; never financial authority.
         self.maintenance = None  # Opt-in same-market policy, never a writer.
+        self.order_groups = None  # D-145 venue-side entry fill cap; opt-in.
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -298,6 +299,13 @@ class RecoveryRuntime:
             raise InvalidData('broad discovery owns a fixed reviewed book scope')
         self.admission = MarketAdmission(self,offline_fixture=offline_fixture)
         return self.admission
+
+    def attach_order_groups(self, transport, shards):
+        from .order_groups import OrderGroups
+        if self.used or self.order_groups is not None or self.dispatch_supervisor is None:
+            raise InvalidData('order groups require an unused runtime with a dispatcher')
+        self.order_groups = OrderGroups(self, transport, shards=shards)
+        return self.order_groups
 
     def attach_maintenance(self):
         from .quote_maintenance import QuoteMaintenance
@@ -1310,6 +1318,9 @@ class RecoveryRuntime:
                 return
             if event.get('type') == 'market_position':
                 self.request_recovery('private_position')
+            if (event.get('type') == 'order_group_updates'
+                    and self.__dict__.get('order_groups') is not None):
+                self.order_groups.on_update(event.get('msg') or {})
             if result is not None and getattr(result, "owned", False):
                 waiting = await self.writer.pending_fills(self.account.subaccount, result.order.order_id)
                 for item in waiting[:32]:
@@ -1886,6 +1897,8 @@ class RecoveryRuntime:
                 self._record_routine_proof(release_receipt_ids, history)
         if repaired:
             self.recovery_phase = 'complete'
+            # D-145: order-group resets require a full recovery after a trigger.
+            self.last_full_recovery_mono = self.clock()
         return repaired
 
     async def _recover(self):
@@ -2201,6 +2214,9 @@ class RecoveryRuntime:
                     # D-145: fill protection has its own queue reader.
                     tasks.append(asyncio.create_task(self.maintenance.run_queue_reader(),
                                                      name='kalshi-fill-protection'))
+                if self.__dict__.get('order_groups') is not None:
+                    tasks.append(asyncio.create_task(self.order_groups.run(),
+                                                     name='kalshi-order-groups'))
             if self.metadata_scheduler is not None:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
             if self.incentives is not None:
@@ -2375,6 +2391,8 @@ class RecoveryRuntime:
             incentives=self.incentives.status() if self.incentives is not None else None,
             rewards=self.rewards.status() if self.rewards is not None else None,
             maintenance=self.maintenance.status() if self.maintenance is not None else None,
+            order_groups=(self.order_groups.status()
+                          if self.__dict__.get('order_groups') is not None else None),
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

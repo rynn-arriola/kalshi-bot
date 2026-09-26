@@ -27,7 +27,7 @@ class _NoRedirect(HTTPRedirectHandler):
 
 def mutation_wire(url, method, headers, body, max_bytes, timeout):
     """Blocking bounded wire function; never retries or follows redirects."""
-    if method not in {'POST', 'DELETE'} or not isinstance(body, bytes):
+    if method not in {'POST', 'DELETE', 'PUT'} or not isinstance(body, bytes):
         raise InvalidData('invalid mutation wire request')
     opener = build_opener(ProxyHandler({}), _NoRedirect())
     request = Request(url, data=body or None, headers=headers, method=method)
@@ -149,7 +149,7 @@ class OrderMutationTransport:
             raise InvalidData('mutation request byte limit exceeded')
         return body
 
-    async def _send(self, method, path, body, success):
+    async def _send(self, method, path, body, success, allow_empty=False):
         headers = {'Accept': 'application/json', 'Accept-Encoding': 'identity'}
         if body:
             headers['Content-Type'] = 'application/json'
@@ -172,6 +172,8 @@ class OrderMutationTransport:
                     pass
             raise MutationHTTPFailure(response.status, code)
         if not response.body:
+            if allow_empty:
+                return {}
             raise InvalidData('mutation success response missing')
         return decode(response.body)
 
@@ -192,6 +194,23 @@ class OrderMutationTransport:
             'market_ticker': request['market_ticker']})
         path = '/portfolio/events/orders/'+quote(request['order_id'], safe='')+'?'+query
         return await self._send('DELETE', path, b'', 200)
+
+    async def order_group(self, kind, request):
+        """D-145: create or reset one entry order group; never an order."""
+        from .order_groups import validate_group_request
+        validate_group_request(kind, request)
+        if not self.offline_fixture:
+            if type(self.activation) is not LiveSession:
+                raise InvalidData('order groups require the live session')
+            self.activation.check(kind, request)
+        if kind == 'group_create':
+            return await self._send('POST', '/portfolio/order_groups/create',
+                                    self._body(request), 201)
+        query = urlencode({'subaccount': request['subaccount'],
+                           'exchange_index': request['exchange_index']})
+        path = ('/portfolio/order_groups/'+quote(request['order_group_id'], safe='')
+                +'/reset?'+query)
+        return await self._send('PUT', path, b'', 200, allow_empty=True)
 
     def preflight(self, kind, requests):
         """D-143: the stateless local gate an entry batch must pass, with no I/O.

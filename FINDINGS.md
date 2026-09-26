@@ -1,5 +1,24 @@
 # Findings — kalshi-bot
 
+## 210. Every entry fill this week was a one-shot sweep; heavy markets get swept — 2026-09-26
+
+**VERIFIED (public trades + ledger).** 05:52:16.9 UTC one taker sold 488 YES
+contracts in KXBROSFT-26OCT08-T107, taking every bid from 0.82 to 0.77 in one
+match. Our 30-contract bid at 0.82 was 200 behind (reading steady, depletion 0
+for 86 s). Afterwards the best bid was 0.06; the exit rests at 0.90 and the
+D-exit rule holds rather than cross at a loss above $8. Across all 16 entry
+fills since 2026-09-23, each was one taker order spanning 1–4 levels (59–1,810
+contracts); 15 of 16 markets had no trade in the preceding 60 s. No reactive
+cancel logic can avoid these. Realized P&L since 2026-09-22: −$13.58 (fees
+$1.40); no reward payout reconciled yet.
+
+Pre-quote history (the week before each market's first entry, 220 markets):
+swept markets median 2,418 contracts traded vs 400 for the rest. Skipping
+markets above ~2,000/week would have kept 170/220 markets and avoided 8 of 15
+swept markets; lower thresholds removed markets without avoiding more. Four
+swept markets had no prior trades (not predictable by volume). One week, small
+sample: a recommendation, not an accepted rule.
+
 ## 209. First 30-contract entry refused by a third hard-coded size gate — 2026-09-26
 
 **VERIFIED.** 04:43:19 UTC, first entry pair (KXBKFT-26OCT08-T99, 30 each side):
