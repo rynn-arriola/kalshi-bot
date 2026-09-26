@@ -4,6 +4,7 @@ One pair withdraws at a time. Exact terminal/fill proof precedes a fresh pair
 through the ordinary selector/writer. Recovery-only startup never resumes this
 ephemeral policy; the existing supervisor drains durable orders first.
 """
+import asyncio
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,8 +51,32 @@ class RiskQueueAnchor:
     valid_until: datetime
 
 
+@dataclass(frozen=True)
+class QueueAnchor:
+    """D-145: one exact Kalshi queue reading, kept until the next one.
+
+    Valid only within the same book lineage (a reconnect or sequence gap
+    starts a new one) and for the same order terms; ``marks`` are
+    ``FillRisk.anchor_marks`` taken when the read started.
+    """
+    ticker: str
+    side: str
+    yes_price: Decimal
+    ahead: Decimal
+    read_mono: float
+    lineage: object
+    book_generation: int
+    marks: tuple
+
+
 class QuoteMaintenance:
     REPRICE_DWELL_SECONDS = 30
+    # D-145 fill protection: a dedicated queue reader anchors every resting
+    # entry; an order without a valid anchor for longer than BLIND_SECONDS is
+    # treated as threatened rather than safe.
+    QUEUE_READ_SECONDS = 2.0
+    QUEUE_MIN_GAP_SECONDS = 0.5
+    BLIND_SECONDS = 10.0
     # D-131 item 7: bounded concurrent protective withdrawals (primary cycle
     # plus latched secondaries). Cancels still dispatch one at a time.
     MAX_RISK_CYCLES = 4
@@ -78,6 +103,14 @@ class QuoteMaintenance:
         self._risk_queues = {}
         self._risk_log_at = {}
         self._risk_gap_counts = {}
+        self._anchors = {}      # order_id -> QueueAnchor (D-145)
+        self._blind_since = {}  # order_id -> first clock seen without an anchor
+        self.queue_reader_active = False
+        self._queue_wake = None
+        self._queue_ok_at = None
+        self.queue_reads = 0
+        self.queue_read_failures = 0
+        self.risk_triggers = dict(time_to_fill=0, short_queue=0, blind=0)
         self._actual = MarketSelector(1)
         self._target = MarketSelector(1)
 
@@ -97,7 +130,14 @@ class QuoteMaintenance:
             self._risk_queues.pop(program.ticker, None)
         self.bindings[program.ticker] = program
 
+    def protection_current(self):
+        """D-145: the queue reader has succeeded within the blind limit."""
+        return (self._queue_ok_at is not None
+                and 0 <= self.runtime.clock()-self._queue_ok_at <= self.BLIND_SECONDS)
+
     def entry_allowed(self, ticker, program_id):
+        if self.queue_reader_active and not self.protection_current():
+            return False  # Never place an entry that cannot be protected.
         deadline = self._risk_cooldown.get(ticker)
         if deadline is not None:
             if self.runtime.clock() < deadline:
@@ -310,9 +350,15 @@ class QuoteMaintenance:
             return
         self._risk_log_at[ticker] = (now, threatened)
         for row in samples:
+            if row.get('trigger') == 'blind':
+                self.runtime.diagnostics.emit('fill_risk_sample', market=ticker,
+                    order=row['order_id'], risk_state='blind',
+                    queue_age_ms=int(row['blind_seconds']*1000))
+                continue
             eta = row['seconds_to_reach']
             self.runtime.diagnostics.emit('fill_risk_sample', market=ticker,
-                order=row['order_id'], risk_state='threat' if row['withdraw'] else 'observed',
+                order=row['order_id'], risk_state=('short_queue' if row.get('trigger') == 'short_queue'
+                    else 'threat' if row['withdraw'] else 'observed'),
                 ahead_hundredths=int(Decimal(row['ahead_estimate'])*100),
                 queue_hundredths=int(Decimal(row['queue_ahead'])*100),
                 depth_hundredths=int(Decimal(row['visible_depth'])*100),
@@ -321,7 +367,145 @@ class QuoteMaintenance:
                 horizon_ms=int(row['horizon_seconds']*1000),
                 eta_ms=None if eta is None else int(Decimal(eta)*1000))
 
+    async def run_queue_reader(self):
+        """D-145 Layer 2/4: read queue positions for every resting entry.
+
+        Every QUEUE_READ_SECONDS, and sooner (at most every
+        QUEUE_MIN_GAP_SECONDS) when an order is found without an anchor, such
+        as right after an entry is acknowledged. A failed read changes nothing
+        but the blind clock; it never raises out of the loop.
+        """
+        r = self.runtime
+        self.queue_reader_active = True
+        self._queue_wake = asyncio.Event()
+        while not r.stop_requested.is_set():
+            started = r.clock()
+            self._queue_wake.clear()
+            try:
+                await self.read_queues_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.queue_read_failures += 1
+            await asyncio.sleep(max(0.0, self.QUEUE_MIN_GAP_SECONDS-(r.clock()-started)))
+            try:
+                await asyncio.wait_for(self._queue_wake.wait(),
+                                       max(0.0, self.QUEUE_READ_SECONDS-(r.clock()-started)))
+            except TimeoutError:
+                pass
+
+    def _resting_entries(self):
+        r, orders = self.runtime, {}
+        for ticker in sorted(self.bindings):
+            plan = r.management.current(ticker, require_market=False)
+            if plan is None or plan.inventory.blockers:
+                continue
+            rows = tuple(row.order for row in plan.inventory.orders if not row.order.terminal)
+            if rows:
+                orders[ticker] = rows
+        return orders
+
+    async def read_queues_once(self):
+        """One anchored reading of every resting entry; returns reads made."""
+        from .reward_runtime import RuntimeRewards
+        r = self.runtime
+        if r.reads is None or r.stop_requested.is_set():
+            return 0
+        orders = self._resting_entries()
+        live = {o.order_id for rows in orders.values() for o in rows}
+        for table in (self._anchors, self._blind_since):
+            for key in tuple(table):
+                if key not in live:
+                    table.pop(key)
+        groups, current = [], ''
+        for ticker in orders:
+            value = current+','+ticker if current else ticker
+            if len(value) > 2048 and current:
+                groups.append(current)
+                current = ticker
+            else:
+                current = value
+        if current:
+            groups.append(current)
+        reads = 0
+        for group in groups:
+            marks = {}
+            for ticker in group.split(','):
+                shard, book = r.management._book(ticker)
+                if book is None or not book.valid:
+                    continue
+                for order in orders[ticker]:
+                    marks[order.order_id] = (ticker, order, book, shard.generation,
+                                             FillRisk.anchor_marks(book, order))
+            if not marks:
+                continue
+            started = r.clock()
+            result = await r.reads.read('queue_positions', reason='protection',
+                subaccount=r.account.subaccount, market_tickers=group)
+            reads += 1
+            for order_id, (ticker, ahead) in RuntimeRewards._queue_rows(result.payload).items():
+                mark = marks.get(order_id)
+                if mark is None or mark[0] != ticker:
+                    continue
+                _, order, book, generation, anchor = mark
+                self._anchors[order_id] = QueueAnchor(ticker, order.side, order.yes_price,
+                    ahead, started, book.lineage, generation, anchor)
+        self.queue_reads += reads
+        self._queue_ok_at = r.clock()
+        for ticker in orders:
+            if r.stop_requested.is_set():
+                break
+            self.refresh(ticker)
+            r._request_quote_dispatch(ticker)
+            await asyncio.sleep(0)
+        return reads
+
+    def _anchor_for(self, plan, order, shard, book):
+        a = self._anchors.get(order.order_id)
+        if a is None:
+            return None, 'anchor_missing'
+        if (book is None or not book.valid or a.lineage is not book.lineage
+                or a.ticker != plan.ticker
+                or not a.book_generation == shard.generation == plan.book_generation
+                or (a.side, a.yes_price) != (order.side, order.yes_price)):
+            return None, 'anchor_invalid'
+        return a, None
+
+    def _fill_risk_anchored(self, plan, program):
+        """D-145 Layer 3: time-to-fill, short queue, or blind for too long."""
+        r, ticker, now = self.runtime, plan.ticker, self.runtime.clock()
+        shard, book = r.management._book(ticker)
+        floor = active_config().entry_contracts
+        samples = []
+        for row in plan.inventory.orders:
+            order = row.order
+            anchor, gap = self._anchor_for(plan, order, shard, book)
+            sample = None
+            if anchor is not None:
+                sample = self.fill_risk.observe(order=order, book=book, program=program,
+                    identity=(r.writer.epoch, r.account.generation, plan.book_generation),
+                    ahead=anchor.ahead, queue_at=anchor.read_mono, now=now,
+                    interval=self.QUEUE_READ_SECONDS, anchor=anchor.marks, floor=floor)
+                gap = gap or ('book_unavailable' if sample is None else None)
+            if sample is not None:
+                self._blind_since.pop(order.order_id, None)
+                samples.append(sample)
+                continue
+            if self._queue_wake is not None:
+                self._queue_wake.set()
+            self._risk_gap(ticker, gap)
+            blind = now-self._blind_since.setdefault(order.order_id, now)
+            if blind > self.BLIND_SECONDS:
+                samples.append(dict(order_id=order.order_id, side=order.side,
+                    observed_mono=now, withdraw=True, trigger='blind', anchored=False,
+                    state='BLIND', blind_seconds=blind))
+        if not samples:
+            return False
+        return self._risk_decision(plan, program, samples, None)
+
     def _fill_risk(self, plan, program):
+        if self.queue_reader_active:
+            return self._fill_risk_anchored(plan, program)
         r, ticker = self.runtime, plan.ticker
         proof = self._risk_queues.get(ticker)
         if proof is None:
@@ -356,13 +540,22 @@ class QuoteMaintenance:
                 samples.append(sample)
         if not samples:
             return False
+        return self._risk_decision(plan, program, samples, proof.valid_until)
+
+    def _risk_decision(self, plan, program, samples, valid_until):
+        r, ticker = self.runtime, plan.ticker
         self.samples[ticker] = dict(state='FILL_RISK_ESTIMATE',
-            observed_at=utc(r.now()).isoformat(), valid_until=proof.valid_until.isoformat(),
+            observed_at=utc(r.now()).isoformat(),
+            valid_until=None if valid_until is None else valid_until.isoformat(),
             fill_risk=samples, action='retain')
         self._risk_sample_log(ticker, samples)
         if not any(s['withdraw'] for s in samples):
             self._risk_since.pop(ticker, None)
             return False
+        if ticker not in self._risk_since:
+            for trigger in {s.get('trigger') for s in samples if s['withdraw']}:
+                if trigger in self.risk_triggers:
+                    self.risk_triggers[trigger] += 1
         self._risk_since.setdefault(ticker, r.clock())
         if self.cycle is not None:
             if self.cycle.reason == 'fill_risk_withdrawal':
@@ -726,6 +919,11 @@ class QuoteMaintenance:
             fill_risk=self.fill_risk.status(),
             risk_cooldowns={t:max(0, until-self.runtime.clock()) for t,until in self._risk_cooldown.items()
                             if until > self.runtime.clock()},
+            fill_protection=dict(reader_active=self.queue_reader_active,
+                current=self.protection_current(), anchored_orders=len(self._anchors),
+                blind_orders=len(self._blind_since), reads=self.queue_reads,
+                read_failures=self.queue_read_failures, triggers=dict(self.risk_triggers),
+                read_seconds=self.QUEUE_READ_SECONDS, blind_limit_seconds=self.BLIND_SECONDS),
             risk_observation=dict(retained_markets=len(self._risk_queues),
                 gap_counts={t:dict(c) for t,c in self._risk_gap_counts.items() if t in current}),
             replaces_for_better_rank=False, estimate_only=True)

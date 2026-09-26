@@ -122,7 +122,9 @@ SAFE_CODES = frozenset(('venue_code',))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-2', 'book-3')),
          'risk_state': frozenset(('observed', 'threat', 'queue_missing', 'identity_changed',
                                  'queue_expired', 'book_unavailable', 'private_unavailable',
-                                 'inventory_unavailable')),
+                                 'inventory_unavailable',
+                                 # D-145 anchored protection
+                                 'short_queue', 'blind', 'anchor_missing', 'anchor_invalid')),
          'cause': RECOVERY_CAUSES,
          'maintenance_reason': frozenset(('fill_risk_withdrawal', 'restore_reference_pair',
              'incomplete_pair_below_minimum', 'persistently_unscoring',

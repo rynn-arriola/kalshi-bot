@@ -57,7 +57,9 @@ ENDPOINTS = {
     "exchange_status": endpoint("/exchange/status", "", "metadata", False),
     "balance": endpoint("/portfolio/balance", "subaccount exchange_index", "bootstrap reconcile cash"),
     "queue_positions": endpoint("/portfolio/orders/queue_positions",
-                                "market_tickers event_ticker subaccount", "reflection"),
+                                "market_tickers event_ticker subaccount",
+                                # D-145: "protection" is the foreground fill-protection reader.
+                                "reflection protection"),
     "settlements": endpoint("/portfolio/settlements",
                             "limit cursor ticker event_ticker min_ts max_ts subaccount",
                             "bootstrap reconcile cash", rows="settlements"),

@@ -49,6 +49,7 @@ class _Sample:
     at: float
     rate: Decimal = Decimal(0)
     rate_at: float = 0.0
+    anchor_age: float = 0.0
 
 
 class FillRisk:
@@ -86,14 +87,50 @@ class FillRisk:
         # the exact queue number is always the other cap on protection.
         return max(Decimal(0), total-order.remaining)
 
-    def observe(self, *, order, book, program, identity, ahead, queue_at, now, interval):
+    @staticmethod
+    def better(book, order):
+        """D-145: visible size strictly better than the order's price."""
+        ladder = book.bids if order.side == 'bid' else book.asks
+        return sum((q for p, q in ladder.levels.items()
+                    if (p > order.yes_price if order.side == 'bid' else p < order.yes_price)),
+                   Decimal(0))
+
+    @staticmethod
+    def level_decreased(book, order):
+        """D-145: cumulative removals by others at exactly the order's price."""
+        ladder = book.bids if order.side == 'bid' else book.asks
+        return ladder.decreased.get(order.yes_price, Decimal(0))
+
+    @classmethod
+    def anchor_marks(cls, book, order):
+        """What a queue reading is measured against, taken at read start."""
+        return cls.better(book, order), cls.level_decreased(book, order)
+
+    def observe(self, *, order, book, program, identity, ahead, queue_at, now, interval,
+                anchor=None, floor=None):
+        """Estimate time to reach this order.
+
+        D-145 anchored mode (``anchor`` = ``anchor_marks`` at read start): the
+        queue reading never expires by age. Ahead of us now is the live size
+        at better prices plus what was ahead at our price at the read, less
+        every removal by others at our price since (a cancel ahead followed by
+        a join behind is never netted). The reading is treated as possibly
+        including better prices, so the at-price part is a lower bound either
+        way. ``floor`` withdraws whenever fewer contracts than that remain.
+        """
         ahead = count(ahead, zero=True)
+        anchored = anchor is not None
         if (not book.valid or order.ticker != book.ticker or program.ticker != book.ticker
                 or order.side not in {'bid', 'ask'}
                 or not all(math.isfinite(v) for v in (queue_at, now, interval))
-                or interval <= 0 or not 0 <= now-queue_at < 5):
+                or interval <= 0 or now < queue_at
+                or (not anchored and not now-queue_at < 5)):
             return None
         depth = self.depth(book, order)
+        if anchored:
+            better_at_read, level_at_read = (count(v, zero=True) for v in anchor)
+            removed = max(Decimal(0), self.level_decreased(book, order)-level_at_read)
+            ahead = self.better(book, order)+max(Decimal(0), ahead-better_at_read-removed)
         key = order.order_id
         identity = (identity, program, key, order.side, order.yes_price, order.remaining)
         old = self.samples.get(key)
@@ -102,6 +139,10 @@ class FillRisk:
             old = None
         estimate = min(ahead, depth)
         rate, rate_at = Decimal(0), now
+        # The reaction window carries the reading's age when first used, not a
+        # growing age: anchored removals already assume the worst since then.
+        anchor_age = (old.anchor_age if old is not None and queue_at == old.queue_at
+                      else min(now-queue_at, 5.0)) if anchored else now-queue_at
         if old is not None:
             if now-old.rate_at <= self.policy.trend_seconds:
                 rate, rate_at = old.rate, old.rate_at
@@ -111,7 +152,9 @@ class FillRisk:
                 measured = loss/Decimal(str(elapsed))
                 if measured >= rate:
                     rate, rate_at = measured, now
-            if queue_at == old.queue_at:
+            if anchored:
+                pass  # The anchor arithmetic is already exact per delta.
+            elif queue_at == old.queue_at:
                 estimate = min(estimate, max(Decimal(0), old.ahead-loss))
             elif ahead < old.queue_ahead:
                 measured = (old.queue_ahead-ahead)/Decimal(str(queue_at-old.queue_at))
@@ -119,9 +162,11 @@ class FillRisk:
                     rate, rate_at = measured, now
         if key not in self.samples and len(self.samples) >= self.policy.capacity:
             return None  # Bounded unknown, never evict another live order's proof.
-        self.samples[key] = _Sample(identity, queue_at, ahead, depth, estimate, now, rate, rate_at)
+        self.samples[key] = _Sample(identity, queue_at, ahead, depth, estimate, now, rate, rate_at,
+                                    anchor_age)
         seconds = (Decimal(0) if estimate == 0 else estimate/rate if rate else None)
-        horizon = self.cancel_budget()+interval+self.policy.margin_seconds+(now-queue_at)
+        horizon = self.cancel_budget()+interval+self.policy.margin_seconds+anchor_age
+        short = floor is not None and estimate < count(floor)
         reference_depth = program.target/5
         levels = book.bids.levels if order.side == 'bid' else book.asks.levels
         reference = _reference(levels, program.target, order.side)
@@ -135,7 +180,12 @@ class FillRisk:
             seconds_to_reach=None if seconds is None else str(seconds),
             cancel_budget_seconds=self.cancel_budget(), horizon_seconds=horizon,
             queue_age_seconds=now-queue_at,
-            withdraw=seconds is not None and seconds <= Decimal(str(horizon)),
+            withdraw=(seconds is not None and seconds <= Decimal(str(horizon))) or short,
+            trigger=('short_queue' if short and not (seconds is not None
+                     and seconds <= Decimal(str(horizon)))
+                     else 'time_to_fill' if seconds is not None and seconds <= Decimal(str(horizon))
+                     else None),
+            anchored=anchored,
             state='ESTIMATED' if seconds is not None else 'WARMING_UP',
             estimate_only=True)
 

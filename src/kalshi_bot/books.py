@@ -1,6 +1,6 @@
 """Bounded incremental books, explicit YES-price convention, connection epochs."""
 from bisect import bisect_left, insort
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .values import InvalidData, count, decimal, identity, integer, price
@@ -15,6 +15,13 @@ class Ladder:
         self.capacity = integer(capacity, 1, 10000)
         self.levels: dict[Decimal, Decimal] = {}
         self.prices: list[Decimal] = []
+        # D-145: cumulative size removed per price by other participants since
+        # this ladder's snapshot (trades or cancels; never netted by joins).
+        self.decreased: dict[Decimal, Decimal] = {}
+
+    def record_decrease(self, p: Decimal, q: Decimal):
+        if q > 0:
+            self.decreased[p] = self.decreased.get(p, Decimal(0))+q
 
     def set(self, p: Decimal, q: Decimal):
         p, q = price(p), count(q, zero=True)
@@ -45,6 +52,10 @@ class Book:
     asks: Ladder
     valid: bool = False
     revision: int = 0
+    # D-145: identity of one sequence-continuous history of this market's book.
+    # A refresh snapshot inside the same proven sequence keeps it (and the
+    # removal tallies); a new connection or first snapshot starts a new one.
+    lineage: object = field(default_factory=object)
 
 
 class BookConnection:
@@ -124,6 +135,12 @@ class BookConnection:
                             raise ProofLost("duplicate snapshot price")
                         ladder._set_validated(p, q)
                 book.valid = True
+                old = self.books.get(ticker)
+                if old is not None and old.valid:
+                    # Same connection and sequence (any gap raised above), so
+                    # every delta since the last snapshot was counted.
+                    book.lineage = old.lineage
+                    book.bids.decreased, book.asks.decreased = old.bids.decreased, old.asks.decreased
                 self.books[ticker] = book
             else:
                 book = self.books.get(ticker)
@@ -137,6 +154,9 @@ class BookConnection:
                 if change % Decimal("0.01"):
                     raise ProofLost("delta quantity off grid")
                 ladder.set(p, ladder.levels.get(p, Decimal(0)) + change)
+                if change < 0 and not msg.get("client_order_id"):
+                    # Deltas we caused carry our client id; they never move us.
+                    ladder.record_decrease(p, -change)
             bid, ask = book.bids.best(bid=True), book.asks.best(bid=False)
             book.revision = seq
             if bid is not None and ask is not None and bid >= ask:

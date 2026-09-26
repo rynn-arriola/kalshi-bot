@@ -2197,6 +2197,10 @@ class RecoveryRuntime:
                 tasks.append(asyncio.create_task(self._live_refresh(), name='kalshi-account-refresh'))
             if self.live_session is not None and self.reads is not None:
                 tasks.append(asyncio.create_task(self._exchange_status(), name='kalshi-exchange-status'))
+                if self.maintenance is not None:
+                    # D-145: fill protection has its own queue reader.
+                    tasks.append(asyncio.create_task(self.maintenance.run_queue_reader(),
+                                                     name='kalshi-fill-protection'))
             if self.metadata_scheduler is not None:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
             if self.incentives is not None:
