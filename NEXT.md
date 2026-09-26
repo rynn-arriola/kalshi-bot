@@ -9,6 +9,13 @@
     the next deploy: count research failures by site and exception type in
     status. Trades 0 is real (one trade in 30 min across pulled markets); the
     13 pulls were driven by cancellations ahead, not trading.
+    First `health_hourly` row (19:15–20:00): entries allowed only 51% of
+    samples, yet 48.1 of 50 entries resting on average. `runtime_health` shows
+    the same ~40–50% all day on the previous build too (not a D-151
+    regression). Remaining causes are the accounting result not released or
+    its lease fence not current, i.e. likely the proof renewal cycle. Next
+    deploy: sample which `entry_allowed` term is false, then decide whether
+    refills after pulls are being delayed enough to matter.
 0. **Shadow screen evaluation (D-150):** after 1–2 days, run
    the calibration report, `scripts/calibration_report.py` (verdict × fills × reward); the 25%
    reward-to-risk cut flags ~80% of entries at 30 contracts, so it needs
