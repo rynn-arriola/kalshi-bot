@@ -86,6 +86,28 @@ class RecoveryReads:
 
 
 class RecoveryRuntime:
+    # Review #1: immutable defaults for counters, flags and late-bound owners.
+    # Instances overwrite them; lightweight test stubs built without __init__
+    # still read these values (replaces 35 __dict__.get fallbacks).
+    _recovery_safety_pause = False
+    _recovery_state = None
+    recovery_safety_pauses = 0
+    diagnostics = None
+    unknown_creates_resolved = 0
+    exchange_status_failures = 0
+    _venue_paused = False
+    venue_pauses = 0
+    _exhausted_retries = 0
+    _accounting_result = None
+    _recovery_phase = 'idle'
+    _recovery_phase_since = None
+    clock = None
+    post_drain_renewals = 0
+    routine_own_fallbacks = 0
+    order_groups = None
+    last_full_recovery_mono = None
+    _recovery_blocked_at = None
+
     def __init__(self, writer, reads, reader_factory, *, tickers, subaccount,
                  history_start, now, evaluate, deadline_handler, lifecycle_handler,
                  invalidate=lambda ticker: None, clock=time.monotonic,
@@ -612,7 +634,7 @@ class RecoveryRuntime:
         window = getattr(self.accounting_result, 'window', None)
         return bool((self.live_session is not None and self.live_session.entries_paused)
                     or (window is not None and window.held)
-                    or self.__dict__.get('_recovery_safety_pause', False))
+                    or self._recovery_safety_pause)
 
     # D-141: a runtime that cannot prove its account also cannot protect resting
     # entries (fill-risk reflection needs a current account). Pull them until a
@@ -626,17 +648,17 @@ class RecoveryRuntime:
 
     @property
     def recovery_state(self):
-        return self.__dict__.get('_recovery_state')
+        return self._recovery_state
 
     @recovery_state.setter
     def recovery_state(self, state):
         self._recovery_state = state
         if state in self.SAFETY_PAUSE_STATES:
             self._recovery_blocked_at = self.clock()
-            if not self.__dict__.get('_recovery_safety_pause', False):
+            if not self._recovery_safety_pause:
                 self._recovery_safety_pause = True
-                self.recovery_safety_pauses = self.__dict__.get('recovery_safety_pauses', 0)+1
-                diagnostics = self.__dict__.get('diagnostics')
+                self.recovery_safety_pauses = self.recovery_safety_pauses+1
+                diagnostics = self.diagnostics
                 if diagnostics is not None:
                     diagnostics.emit('recovery_safety_pause', count=self.recovery_safety_pauses)
                 # The live refresh owner drains within half a second (_safety_tick).
@@ -682,7 +704,7 @@ class RecoveryRuntime:
                     continue  # The archive path binds it through ordinary recovery.
                 elif live.exhausted and await self.writer.resolve_unknown_create_absent(
                         attempt_id, evidence_digest=evidence, now=now):
-                    self.unknown_creates_resolved = self.__dict__.get('unknown_creates_resolved', 0)+1
+                    self.unknown_creates_resolved = self.unknown_creates_resolved+1
                     self.diagnostics.emit('unknown_create_resolved', count=self.unknown_creates_resolved)
                     changed = True
         return changed
@@ -708,17 +730,17 @@ class RecoveryRuntime:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.exchange_status_failures = self.__dict__.get('exchange_status_failures', 0)+1
+                self.exchange_status_failures = self.exchange_status_failures+1
             try:
                 await asyncio.wait_for(self.stop_requested.wait(), self.EXCHANGE_STATUS_SECONDS)
             except TimeoutError:
                 pass
 
     def _apply_exchange_status(self, active):
-        paused = self.__dict__.get('_venue_paused', False)
+        paused = self._venue_paused
         if not active and not paused:
             self._venue_paused = True
-            self.venue_pauses = self.__dict__.get('venue_pauses', 0)+1
+            self.venue_pauses = self.venue_pauses+1
             self.diagnostics.emit('venue_paused', count=self.venue_pauses)
         elif active and paused:
             self._venue_paused = False
@@ -729,17 +751,18 @@ class RecoveryRuntime:
     def _safety_tick(self):
         """D-141: pull entries while unsafe; retry recovery on its schedule."""
         self._retry_exhausted_recovery()
-        if self.__dict__.get('_recovery_safety_pause', False):
+        if self._recovery_safety_pause:
             self.request_entry_drain()  # Idempotent: exact owned entries only.
 
     def _retry_exhausted_recovery(self):
         """D-141: re-attempt full recovery on 30 s, 1, 2, then every 5 minutes."""
-        retries = self.__dict__.get('_exhausted_retries', 0)
+        retries = self._exhausted_retries
         wait = self.EXHAUSTED_RETRY_SECONDS[min(retries, len(self.EXHAUSTED_RETRY_SECONDS)-1)]
         if (self.recovery_state == 'blocked_retry_exhausted' and self.account_subscribed
                 and not self.recovery_requested.is_set() and not self.writer.failed
                 and not self.stop_requested.is_set()
-                and self.clock()-self.__dict__.get('_recovery_blocked_at', self.clock()) >= wait):
+                and self.clock()-(self._recovery_blocked_at if self._recovery_blocked_at is not None
+                                 else self.clock()) >= wait):
             self._recovery_blocked_at = self.clock()
             self._exhausted_retries = retries+1
             self.request_recovery('exhausted_retry')
@@ -748,7 +771,7 @@ class RecoveryRuntime:
 
     @property
     def accounting_result(self):
-        return self.__dict__.get('_accounting_result')
+        return self._accounting_result
 
     @accounting_result.setter
     def accounting_result(self, result):
@@ -757,7 +780,7 @@ class RecoveryRuntime:
         for item in getattr(result, 'cash_adjustments', ()) or ():
             counts = self.__dict__.setdefault('cash_adjustment_counts', {})
             counts[item.kind] = counts.get(item.kind, 0)+1
-            diagnostics = self.__dict__.get('diagnostics')
+            diagnostics = self.diagnostics
             if diagnostics is not None:
                 diagnostics.emit('cash_adjusted', cash_kind=item.kind,
                                  amount_cents=int(item.amount*100))
@@ -768,7 +791,7 @@ class RecoveryRuntime:
         lease = self.writer._accounting_lease
         return (permits(self.live_session, self.writer)
                 and not self.entry_pause_active
-                and not self.__dict__.get('_venue_paused', False)
+                and not self._venue_paused
                 and self.accounting_result is not None and self.accounting_result.released
                 and lease is not None and lease.fence.current()
                 and not self.stop_requested.is_set())
@@ -780,15 +803,15 @@ class RecoveryRuntime:
 
     @property
     def recovery_phase(self):
-        return self.__dict__.get('_recovery_phase', 'idle')
+        return self._recovery_phase
 
     @recovery_phase.setter
     def recovery_phase(self, phase):
         # Diagnostic wall time per phase of the latest full pass; never proof.
-        clock = self.__dict__.get('clock')
+        clock = self.clock
         now = clock() if clock is not None else None
-        previous = self.__dict__.get('_recovery_phase', 'idle')
-        since = self.__dict__.get('_recovery_phase_since')
+        previous = self._recovery_phase
+        since = self._recovery_phase_since
         live = self.__dict__.setdefault('_recovery_phase_live', {})
         if previous != 'idle' and since is not None and now is not None:
             live[previous] = live.get(previous, 0)+max(0, int((now-since)*1000))
@@ -835,7 +858,7 @@ class RecoveryRuntime:
             # last released proof. The live refresh owner renews that proof
             # (any fill, position or cash change still escalates to a full
             # recovery) instead of a full pass after every withdrawal.
-            self.post_drain_renewals = self.__dict__.get('post_drain_renewals', 0)+1
+            self.post_drain_renewals = self.post_drain_renewals+1
             self._account_ingress_at = self.clock()  # Let venue updates settle.
             return True
         self.request_recovery('post_drain')
@@ -1027,7 +1050,7 @@ class RecoveryRuntime:
         """
         source = self._routine_source()
         clean = (not history.enumeration.omitted_rows if history is not None
-                 else self.account.__dict__.get('tail_fetched_empty') is True)
+                 else getattr(self.account, 'tail_fetched_empty', None) is True)
         return (clean
                 and source[0] == proof.source[0] and source[1] != proof.source[1]
                 and source[2] == proof.source[2] and source[5] == proof.source[5])
@@ -1190,7 +1213,7 @@ class RecoveryRuntime:
                         # snapshot and escalates to full recovery itself.
                         self._routine_account_proof = None
                         self._account_ingress_at = self.clock()
-                        self.routine_own_fallbacks = self.__dict__.get('routine_own_fallbacks', 0)+1
+                        self.routine_own_fallbacks = self.routine_own_fallbacks+1
                     else:
                         self._own_renewal_retries = 0
                         if own:
@@ -1364,7 +1387,7 @@ class RecoveryRuntime:
             if event.get('type') == 'market_position':
                 self.request_recovery('private_position')
             if (event.get('type') == 'order_group_updates'
-                    and self.__dict__.get('order_groups') is not None):
+                    and self.order_groups is not None):
                 self.order_groups.on_update(event.get('msg') or {})
             if result is not None and getattr(result, "owned", False):
                 waiting = await self.writer.pending_fills(self.account.subaccount, result.order.order_id)
@@ -2259,7 +2282,7 @@ class RecoveryRuntime:
                     # D-145: fill protection has its own queue reader.
                     tasks.append(asyncio.create_task(self.maintenance.run_queue_reader(),
                                                      name='kalshi-fill-protection'))
-                if self.__dict__.get('order_groups') is not None:
+                if self.order_groups is not None:
                     tasks.append(asyncio.create_task(self.order_groups.run(),
                                                      name='kalshi-order-groups'))
             if self.metadata_scheduler is not None:
@@ -2402,15 +2425,15 @@ class RecoveryRuntime:
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             own_order_renewal=dict(self.own_order_renewal),
-            recovery_safety_pause=bool(self.__dict__.get('_recovery_safety_pause', False)),
-            recovery_safety_pauses=self.__dict__.get('recovery_safety_pauses', 0),
-            exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
-            unknown_creates_resolved=self.__dict__.get('unknown_creates_resolved', 0),
-            post_drain_renewals=self.__dict__.get('post_drain_renewals', 0),
-            routine_own_fallbacks=self.__dict__.get('routine_own_fallbacks', 0),
-            venue_paused=bool(self.__dict__.get('_venue_paused', False)),
-            venue_pauses=self.__dict__.get('venue_pauses', 0),
-            exchange_status_failures=self.__dict__.get('exchange_status_failures', 0),
+            recovery_safety_pause=bool(self._recovery_safety_pause),
+            recovery_safety_pauses=self.recovery_safety_pauses,
+            exhausted_retries=self._exhausted_retries,
+            unknown_creates_resolved=self.unknown_creates_resolved,
+            post_drain_renewals=self.post_drain_renewals,
+            routine_own_fallbacks=self.routine_own_fallbacks,
+            venue_paused=bool(self._venue_paused),
+            venue_pauses=self.venue_pauses,
+            exchange_status_failures=self.exchange_status_failures,
             cash_adjustment_counts=dict(self.__dict__.get('cash_adjustment_counts', {})),
             chained_recoveries=self.chained_recoveries,
             history_floor=self.account.history_floor,
@@ -2439,7 +2462,7 @@ class RecoveryRuntime:
             rewards=self.rewards.status() if self.rewards is not None else None,
             maintenance=self.maintenance.status() if self.maintenance is not None else None,
             order_groups=(self.order_groups.status()
-                          if self.__dict__.get('order_groups') is not None else None),
+                          if self.order_groups is not None else None),
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

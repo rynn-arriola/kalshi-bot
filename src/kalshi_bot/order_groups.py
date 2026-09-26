@@ -124,7 +124,7 @@ class OrderGroups:
         now = r.clock()
         if g.triggered_at is None or now-g.triggered_at < self.RESET_SETTLE_SECONDS:
             return False
-        recovered = r.__dict__.get('last_full_recovery_mono')
+        recovered = getattr(r, 'last_full_recovery_mono', None)
         if recovered is None or recovered <= g.triggered_at:
             return False  # A full recovery must prove the account after the trigger.
         if not r.entry_allowed:

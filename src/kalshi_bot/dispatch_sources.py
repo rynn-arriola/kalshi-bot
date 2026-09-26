@@ -492,7 +492,7 @@ class InventoryDispatchSource:
                     utc(runtime.now())+timedelta(seconds=ENTRY_LEASE_SECONDS)).timestamp())
                 if expires <= utc(runtime.now()).timestamp():
                     return blocked('entry_horizon_ended')
-                groups = runtime.__dict__.get('order_groups')
+                groups = getattr(runtime, 'order_groups', None)
                 group_id = None
                 if groups is not None:
                     group_id = groups.group_for(source.value.exchange)
