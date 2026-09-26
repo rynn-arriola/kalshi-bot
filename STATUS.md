@@ -1,8 +1,12 @@
 # Current status
 
-## Architecture review done; D-149, D-150 and refactors ready — 2026-09-26
+## Architecture review deployed — 2026-09-26
 
-Built, tested and published, **not deployed** (live bot still on `4979a14`):
+**Running** build `ac4ff9f` since 16:36 UTC (operator-approved stop: clean, zero
+orders and positions; restart). First minutes: order group active, fill
+protection current, routine telemetry only in `telemetry.jsonl`, 0 errors;
+first 56 `entry_screen_shadow` verdicts: 36 reward_risk, 10 both, 6 volume,
+4 pass (remaining reward ~$2–3 vs worst single-fill loss ~$18–23). Contents:
 D-149 separate telemetry log (events.jsonl ~6 days), D-150 shadow-only
 fill-avoidance screen, and behavior-preserving refactors (unsent-abort helper,
 hot-path validators −37% / evaluation −16%, runtime `__dict__` defaults,
@@ -10,7 +14,6 @@ hot-path validators −37% / evaluation −16%, runtime `__dict__` defaults,
 profile: Finding 212. Workspace: 11 merged worktrees and 15 merged branches
 removed; loose files in `data/worktree-archive-2026-09-26/`; `command1-dev`
 kept (uncommitted draft, backed up). Full suite 2,011 tests and native gate pass.
-Deploy needs one operator-approved restart.
 
 ## D-147 and D-148 running — 2026-09-26
 
