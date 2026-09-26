@@ -1107,7 +1107,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
 - **Status:** ACCEPTED planning/documentation scope, 2026-09-22.
 - **Decision owner:** Operator: “Ok create a to do list for this work lets start
   from that,” following the production supervisor and later host-watchdog discussion.
-- **Scope:** Maintain one prioritized checklist in [NEXT.md](NEXT.md#production-supervisor-connection--ordered-checklist),
+- **Scope:** Maintain one prioritized checklist in [NEXT.md](docs/history/NEXT_ARCHIVE_2026-09-26.md#production-supervisor-connection--ordered-checklist),
   covering production integration, recovery rules, tests, review/publication,
   live acceptance and the separately staged Windows host watchdog. Reuse S1/S2.
 - **Boundary:** Creating the checklist does not implement or accept a new restart

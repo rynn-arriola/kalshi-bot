@@ -1,5 +1,93 @@
 # Kalshi architecture: WebSocket first, CPU-efficient, scalable
 
+## Current system map (2026-09-26, build 4979a14+)
+
+Read this first; the decision-by-decision design notes further down are the
+detailed requirements behind each part and remain binding.
+
+### Processes
+
+| Process | Module | Role |
+|---|---|---|
+| Supervisor parent | `supervised_live`, `process_supervisor`, `supervision` (pure policy), `supervisor_store` | Owns the control journal (`data/trader/supervisor/`), starts/stops one child, restarts after crashes with backoff and 15-min cooldowns (D-144), never after an operator stop |
+| Trading child | `supervised_live_child` → `live.compose` → `runtime.RecoveryRuntime` | The one process that talks to Kalshi and owns the ledger |
+| Autostart | `scripts/Start-LiquidityBotOnBoot.ps1` via the `KalshiLiquidityBot-Autostart` logon task | After sign-in, restarts only a bot that was running (`supervised_live boot`) |
+
+### Data flow inside the child (one asyncio loop plus one ledger thread)
+
+```
+Kalshi WS (books x4 shards, account, lifecycle) ─► engine (books.py, ordered, per shard)
+Kalshi REST GET (rest.py, quota-budgeted) ───────► account / recovery / market_inputs / rewards
+                                                        │
+          management (inventory + exit plans) ◄─────────┤
+          selection (reward ranking, $1/$2 gates) ◄─────┤
+          quote_maintenance (fill protection D-145) ◄───┘
+                                                        │ decisions (advisory only)
+                                                        ▼
+            dispatch_sources ─► dispatch (single dispatcher, write budget) ─► execution
+                                                        │                        │
+                                                        ▼                        ▼
+                               writer (single SQLite owner: account.db)   mutation_transport
+                                                                          (V2 orders, order groups)
+```
+
+- **Authority boundary:** only `dispatch` → `execution` → `mutation_transport`
+  sends writes, and only for a durable, prepared command (`writer`) whose
+  source proofs are still current at the send edge. Everything else is advisory.
+- **Unknown handling:** any write whose outcome is uncertain after SENDING is
+  UNKNOWN and blocks until proven (D-143 absence rule); a refusal before the
+  transport is NOT_SENT (D-143, D-146).
+
+### Account proof lifecycle (`runtime`, `account`, `account_release`)
+
+| Path | When | Cost |
+|---|---|---|
+| Full recovery (`_repair`) | startup, economic events (fills, positions, cash), failures | ~2–3 s, entries blocked |
+| Routine renewal (`_refresh_routine_account`) | every few seconds while nothing changed | ~1 s |
+| Own-order renewal (anchor) | after the bot's own acknowledged orders (D-134), after protective drains (D-147), when a routine renewal is overtaken by a private update (D-148) | ~1 s |
+
+Entries require a released accounting result, an unexpired lease, no safety
+pause, Kalshi exchange active (D-144), and — with maintenance attached — a
+current fill-protection reader (D-145).
+
+### Protection layers
+
+1. **Kalshi order group per shard** (`order_groups`, limit = entry size + 1):
+   a second fill within 15 s cancels the rest, also while offline.
+2. **Queue tracking** (`quote_maintenance.run_queue_reader`, `fill_risk`): reads
+   queue positions every 2 s; per-delta removal tally at our price; withdraw on
+   time-to-fill, short queue (< entry size) or blind > 10 s.
+3. **Bounded exposure:** entries expire ≤ 20 min after placement; six-hour loss
+   ratchet 50/41/33/25/16/0 orders (`risk`); adaptive re-entry lockout (D-135).
+4. **Exits** (`exits`, `management`): passive reducer, IOC only at the deadline
+   or within the $8 loss bound.
+
+### Persistence and observability
+
+| Path | Owner | Content |
+|---|---|---|
+| `data/trader/account.db` | `writer` / `ledger` | intents, mutations, fills, order evidence, accounting |
+| `data/trader/account.rewards.json` | `reward_checkpoint` | estimated reward telemetry (not cash) |
+| `data/trader/status.json` | `live` | last runtime status (`Get-LiquidityBotStatus.ps1`) |
+| `data/trader/supervisor/child-logs/events.jsonl` | `observability` | warnings, errors, orders, recoveries (~days) |
+| `.../telemetry.jsonl` | `observability` | routine samples (~hours, D-149) |
+
+### Configuration
+
+`config/bot.json` must match an approved money profile (`config.APPROVED_MONEY`,
+D-142); `config.active()` supplies entry size everywhere. Credentials are
+local files outside git; nothing logs them.
+
+### Known structural debt (review 2026-09-26)
+
+`runtime.RecoveryRuntime` is a 2.5k-line class that other modules reach into;
+several functions exceed 200 lines (`writer._execute`, `dispatch_sources.refresh`,
+`runtime._connection_round`, `runtime._repair`). Module docstrings from the
+offline build era still say "offline"/"no live authority" for modules that are
+now live. See `NEXT.md` for the incremental plan.
+
+## Decision-by-decision design notes (newest first)
+
 D-130 separates proven-unsent local writes from venue change. After a
 dispatcher turn in which no command reached transport, the sole dispatch owner
 asks the writer for a read-only audit of the unchanged venue snapshot at the

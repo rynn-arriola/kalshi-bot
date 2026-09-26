@@ -2549,7 +2549,7 @@ directly. `supervisor_control.ScopeSpec` only accepts test account scopes and
 `supervisor_fixture.fixture_path` points to a fixed test child. The S2B contract
 holds after an incomplete terminal fence rather than automatically relaunching.
 Consequently production integration requires explicit recovery semantics as well
-as launcher wiring. [The ordered checklist](NEXT.md#production-supervisor-connection--ordered-checklist)
+as launcher wiring. [The ordered checklist](docs/history/NEXT_ARCHIVE_2026-09-26.md#production-supervisor-connection--ordered-checklist)
 tracks that work; an implementation time estimate is not completion evidence.
 
 Polymarket source comparison: `scripts/supervise_commissioning.sh` distinguishes
