@@ -1,5 +1,19 @@
 # Current status
 
+## D-151 research dataset built, not deployed — 2026-09-26
+
+Branch `fix/d129-capacity-archive` (not yet on master). Adds `research.db`
+beside the ledger, written by one background thread that never blocks or
+raises into trading: entry lifecycles with screen context, fills with 1/5/30
+minute mark-outs, protective pulls with a 30/60 s "was the level reached?"
+check, public trades in quoted markets (one background read per market per
+minute, at most 64), hourly health and counter deltas, hourly reward estimates
+and reward-like cash credits; 120-day retention. `scripts/research_report.py`
+writes a weekly Markdown calibration report (read-only). Review fixes: a
+failing prune no longer ends the writer; a check with no book is unknown, not
+"reached". Running build is still `ac4ff9f`; deploying needs an
+operator-approved restart.
+
 ## Architecture review deployed — 2026-09-26
 
 **Running** build `ac4ff9f` since 16:36 UTC (operator-approved stop: clean, zero

@@ -1,10 +1,14 @@
 # Active work queue
 
-## Pending work (2026-09-26 14:25 UTC; D-145–D-148 live, build 4979a14)
+## Pending work (2026-09-26; build ac4ff9f live, D-151 ready on the branch)
 
-0. **Shadow screen evaluation (D-150):** after 1–2 days, join
-   `entry_screen_shadow` verdicts with fills and reward; the 25% reward-to-risk
-   cut flags ~80% of entries at 30 contracts, so it needs calibration first.
+00. **Deploy D-151** (operator-approved restart), then check `research.db`
+    exists, `entries` / `health_hourly` rows appear and the `research` status
+    shows `alive`, no drops and no failures.
+0. **Shadow screen evaluation (D-150):** after 1–2 days, run
+   `scripts/research_report.py` (verdict × fills × reward); the 25%
+   reward-to-risk cut flags ~80% of entries at 30 contracts, so it needs
+   calibration first.
 1. **Measure D-145–D-148 over hours** (WATCHLIST item 10): fills, protective
    pulls per market-hour, blind withdrawals, order-group state, full recoveries
    vs `post_drain_renewals` / `routine_own_fallbacks` (first 32 min: 24 full
