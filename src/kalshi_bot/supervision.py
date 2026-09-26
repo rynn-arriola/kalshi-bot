@@ -131,6 +131,10 @@ class SupervisorPolicy:
     # The longest work deadline a child may declare beyond its last progress
     # (formerly the startup allowance; unchanged at 60 s).
     work_deadline_limit_seconds: float = 60.0
+    # D-144: after a crash/transient/startup/stall burst exhausts the restart
+    # budget, wait this long and retry with a fresh budget instead of stopping
+    # for the operator. Integrity, unknown and unresolved-work states still stop.
+    cooldown_restart_seconds: float = 900.0
 
     def __post_init__(self):
         if not isinstance(self.restart_delays, (tuple, list)) or not self.restart_delays:
@@ -143,7 +147,8 @@ class SupervisorPolicy:
         integer(self.rolling_restart_limit, 1, 32)
         for field in ("rolling_restart_seconds", "healthy_reset_seconds", "heartbeat_seconds",
                       "progress_timeout_seconds", "startup_timeout_seconds",
-                      "shutdown_timeout_seconds", "work_deadline_limit_seconds"):
+                      "shutdown_timeout_seconds", "work_deadline_limit_seconds",
+                      "cooldown_restart_seconds"):
             value = _time(getattr(self, field), field)
             if value <= 0:
                 raise InvalidData(f"{field} must be positive")
@@ -416,6 +421,20 @@ def _attention(state, event, reason, *, request_stop=False):
         stop_requested_utc=(event.observed_utc if state.child_id else state.stop_requested_utc)), actions)
 
 
+# D-144: attention reasons the supervisor heals by itself once the child has
+# exited cleanly with nothing unresolved.
+SELF_HEALING_REASONS = frozenset((AttentionReason.STARTUP_TIMEOUT,
+                                  AttentionReason.PROGRESS_STALLED))
+
+
+def _cooldown(state, event, policy):
+    """D-144: long bounded wait with a fresh restart budget, never a latch."""
+    return SupervisorDecision(_updated(state, event, state=SupervisorState.BACKOFF,
+        desired_armed=True, stop_latched=False, attention_reason=None,
+        incident_attempts=0, restart_attempts_utc=(),
+        next_restart_utc=event.observed_utc+policy.cooldown_restart_seconds))
+
+
 def _rolling_attempts(state, policy, now):
     cutoff = max(0.0, now-policy.rolling_restart_seconds)
     return tuple(value for value in state.restart_attempts_utc if value >= cutoff)
@@ -595,7 +614,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
             if state.retry_holds:
                 return _attention(state, event, AttentionReason.RETRY_EXHAUSTED)
             if _budget_exhausted(state, policy, event.observed_utc):
-                return _attention(state, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+                return _cooldown(state, event, policy)
             if state.next_restart_utc is None or event.observed_utc >= state.next_restart_utc:
                 return SupervisorDecision(_updated(state, event), (SupervisorAction.START_DUE,))
         if state.child_id is not None:
@@ -627,7 +646,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
         attempts = _rolling_attempts(state, policy, event.observed_utc)
         if _budget_exhausted(replace(state, restart_attempts_utc=attempts), policy,
                              event.observed_utc):
-            return _attention(state, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+            return _cooldown(state, event, policy)
         return SupervisorDecision(_updated(state, event, state=SupervisorState.STARTING,
             child_id=event.child_id, child_generation=state.generation,
             start_requested_utc=event.observed_utc, child_started_utc=None,
@@ -654,7 +673,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
                 attention_reason=state.attention_reason if target
                     == SupervisorState.ATTENTION_REQUIRED else None))
         if _budget_exhausted(bare, policy, event.observed_utc):
-            return _attention(bare, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+            return _cooldown(bare, event, policy)
         return SupervisorDecision(replace(bare, state=SupervisorState.BACKOFF,
             next_restart_utc=event.observed_utc
                 + _restart_delay(policy, bare.incident_attempts)))
@@ -728,6 +747,15 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
             return _attention(bare, event, attention[event.outcome])
         if event.cleanup_failed:
             return _attention(bare, event, AttentionReason.UNKNOWN_FAILURE)
+        if (state.attention_reason in SELF_HEALING_REASONS and event.cleanup_complete
+                and not event.unresolved_work and not holds):
+            # D-144: the supervisor itself stopped a slow start or a stalled
+            # child and it exited cleanly: restart instead of latching.
+            if _budget_exhausted(bare, policy, event.observed_utc):
+                return _cooldown(bare, event, policy)
+            return SupervisorDecision(replace(bare, state=SupervisorState.BACKOFF,
+                next_restart_utc=event.observed_utc
+                    + _restart_delay(policy, bare.incident_attempts)))
         if state.attention_reason is not None:
             return _attention(bare, event, state.attention_reason)
         if state.stop_latched or state.state == SupervisorState.STOPPING:
@@ -740,7 +768,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
             if holds:
                 return _attention(bare, event, AttentionReason.RETRY_EXHAUSTED)
             if _budget_exhausted(bare, policy, event.observed_utc):
-                return _attention(bare, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+                return _cooldown(bare, event, policy)
             return SupervisorDecision(replace(bare, state=SupervisorState.BACKOFF,
                 next_restart_utc=event.observed_utc
                     + _restart_delay(policy, bare.incident_attempts)))
@@ -775,7 +803,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
                 attention_reason=None, recovery_reasons=()))
         if event.outcome == ChildOutcome.TRANSIENT_FAILURE:
             if _budget_exhausted(bare, policy, event.observed_utc):
-                return _attention(bare, event, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+                return _cooldown(bare, event, policy)
             return SupervisorDecision(replace(bare, state=SupervisorState.BACKOFF,
                 next_restart_utc=event.observed_utc
                     + _restart_delay(policy, bare.incident_attempts)))

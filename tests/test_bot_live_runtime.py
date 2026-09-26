@@ -104,6 +104,48 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.session.close()
         await self.f.asyncTearDown()
 
+    async def test_kalshi_pause_blocks_entries_and_resume_rechecks_account(self):
+        # D-144: maintenance/trading pause from GET /exchange/status.
+        self.assertTrue(self.runtime.entry_allowed)
+        self.runtime._apply_exchange_status(False)
+        self.assertFalse(self.runtime.entry_allowed)
+        self.assertFalse(self.runtime.entry_pause_active)  # No cancels are sent.
+        self.dispatcher.submit('A', ENTRY_PAIR)
+        result = await self.dispatcher.run_one()
+        self.assertNotEqual(result.state, 'ACK')
+        self.assertEqual(self.calls, [])
+        self.runtime.recovery_requested.clear()
+        self.runtime._apply_exchange_status(True)
+        self.assertTrue(self.runtime.recovery_requested.is_set())
+        self.assertEqual(self.runtime.status()['venue_pauses'], 1)
+        self.assertFalse(self.runtime.status()['venue_paused'])
+
+    async def test_exchange_status_loop_reads_public_status_and_ignores_failures(self):
+        from kalshi_bot.rest import ReadResult
+        replies = [dict(exchange_active=True, trading_active=False), RuntimeError('network'),
+                   dict(exchange_active=True, trading_active=True)]
+        seen = []
+        async def read(name, **kwargs):
+            seen.append((name, kwargs.get('reason')))
+            reply = replies.pop(0)
+            if not replies:
+                self.runtime.stop_requested.set()
+            if isinstance(reply, Exception):
+                raise reply
+            return ReadResult(reply, 1)
+        self.runtime.reads = SimpleNamespace(read=read)
+        self.runtime.EXCHANGE_STATUS_SECONDS = 0
+        states = []
+        original = self.runtime._apply_exchange_status
+        def track(active):
+            original(active)
+            states.append(self.runtime.status()['venue_paused'])
+        self.runtime._apply_exchange_status = track
+        await asyncio.wait_for(self.runtime._exchange_status(), 2)
+        self.assertEqual(seen, [('exchange_status', 'metadata')]*3)
+        self.assertEqual(states, [True, False])  # The failed read changed nothing.
+        self.assertEqual(self.runtime.status()['exchange_status_failures'], 1)
+
     async def test_nonfixture_ranked_pair_uses_real_accounting_and_transport(self):
         self.assertTrue(self.runtime.entry_allowed)
         self.dispatcher.submit('A', ENTRY_PAIR)
@@ -112,8 +154,11 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.calls), 1)
         self.assertEqual({r['side'] for r in self.calls[0][1]}, {'bid','ask'})
         self.assertTrue(all(D(r['count'])==10 and r['post_only'] for r in self.calls[0][1]))
+        # D-144: capped at the entry lease (program end is an hour away).
+        from kalshi_bot.dispatch_sources import ENTRY_LEASE_SECONDS
         self.assertTrue(all(r['expiration_time'] == int(
-            (self.f.now+timedelta(hours=1)).timestamp()) for r in self.calls[0][1]))
+            (self.f.now+timedelta(seconds=ENTRY_LEASE_SECONDS)).timestamp())
+            for r in self.calls[0][1]))
         self.assertEqual({r['phase'] for r in await self.f.writer.mutations()}, {'ACK'})
         evidence = self.selection.status()['dispatch_selection_evidence']
         self.assertEqual(len(evidence),1)

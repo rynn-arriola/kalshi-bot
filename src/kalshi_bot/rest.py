@@ -53,6 +53,8 @@ ENDPOINTS = {
     "historical_orders": endpoint("/historical/orders", "ticker min_ts max_ts limit cursor",
                                   "history gap", rows="orders"),
     "cutoff": endpoint("/historical/cutoff", "", "history gap", False),
+    # D-144: public exchange/trading status for maintenance and pauses.
+    "exchange_status": endpoint("/exchange/status", "", "metadata", False),
     "balance": endpoint("/portfolio/balance", "subaccount exchange_index", "bootstrap reconcile cash"),
     "queue_positions": endpoint("/portfolio/orders/queue_positions",
                                 "market_tickers event_ticker subaccount", "reflection"),

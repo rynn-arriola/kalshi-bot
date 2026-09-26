@@ -10,6 +10,32 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-144 — 24/7 resilience: order lease, Kalshi status, supervisor self-heal, auto-start
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “it should survive kalshi maintenance and pause
+  trading and once its save it should continue trading, i want this to run
+  24/7”, then “Ok fix all the pending works”.
+- **Scope:**
+  - Entry orders expire at most 20 minutes after placement (Kalshi
+    `expiration_time`), bounding unmanaged exposure through a power or network
+    loss; ordinary refill re-enters. Exits are unchanged.
+  - `GET /exchange/status` every 30 s: while Kalshi is not active no new entry
+    is placed (Kalshi cancels entries itself via `cancel_order_on_pause`; no
+    cancels are sent); on resume a full recovery precedes trading. A failed
+    status read changes nothing.
+  - Supervisor: an exhausted restart budget (crashes, transient failures,
+    failed spawns) becomes a 15-minute cooldown with a fresh budget instead of
+    `attention_required`; a supervisor-initiated startup-timeout or stall stop
+    that exits cleanly restarts. Recovery-only proof still precedes trading
+    after an unexpected death.
+  - `supervised_live boot` + a logon scheduled task restart the bot after a
+    reboot only if it was running (never after a manual stop or attention).
+- **Still requires the operator:** manual stops, shutdown timeouts, integrity
+  or unknown failures, unresolved work or failed cleanup, startup refusal.
+- **Boundary:** Installing the scheduled task changes a Windows setting and is
+  run by the operator. No risk, size or strategy change.
+
 ### D-143 — UNKNOWN creates: local refusals are unsent; stale ones resolve by absence
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.

@@ -39,6 +39,8 @@ EVENTS = {
     'history_scope_high': ('WARNING', 'recovery'),
     'cash_adjusted': ('WARNING', 'accounting'),
     'unknown_create_resolved': ('WARNING', 'recovery'),
+    'venue_paused': ('WARNING', 'runtime'),
+    'venue_resumed': ('WARNING', 'runtime'),
     'recovery_safety_pause': ('WARNING', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
@@ -108,7 +110,7 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'latch_ms', 'order_count', 'rejected_count', 'dwell_ms', 'amount_cents'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
-RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed exhausted_retry
+RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed exhausted_retry venue_resumed
     steady_refresh_failed mutation_observed mutation_persisted safety_mutation_persisted
     risk_cancel_outcome risk_cancel_retry_exhausted post_drain quota_restored private_fill_pending private_position
     private_scope_ambiguous private_order_pending account_subscribed opening_approved

@@ -248,12 +248,20 @@ class NativeHostTests(unittest.IsolatedAsyncioTestCase):
         host, task = await self.launch("crash_after_admit", policy)
         _, controller = await self.controller()
         await self.arm(controller, host)
+        # D-144: the exhausted budget becomes a long cooldown, not a latch.
         await self.eventually(lambda: host.controller_state is not None
-            and host.controller_state.state == SupervisorState.ATTENTION_REQUIRED,
-            timeout=15)
+            and host.controller_state.state == SupervisorState.BACKOFF
+            and host.controller_state.next_restart_utc is not None
+            and host.controller_state.next_restart_utc-host.controller_state.updated_utc
+                > policy.cooldown_restart_seconds/2, timeout=15)
         state = (await controller.inspect()).state
-        self.assertEqual(state.incident_attempts, 3)
-        self.assertTrue(state.stop_latched)
+        self.assertEqual((state.incident_attempts, state.restart_attempts_utc), (0, ()))
+        self.assertTrue(state.desired_armed)
+        self.assertFalse(state.stop_latched)
+        self.assertIsNone(state.attention_reason)
+        self.assertGreaterEqual(state.next_restart_utc-state.updated_utc,
+                                policy.cooldown_restart_seconds-1)
+        await asyncio.sleep(.3)  # No fourth spawn during the cooldown.
         await host.request_shutdown()
         await asyncio.wait_for(task, 5)
         events = [json.loads(line) for line in

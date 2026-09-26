@@ -162,8 +162,13 @@ class PolicyTests(unittest.TestCase):
             state = decision.state
             if number < 2:
                 self.assertEqual(state.state, SupervisorState.BACKOFF)
-        self.assertEqual(state.state, SupervisorState.ATTENTION_REQUIRED)
-        self.assertEqual(state.attention_reason, AttentionReason.RESTART_BUDGET_EXHAUSTED)
+        # D-144: a long cooldown with a fresh budget, never an operator latch.
+        self.assertEqual(state.state, SupervisorState.BACKOFF)
+        self.assertIsNone(state.attention_reason)
+        self.assertTrue(state.desired_armed and not state.stop_latched)
+        self.assertEqual((state.incident_attempts, state.restart_attempts_utc), (0, ()))
+        self.assertEqual(state.next_restart_utc-state.updated_utc,
+                         POLICY.cooldown_restart_seconds)
 
     def test_duplicate_arm_cannot_reset_restart_budget(self):
         armed = arm(self.state)
@@ -231,8 +236,8 @@ class PolicyTests(unittest.TestCase):
         # A subsequent death is still bounded; CLEAN did not reset the incident.
         failed = result(fresh, ChildOutcome.UNEXPECTED_DEATH,
                         cleanup_complete=False, unresolved_work=True)
-        self.assertEqual(failed.state.attention_reason,
-                         AttentionReason.RESTART_BUDGET_EXHAUSTED)
+        self.assertEqual(failed.state.state, SupervisorState.BACKOFF)  # D-144 cooldown
+        self.assertIn('unexpected_death', failed.state.recovery_reasons)
 
     def test_unproved_cleanup_at_limit_never_refunds_attempt(self):
         normal = started(start(arm(self.state)), 101)
@@ -247,6 +252,14 @@ class PolicyTests(unittest.TestCase):
                 (ChildOutcome.UNEXPECTED_DEATH, dict(cleanup_complete=False))):
             with self.subTest(outcome=outcome, values=values):
                 blocked = result(recovery, outcome, **values).state
+                if outcome == ChildOutcome.UNEXPECTED_DEATH:
+                    # D-144: cooldown keeps the recovery reasons, so the next
+                    # start is again a recovery-only flat proof, never trading.
+                    self.assertEqual(blocked.state, SupervisorState.BACKOFF)
+                    self.assertIn('unexpected_death', blocked.recovery_reasons)
+                    self.assertEqual(blocked.next_restart_utc-blocked.updated_utc,
+                                     POLICY.cooldown_restart_seconds)
+                    continue
                 self.assertEqual(blocked.incident_attempts, 3)
                 self.assertEqual(blocked.state, SupervisorState.ATTENTION_REQUIRED)
 
@@ -399,8 +412,10 @@ class PolicyTests(unittest.TestCase):
             expected_generation=active.generation, child_id=active.child_id,
             outcome=ChildOutcome.CLEAN, process_exited=True,
             cleanup_complete=True), POLICY)
-        self.assertEqual(exited.state.state, SupervisorState.ATTENTION_REQUIRED)
-        self.assertEqual(exited.state.attention_reason, AttentionReason.PROGRESS_STALLED)
+        # D-144: a supervisor-initiated stall stop that exits cleanly restarts.
+        self.assertEqual(exited.state.state, SupervisorState.BACKOFF)
+        self.assertIsNone(exited.state.attention_reason)
+        self.assertTrue(exited.state.desired_armed)
 
     def test_manual_stop_does_not_erase_integrity_result(self):
         active = started(start(arm(self.state)), 101)
@@ -443,9 +458,9 @@ class PolicyTests(unittest.TestCase):
             outcome=ChildOutcome.CLEAN, process_exited=True,
             cleanup_complete=True), POLICY).state
         stale = decide(exited, prepared, POLICY)
-        self.assertTrue(stale.stale)
-        self.assertEqual(stale.state.state, SupervisorState.ATTENTION_REQUIRED)
-        self.assertTrue(stale.state.stop_latched)
+        self.assertTrue(stale.stale)  # The generation fence still holds.
+        self.assertEqual(stale.state.state, SupervisorState.BACKOFF)  # D-144 restart
+        self.assertEqual(stale.state.build_fingerprint, active.build_fingerprint)
 
     def test_startup_uses_absolute_sixty_second_deadline(self):
         active = start(arm(self.state))

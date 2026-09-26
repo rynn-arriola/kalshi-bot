@@ -171,9 +171,34 @@ def _status():
     return result, (2 if observed == "UNKNOWN" else 0)
 
 
+def boot_decision(status):
+    """D-144: after a reboot or power loss, start only a bot that was running.
+
+    A manual operator stop (stop latched / disarmed) and every attention state
+    stay stopped for the operator; live processes are never duplicated.
+    """
+    control = status.get('control') or {}
+    if status.get('state') != 'STOPPED':
+        return False, 'processes_present_or_unknown'
+    if control.get('stop_latched') or not control.get('desired_armed'):
+        return False, 'operator_stop_or_attention'
+    return True, 'was_running_before_restart'
+
+
+def _boot(args):
+    status, code = _status()
+    if code:
+        return dict(state='BOOT_SKIPPED', reason='status_unknown'), 0
+    start, reason = boot_decision(status)
+    if not start:
+        return dict(state='BOOT_SKIPPED', reason=reason), 0
+    result, code = _launch(args)
+    return dict(result, boot_reason=reason), code
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("launch", "start", "stop", "status"))
+    parser.add_argument("command", choices=("launch", "start", "stop", "status", "boot"))
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--launch-id", help=argparse.SUPPRESS)
@@ -184,10 +209,13 @@ def main(argv=None):
             if args.command != "start":
                 raise InvalidData("launch identity only valid for internal start")
             launch_path = _launch_path(args.launch_id)
-        if args.command in ("start", "launch"):
+        if args.command in ("start", "launch", "boot"):
             if not args.live:
                 raise InvalidData("explicit --live required")
+            if args.command == "boot" and args.initialize:
+                raise InvalidData("boot never initializes")
             result, code = (_launch(args) if args.command == "launch"
+                            else _boot(args) if args.command == "boot"
                             else asyncio.run(_start(args)))
         elif args.command == "stop":
             result, code = asyncio.run(_stop())

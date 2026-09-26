@@ -679,6 +679,45 @@ class RecoveryRuntime:
                     changed = True
         return changed
 
+    EXCHANGE_STATUS_SECONDS = 30
+
+    async def _exchange_status(self):
+        """D-144: follow Kalshi maintenance and trading pauses.
+
+        While Kalshi is not active, no new entry is placed; resting entries are
+        cancelled by Kalshi itself (every entry sets cancel_order_on_pause) and
+        cancels may be unavailable, so none are sent. On resume a full
+        recovery re-proves the account before trading continues. A failed
+        status read changes nothing: account proofs keep their own rules.
+        """
+        while not self.stop_requested.is_set():
+            try:
+                result = await self.reads.read('exchange_status', reason='metadata')
+                payload = result.payload
+                exchange, trading = payload.get('exchange_active'), payload.get('trading_active')
+                if type(exchange) is bool and type(trading) is bool:
+                    self._apply_exchange_status(exchange and trading)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.exchange_status_failures = self.__dict__.get('exchange_status_failures', 0)+1
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), self.EXCHANGE_STATUS_SECONDS)
+            except TimeoutError:
+                pass
+
+    def _apply_exchange_status(self, active):
+        paused = self.__dict__.get('_venue_paused', False)
+        if not active and not paused:
+            self._venue_paused = True
+            self.venue_pauses = self.__dict__.get('venue_pauses', 0)+1
+            self.diagnostics.emit('venue_paused', count=self.venue_pauses)
+        elif active and paused:
+            self._venue_paused = False
+            self.diagnostics.emit('venue_resumed', count=self.venue_pauses)
+            if not self.stop_requested.is_set():
+                self.request_recovery('venue_resumed')
+
     def _safety_tick(self):
         """D-141: pull entries while unsafe; retry recovery on its schedule."""
         self._retry_exhausted_recovery()
@@ -721,6 +760,7 @@ class RecoveryRuntime:
         lease = self.writer._accounting_lease
         return (permits(self.live_session, self.writer)
                 and not self.entry_pause_active
+                and not self.__dict__.get('_venue_paused', False)
                 and self.accounting_result is not None and self.accounting_result.released
                 and lease is not None and lease.fence.current()
                 and not self.stop_requested.is_set())
@@ -2155,6 +2195,8 @@ class RecoveryRuntime:
                      asyncio.create_task(self._diagnostic_health(), name='kalshi-log-health')]
             if self.live_session is not None or self.observation_only:
                 tasks.append(asyncio.create_task(self._live_refresh(), name='kalshi-account-refresh'))
+            if self.live_session is not None and self.reads is not None:
+                tasks.append(asyncio.create_task(self._exchange_status(), name='kalshi-exchange-status'))
             if self.metadata_scheduler is not None:
                 tasks.append(asyncio.create_task(self.metadata_scheduler.run(), name='kalshi-metadata'))
             if self.incentives is not None:
@@ -2299,6 +2341,9 @@ class RecoveryRuntime:
             recovery_safety_pauses=self.__dict__.get('recovery_safety_pauses', 0),
             exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
             unknown_creates_resolved=self.__dict__.get('unknown_creates_resolved', 0),
+            venue_paused=bool(self.__dict__.get('_venue_paused', False)),
+            venue_pauses=self.__dict__.get('venue_pauses', 0),
+            exchange_status_failures=self.__dict__.get('exchange_status_failures', 0),
             cash_adjustment_counts=dict(self.__dict__.get('cash_adjustment_counts', {})),
             chained_recoveries=self.chained_recoveries,
             history_floor=self.account.history_floor,

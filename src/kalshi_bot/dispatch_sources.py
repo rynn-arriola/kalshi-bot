@@ -18,6 +18,10 @@ from .runtime import RecoveryRuntime
 from .values import InvalidData, utc
 
 
+# D-144: how long an entry order may rest before Kalshi expires it.
+ENTRY_LEASE_SECONDS = 1200
+
+
 @dataclass(frozen=True)
 class _Proof:
     plan: ManagedPlan
@@ -481,7 +485,11 @@ class InventoryDispatchSource:
                     ticker, row.program_id, row.valid_until)
                 if entry_selection is None:
                     return blocked('entry_selection_proof_changed')
-                expires = int(min(plan.terms.deadline, programs[0].end).timestamp())
+                # D-144: entries also expire a bounded lease after placement,
+                # bounding what can rest unmanaged through a power or network
+                # loss; the ordinary refill re-enters an expired market.
+                expires = int(min(plan.terms.deadline, programs[0].end,
+                    utc(runtime.now())+timedelta(seconds=ENTRY_LEASE_SECONDS)).timestamp())
                 if expires <= utc(runtime.now()).timestamp():
                     return blocked('entry_horizon_ended')
                 requests = []
