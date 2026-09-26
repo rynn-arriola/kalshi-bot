@@ -193,6 +193,18 @@ class OrderMutationTransport:
         path = '/portfolio/events/orders/'+quote(request['order_id'], safe='')+'?'+query
         return await self._send('DELETE', path, b'', 200)
 
+    def preflight(self, kind, requests):
+        """D-143: the stateless local gate an entry batch must pass, with no I/O.
+
+        Raising here proves nothing was sent; the executor then aborts the
+        prepared commands as not submitted instead of recording UNKNOWN.
+        """
+        if kind != 'batch_create' or self.offline_fixture:
+            return
+        validate_entry_pair(requests)
+        if type(self.activation) is LiveSession:
+            self.activation.check('batch_create', requests)
+
     async def batch(self, requests):
         validate_entry_pair(requests)
         if not self.offline_fixture:

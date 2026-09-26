@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-143 — UNKNOWN creates: local refusals are unsent; stale ones resolve by absence
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator chose “Auto after 10 min (Recommended)” after the
+  first 30-contract pair was refused by a hard-coded size gate and recorded
+  UNKNOWN, blocking recovery.
+- **Scope:** (1) Remaining entry-size checks (live session gate, reprice
+  completeness) follow the active approved size. (2) A stateless local
+  transport gate runs before submission; a refusal aborts the prepared
+  commands as NOT_SENT. (3) Recovery resolves an UNKNOWN create at least ten
+  minutes old: bound normally if Kalshi's complete live order list (all
+  statuses) shows it; recorded REJECTED (`absent`, evidence digest) only when
+  that complete list and the archive both lack it and no fill is pending in
+  the market. Incomplete listings never prove absence.
+- **Supersedes in part:** the “absence proves nothing” rule, for this narrow
+  aged, complete-enumeration case only.
+
 ### D-142 — 30 contracts, $780 capital, run on the approved config file
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.

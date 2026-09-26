@@ -14,6 +14,11 @@ from .fill_risk import FillRisk
 from .values import InvalidData, utc
 
 
+def active_config():
+    from .config import active
+    return active()
+
+
 @dataclass(frozen=True)
 class MaintenanceCycle:
     ticker: str
@@ -618,7 +623,7 @@ class QuoteMaintenance:
         # reaching $1. Only lost price weight/qualification or an incomplete
         # pair requests maintenance. Better-than-reference full-weight stays.
         complete = (len(quotes) == 2 and {q.side for q in quotes} == {'bid','ask'}
-                    and all(q.quantity == 10 for q in quotes))
+                    and all(q.quantity == active_config().entry_contracts for q in quotes))
         drift = (actual.quote_statuses != ('full_price_weight','full_price_weight')
                  or not complete or bool(actual.blockers))
         target_ok = (not target.blockers and target.gross_remaining_usd is not None

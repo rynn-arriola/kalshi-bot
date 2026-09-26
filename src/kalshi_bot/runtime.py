@@ -636,6 +636,49 @@ class RecoveryRuntime:
             self._recovery_safety_pause = False
             self._exhausted_retries = 0
 
+    async def _resolve_unknown_creates(self, reads):
+        """D-143: an UNKNOWN create older than ten minutes is either found in
+        Kalshi's complete live (all statuses) or archived order list for its
+        market and bound, or recorded as never created (REJECTED)."""
+        from hashlib import sha256
+        import json as _json
+        from .execution import UNKNOWN_ABSENCE_SECONDS
+        from .orders import parse_order
+        from .recovery import fetch_archived_orders
+        now = utc(self.now())
+        stale = [row for row in await self.writer.unknown_creates()
+                 if (now-utc(datetime.fromisoformat(row[3]))).total_seconds()
+                    >= UNKNOWN_ABSENCE_SECONDS]
+        if not stale:
+            return False
+        changed = False
+        subaccount = self.account.subaccount
+        for ticker in sorted({row[2] for row in stale}):
+            rows = [row for row in stale if row[2] == ticker]
+            earliest = min(utc(datetime.fromisoformat(row[3])) for row in rows)
+            live = await reads.collect('orders', reason='reconcile', ticker=ticker,
+                subaccount=subaccount, min_ts=max(0, int(earliest.timestamp())-60),
+                max_rows=4096)
+            archived = await fetch_archived_orders(reads, subaccount=subaccount, ticker=ticker)
+            found = {row.get('client_order_id'): row for row in live.rows}
+            archived_ids = {order.client_id for order in archived.orders}
+            evidence = sha256(_json.dumps(dict(ticker=ticker, observed=now.isoformat(),
+                live_rows=len(live.rows), live_pages=live.pages, live_exhausted=live.exhausted,
+                archived=len(archived.orders), policy='D-143'),
+                sort_keys=True).encode()).hexdigest()
+            for attempt_id, client, _, _ in rows:
+                if client in found:
+                    await self.writer.order_batch((parse_order(found[client], scope=subaccount),), now)
+                    changed = True
+                elif client in archived_ids:
+                    continue  # The archive path binds it through ordinary recovery.
+                elif live.exhausted and await self.writer.resolve_unknown_create_absent(
+                        attempt_id, evidence_digest=evidence, now=now):
+                    self.unknown_creates_resolved = self.__dict__.get('unknown_creates_resolved', 0)+1
+                    self.diagnostics.emit('unknown_create_resolved', count=self.unknown_creates_resolved)
+                    changed = True
+        return changed
+
     def _safety_tick(self):
         """D-141: pull entries while unsafe; retry recovery on its schedule."""
         self._retry_exhausted_recovery()
@@ -1682,9 +1725,12 @@ class RecoveryRuntime:
                 await self.account.recover_order(reads, receipt.order.order_id, now=self.now)
             if generation != self.account.generation or not self.account.connected:
                 return False
+        # D-143: old UNKNOWN creates are bound or resolved from complete venue
+        # order lists; any change forces the ordinary final venue read.
+        unknown_changed = await self._resolve_unknown_creates(reads)
         self.recovery_phase = 'final_snapshot'
         final = None
-        if (self.accounting_boundary is not None and not pending
+        if (self.accounting_boundary is not None and not pending and not unknown_changed
                 and reads.order_lookups == lookups and history.enumeration is not None
                 and int(utc(self.now()).timestamp()*1_000_000) > history.enumeration.eligible_end_us):
             # D-133: nothing but local history/settlement work ran since the
@@ -2252,6 +2298,7 @@ class RecoveryRuntime:
             recovery_safety_pause=bool(self.__dict__.get('_recovery_safety_pause', False)),
             recovery_safety_pauses=self.__dict__.get('recovery_safety_pauses', 0),
             exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
+            unknown_creates_resolved=self.__dict__.get('unknown_creates_resolved', 0),
             cash_adjustment_counts=dict(self.__dict__.get('cash_adjustment_counts', {})),
             chained_recoveries=self.chained_recoveries,
             history_floor=self.account.history_floor,

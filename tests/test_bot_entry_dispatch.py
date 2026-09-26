@@ -175,6 +175,23 @@ class EntryPairTests(unittest.IsolatedAsyncioTestCase):
     async def test_pair_completed_quota_refresh_replaces_revoked_permit(self):
         await self.quota_refresh_during_pair(complete=True)
 
+    async def test_local_transport_refusal_is_not_sent_not_unknown(self):
+        # D-143: e.g. the live session's size gate refusing before any I/O.
+        prepared = await self.reserve()
+        wire = BatchWire()
+        def refuse(kind, requests):
+            raise InvalidData('outside approved size')
+        wire.preflight = refuse
+        executor = InjectedExecutor(self.writer, invoke=wire,
+            validate_proof=lambda *_: True, offline_fixture=True, now=lambda: NOW)
+        with self.assertRaises(CommandDenied) as denied:
+            await executor.execute_prepared_batch(prepared.batch)
+        self.assertEqual(denied.exception.blockers, ('transport_refused_before_submission',))
+        self.assertEqual(wire.calls, [])
+        self.assertEqual({row['phase'] for row in await self.writer.mutations()}, {'NOT_SENT'})
+        self.assertEqual((await self.writer.inventory()).unresolved_intents, 0)
+        self.assertFalse(executor.failed)
+
     async def test_batch_proof_change_before_transport_aborts_both_commands(self):
         prepared = await self.reserve()
         wire = BatchWire()

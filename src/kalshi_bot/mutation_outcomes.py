@@ -94,6 +94,11 @@ class MutationOutcomeOwner:
         finally:
             self.busy = False
 
+    def preflight(self, kind, requests):
+        check = getattr(self.invoke, 'preflight', None)
+        if callable(check):
+            check(kind, requests)
+
     async def batch(self, requests):
         if self.busy:
             raise InvalidData('mutation outcome owner busy')

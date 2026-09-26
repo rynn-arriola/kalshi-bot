@@ -632,6 +632,72 @@ def abort_sending_batch_before_submission(ledger, batch, *, writer_epoch,
     return SendResult(False, blockers or ('not_submitted_aborted',), post_revision)
 
 
+UNKNOWN_ABSENCE_SECONDS = 600
+
+
+def unknown_creates(ledger):
+    """Uncertain creates with no bound venue order (read-only, bounded)."""
+    rows = ledger.connection.execute(
+        "SELECT m.id,m.request,m.created_at FROM mutation_attempts m "
+        "WHERE m.kind='create' AND m.phase='UNKNOWN' LIMIT 65").fetchall()
+    if len(rows) > 64:
+        raise InvalidData('uncertain create backlog exceeds bound')
+    result = []
+    for row in rows:
+        request = json.loads(row['request'])
+        client = request['client_order_id']
+        if ledger.connection.execute('SELECT 1 FROM order_evidence WHERE client_id=?',
+                                     (client,)).fetchone() is None:
+            result.append((row['id'], client, request['ticker'], row['created_at']))
+    return tuple(result)
+
+
+def resolve_unknown_create_absent(ledger, attempt_id, *, evidence_digest, now):
+    """D-143: an UNKNOWN create the venue never created becomes REJECTED.
+
+    The caller supplies a complete live (all statuses) and archived order
+    enumeration for the market in which the client identity is absent. The
+    writer re-checks every local precondition: still UNKNOWN, old enough, no
+    bound order and no pending fill in that market.
+    """
+    identity(evidence_digest)
+    row = ledger.connection.execute('SELECT * FROM mutation_attempts WHERE id=?',
+                                    (attempt_id,)).fetchone()
+    if row is None or row['kind'] != 'create' or row['phase'] != 'UNKNOWN':
+        return False
+    request = json.loads(row['request'])
+    client, ticker = request['client_order_id'], request['ticker']
+    created = datetime.fromisoformat(row['created_at'])
+    if (utc(now)-utc(created)).total_seconds() < UNKNOWN_ABSENCE_SECONDS:
+        return False
+    if ledger.connection.execute('SELECT 1 FROM order_evidence WHERE client_id=?',
+                                 (client,)).fetchone():
+        return False
+    if ledger.connection.execute(
+            "SELECT 1 FROM pending_fills WHERE json_extract(payload,'$.ticker')=? LIMIT 1",
+            (ticker,)).fetchone():
+        return False
+    intent = ledger.connection.execute('SELECT state FROM intents WHERE client_id=?',
+                                       (client,)).fetchone()
+    authorization = ledger.connection.execute(
+        "SELECT id,state,episode_id FROM command_authorizations WHERE mutation_id=? "
+        "AND kind='create'", (attempt_id,)).fetchone()
+    if intent is None or intent[0] != 'UNKNOWN' or authorization is None \
+            or authorization['state'] != 'UNKNOWN':
+        raise InvalidData('uncertain create evidence conflicts')
+    response = json.dumps(dict(state='absent', evidence=evidence_digest, policy='D-143'),
+                          sort_keys=True, separators=(',', ':'))
+    ledger.connection.execute(
+        "UPDATE mutation_attempts SET phase='REJECTED',response=? WHERE id=? AND phase='UNKNOWN'",
+        (response, attempt_id))
+    ledger.connection.execute(
+        "UPDATE command_authorizations SET state='REJECTED' WHERE id=?", (authorization['id'],))
+    ledger.transition_intent(client, 'REJECTED')
+    release_client_credits(ledger, client)
+    maybe_retire_episode(ledger, authorization['episode_id'])
+    return True
+
+
 def record_outcome(ledger, operation, receipt, document, now, *, writer_epoch):
     if operation not in {'unknown', 'ack', 'rejected'} or not isinstance(receipt, PreparedMutation):
         raise InvalidData('invalid mutation outcome')
@@ -1054,6 +1120,29 @@ class InjectedExecutor:
                     if outcome_cancelled:
                         raise asyncio.CancelledError
                     raise CommandDenied(('proof_changed_before_submission',))
+                preflight = getattr(self.invoke, 'preflight', None)
+                refused = False
+                if callable(preflight):
+                    try:
+                        preflight('batch_create', requests)
+                    except InvalidData:
+                        refused = True  # D-143: local gate, nothing sent.
+                if refused:
+                    aborted, outcome_cancelled = await self._retain(
+                        self.writer.abort_sending_batch_before_submission(batch, self))
+                    if aborted.blockers != ('not_submitted_aborted',):
+                        raise InvalidData('proven-unsent batch abort was not committed')
+                    finalized = True
+                    self.failed = False
+                    try:
+                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
+                        self.diagnostics.ensure_healthy()
+                    except BaseException:
+                        self.failed = True
+                        raise
+                    if outcome_cancelled:
+                        raise asyncio.CancelledError
+                    raise CommandDenied(('transport_refused_before_submission',))
                 async with asyncio.timeout(self.timeout):
                     reply = await invoke_batch(requests)
                 outcomes = batch_acknowledgement(requests, reply)

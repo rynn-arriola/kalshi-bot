@@ -50,7 +50,9 @@ class LiveSession:
             if ticker not in self.tickers or row['subaccount'] != 0:
                 raise InvalidData('request outside live session scope')
             if kind == 'batch_create':
-                if self.entries_paused or decimal(row['count']) != 10 or row['reduce_only']:
+                from .config import active
+                if (self.entries_paused or decimal(row['count']) != active().entry_contracts
+                        or row['reduce_only']):
                     raise InvalidData('new entry disabled or outside approved size')
             elif kind == 'create':
                 from .execution import encoded_request

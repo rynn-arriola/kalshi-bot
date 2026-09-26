@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 209. First 30-contract entry refused by a third hard-coded size gate — 2026-09-26
+
+**VERIFIED.** 04:43:19 UTC, first entry pair (KXBKFT-26OCT08-T99, 30 each side):
+`LiveSession.check` still required count 10 and raised after the commands were
+durably SENDING; both were recorded UNKNOWN (no response, no venue order ever
+enumerated), the runtime failed, and every later recovery was blocked by the
+unresolved mutations while the safety pause held entries off. Offline tests
+never exercised the real live-session gate. A sweep found one more (reprice
+completeness required quantity 10). Repairs: D-143; a regression test now uses
+the real `LiveSession.check`.
+
 ## 208. The $300 deposit blocked trading and left entries unprotected — 2026-09-26
 
 **VERIFIED.** A $300 applied deposit at 03:33:26 UTC raised venue cash to

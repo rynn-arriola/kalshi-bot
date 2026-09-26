@@ -414,6 +414,14 @@ class LedgerWriter:
             raise InvalidData("bounded immutable account snapshot required")
         return await self._wait(self._submit("reconcile_snapshot", snapshot, utc(now)))
 
+    async def unknown_creates(self):
+        """D-143 read-only: UNKNOWN creates with no bound venue order."""
+        return await self._wait(self._submit('unknown_creates'))
+
+    async def resolve_unknown_create_absent(self, attempt_id, *, evidence_digest, now):
+        return await self._wait(self._submit('resolve_unknown_absent', identity(attempt_id),
+                                             identity(evidence_digest), utc(now)))
+
     async def refined_fills(self, keys):
         """Read-only: durable fills already stored with exact microsecond time."""
         if type(keys) is not tuple or len(keys) > 10000 or any(
@@ -824,6 +832,15 @@ class LedgerWriter:
             with ledger.transaction():
                 return abort_batch(ledger, args[0], writer_epoch=self.epoch,
                     writer_revision=self._revision, post_revision=self._revision+1)
+        if command == 'unknown_creates':
+            from .execution import unknown_creates
+            return unknown_creates(ledger)
+        if command == 'resolve_unknown_absent':
+            from .execution import resolve_unknown_create_absent
+            attempt_id, evidence, now = args
+            with ledger.transaction():
+                return resolve_unknown_create_absent(ledger, attempt_id,
+                                                     evidence_digest=evidence, now=now)
         if command == 'abort_sending_before_submission':
             from .execution import abort_sending_before_submission
             with ledger.transaction():
@@ -1045,7 +1062,7 @@ class LedgerWriter:
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'next_entry_cancel_evidence', 'reduction_evidence',
                                  'command_capacity', 'accounting_status', 'reaudit',
-                                 'refined_fills'}
+                                 'refined_fills', 'unknown_creates'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

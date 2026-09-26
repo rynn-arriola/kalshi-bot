@@ -38,6 +38,7 @@ EVENTS = {
     'command_reclaim_failed': ('WARNING', 'writer'),
     'history_scope_high': ('WARNING', 'recovery'),
     'cash_adjusted': ('WARNING', 'accounting'),
+    'unknown_create_resolved': ('WARNING', 'recovery'),
     'recovery_safety_pause': ('WARNING', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
