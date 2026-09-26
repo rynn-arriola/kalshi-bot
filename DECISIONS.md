@@ -21,6 +21,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   300 s; an hour without withdrawals resets it.
 - **Boundary:** The withdrawal trigger, cancel budget, dwell, ranking and all
   entry/risk gates are unchanged. No trade-feed dependency.
+- **Later operation:** The operator invoked `Command 1` (“Ok command 1”) after
+  asking about contract size; D-133–D-135 were deployed together at 10
+  contracts (size unchanged). The bot held no position, so nothing was
+  closed. STATUS owns deployment evidence.
 
 ### D-134 — Implement all recovery-efficiency recommendations
 

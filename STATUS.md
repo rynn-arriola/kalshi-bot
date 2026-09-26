@@ -1,5 +1,30 @@
 # Current status
 
+## D-133–D-135 deployed by Command 1 — 2026-09-26
+
+**Deployed and running** (run `de0b24bd`, supervisor generation 177, build
+fingerprint prefix `ec620732164aa40c`). Generation 172 drained 30 resting
+entries to zero in ~25 s and reached `STOPPED_FLAT` (no positions, $0
+exposure, account current). Integrity-checked backup: ignored
+`data/trader/d135-backup-20260926T020656Z/` (content hash match). Canonical
+checkout fast-forwarded `f223474` → `0265983`; 220 focused tests passed there.
+
+**Startup near-miss (MEASURED, pre-existing):** the first start (run
+`bbc9c839`) was stopped by the supervisor's 60 s `startup_timeout` although
+it recovered normally; startup took 58.0 s to `runtime_started` (gen 172:
+55.9 s), dominated by candidate discovery with 4–7 public `/markets` 429
+retries and a ~16–20 s quota refresh. One retry started at 56 s and ran.
+Automatic crash restarts face the same margin; see NEXT.
+
+**First minutes (02:14–02:17 UTC):** full recovery 1.86 s (first snapshot
+590 ms, chained history 124 ms, re-audited final 9 ms, tail 1,026 ms,
+release 31 ms) vs 4.28 s median before; chained recoveries 9 of 11; no
+acknowledgement triggered `mutation_observed/persisted` recovery; routine
+renewals 32/32. Own-order renewal completed 4 of 12; 8 escalated as
+`source_changed` without retry (snapshot not explained). INFERRED cause:
+the just-acknowledged order not yet visible in REST, which the audit reports
+as a missing owned order. Escalation is safe and now costs ~1.9 s.
+
 ## D-135 adaptive withdrawal lockout — 2026-09-26 (published, not deployed)
 
 Finding 206: 12 of 13 recently withdrawn markets had no trades around the
