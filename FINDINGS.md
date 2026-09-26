@@ -1,5 +1,36 @@
 # Findings — kalshi-bot
 
+## 206. Protective withdrawals: mostly false alarms, cost is the lockout — 2026-09-26
+
+**Scope:** Generation 172 child log (00:20–01:35 UTC), a read-only ledger copy
+and Kalshi's public trade history (unauthenticated `GET /markets/trades`, 14
+requests) for the markets behind the 34 withdrawal cancels still in the hot
+ledger.
+
+**MEASURED.** 168 withdrawal events in 30 markets (bursts of about three per
+episode); the same markets repeat every 8–15 minutes. Of 12 re-entries, 11
+returned at the same price after a median 6.6 minutes. In 12 of 13 withdrawn
+markets there were no public trades at all from 2 minutes before to 15 minutes
+after the withdrawals (one market had none in 24 hours). The depletion
+signal came from other makers cancelling, which the book feed cannot tell
+apart from trades.
+
+**MEASURED — one real save.** KXWMTCC: the 0.90 ask was withdrawn at
+01:32:44; 6.6 s later a buyer swept 110 contracts at 0.90, then 100 at 0.97.
+The trigger fired on makers pulling liquidity before any trade, so a
+trade-only depletion model would have missed the only real threat. The trigger
+is therefore kept.
+
+**Cost:** each withdrawal locked the market for a fixed 300 s plus ~1.6 min of
+cycle/refill, roughly 17% of quoting time across the 30 markets in this
+window, almost all after false alarms. The real sweep came within seconds.
+
+**Repair (D-135):** an adaptive lockout: 60 s after the first withdrawal in
+a market, doubling for each repeat within the hour (60→120→240→300 s cap), and
+reset after an hour without withdrawals. Trigger, cancel path, dwell and
+ranking are unchanged. The live effect on downtime, churn and adverse fills
+is a HYPOTHESIS until measured.
+
 ## 205. Own-order renewal and chained recovery (D-134 items 1, 4) — 2026-09-26
 
 **Root cause (VERIFIED in code):** every private event and every command

@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-135 — Adaptive re-entry lockout after protective withdrawals
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Cant we fix 3 first? Before restart?”, then
+  chose “Adaptive 60s (Recommended)” over fixed 60 s or keeping 5 minutes,
+  after Finding 206's trade-history evidence.
+- **Scope:** Re-entry lockout after a fill-risk withdrawal starts at 60 s and
+  doubles per repeat in the same market within an hour, capped at the former
+  300 s; an hour without withdrawals resets it.
+- **Boundary:** The withdrawal trigger, cancel budget, dwell, ranking and all
+  entry/risk gates are unchanged. No trade-feed dependency.
+
 ### D-134 — Implement all recovery-efficiency recommendations
 
 - **Status:** ACCEPTED, 2026-09-26; items 1–5 implemented and verified

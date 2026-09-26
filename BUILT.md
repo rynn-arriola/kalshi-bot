@@ -1,5 +1,12 @@
 # What exists
 
+## Adaptive withdrawal lockout — D-135
+
+After a protective withdrawal a market is locked for 60 s, doubling per
+repeat within the hour up to 300 s. Status `fill_risk` shows
+`cooldown_min_seconds`; `risk_cooldowns` shows remaining lockouts. See
+Finding 206; not deployed.
+
 ## Own-order renewal, history floor and recovery efficiency — D-134
 
 Acknowledged own orders renew through routine renewal (positions unchanged,

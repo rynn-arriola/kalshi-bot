@@ -6,8 +6,9 @@
    done (published, not deployed). Deploy once together (item 6) after
    operator confirmation, then measure against Finding 203.
 2. Measure generation 172 over hours (item 0 below).
-3. Post-fill market cooldown and 4. repeat-withdrawal ranking/threshold:
-   operator strategy decisions with data.
+3. Post-fill market cooldown: operator strategy decision with data.
+4. Repeat withdrawals: D-135 adaptive lockout done (Finding 206); measure
+   after deployment before any ranking/threshold change.
 5. History-proof start: done as D-134 item 4 (chained recovery).
 8. Finish the line-by-line review of modules listed in Finding 200.
 

@@ -135,11 +135,11 @@ class QuoteMaintenance:
         now = r.clock()
         self.risk_latched[ticker] = cycle
         self._latched_timing[ticker] = (self._risk_since.get(ticker, now), now, set())
-        self._risk_cooldown[ticker] = now+self.fill_risk.policy.cooldown_seconds
+        repeats = self._record_withdrawal(ticker)
+        self._risk_cooldown[ticker] = now+self._risk_cooldown_seconds(ticker)
         if ticker in self.samples:
             self.samples[ticker]['action'] = 'fill_risk_withdrawal'
-        r.diagnostics.emit('fill_risk_withdrawal', market=ticker,
-                           count=self._record_withdrawal(ticker))
+        r.diagnostics.emit('fill_risk_withdrawal', market=ticker, count=repeats)
         r.diagnostics.emit('maintenance_cycle_started', market=ticker,
             maintenance_reason='fill_risk_withdrawal', count=len(ids))
         source = getattr(service, 'source', None)
@@ -149,10 +149,21 @@ class QuoteMaintenance:
 
     REPEAT_WINDOW_SECONDS = 3600
 
+    def _risk_cooldown_seconds(self, ticker):
+        """D-135: adaptive re-entry lockout from this hour's withdrawal count.
+
+        Live evidence (Finding 206): the real sweep followed its withdrawal
+        within seconds, while almost every other trigger saw no trades at all.
+        A short first lockout restores quoting; repeats still back off to the
+        original five minutes. The withdrawal trigger itself is unchanged.
+        """
+        return self.fill_risk.policy.cooldown_for(len(self._withdrawals.get(ticker, ())))
+
     def _record_withdrawal(self, ticker):
         """D-131 item 8: bounded per-market withdrawals in the last hour.
 
-        Measurement only; no threshold, cooldown or ranking change uses it.
+        D-135: the count also sets the adaptive re-entry lockout; no ranking
+        or trigger threshold uses it.
         """
         now = self.runtime.clock()
         horizon = now-self.REPEAT_WINDOW_SECONDS
@@ -174,7 +185,7 @@ class QuoteMaintenance:
         self.runtime.diagnostics.emit('maintenance_cycle_finished', market=ticker,
             maintenance_reason=cycle.reason,
             elapsed_ms=max(0, int((self.runtime.clock()-timing[1])*1000)) if timing else None)
-        self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
+        self._risk_cooldown[ticker] = self.runtime.clock()+self._risk_cooldown_seconds(ticker)
         self._risk_since.pop(ticker, None)
         self._dwell.pop(ticker, None)
         self._cooldown[ticker] = self.runtime.clock()+30
@@ -200,7 +211,7 @@ class QuoteMaintenance:
                 elapsed_ms=max(0, int((self.runtime.clock()-self._cycle_latched)*1000))
                     if self._cycle_latched is not None else None)
         if self.cycle is not None and self.cycle.reason == 'fill_risk_withdrawal':
-            self._risk_cooldown[ticker] = self.runtime.clock()+self.fill_risk.policy.cooldown_seconds
+            self._risk_cooldown[ticker] = self.runtime.clock()+self._risk_cooldown_seconds(ticker)
         self.cycle = None
         self._cycle_started = None
         self._cycle_latched = None
@@ -431,9 +442,9 @@ class QuoteMaintenance:
             # reconciliation. No score lease can authorize new entries here.
             self._risk_cooldown = {t:until for t,until in self._risk_cooldown.items()
                                    if until > r.clock()}
-            self._risk_cooldown[plan.ticker] = r.clock()+self.fill_risk.policy.cooldown_seconds
-            r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker,
-                               count=self._record_withdrawal(plan.ticker))
+            repeats = self._record_withdrawal(plan.ticker)
+            self._risk_cooldown[plan.ticker] = r.clock()+self._risk_cooldown_seconds(plan.ticker)
+            r.diagnostics.emit('fill_risk_withdrawal', market=plan.ticker, count=repeats)
         if evidence_valid_until is None:
             self._dwell.pop(plan.ticker, None)
         self.samples[plan.ticker]['action'] = reason

@@ -17,16 +17,26 @@ from .quoting import _reference
 class FillRiskPolicy:
     cancel_floor_seconds: float = 2.0
     margin_seconds: float = 1.0
-    cooldown_seconds: float = 300.0
+    cooldown_seconds: float = 300.0  # D-135: re-entry lockout cap after repeats
     trend_seconds: float = 10.0
     capacity: int = 256
+    # D-135: first withdrawal in a market locks re-entry this long; each repeat
+    # within the hour doubles it up to ``cooldown_seconds``.
+    cooldown_min_seconds: float = 60.0
 
     def __post_init__(self):
         if (not all(type(v) in (float, int) and math.isfinite(v) and v > 0 for v in
                 (self.cancel_floor_seconds, self.margin_seconds, self.cooldown_seconds,
-                 self.trend_seconds)) or type(self.capacity) is not int
+                 self.trend_seconds, self.cooldown_min_seconds))
+                or self.cooldown_min_seconds > self.cooldown_seconds
+                or type(self.capacity) is not int
                 or not 1 <= self.capacity <= 4096):
             raise InvalidData('invalid bounded fill-risk policy')
+
+    def cooldown_for(self, repeats):
+        """Re-entry lockout for the ``repeats``-th withdrawal within the hour."""
+        return min(self.cooldown_seconds,
+                   self.cooldown_min_seconds*2**min(max(0, repeats-1), 16))
 
 
 @dataclass
@@ -135,4 +145,5 @@ class FillRisk:
             cancel_floor_seconds=self.policy.cancel_floor_seconds,
             margin_seconds=self.policy.margin_seconds,
             cooldown_seconds=self.policy.cooldown_seconds,
+            cooldown_min_seconds=self.policy.cooldown_min_seconds,
             trend_seconds=self.policy.trend_seconds, estimate_only=True)

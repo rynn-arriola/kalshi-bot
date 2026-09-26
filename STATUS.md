@@ -1,5 +1,12 @@
 # Current status
 
+## D-135 adaptive withdrawal lockout — 2026-09-26 (published, not deployed)
+
+Finding 206: 12 of 13 recently withdrawn markets had no trades around the
+withdrawal; one real sweep was caught. Lockout is now 60 s first, doubling per
+repeat to 300 s. Deploy together with D-133/D-134; then measure lockout
+downtime, withdrawals per market-hour and any adverse fills.
+
 ## D-134 recovery efficiency — 2026-09-26 (published, not deployed)
 
 All six recommendations were authorized (“Lets do all recommendations”).
