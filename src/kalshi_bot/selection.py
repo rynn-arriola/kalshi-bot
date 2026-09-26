@@ -9,6 +9,7 @@ from .portfolio import PortfolioView
 from .ranking import RankingBoard, RankedMarket
 from .risk import WindowState, admit_entry
 from .values import InvalidData, decimal, identity, integer, utc
+from .risk import MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -132,7 +133,7 @@ class MarketSelector:
         if cash < 0:
             raise InvalidData('negative free cash')
         integer(view.entry_count, 0, 4096)
-        integer(window.cap, 0, 30)
+        integer(window.cap, 0, MAX_RESTING_ENTRIES)
         reasons = tuple(view.blockers)
         if account_known is not True:
             reasons += ('unknown_account',)

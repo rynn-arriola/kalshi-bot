@@ -607,7 +607,8 @@ class RuntimeRewards:
                     production_reflection_available=(self.runtime.reads is not None
                         and self.started and not self.stopping and not self.failed
                         and self._reflection_ready()),
-                    program_progress=self._progress_status(), authorized=False)
+                    program_progress=self._progress_status(),
+                    session=self.tracker.session_status(), authorized=False)
 
     def _progress_status(self):
         # Report only currently managed owners (30 orders, <=16 programs each).

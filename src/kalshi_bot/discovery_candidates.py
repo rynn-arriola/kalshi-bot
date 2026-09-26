@@ -5,6 +5,7 @@ from decimal import Decimal, localcontext
 from .incentive_discovery import IncentiveCatalog
 from .ranking import seconds
 from .values import InvalidData, identity, integer, utc
+from .risk import MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -77,9 +78,9 @@ class CandidateDiscovery:
                 chosen.add(ticker)
         remaining = [ticker for _,ticker in ranked if ticker not in chosen]
         slots = budget-len(selected)
-        # Keep enough cheap leaders visible to fill the approved 30-entry cap;
-        # the rest remains a rotating exploration tail and is ranked by books.
-        head = min(slots,max(1,min(30,budget//4))) if slots else 0
+        # Keep enough cheap leaders visible to fill the approved entry cap
+        # (D-138); the rest remains a rotating exploration tail ranked by books.
+        head = min(slots,max(1,min(MAX_RESTING_ENTRIES,budget//4))) if slots else 0
         selected.extend(remaining[:head])
         chosen.update(selected)
         tail, slots = [t for t in self.pending if t not in chosen],slots-head

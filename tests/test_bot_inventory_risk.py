@@ -16,6 +16,7 @@ from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_engine import NOW, snapshot
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 
 def request(key="candidate", ticker="A", side="bid", p=".5", reduce=False, quantity="10"):
@@ -139,8 +140,8 @@ class RiskTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(second.reserved)
         self.assertIn("capital", second.blockers)
 
-    async def test_entry_count_ratchet_rejects_31st(self):
-        for i in range(30):
+    async def test_entry_count_ratchet_rejects_one_past_cap(self):
+        for i in range(CAP):
             await self.writer.reserve_intent(str(i), request(str(i), "M"+str(i)), NOW)
         result = await self.reserve()
         self.assertIn("entry_cap", result.blockers)

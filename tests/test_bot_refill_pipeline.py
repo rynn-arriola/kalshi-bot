@@ -24,6 +24,7 @@ from test_bot_engine import snapshot
 from test_bot_incentive_discovery import row as reward_row
 from test_bot_opening_account import balance
 from test_bot_quota import LIMITS, COSTS, Signer
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 
 class EntryInterleavingTests(unittest.IsolatedAsyncioTestCase):
@@ -227,7 +228,7 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 task = asyncio.create_task(runtime.run())
                 last_progress = started
                 async with asyncio.timeout(150):
-                    while sum(r['status']=='resting' for r in orders.values()) < 30:
+                    while sum(r['status']=='resting' for r in orders.values()) < CAP:
                         if task.done(): task.result()
                         if time.monotonic()-last_progress >= 10:
                             last_progress = time.monotonic()
@@ -237,7 +238,7 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                                 dispatch=runtime.dispatch_supervisor.status()),default=str))
                         await asyncio.sleep(.05)
                 first_full = time.monotonic()-started
-                self.assertEqual(len(batches),15)
+                self.assertEqual(len(batches),CAP//2)
                 self.assertTrue(all(r['ticker']<'M0032' for batch in batches for r in batch))
                 self.assertEqual(len(runtime.engine.shards),4)
                 self.assertEqual(len(runtime.engine.market_shard),1024)
@@ -247,7 +248,7 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 for row in pair: row.update(status='canceled',remaining_count_fp='0',last_updated_ts_ms=2)
                 runtime.request_recovery('source_change')
                 async with asyncio.timeout(30):
-                    while len(batches) == 15 or sum(r['status']=='resting' for r in orders.values()) != 30:
+                    while len(batches) == CAP//2 or sum(r['status']=='resting' for r in orders.values()) != CAP:
                         if task.done(): task.result()
                         await asyncio.sleep(.05)
                 refill_seconds = time.monotonic()-started-first_full
@@ -257,8 +258,8 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                     while runtime.routine_refresh_completed+runtime.steady_refresh_completed == 0:
                         if task.done(): task.result()
                         await asyncio.sleep(.05)
-                self.assertEqual(sum(r['status']=='resting' for r in orders.values()),30)
-                self.assertEqual(len(batches),16)
+                self.assertEqual(sum(r['status']=='resting' for r in orders.values()),CAP)
+                self.assertEqual(len(batches),CAP//2+1)
                 self.assertFalse(canceled)
                 self.assertFalse(runtime.engine.failed)
                 self.assertFalse(runtime.dispatch_supervisor.failed)
@@ -274,8 +275,8 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                 risk_started=time.monotonic()
                 runtime.rewards.request_reflection()
                 async with asyncio.timeout(45):
-                    while (len(canceled)<2 or len(batches)<17
-                           or sum(r['status']=='resting' for r in orders.values()) != 30):
+                    while (len(canceled)<2 or len(batches)<CAP//2+2
+                           or sum(r['status']=='resting' for r in orders.values()) != CAP):
                         if task.done(): task.result()
                         await asyncio.sleep(.05)
                 self.assertEqual(set(canceled),victim_ids)

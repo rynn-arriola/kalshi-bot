@@ -2,7 +2,7 @@
   "schema_version": 1,
   "capital_usd": "500",
   "entry_contracts": "10",
-  "max_resting_entries": 30,
+  "max_resting_entries": 50,
   "window_stop_usd": "25",
   "minimum_entry_retained_value": "0.70",
   "minimum_projected_reward_usd": "1",

@@ -28,7 +28,7 @@ class PolyExposureTests(unittest.TestCase):
     def test_default_matches_reference_20_plus_ten_at_size_ten(self):
         self.assertEqual(self.config.portfolio_exposure_usd, D(10)*(20+10))
         self.assertEqual((self.config.capital_usd, self.config.market_exposure_usd,
-                          self.config.max_resting_entries), (500, 90, 30))
+                          self.config.max_resting_entries), (500, 90, 50))
 
     def test_exact_portfolio_boundary_allowed_by_exposure_gate(self):
         self.assertEqual(self.gate(exposure={str(i):D(59) for i in range(5)}), ())

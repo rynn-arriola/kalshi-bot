@@ -246,12 +246,12 @@ class WriterAccountingTests(unittest.IsolatedAsyncioTestCase):
     async def test_open_fee_ratchets_atomically_profit_and_restart_cannot_widen(self):
         # Large synthetic fee tests the boundary, not a venue-fee estimate.
         ack = await self.writer.fill(fill("1", fee="5"), NOW)
-        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-5), 25))
+        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-5), 41))
         ack = await self.writer.fill(fill("2", "ask", price="0.9"), NOW)
-        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-1), 25))
+        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-1), 41))
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
-        self.assertEqual((await self.writer.observe(NOW)).cap, 25)
+        self.assertEqual((await self.writer.observe(NOW)).cap, 41)
 
     async def test_fee_triggered_hold_survives_restart_and_next_window(self):
         ack = await self.writer.fill(fill("1", fee="25"), NOW)

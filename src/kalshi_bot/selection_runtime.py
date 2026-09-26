@@ -8,6 +8,7 @@ from .quoting import Program
 from .ranking import seconds
 from .selection import MarketSelector, SelectionReport
 from .values import InvalidData, decimal, identity, utc
+from .risk import MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -495,7 +496,7 @@ class RuntimeSelection:
                 if (ticker in permitted and ticker not in protected and ticker not in self._priority_refresh
                     and not self._current_priority(ticker, now))]
             candidates.sort(key=lambda item:(-item[0], item[1]))
-            limit = min(30, 2*available_pairs)
+            limit = min(MAX_RESTING_ENTRIES, 2*available_pairs)
             selected = tuple(ticker for _, ticker in
                              candidates[:max(0, limit-len(self._priority_refresh))])
             self._priority_refresh.update(selected)

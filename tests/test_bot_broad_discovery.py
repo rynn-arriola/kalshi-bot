@@ -17,6 +17,7 @@ from kalshi_bot.values import InvalidData
 from kalshi_bot.writer import LedgerWriter
 from test_bot_engine import NOW, program, snapshot
 from test_bot_selection import terms
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 
 async def noop(*args):
@@ -65,9 +66,9 @@ class BroadTests(unittest.IsolatedAsyncioTestCase):
         await self.populate()
         proposal = await self.s.propose(window=self.window,free_cash=D(500))
         self.assertEqual(len(self.s.selector.board.markets),1024)
-        self.assertEqual(len(proposal.additions),15)
+        self.assertEqual(len(proposal.additions),CAP//2)
         self.assertEqual(self.writer.market_capacity,128)
-        self.assertEqual(self.window.cap,30)
+        self.assertEqual(self.window.cap,CAP)
         self.assertFalse(await self.writer.mutations())
         with self.assertRaises(InvalidData): self.r.attach_admission(offline_fixture=True)
 

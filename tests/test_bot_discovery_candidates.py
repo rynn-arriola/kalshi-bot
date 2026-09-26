@@ -11,6 +11,7 @@ from kalshi_bot.selection_runtime import ProgramObservation
 from kalshi_bot.values import InvalidData
 from test_bot_engine import NOW, program
 import test_bot_incentive_discovery as fixtures
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 
 def catalog(count=50):
@@ -135,9 +136,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         original = r.risk_view
         base = await original()
         for entries, held, released, age, expected in (
-                (28, False, True, 0, True), (29, False, True, 0, False),
-                (30, False, True, 0, False), (28, True, True, 0, False),
-                (28, False, False, 0, False), (28, False, True, 6, False)):
+                (CAP-2, False, True, 0, True), (CAP-1, False, True, 0, False),
+                (CAP, False, True, 0, False), (CAP-2, True, True, 0, False),
+                (CAP-2, False, False, 0, False), (CAP-2, False, True, 6, False)):
             async def view():
                 return replace(base, entry_count=entries)
             r.risk_view = view

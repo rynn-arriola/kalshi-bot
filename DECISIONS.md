@@ -10,6 +10,27 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-138 — Raise the resting entry-order cap to 50
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Ok add that to fix increase to 50”, after
+  the order-count vs contract-size comparison.
+- **Scope:** `risk.MAX_RESTING_ENTRIES` = 50 is the single source; config must
+  equal it. The six-hour loss ratchet keeps its $5 steps and $25 stop at the
+  same fractions of the cap: 50, 41, 33, 25, 16, 0. Discovery/selection
+  visibility limits follow the cap.
+- **Boundary:** An existing risk window keeps its stored cap (30) until the
+  next six-hour window; the ratchet never widens within a window.
+
+### D-137 — Reward scorecard: unknown-time reasons and size what-if
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Ok build it”, for measuring rewards without
+  waiting for Kalshi payouts.
+- **Scope:** Process-local reward-tracker session status: uncredited time by
+  fixed reason, and the same live books scored with own quantities ×2 and ×3.
+  Never checkpointed; estimate only; no trading effect.
+
 ### D-136 — Startup allowance and own-order renewal fallback reasons
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.

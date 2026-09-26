@@ -12,7 +12,7 @@ class BotConfig:
     schema_version: int = 1
     capital_usd: Decimal = Decimal("500")
     entry_contracts: Decimal = Decimal("10")
-    max_resting_entries: int = 30
+    max_resting_entries: int = 50  # D-138; must equal risk.MAX_RESTING_ENTRIES
     window_stop_usd: Decimal = Decimal("25")
     minimum_entry_retained_value: Decimal = Decimal("0.70")
     minimum_projected_reward_usd: Decimal = Decimal("1")
@@ -41,7 +41,8 @@ class BotConfig:
                 or self.minimum_projected_reward_usd != Decimal("1")
                 or self.priority_projected_reward_usd != Decimal("2")):
             raise InvalidData("unapproved entry-quality setting")
-        integer(self.max_resting_entries, 30, 30)
+        from .risk import MAX_RESTING_ENTRIES
+        integer(self.max_resting_entries, MAX_RESTING_ENTRIES, MAX_RESTING_ENTRIES)
         if self.live_enabled is not False:
             raise InvalidData("live execution is unavailable in this build")
         integer(self.book_connections, 2, 4)

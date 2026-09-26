@@ -1,14 +1,17 @@
 """Sampled per-program estimates, never payable cash or trading authority."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, localcontext
 
+from . import quoting
 from .quoting import Program, Quote, program_plans
 from .ranking import seconds
 from .values import InvalidData, decimal, identity, integer, utc
 
 
 ZERO = Decimal(0)
+# D-137: counterfactual own-size multipliers scored on the same live books.
+WHATIF_MULTIPLIERS = (2, 3)
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,7 @@ class RewardSample:
     continuity: tuple
     qualified: bool
     reason: str
+    whatif: tuple = ()
 
 
 @dataclass
@@ -61,9 +65,19 @@ class RewardTracker:
         self.records = {}
         self._by_market = {}
         self.revision = 0
+        # D-137: process-local measurement since start; never checkpointed and
+        # never used for trading. Explains unknown time and scores the same
+        # books with larger own quantities (what-if, not a forecast of fills).
+        self.session_started = None
+        self.session_estimate = ZERO
+        self.session_whatif = [ZERO for _ in WHATIF_MULTIPLIERS]
+        self.session_observed = ZERO
+        self.session_qualifying = ZERO
+        self.session_unknown = {}
+        self.session_markets = {}
 
     def record(self, program, *, at, valid_until, rate, continuity=(), qualified=False,
-               reason='source_unverified'):
+               reason='source_unverified', whatif=()):
         """Normalized observation boundary. Rate is an estimate, not venue credit."""
         at, until = utc(at), utc(valid_until)
         if not isinstance(program, Program):
@@ -87,6 +101,16 @@ class RewardTracker:
                 raise InvalidData('invalid estimated reward rate or continuity')
         elif qualified:
             raise InvalidData('unknown reward cannot qualify')
+        if whatif:
+            if (type(whatif) is not tuple or len(whatif) != len(WHATIF_MULTIPLIERS)
+                    or rate is None or not qualified):
+                raise InvalidData('what-if rates require a qualified observed rate')
+            whatif = tuple(decimal(value) for value in whatif)
+            with localcontext() as ctx:
+                ctx.prec = 40
+                maximum = Decimal(program.pool_centicents)/10000/seconds(program.end-program.start)
+            if any(value < 0 or value > maximum for value in whatif):
+                raise InvalidData('invalid what-if reward rate')
         existing = self.records.get(program.program_id)
         if existing is None:
             if len(self.records) >= self.capacity:
@@ -110,17 +134,77 @@ class RewardTracker:
                 and previous.rate is not None and rate is not None
                 and previous.continuity == continuity
                 and at <= previous.valid_until and at-previous.at <= timedelta(seconds=5))
+            if self.session_started is None:
+                self.session_started = at
+            market = self.session_markets.setdefault(program.ticker,
+                [ZERO, [ZERO for _ in WHATIF_MULTIPLIERS], ZERO])
             if covered:
                 existing.observed_seconds += elapsed
+                self.session_observed += elapsed
                 if previous.qualified and qualified:
                     existing.qualifying_seconds += elapsed
-                    existing.estimate += min(previous.rate, rate)*elapsed
+                    earned = min(previous.rate, rate)*elapsed
+                    existing.estimate += earned
+                    self.session_estimate += earned
+                    self.session_qualifying += elapsed
+                    market[0] += earned
+                    market[2] += elapsed
+                    if previous.whatif and whatif:
+                        for i, (old, new) in enumerate(zip(previous.whatif, whatif)):
+                            extra = min(old, new)*elapsed
+                            self.session_whatif[i] += extra
+                            market[1][i] += extra
             else:
                 existing.unknown_seconds += elapsed
+                if elapsed:
+                    label = self._unknown_reason(existing, previous, rate, reason,
+                                                 continuity, elapsed)
+                    self.session_unknown[label] = self.session_unknown.get(label, ZERO)+elapsed
         existing.last_at = at
         existing.sample = RewardSample(at, until, None if existing.conflict else rate,
-                                      continuity, qualified and not existing.conflict, reason)
+                                      continuity, qualified and not existing.conflict, reason,
+                                      whatif if not existing.conflict else ())
         self.revision += 1
+
+    @staticmethod
+    def _unknown_reason(existing, previous, rate, reason, continuity, elapsed):
+        """Fixed label for why an interval could not be credited (D-137)."""
+        if existing.conflict:
+            return 'terms_changed'
+        if elapsed > 60:
+            return 'not_running_or_long_gap'  # e.g. stopped or restarting
+        if previous is None:
+            return 'no_prior_sample'
+        if rate is None:
+            return reason
+        if previous.rate is None:
+            return previous.reason
+        if previous.continuity != continuity:
+            return 'continuity_changed'
+        return 'stale_gap'
+
+    def session_status(self, *, limit=30):
+        """Process-local reward measurement since start (D-137); estimate only."""
+        with localcontext() as ctx:
+            ctx.prec = 40
+            base = self.session_estimate
+            whatif = {f'{k}x': dict(usd=str(v), uplift=(str(v/base) if base else None))
+                      for k, v in zip(WHATIF_MULTIPLIERS, self.session_whatif)}
+            unknown = sum(self.session_unknown.values(), ZERO)
+            covered = self.session_observed+unknown
+            markets = sorted(self.session_markets.items(), key=lambda item: -item[1][0])[:limit]
+            return dict(started_at=self.session_started.isoformat() if self.session_started else None,
+                estimate_usd=str(base), whatif=whatif,
+                observed_seconds=str(self.session_observed),
+                qualifying_seconds=str(self.session_qualifying),
+                unknown_seconds=str(unknown),
+                observed_fraction=(str(self.session_observed/covered) if covered else None),
+                unknown_by_reason={k: str(v) for k, v in sorted(
+                    self.session_unknown.items(), key=lambda item: -item[1])},
+                markets=[dict(ticker=t, estimate_usd=str(m[0]), qualifying_seconds=str(m[2]),
+                              **{f'whatif_{k}x_usd': str(v) for k, v in zip(WHATIF_MULTIPLIERS, m[1])})
+                         for t, m in markets],
+                estimate_only=True, authorized=False)
 
     def observe(self, program, *, book, bands, quotes, reflected_known, at, valid_until,
                 continuity, market_open=True):
@@ -159,8 +243,21 @@ class RewardTracker:
             and not p.paid_out and p.max_reward_centicents is None and p.start <= utc(at) < p.end)
         scores = dict(zip((p.program_id for p in active),program_plans(book,active,bands,
             now=at,market_open=market_open,reflected=quotes,proposed=quotes))) if active else {}
+        # D-137: the same book with our own quantities scaled; other makers'
+        # depth is unchanged, so this is a share counterfactual, not a fill model.
+        whatifs = {}
+        if active:
+            base = quoting._base(book, bands, quotes)  # One validation for all variants.
+            for multiple in WHATIF_MULTIPLIERS:
+                scaled = tuple(replace(q, quantity=q.quantity*multiple) for q in quotes)
+                for p in active:
+                    levels = {s: dict(rows) for s, rows in base.items()}
+                    with localcontext() as ctx:
+                        ctx.prec = 40
+                        share = quoting._snapshot_from_base(levels, p, bands, scaled)[2]
+                    whatifs.setdefault(p.program_id, []).append(share)
         for program in programs:
-            rate, qualified, reason = None, False, 'reflection_unverified'
+            rate, qualified, reason, whatif = None, False, 'reflection_unverified', ()
             if reflected_known:
                 if not quotes:
                     rate, reason = ZERO, 'no_owned_orders'
@@ -170,12 +267,16 @@ class RewardTracker:
                     share = scores[program.program_id].snapshot_share
                     with localcontext() as ctx:
                         ctx.prec = 40
-                        rate = Decimal(program.pool_centicents)/10000*share/seconds(program.end-program.start)
+                        per_share = Decimal(program.pool_centicents)/10000/seconds(program.end-program.start)
+                        rate = per_share*share
+                        whatif = (tuple(per_share*s for s in whatifs[program.program_id])
+                                  if share > 0 else ())
                     qualified, reason = share > 0, 'observed_orders'
                 else:
                     rate, reason = ZERO, 'observed_orders'
             self.record(program, at=at, valid_until=valid_until, rate=rate,
-                        continuity=continuity, qualified=qualified, reason=reason)
+                        continuity=continuity, qualified=qualified, reason=reason,
+                        whatif=whatif)
 
     def invalidate(self, ticker):
         for key in self._by_market.get(ticker, ()):

@@ -127,7 +127,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         reads = Reads([history(fee="5")])
         reads.hook = lambda n: clock.__setitem__(0, NOW+timedelta(seconds=2)) if n == 2 else None
         await self.recover(reads, now=lambda: clock[0])
-        self.assertEqual((await self.writer.observe(clock[0])).cap, 25)
+        self.assertEqual((await self.writer.observe(clock[0])).cap, 41)
         db = Ledger(self.path)
         try:
             self.assertEqual(db.realized(EXEC, NOW+timedelta(seconds=1)), 0)
@@ -201,7 +201,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         report = await self.recover(Reads(rows))  # Newest-first endpoint; deterministic replay sorts it.
         self.assertEqual(report.imported, 2)
         state = await self.writer.observe(NOW)
-        self.assertEqual((state.realized_pnl, state.cap), (D(3), 25))
+        self.assertEqual((state.realized_pnl, state.cap), (D(3), 41))
 
     async def test_invalid_later_fill_rolls_back_whole_32_fill_chunk(self):
         await self.bind()

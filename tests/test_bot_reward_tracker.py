@@ -257,7 +257,9 @@ class TrackerTests(unittest.TestCase):
                 self.t.observe_many(programs,book=b,bands=BANDS,quotes=quotes,reflected_known=True,
                     at=NOW+timedelta(seconds=offset),valid_until=NOW+timedelta(seconds=5),
                     continuity=('epoch',1))
-            self.assertEqual(base.call_count,2)
+            # One validation per observation for the real score and one shared
+            # by every D-137 what-if variant; never one per program.
+            self.assertEqual(base.call_count,4)
         self.assertTrue(all(r.estimate == expected for r in self.t.records.values()))
 
 

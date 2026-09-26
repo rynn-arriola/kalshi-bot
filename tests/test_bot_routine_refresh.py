@@ -11,6 +11,7 @@ from kalshi_bot.rest import PageSet, ReadResult
 from kalshi_bot.runtime import RecoveryRuntime
 from kalshi_bot.orders import OrderUpdate
 from tests import test_bot_account_release as baseline
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 
 class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
@@ -261,7 +262,7 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_real_owned_orders_renew_at_two_twenty_eight_and_full_cap(self):
         runtime = await self.runtime()
-        for index in range(30):
+        for index in range(CAP):
             client, order_id = f'owned-{index}', f'order-{index}'
             req = dict(baseline.request(client), price='0.01')
             reserved = await self.reserve(client, req=req)
@@ -280,7 +281,7 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
             runtime.request_recovery()
             runtime.recovery_requested.clear()
             self.assertTrue(await runtime.recover_once())
-            if index in (1, 27, 29):
+            if index in (1, CAP-3, CAP-1):
                 for reason in ('priority_capacity_met', 'coverage_complete'):
                     runtime.selection = SimpleNamespace(initial_ranking=SimpleNamespace(reason=reason))
                     self.advance()

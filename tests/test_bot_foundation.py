@@ -18,6 +18,7 @@ from kalshi_bot.ledger import Fill, Ledger
 from kalshi_bot.risk import OrderExposure, WindowRisk, admit_entry, entry_cap, exposure_total, window_bounds
 from kalshi_bot.values import InvalidData, count, decimal, price
 from kalshi_bot.windows import WindowsLease
+from kalshi_bot.risk import MAX_RESTING_ENTRIES as CAP
 
 UTC = timezone.utc
 NOW = datetime(2026, 9, 19, 5, tzinfo=UTC)
@@ -176,18 +177,19 @@ class RiskTests(unittest.TestCase):
         self.ledger.record_fill(fill(key+"x",side="ask",qty=str(loss*2),p="0.25"),now)
 
     def test_exact_thresholds(self):
-        for loss, expected in (("0",30),("4.99",30),("5",25),("9.99",25),("10",20),
-                               ("15",15),("20",10),("24.99",10),("25",0),("30",0),("-5",30)):
+        # D-138: 50-entry cap; same $5 steps and $25 stop at 6/6..2/6 of it.
+        for loss, expected in (("0",50),("4.99",50),("5",41),("9.99",41),("10",33),
+                               ("15",25),("20",16),("24.99",16),("25",0),("30",0),("-5",50)):
             self.assertEqual(entry_cap(D(loss)),expected)
 
     def test_restart_and_recovery_cannot_widen_cap(self):
         self.closed_loss(10)
-        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,20)
+        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,33)
         self.ledger.record_fill(fill("profit",qty="30",p="0.25"),NOW)
         self.ledger.record_fill(fill("profit-close",side="ask",qty="30",p="0.75"),NOW)
         self.ledger.close()
         self.ledger=Ledger(self.path)
-        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,20)
+        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,33)
 
     def test_hard_hold_survives_next_window_until_proof(self):
         self.closed_loss(25)
@@ -199,7 +201,7 @@ class RiskTests(unittest.TestCase):
             risk.release_previous(next_window,account_observed_at=next_window,
                                   orders=1,positions=0,unknowns=0,complete=True)
         self.assertEqual(risk.release_previous(next_window,account_observed_at=next_window,
-                                               orders=0,positions=0,unknowns=0,complete=True).cap,30)
+                                               orders=0,positions=0,unknowns=0,complete=True).cap,50)
 
     def test_current_window_hard_cannot_release(self):
         self.closed_loss(25)
@@ -229,12 +231,12 @@ class RiskTests(unittest.TestCase):
 
     def test_admission_blocks_unknown_inventory_and_budget(self):
         state=WindowRisk(self.ledger).observe(NOW)
-        base=dict(window=state,ticker="A",current_position=D(0),resting_entries=29,
+        base=dict(window=state,ticker="A",current_position=D(0),resting_entries=CAP-1,
                   candidate_loss=D(5),exposure={},free_capital=D(500),account_known=True,now=NOW)
         config=BotConfig(managed_market_slots=30)
         self.assertEqual(admit_entry(config,**base),())
         for field,value,reason in (("current_position",D(1),"position_is_reduce_only"),
-                                  ("resting_entries",30,"entry_cap"),
+                                  ("resting_entries",CAP,"entry_cap"),
                                   ("account_known",False,"unknown_account"),
                                   ("exposure",{"B":D(399)},"portfolio_exposure"),
                                   ("free_capital",D(4),"capital")):
@@ -252,7 +254,7 @@ class RiskTests(unittest.TestCase):
     def test_small_fee_is_charged_once_without_proration(self):
         self.ledger.record_fill(fill("fraction-open",qty="3",fee="0.01"),NOW)
         self.ledger.record_fill(fill("fraction-close",side="ask",qty="1"),NOW)
-        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,30)
+        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,50)
         self.assertEqual(WindowRisk(self.ledger).observe(NOW).realized_pnl,D("-0.01"))
 
 

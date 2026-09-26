@@ -42,7 +42,7 @@ class TotalsTests(unittest.TestCase):
         self.db.close()
         self.db = Ledger(self.path)
         state = WindowRisk(self.db).observe(NOW)
-        self.assertEqual((state.realized_pnl, state.cap), (D(-5), 25))
+        self.assertEqual((state.realized_pnl, state.cap), (D(-5), 41))
 
     def test_restart_duplicate_and_timestamp_enrichment_do_not_charge_twice(self):
         item = fill("1")
@@ -71,7 +71,7 @@ class TotalsTests(unittest.TestCase):
             raise RuntimeError("crash")
         self.db.record_fill(fill("3", fee="0.2"), NOW)
         state = WindowRisk(self.db).observe(NOW)
-        self.assertEqual((state.realized_pnl, state.cap, state.held), (D("-0.3"), 30, False))
+        self.assertEqual((state.realized_pnl, state.cap, state.held), (D("-0.3"), 50, False))
 
     def test_cold_cache_created_inside_rollback_disappears(self):
         with self.assertRaises(RuntimeError), self.db.transaction():

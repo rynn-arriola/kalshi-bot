@@ -91,10 +91,10 @@ class WriterTests(unittest.IsolatedAsyncioTestCase):
                   fill("4", "ask", "0.9")):
             ack = await self.writer.fill(f, NOW)
         self.assertEqual(ack.window.realized_pnl, 2)
-        self.assertEqual(ack.window.cap, 25)
+        self.assertEqual(ack.window.cap, 41)
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
-        self.assertEqual((await self.writer.observe(NOW)).cap, 25)
+        self.assertEqual((await self.writer.observe(NOW)).cap, 41)
 
     async def test_risk_failure_rolls_back_close_and_poisons_writer(self):
         await self.writer.fill(fill(), NOW)

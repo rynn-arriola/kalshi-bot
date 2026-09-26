@@ -23,6 +23,7 @@ from .quoting import parse_program
 from .ranking import seconds
 from .rest import PageSet
 from .values import InvalidData, identity, integer, utc
+from .risk import MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -71,7 +72,7 @@ def _select(rows, limit):
             seen_tickers.add(row[1])
     if len(ordered) <= limit:
         return ordered
-    head = min(30, limit)
+    head = min(MAX_RESTING_ENTRIES, limit)
     selected = ordered[:head]
     tail, slots = ordered[head:], limit-head
     # Even rank quantiles prevent the known cheap reward/target hint from

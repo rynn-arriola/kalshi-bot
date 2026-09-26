@@ -15,12 +15,17 @@ def window_bounds(now: datetime) -> tuple[datetime, datetime]:
     return utc(start), utc(start + timedelta(hours=6))
 
 
+# D-138: resting entry-order cap (was 30). The six-hour loss ratchet keeps its
+# $5 steps and $25 stop, scaled to the same fractions of the cap (6/6 .. 2/6, 0).
+MAX_RESTING_ENTRIES = 50
+
+
 def entry_cap(loss: Decimal) -> int:
     loss = max(Decimal(0), decimal(loss))
-    for threshold, cap in ((25, 0), (20, 10), (15, 15), (10, 20), (5, 25)):
+    for threshold, sixths in ((25, 0), (20, 2), (15, 3), (10, 4), (5, 5)):
         if loss >= threshold:
-            return cap
-    return 30
+            return MAX_RESTING_ENTRIES*sixths//6
+    return MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -49,8 +54,8 @@ class WindowRisk:
             if last_fill and last_fill[0] > now.isoformat():
                 raise InvalidData("future fill observation; risk state is not coherent")
             pnl = self.ledger.realized_incremental(start, end)
-            conn.execute("INSERT OR IGNORE INTO risk_windows(start,end,entry_cap) VALUES (?,?,30)",
-                         (start.isoformat(), end.isoformat()))
+            conn.execute("INSERT OR IGNORE INTO risk_windows(start,end,entry_cap) VALUES (?,?,?)",
+                         (start.isoformat(), end.isoformat(), MAX_RESTING_ENTRIES))
             row = conn.execute("SELECT * FROM risk_windows WHERE start=?", (start.isoformat(),)).fetchone()
             cap = min(row["entry_cap"], entry_cap(-pnl))
             conn.execute("UPDATE risk_windows SET entry_cap=?,tripped=? WHERE start=?",
