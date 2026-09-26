@@ -2,7 +2,12 @@
 
 ## Deploy D-129–D-132 together (Findings 196–202)
 
-1. **Awaiting operator authority (bot left running by request):** deploy
+0. **Deployed 2026-09-26 as generation 172** (see STATUS). Measure over the
+   next hours: recovery time share vs 37%, rebases vs full recoveries,
+   latched/secondary withdrawals and `latch_ms`, reducer reprice holds,
+   repeat withdrawals, occupancy/refill and capacity counters. Do not restart
+   merely to re-prove deployment.
+1. **(Completed by Command 1)** deploy
    only through Command 1/supported restart — stop to verified flat, back up
    `account.db` (integrity-checked), fast-forward the canonical checkout,
    start. Never update the checkout under a running bot (fingerprint and

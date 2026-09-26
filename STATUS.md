@@ -1,5 +1,26 @@
 # Current status
 
+## D-129–D-132 deployed by Command 1 — 2026-09-26
+
+**Deployed and running.** The operator invoked `Command 1`. Generation 170
+drained 28 resting entries to zero in ~20 s, reached current `STOPPED_FLAT`
+with no positions, and both processes exited; the supervisor disarmed with no
+attention reason. Hot mutations were 4,113, past the 4,096 entry boundary, so
+new entries had just become blocked. An integrity-checked backup is at ignored
+`data/trader/d132-backup-20260926T001957Z/` (hash match). The canonical
+checkout fast-forwarded from `b8ef3a8` to `c1249e5`; 167 focused
+post-deployment tests pass there. Generation 172 started (build fingerprint
+prefix `d70d705853907908`).
+
+Initial observations (00:25:41 UTC): supervisor healthy, all six readers
+subscribed, 24 resting entries rebuilt within ~4.5 minutes, no positions,
+account current, entry allowed, logging healthy with zero drops. The first
+entry reservation archived terminal command evidence (hot mutations
+4,113 → 3,639; 23 archives); six proven-unsent turns were re-audited instead
+of forcing full recovery. New-run log: no ERROR; eight warnings (seven startup
+public 429 retries, one incomplete recovery pass). These are initial samples,
+not proof of sustained occupancy, fill avoidance or profitability.
+
 ## D-132 final pre-restart review — 2026-09-25
 
 **Complete; ready for an operator-authorized restart.** Finding 202: live
