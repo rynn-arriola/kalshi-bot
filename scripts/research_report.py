@@ -124,8 +124,8 @@ def withdrawals_section(data):
     gone = {}
     for _, key, mark in data['withdrawal_marks']:
         base, _, delay = key.rpartition('@')
-        if delay.startswith('60'):
-            gone[base] = bool(mark.get('level_gone'))
+        if delay.startswith('60') and mark.get('level_gone') is not None:
+            gone[base] = bool(mark['level_gone'])  # None = no book then: unchecked.
     stats = defaultdict(lambda: [0, 0, 0])
     for _, key, row in data['withdrawals']:
         for trigger in row.get('triggers') or ['none']:

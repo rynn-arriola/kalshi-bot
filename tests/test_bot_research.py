@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from threading import Event
 from types import SimpleNamespace
 import unittest
 
@@ -74,6 +75,40 @@ class StoreTests(unittest.TestCase):
         store.record('trades', 't-new')
         store.close()
         self.assertEqual([key for key, _ in rows(self.path, 'trades')], ['t-new'])
+
+    def test_a_failing_prune_never_stops_the_writer(self):
+        class LockedDeletes:
+            def __init__(self, conn):
+                self.conn = conn
+            def execute(self, sql, *args):
+                if sql.startswith('DELETE'):
+                    raise sqlite3.OperationalError('database is locked')
+                return self.conn.execute(sql, *args)
+            def __enter__(self):
+                return self.conn.__enter__()
+            def __exit__(self, *args):
+                return self.conn.__exit__(*args)
+            def close(self):
+                self.conn.close()
+
+        class Store(ResearchStore):
+            def _connect(self):
+                return LockedDeletes(super()._connect())
+
+        clock = [datetime(2026, 9, 26, tzinfo=timezone.utc)]
+        store = Store(self.path, now=lambda: clock[0]).start()  # Startup prune fails.
+        self.assertTrue(store.status()['alive'])
+        clock[0] += timedelta(hours=7)  # The next batch also runs the periodic prune.
+        store.record('trades', 't1')
+        for _ in range(100):
+            if store.status()['written'] == 1:
+                break
+            Event().wait(.05)
+        store.record('trades', 't2')
+        store.close()
+        self.assertEqual([key for key, _ in rows(self.path, 'trades')], ['t1', 't2'])
+        self.assertEqual((store.status()['failures'], store.status()['last_error']),
+                         (2, 'OperationalError'))
 
 
 class EntryLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -352,6 +387,17 @@ class WithdrawalOutcomeTests(unittest.IsolatedAsyncioTestCase):
         [(_, mark)] = rows(self.path, 'withdrawal_marks')
         self.assertEqual(mark['best_bid'], '0.5')
         self.assertEqual(mark['level_gone'], [])
+
+    async def test_no_book_later_is_unknown_not_reached(self):
+        import asyncio
+        self.p.m.RESEARCH_MARK_SECONDS = (0.01,)
+        self.p.remove('.5', 495)
+        self.p.m.refresh('A')
+        self.p.r.management._book = lambda ticker: (None, None)  # Book gone after the pull.
+        await asyncio.sleep(.1)
+        self.store.close()
+        [(_, mark)] = rows(self.path, 'withdrawal_marks')
+        self.assertIsNone(mark['level_gone'])
 
     async def test_pending_marks_are_bounded_and_no_research_means_no_record(self):
         self.p.m.RESEARCH_MAX_PENDING_MARKS = 1

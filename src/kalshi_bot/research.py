@@ -86,10 +86,16 @@ class ResearchStore:
         return conn
 
     def _prune(self, conn):
+        """Retention is housekeeping: a failure is counted, never fatal."""
         cutoff = (self.now()-timedelta(days=RETENTION_DAYS)).isoformat()
-        for table in sorted(TABLES):
-            conn.execute(f'DELETE FROM {table} WHERE at < ?', (cutoff,))
-        conn.commit()
+        try:
+            with conn:
+                for table in sorted(TABLES):
+                    conn.execute(f'DELETE FROM {table} WHERE at < ?', (cutoff,))
+        except sqlite3.Error as exc:
+            with self._lock:
+                self.failures += 1
+                self.last_error = type(exc).__name__
 
     def _run(self):
         conn = None

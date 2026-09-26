@@ -47,6 +47,8 @@ class ReportTests(unittest.TestCase):
         store.record('withdrawal_marks', 'w1@30', level_gone=['o3'])  # Only 60 s counts.
         store.record('withdrawals', 'w2', ticker='KXBROSFT', triggers=['time_to_fill'])
         store.record('withdrawal_marks', 'w2@60', level_gone=['o1'])
+        store.record('withdrawals', 'w3', ticker='KXMID', triggers=['time_to_fill'])
+        store.record('withdrawal_marks', 'w3@60', level_gone=None)  # No book: unchecked.
         for trade_id, size, when in (('t1', '200', 'a'), ('t2', '288', 'a'), ('t3', '5', 'b')):
             store.record('trades', trade_id, ticker='KXBROSFT', created_time=when,
                          taker_side='no', count=size)
@@ -81,7 +83,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn('| KXBROSFT | entry | bid | 0.82 | 30 | 200 | -20.40 | – | – |', self.text)
 
     def test_pull_precision_uses_the_60_second_check(self):
-        self.assertEqual(self.line('| time_to_fill'), '| time_to_fill | 2 | 2 | 1 | 50% |')
+        self.assertEqual(self.line('| time_to_fill'), '| time_to_fill | 3 | 2 | 1 | 50% |')
 
     def test_sweeps_group_one_taker_order(self):
         self.assertEqual(self.line('| KXBROSFT | 2'), '| KXBROSFT | 2 | 246 | 488 | 1 |')

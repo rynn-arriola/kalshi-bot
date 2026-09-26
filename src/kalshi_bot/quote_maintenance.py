@@ -234,9 +234,11 @@ class QuoteMaintenance:
         if getattr(r, 'research', None) is None or r.stop_requested.is_set():
             return
         def mark():
-            top = r._research_top(r.management._book(ticker)[1])
+            book = r.management._book(ticker)[1]
+            top = r._research_top(book)
             bid, ask = top['best_bid'], top['best_ask']
-            reached = [o['order_id'] for o in orders
+            # No book at all is unknown, not "gone"; an empty side is gone.
+            reached = None if book is None else [o['order_id'] for o in orders
                        if (o['side'] == 'bid' and (bid is None or bid < o['price']))
                        or (o['side'] == 'ask' and (ask is None or ask > o['price']))]
             r.research.record('withdrawal_marks', f'{key}@{delay}', ticker=ticker,
