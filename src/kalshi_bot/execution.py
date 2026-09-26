@@ -882,6 +882,29 @@ class InjectedExecutor:
                     self.failed = True
                     raise
 
+    async def _commit_unsent(self, abort, label):
+        """Durably commit a proven-unsent abort; the caller then marks it finalized."""
+        aborted, outcome_cancelled = await self._retain(abort)
+        if aborted.blockers != ('not_submitted_aborted',):
+            raise InvalidData(f'proven-unsent {label} abort was not committed')
+        return outcome_cancelled
+
+    def _raise_unsent(self, operation, outcome_cancelled, denial):
+        """After a committed unsent abort: log it, then report the denial.
+
+        The executor stays usable unless the diagnostics sink itself failed.
+        """
+        self.failed = False
+        try:
+            self.diagnostics.emit('mutation_not_submitted', operation=operation)
+            self.diagnostics.ensure_healthy()
+        except BaseException:
+            self.failed = True
+            raise
+        if outcome_cancelled:
+            raise asyncio.CancelledError
+        raise denial
+
     async def _execute_prepared(self, receipt, *, before_invoke=None):
         self.diagnostics.ensure_healthy()
         if before_invoke is not None and (not callable(before_invoke)
@@ -914,22 +937,11 @@ class InjectedExecutor:
                 if (self.writer.revision != send.writer_revision
                         or not self.writer.entry_accounting_current(receipt)
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
-                    aborted, outcome_cancelled = await self._retain(
-                        self.writer.abort_sending_before_submission(receipt, self))
-                    if aborted.blockers != ('not_submitted_aborted',):
-                        raise InvalidData('proven-unsent mutation abort was not committed')
+                    outcome_cancelled = await self._commit_unsent(
+                        self.writer.abort_sending_before_submission(receipt, self), 'mutation')
                     finalized = True
-                    self.failed = False
-                    try:
-                        self.diagnostics.emit('mutation_not_submitted',
-                                              operation=receipt.authorization_id)
-                        self.diagnostics.ensure_healthy()
-                    except BaseException:
-                        self.failed = True
-                        raise
-                    if outcome_cancelled:
-                        raise asyncio.CancelledError
-                    raise CommandDenied(('proof_changed_before_submission',))
+                    self._raise_unsent(receipt.authorization_id, outcome_cancelled,
+                                       CommandDenied(('proof_changed_before_submission',)))
                 dispatch_request = receipt.request
                 validate_request(receipt.kind, dispatch_request)
                 if encoded_request(dispatch_request) != receipt.request_json:
@@ -957,22 +969,11 @@ class InjectedExecutor:
                         or not self.writer.entry_accounting_current(receipt)
                         or self.writer.revision != send.writer_revision
                         or self.validate_proof(receipt.kind, receipt.request) is not True):
-                    aborted, outcome_cancelled = await self._retain(
-                        self.writer.abort_sending_before_submission(receipt, self))
-                    if aborted.blockers != ('not_submitted_aborted',):
-                        raise InvalidData('proven-unsent mutation abort was not committed')
+                    outcome_cancelled = await self._commit_unsent(
+                        self.writer.abort_sending_before_submission(receipt, self), 'mutation')
                     finalized = True
-                    self.failed = False
-                    try:
-                        self.diagnostics.emit('mutation_not_submitted',
-                                              operation=receipt.authorization_id)
-                        self.diagnostics.ensure_healthy()
-                    except BaseException:
-                        self.failed = True
-                        raise
-                    if outcome_cancelled:
-                        raise asyncio.CancelledError
-                    raise _send_edge_denial(edge_refused)
+                    self._raise_unsent(receipt.authorization_id, outcome_cancelled,
+                                       _send_edge_denial(edge_refused))
                 session = self.writer.live_session
                 if self.offline_fixture is not True and receipt.kind == 'create':
                     session.arm_single_create(receipt)
@@ -1106,21 +1107,11 @@ class InjectedExecutor:
                 if (self.writer.revision != send.writer_revision
                         or not self.writer.entry_accounting_current(batch)
                         or self.validate_proof('batch_create', requests) is not True):
-                    aborted, outcome_cancelled = await self._retain(
-                        self.writer.abort_sending_batch_before_submission(batch, self))
-                    if aborted.blockers != ('not_submitted_aborted',):
-                        raise InvalidData('proven-unsent batch abort was not committed')
+                    outcome_cancelled = await self._commit_unsent(
+                        self.writer.abort_sending_batch_before_submission(batch, self), 'batch')
                     finalized = True
-                    self.failed = False
-                    try:
-                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
-                        self.diagnostics.ensure_healthy()
-                    except BaseException:
-                        self.failed = True
-                        raise
-                    if outcome_cancelled:
-                        raise asyncio.CancelledError
-                    raise CommandDenied(('proof_changed_before_submission',))
+                    self._raise_unsent(batch.batch_id, outcome_cancelled,
+                                       CommandDenied(('proof_changed_before_submission',)))
                 if tuple(encoded_request(row) for row in requests) != tuple(
                         receipt.request_json for receipt in batch.receipts):
                     raise InvalidData('batch dispatch terms differ from durable authorization')
@@ -1141,21 +1132,11 @@ class InjectedExecutor:
                         or not self.writer.entry_accounting_current(batch)
                         or self.writer.revision != send.writer_revision
                         or self.validate_proof('batch_create', requests) is not True):
-                    aborted, outcome_cancelled = await self._retain(
-                        self.writer.abort_sending_batch_before_submission(batch, self))
-                    if aborted.blockers != ('not_submitted_aborted',):
-                        raise InvalidData('proven-unsent batch abort was not committed')
+                    outcome_cancelled = await self._commit_unsent(
+                        self.writer.abort_sending_batch_before_submission(batch, self), 'batch')
                     finalized = True
-                    self.failed = False
-                    try:
-                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
-                        self.diagnostics.ensure_healthy()
-                    except BaseException:
-                        self.failed = True
-                        raise
-                    if outcome_cancelled:
-                        raise asyncio.CancelledError
-                    raise _send_edge_denial(edge_refused)
+                    self._raise_unsent(batch.batch_id, outcome_cancelled,
+                                       _send_edge_denial(edge_refused))
                 preflight = getattr(self.invoke, 'preflight', None)
                 refused = False
                 if callable(preflight):
@@ -1164,21 +1145,11 @@ class InjectedExecutor:
                     except InvalidData:
                         refused = True  # D-143: local gate, nothing sent.
                 if refused:
-                    aborted, outcome_cancelled = await self._retain(
-                        self.writer.abort_sending_batch_before_submission(batch, self))
-                    if aborted.blockers != ('not_submitted_aborted',):
-                        raise InvalidData('proven-unsent batch abort was not committed')
+                    outcome_cancelled = await self._commit_unsent(
+                        self.writer.abort_sending_batch_before_submission(batch, self), 'batch')
                     finalized = True
-                    self.failed = False
-                    try:
-                        self.diagnostics.emit('mutation_not_submitted', operation=batch.batch_id)
-                        self.diagnostics.ensure_healthy()
-                    except BaseException:
-                        self.failed = True
-                        raise
-                    if outcome_cancelled:
-                        raise asyncio.CancelledError
-                    raise CommandDenied(('transport_refused_before_submission',))
+                    self._raise_unsent(batch.batch_id, outcome_cancelled,
+                                       CommandDenied(('transport_refused_before_submission',)))
                 async with asyncio.timeout(self.timeout):
                     reply = await invoke_batch(requests)
                 outcomes = batch_acknowledgement(requests, reply)
