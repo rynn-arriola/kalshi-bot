@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-150 — Shadow-only fill-avoidance screen on every prepared entry
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
+  deployed.
+- **Decision owner:** Operator: “Ok lets do all of it” (architecture review #9,
+  shadow mode first).
+- **Scope:** each prepared entry pair emits `entry_screen_shadow` with the
+  program's remaining projected reward, the worst-case loss of one leg filling,
+  Kalshi's 24-hour volume and a verdict: `volume` (24-h volume × 7 > 2,000,
+  Finding 210), `reward_risk` (remaining reward < 25% of that loss), `both`,
+  `pass` or `unknown`. It never blocks, delays or changes an order; a screen
+  error is only counted. `Market.volume_24h` is optional, parsed without
+  failing and excluded from equality.
+- **Next:** after enough live entries and fills, compare verdicts against
+  actual fills and reward before any operator decision to enforce a rule.
+- **Boundary:** no trading, size, selection or protection change.
+
 ### D-149 — Routine telemetry rotates separately from events
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not

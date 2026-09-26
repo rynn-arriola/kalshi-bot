@@ -5,7 +5,7 @@ supplied explicitly. REST serves missing full definitions, fees and milestones;
 healthy lifecycle updates supersede cached fields and invalidate pending reads.
 """
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 import hashlib
@@ -89,6 +89,9 @@ class Market:
     early_condition: str | None
     occurrence_at: datetime | None
     rules_hash: str
+    # Review #9: advisory 24-hour traded volume for the shadow entry screen only.
+    # Excluded from equality; missing or malformed data is None, never an error.
+    volume_24h: Decimal | None = field(default=None, compare=False)
 
 
 def parse_market(doc, ticker):
@@ -116,7 +119,15 @@ def parse_market(doc, ticker):
     return Market(identity(ticker), identity(row['event_ticker']), integer(row['exchange_index'],0,2**31-1),
                   tick_bands(row['price_ranges']), opens, closes, status=='active',
                   row['can_close_early'], early_condition, occurrence_at,
-                  rules_digest(row))
+                  rules_digest(row), volume_24h=_optional_volume(row))
+
+
+def _optional_volume(row):
+    try:
+        value = decimal(row['volume_24h_fp'])
+    except (KeyError, TypeError, InvalidData):
+        return None
+    return value if value >= 0 else None
 
 
 def scheduled_release_timing(market, milestone_type, milestone_start):

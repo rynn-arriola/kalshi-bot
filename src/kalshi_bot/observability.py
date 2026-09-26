@@ -39,6 +39,7 @@ EVENTS = {
     'history_scope_high': ('WARNING', 'recovery'),
     'cash_adjusted': ('WARNING', 'accounting'),
     'unknown_create_resolved': ('WARNING', 'recovery'),
+    'entry_screen_shadow': ('INFO', 'selection'),
     'venue_paused': ('WARNING', 'runtime'),
     'order_group_created': ('INFO', 'execution'),
     'order_group_triggered': ('WARNING', 'execution'),
@@ -100,7 +101,7 @@ EVENTS = {
     'quota_stopped': ('INFO', 'rest'),
     'quota_rollover_deferred': ('INFO', 'rest'),
 }
-NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
+NUMBERS = frozenset(('reward_cents', 'risk_cents', 'volume_24h_contracts', 'attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
                      'market_rows', 'milestone_rows', 'exit_code', 'count',
                      'recovery_requests', 'recovery_attempts', 'repair_passes',
@@ -151,6 +152,7 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
             '/markets', '/events', '/milestones', '/portfolio/orders/queue_positions',
             '/markets/{ticker}', '/events/{event_ticker}', '/series/{series_ticker}',
             '/milestones/{milestone_id}', '/events/fee_changes', '/series/fee_changes')),
+         'screen': frozenset(('pass', 'volume', 'reward_risk', 'both', 'unknown')),
          'mode': frozenset(('flat', 'wait', 'attention', 'blocked', 'passive', 'passive_deferred',
                             'cancel_before_ioc', 'ioc'))}
 BLOCKERS = frozenset('''account_scope_conflict unbound_intent pending_fills exit_journal_scope_conflict

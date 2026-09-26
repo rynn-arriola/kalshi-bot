@@ -150,6 +150,20 @@ class InventoryDispatchSource:
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
             offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
 
+    def _shadow_screen(self, ticker, row, market):
+        """Review #9: log the proposed fill-avoidance rules; never blocks an entry."""
+        from .entry_screen import cents, screen
+        try:
+            result = screen(remaining_reward=row.gross_remaining_usd, quotes=row.quotes,
+                            volume_24h=getattr(market, 'volume_24h', None))
+            volume = result['volume_24h']
+            self.runtime.diagnostics.emit('entry_screen_shadow', market=ticker,
+                screen=result['verdict'], reward_cents=cents(result['reward']),
+                risk_cents=cents(result['risk']),
+                volume_24h_contracts=None if volume is None else int(volume))
+        except Exception:
+            self.shadow_screen_failures = getattr(self, 'shadow_screen_failures', 0)+1
+
     def _dispatch_result(self, result):
         if (result.priority in {SAFETY_CANCEL, QUOTE_CANCEL, DUE_IOC, PASSIVE_REDUCER}
                 and result.state == 'ACK'):
@@ -536,6 +550,7 @@ class InventoryDispatchSource:
                     entry_selection)
                 selection.stage_dispatch_evidence(candidate.batch_id, row,
                     tuple(request['client_order_id'] for request in requests))
+                self._shadow_screen(ticker, row, source.value)
                 return candidate
             exit_plan, passive = plan.exit, plan.passive
             journal = plan.inventory.exit_journal
