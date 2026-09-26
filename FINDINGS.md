@@ -1,5 +1,43 @@
 # Findings — kalshi-bot
 
+## 203. Full recovery after accepted orders — where the time goes — 2026-09-26
+
+**Scope:** Generation 172 child log (first ~15 minutes after deployment, 35
+repaired passes), saved status and a read-only copy of `account.db`.
+
+**MEASURED.** Full recovery (every accepted create/cancel still requires it,
+per D-113) took median 4.28 s: 1.22 s to the first `history_enumerated`
+(first venue snapshot plus full history from the opening boundary), 2.69 s
+(p90 3.10 s) between the two history events, 0.30 s to release. One
+annotated pass: pending fills/order lookups/second venue snapshot ~1.8 s,
+management refresh ~0.4 s, tail snapshot with financial sources ~0.9 s.
+Routine renewal's joined snapshot-and-tail took 1.19 s. On the ledger copy
+(1,581 orders), the full order settlement scan run inside every snapshot
+takes ~0.09 s; the audit scan is of the same order. No pending fills and no
+missing-order lookups occurred in the sampled passes.
+
+**VERIFIED redundancy.** After the first snapshot, history recovery always
+clears the account report, so a pass read the venue a second time before
+management even when only local history/settlement work had happened. The
+tail snapshot read afterwards already must match that report's signature
+before any release.
+
+**Repair (D-133):** when no pending fill, no missing-order lookup and no
+private event, reconnect or other reconciliation occurred since the first
+snapshot, that snapshot (still inside its original 5 s bound) is re-audited
+against the repaired ledger instead of re-read. Any blocker, mismatch, age or
+source change falls back to the ordinary read. The tail snapshot is required
+and must match the first snapshot, so the unchanged-venue window is now
+first→tail rather than second→tail. Expected saving is one venue snapshot and
+its writes per pass (INFERRED ~0.5–1 s); new status `recovery_phase_ms` and
+`recovery_final_reaudits` measure it after the next deployment.
+
+**Not changed:** accepted orders still force full recovery. Letting routine
+renewal absorb changes explained exactly by the bot's own acknowledged orders
+would remove most of the remaining recovery time but changes D-113's
+"source changes require ordinary recovery" boundary; that needs an operator
+decision.
+
 ## 202. Final pre-restart review and live-log check — 2026-09-25
 
 **Scope:** Read-only analysis of generation 170's retained child log

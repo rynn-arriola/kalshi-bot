@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-133 — Re-audit an unchanged first snapshot in full recovery
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Lets do it on priority order”, taking pending
+  item 1 (time spent in full recovery after accepted orders) first.
+- **Scope:** Finding 203. Full recovery re-audits its own first snapshot
+  instead of reading the venue a second time when nothing but local history
+  and settlement work ran since it; the mandatory tail snapshot must match it.
+  Adds per-phase recovery timing to status.
+- **Boundary:** No longer freshness window, no D-113 change: accepted orders
+  and other source changes still require ordinary full recovery. Relaxing that
+  is a separate operator decision. No restart or live action.
+
 ### D-132 — Final pre-restart review and live-log check
 
 - **Status:** ACCEPTED, 2026-09-25.

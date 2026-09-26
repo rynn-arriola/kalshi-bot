@@ -115,6 +115,13 @@ class ReconcileToken:
     started_monotonic: float
 
 
+# A bare account snapshot never proves these; release checks own them.
+SNAPSHOT_BLOCKERS = ("execution_history_not_proven", "private_stream_continuity_not_proven",
+                     "cash_snapshot_not_atomic", "starting_basis_not_proven",
+                     "settlement_and_correction_reconciliation_not_complete",
+                     "live_activation_not_authorized")
+
+
 @dataclass(frozen=True)
 class ReconciliationReport:
     snapshot: Snapshot
@@ -625,9 +632,7 @@ class AccountCoordinator:
         if (not self._current(token) or
                 (audit.writer_epoch, audit.writer_revision) != (self.writer.epoch, self.writer.revision)):
             return None  # A fill/reconnect may have overtaken the disk read.
-        blockers = ["execution_history_not_proven", "private_stream_continuity_not_proven",
-                    "cash_snapshot_not_atomic", "starting_basis_not_proven",
-                    "settlement_and_correction_reconciliation_not_complete", "live_activation_not_authorized"]
+        blockers = list(SNAPSHOT_BLOCKERS)
         blockers.extend(audit.blockers)
         self.report = ReconciliationReport(snapshot, now, audit.positions_match, audit.unresolved_intents,
                                            tuple(blockers), audit=audit)
@@ -662,6 +667,45 @@ class AccountCoordinator:
             return None
         self.report = replace(report, positions_match=audit.positions_match,
             unresolved_intents=audit.unresolved_intents, audit=audit)
+        return self.report
+
+    def report_mark(self, report):
+        """Exact source versions binding a just-finished reconciliation."""
+        if report is None or report is not self.report or self._token is not None:
+            return None
+        return (report, self.generation, self.revision, self.writer.epoch,
+                self._report_monotonic)
+
+    async def reaudit_recovered(self, mark, *, now):
+        """D-133: re-bind a recovery pass's own snapshot after local-only repair.
+
+        Valid only while no private event, reconnect or other reconciliation
+        has touched the account since ``mark`` and the snapshot is still inside
+        its original five-second bound. The unchanged venue snapshot is
+        re-audited against the repaired ledger; any blocker or mismatch returns
+        None so the caller reads a fresh snapshot. The caller's later tail
+        snapshot must still match this signature before any release.
+        """
+        self._check_owner()
+        if mark is None:
+            return None
+        report, generation, revision, epoch, started = mark
+        now = utc(now)
+        def unchanged():
+            return (self.report is None and self._token is None and self.connected
+                    and not self._processing and not self.writer.failed
+                    and (self.generation, self.revision, self.writer.epoch,
+                         self._report_monotonic) == (generation, revision, epoch, started)
+                    and timedelta(0) <= now-report.observed_at <= timedelta(seconds=5))
+        if report.audit is None or not unchanged():
+            return None
+        audit = await self.writer.reaudit(report.snapshot)
+        if (not unchanged()
+                or (audit.writer_epoch, audit.writer_revision) != (self.writer.epoch, self.writer.revision)
+                or audit.blockers or not audit.positions_match):
+            return None
+        self.report = replace(report, positions_match=audit.positions_match,
+            unresolved_intents=audit.unresolved_intents, blockers=SNAPSHOT_BLOCKERS, audit=audit)
         return self.report
 
     def current_report(self, now):

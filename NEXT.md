@@ -1,5 +1,17 @@
 # Active work queue
 
+## Pending issues in operator priority order (2026-09-26)
+
+1. **Full-recovery time after accepted orders:** D-133 done (published, not
+   deployed). Remaining larger saving needs an operator decision: let routine
+   renewal absorb snapshot changes explained exactly by the bot's own
+   acknowledged orders (changes D-113's boundary; Finding 203).
+2. Measure generation 172 over hours (item 0 below).
+3. Post-fill market cooldown and 4. repeat-withdrawal ranking/threshold:
+   operator strategy decisions with data.
+5. History-proof start (Finding 200): operator decision.
+8. Finish the line-by-line review of modules listed in Finding 200.
+
 ## Deploy D-129–D-132 together (Findings 196–202)
 
 0. **Deployed 2026-09-26 as generation 172** (see STATUS). Measure over the

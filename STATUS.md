@@ -1,5 +1,14 @@
 # Current status
 
+## D-133 full-recovery re-audit — 2026-09-26 (published, not deployed)
+
+Generation 172 keeps running unchanged. Finding 203 measured full recovery at
+median 4.28 s per pass; D-133 removes the redundant second venue snapshot when
+nothing changed after the first one, and adds per-phase timing. Deploy only by
+an explicit operator restart/Command 1; after deployment compare
+`recovery_elapsed_ms`, `recovery_phase_ms` and `recovery_final_reaudits` with
+Finding 203.
+
 ## D-129–D-132 deployed by Command 1 — 2026-09-26
 
 **Deployed and running.** The operator invoked `Command 1`. Generation 170

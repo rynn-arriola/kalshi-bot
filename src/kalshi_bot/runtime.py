@@ -180,6 +180,8 @@ class RecoveryRuntime:
         self.recovery_phase = 'idle'
         self.recovery_last_phase = 'idle'
         self.recovery_elapsed_ms = 0
+        self.recovery_phase_ms = {}
+        self.recovery_final_reaudits = 0
         self.steady_refresh_attempts = 0
         self.steady_refresh_completed = 0
         self.steady_refresh_escalations = 0
@@ -609,6 +611,26 @@ class RecoveryRuntime:
     def live_components_enabled(self):
         from .live_session import permits
         return permits(self.live_session, self.writer)
+
+    @property
+    def recovery_phase(self):
+        return self.__dict__.get('_recovery_phase', 'idle')
+
+    @recovery_phase.setter
+    def recovery_phase(self, phase):
+        # Diagnostic wall time per phase of the latest full pass; never proof.
+        clock = self.__dict__.get('clock')
+        now = clock() if clock is not None else None
+        previous = self.__dict__.get('_recovery_phase', 'idle')
+        since = self.__dict__.get('_recovery_phase_since')
+        live = self.__dict__.setdefault('_recovery_phase_live', {})
+        if previous != 'idle' and since is not None and now is not None:
+            live[previous] = live.get(previous, 0)+max(0, int((now-since)*1000))
+        if phase == 'idle':
+            if previous != 'idle':
+                self.recovery_phase_ms = dict(live)
+            live.clear()
+        self._recovery_phase, self._recovery_phase_since = phase, now
 
     def request_recovery(self, reason='source_change'):
         self._steady_account_scope = None
@@ -1391,6 +1413,7 @@ class RecoveryRuntime:
         first = await self.account.reconcile(reads, now=self.now)
         if first is None:
             return False
+        first_mark, lookups = self.account.report_mark(first), reads.order_lookups
         history_ingress = self.ingress_revision
         self.recovery_phase = 'history'
         history_started = self.clock()
@@ -1426,7 +1449,18 @@ class RecoveryRuntime:
             if generation != self.account.generation or not self.account.connected:
                 return False
         self.recovery_phase = 'final_snapshot'
-        final = await self.account.reconcile(reads, now=self.now)
+        final = None
+        if (self.accounting_boundary is not None and not pending
+                and reads.order_lookups == lookups and history.enumeration is not None
+                and int(utc(self.now()).timestamp()*1_000_000) > history.enumeration.eligible_end_us):
+            # D-133: nothing but local history/settlement work ran since the
+            # first snapshot. Re-audit it instead of reading the venue again;
+            # the tail snapshot below must still match it before release.
+            final = await self.account.reaudit_recovered(first_mark, now=self.now())
+            self.recovery_final_reaudits += final is not None
+        reaudited = final is not None
+        if final is None:
+            final = await self.account.reconcile(reads, now=self.now)
         if final is None or generation != self.account.generation:
             return False
         remaining = await self.writer.pending_fills(self.account.subaccount)
@@ -1472,6 +1506,8 @@ class RecoveryRuntime:
                 final, prepared_accounting = reconciled
                 history_reports.append(history)
                 release_receipt_ids += (history.enumeration.receipt_id,)
+            elif reaudited:
+                return False  # A re-audited snapshot never releases without a fresh read.
             if (final is None or generation != self.account.generation
                     or self.account.report is not final or not self.account.connected
                     or self.engine.private or self.account._processing):
@@ -1957,6 +1993,8 @@ class RecoveryRuntime:
             recovery_attempt_counts=dict(self.recovery_attempt_counts),
             recovery_phase=self.recovery_phase, recovery_last_phase=self.recovery_last_phase,
             recovery_elapsed_ms=self.recovery_elapsed_ms,
+            recovery_phase_ms=dict(self.recovery_phase_ms),
+            recovery_final_reaudits=self.recovery_final_reaudits,
             recovery_action_progress=self.recovery_action_progress,
             recovery_dispatch_waits=self.recovery_dispatch_waits,
             recovery_dispatch_wait_ms=self.recovery_dispatch_wait_ms,

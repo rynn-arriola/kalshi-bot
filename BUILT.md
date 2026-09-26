@@ -1,5 +1,13 @@
 # What exists
 
+## Full-recovery first-snapshot re-audit — D-133
+
+Full recovery skips its second venue snapshot when only local history work ran
+since the first one, re-auditing that snapshot (read-only writer `reaudit`)
+inside its original 5 s bound; the tail snapshot must still match it. Status
+adds `recovery_phase_ms` and `recovery_final_reaudits`. See Finding 203; not
+deployed.
+
 ## Passive reducer reprice settling — D-132
 
 A lone exact passive exit order is kept until a new target price has held for

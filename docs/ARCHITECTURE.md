@@ -103,6 +103,9 @@ transaction-local managed-exit classification set, preserving all individual
 order, fill and intent checks. Full recovery collects financial documents with
 its final snapshot; paused refresh gives the supervisor the normal fresh-report
 interval to finish its flat check before any further renewal.
+D-133: when only local history/settlement work ran after a full pass's first
+snapshot, that snapshot is re-audited within its original five-second bound
+instead of being read again; the mandatory tail snapshot must still match it.
 
 D-113 separates routine startup/refill renewal from full recovery. After a
 successful operational release, a process-local anchor retains exact source
