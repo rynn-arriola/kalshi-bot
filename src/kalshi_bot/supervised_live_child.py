@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import kalshi_bot
-from .config import BotConfig
+from .config import BotConfig, active as active_config, activate as activate_config
 from .live import (DATA, IDENTITY, ROOT, LaunchInputs, refresh_candidate_inputs,
                    recovery_launch_inputs, run as run_live)
 from .live_session import LiveSession
@@ -441,7 +441,7 @@ async def _run_live(args, scope, endpoint, protocol, control, power, diagnostics
     lease = WindowsLease(IDENTITY)
     lease_acquired = False
     try:
-        BotConfig.load(ROOT / "config" / "bot.json")
+        activate_config(BotConfig.load(ROOT / "config" / "bot.json"))  # D-142
         lease.__enter__()
         lease_acquired = True
         with WindowsControlMutex(scope.scope_id,

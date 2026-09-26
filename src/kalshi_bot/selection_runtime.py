@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from .config import BotConfig
+from .config import BotConfig, active as active_config, activate as activate_config
 from .quoting import Program
 from .ranking import seconds
 from .selection import MarketSelector, SelectionReport
@@ -113,7 +113,7 @@ class RuntimeSelection:
                 r.account.generation, r.writer.epoch, r.writer.revision)
 
     def _priority_candidate(self, rows, now):
-        threshold = BotConfig().priority_projected_reward_usd
+        threshold = active_config().priority_projected_reward_usd
         candidates = []
         for row in rows:
             end = row.earning_until or row.program_end
@@ -267,7 +267,7 @@ class RuntimeSelection:
         self.last_proposal = dict(observed_at=utc(self.runtime.now()).isoformat(),
             additions=len(result.additions), blockers=list(result.blockers),
             priority_additions=sum(row.gross_remaining_usd is not None
-                and row.gross_remaining_usd >= BotConfig().priority_projected_reward_usd
+                and row.gross_remaining_usd >= active_config().priority_projected_reward_usd
                 for row in result.additions),
             addition_samples=[dict(ticker=row.ticker,
                 projected_remaining_usd=str(row.gross_remaining_usd))
@@ -276,7 +276,7 @@ class RuntimeSelection:
             priority_revalidation_samples=sorted(self._priority_refresh)[:8],
             fallback_reason=('priority_candidates_resolved' if any(
                 row.gross_remaining_usd is not None
-                and row.gross_remaining_usd < BotConfig().priority_projected_reward_usd
+                and row.gross_remaining_usd < active_config().priority_projected_reward_usd
                 for row in result.additions) else None),
             exclusion_counts=counts, exclusion_samples=list(result.exclusions[:8]),
             historical_only=True)
@@ -328,7 +328,7 @@ class RuntimeSelection:
         for key, value in tuple(self._dispatch_candidates.items()):
             if value['ticker'] == row.ticker:
                 self._dispatch_candidates.pop(key)
-        threshold = BotConfig().priority_projected_reward_usd
+        threshold = active_config().priority_projected_reward_usd
         self._dispatch_candidates[batch_id] = dict(ticker=row.ticker,
             program_id=row.program_id, candidate_at=utc(self.runtime.now()).isoformat(),
             projected_remaining_usd=(None if row.gross_remaining_usd is None
@@ -470,7 +470,7 @@ class RuntimeSelection:
         self._initial_progress(ticker)
 
     def _clean_priority_memory(self, now):
-        threshold = BotConfig().priority_projected_reward_usd
+        threshold = active_config().priority_projected_reward_usd
         for ticker, hint in tuple(self._priority_hints.items()):
             if (ticker not in self.runtime.engine.market_shard
                     or hint.projected_remaining(now) < threshold):
@@ -516,7 +516,7 @@ class RuntimeSelection:
         return bool(self._priority_refresh)
 
     def _priority_only(self, result, reason):
-        threshold = BotConfig().priority_projected_reward_usd
+        threshold = active_config().priority_projected_reward_usd
         priority = tuple(row for row in result.additions
             if row.gross_remaining_usd is not None
             and row.gross_remaining_usd >= threshold)
@@ -586,7 +586,7 @@ class RuntimeSelection:
             continuations=r.maintenance.continuation() if r.maintenance is not None else None,
             entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True)
         if not initial_ready:
-            config = BotConfig()
+            config = active_config()
             priority = sum(row.gross_remaining_usd is not None
                            and row.gross_remaining_usd >= config.priority_projected_reward_usd
                            for row in result.additions)

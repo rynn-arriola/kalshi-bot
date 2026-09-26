@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 208. The $300 deposit blocked trading and left entries unprotected — 2026-09-26
+
+**VERIFIED.** A $300 applied deposit at 03:33:26 UTC raised venue cash to
+$786.85 while expected cash stayed $486.85. Release reported
+`accounting_cash_unexplained` and `cash_activity_unattributed`; recovery
+exhausted at 03:34:05 and entries stayed blocked. Design review: no supported
+path accepted post-baseline funding (baseline immutable), and reward payouts
+(no API record) would block identically. Fill-risk sampling stopped (zero
+samples after 03:34), so 30 resting entries were unprotected; the operator
+stopped the bot (all 30 canceled by 03:40:49). The stop could not prove flat
+without a current account and reached `shutdown_timeout`; only the exact
+verified child PID 43064 was then terminated with operator approval.
+Repairs: D-141 (cash attribution, safety pause, self-recovery) and D-142.
+
 ## 207. Startup allowance and own-order renewal fallbacks — 2026-09-26
 
 **MEASURED — startup margin.** Child start to `runtime_started` took 55.9 s

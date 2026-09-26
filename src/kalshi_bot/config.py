@@ -7,9 +7,35 @@ from pathlib import Path
 from .values import InvalidData, decimal, integer
 
 
+# Operator-approved (capital, contracts per order, six-hour loss stop) sets.
+APPROVED_MONEY = frozenset((
+    (Decimal("500"), Decimal("10"), Decimal("25")),  # original reference profile
+    (Decimal("780"), Decimal("30"), Decimal("25")),  # D-142 after the $300 deposit
+))
+_ACTIVE = None
+
+
+def active():
+    """The approved configuration the running bot loaded (D-142).
+
+    Live startup activates config/bot.json; without it (offline tools and
+    tests) this is the reference profile. Never a silent mix of the two.
+    """
+    return _ACTIVE if _ACTIVE is not None else BotConfig()
+
+
+def activate(config):
+    global _ACTIVE
+    if not isinstance(config, BotConfig):
+        raise InvalidData('approved configuration required')
+    _ACTIVE = config
+    return config
+
+
 @dataclass(frozen=True)
 class BotConfig:
     schema_version: int = 1
+    # Reference profile. The running bot uses config/bot.json via active() (D-142).
     capital_usd: Decimal = Decimal("500")
     entry_contracts: Decimal = Decimal("10")
     max_resting_entries: int = 50  # D-138; must equal risk.MAX_RESTING_ENTRIES
@@ -33,9 +59,7 @@ class BotConfig:
                      "priority_projected_reward_usd"):
             object.__setattr__(self, name, decimal(getattr(self, name)))
         integer(self.schema_version, 1, 1)
-        if (self.capital_usd, self.entry_contracts, self.window_stop_usd) != (
-            Decimal("500"), Decimal("10"), Decimal("25")
-        ):
+        if (self.capital_usd, self.entry_contracts, self.window_stop_usd) not in APPROVED_MONEY:
             raise InvalidData("unapproved money/size setting")
         if (self.minimum_entry_retained_value != Decimal("0.70")
                 or self.minimum_projected_reward_usd != Decimal("1")

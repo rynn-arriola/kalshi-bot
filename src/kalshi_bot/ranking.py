@@ -10,7 +10,7 @@ from datetime import datetime
 from decimal import Decimal, localcontext
 
 from .quoting import Program, Quote, program_plans
-from .values import InvalidData, decimal, identity, integer, utc
+from .values import InvalidData, count, decimal, identity, integer, utc
 
 
 def seconds(delta):
@@ -60,8 +60,11 @@ def payout_warnings(remaining):
 
 
 class RankingBoard:
-    def __init__(self, capacity=128):
+    def __init__(self, capacity=128, quantity=None):
+        from .config import active
         self.capacity = integer(capacity, 1, 1024)
+        # D-142: hypothetical reference pairs use the approved entry size.
+        self.quantity = active().entry_contracts if quantity is None else count(quantity)
         self.markets = {}
 
     def invalidate(self, ticker):
@@ -95,7 +98,7 @@ class RankingBoard:
         # Never retain an old optimistic ranking when new evidence cannot parse.
         rows = []
         plans = program_plans(book, programs, bands, now=now, market_open=market_open,
-                              reflected=reflected, proposed=proposed)
+                              reflected=reflected, proposed=proposed, quantity=self.quantity)
         for program, plan in zip(programs, plans):
             statuses = tuple(quote_status(q, plan.bid if q.side == 'bid' else plan.ask, program)
                              for q in plan.quotes)

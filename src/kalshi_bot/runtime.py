@@ -16,7 +16,7 @@ from .adapters import parse_fill
 from .books import BookConnection
 from .continuity import PrivateEpoch, assess_continuity, starting_candidate
 from .engine import EventEngine
-from .config import BotConfig
+from .config import BotConfig, active as active_config
 from .management import InventoryManager
 from .metadata_scheduler import MetadataScheduler
 from .quota import QuotaUnavailable
@@ -594,7 +594,7 @@ class RecoveryRuntime:
         report = self.account.current_report(self.now())
         return await self.writer.reserve_entry(request,
             attempt_id=request['client_order_id'], view=view,
-            config=BotConfig(), now=self.now(),
+            config=active_config(), now=self.now(),
             free_cash=report.snapshot.available_balance if report else 0,
             account_known=False, offline_fixture=False)
 
@@ -603,7 +603,74 @@ class RecoveryRuntime:
         """Operator/recovery pause or durable hard loss hold; never a cap reset."""
         window = getattr(self.accounting_result, 'window', None)
         return bool((self.live_session is not None and self.live_session.entries_paused)
-                    or (window is not None and window.held))
+                    or (window is not None and window.held)
+                    or self.__dict__.get('_recovery_safety_pause', False))
+
+    # D-141: a runtime that cannot prove its account also cannot protect resting
+    # entries (fill-risk reflection needs a current account). Pull them until a
+    # full recovery succeeds, and retry that recovery on a slow bounded cadence
+    # instead of waiting for an operator.
+    SAFETY_PAUSE_STATES = frozenset(('blocked_retry_exhausted', 'blocked_scope_ambiguous',
+                                     'durable_or_engine_failure'))
+    # Quick first, then bounded: most causes clear in minutes (funding status,
+    # venue lag); a persistent one costs one read-only pass every 5 minutes.
+    EXHAUSTED_RETRY_SECONDS = (30, 60, 120, 300)
+
+    @property
+    def recovery_state(self):
+        return self.__dict__.get('_recovery_state')
+
+    @recovery_state.setter
+    def recovery_state(self, state):
+        self._recovery_state = state
+        if state in self.SAFETY_PAUSE_STATES:
+            self._recovery_blocked_at = self.clock()
+            if not self.__dict__.get('_recovery_safety_pause', False):
+                self._recovery_safety_pause = True
+                self.recovery_safety_pauses = self.__dict__.get('recovery_safety_pauses', 0)+1
+                diagnostics = self.__dict__.get('diagnostics')
+                if diagnostics is not None:
+                    diagnostics.emit('recovery_safety_pause', count=self.recovery_safety_pauses)
+                # The live refresh owner drains within half a second (_safety_tick).
+        elif state == 'repaired_entries_blocked':
+            self._recovery_safety_pause = False
+            self._exhausted_retries = 0
+
+    def _safety_tick(self):
+        """D-141: pull entries while unsafe; retry recovery on its schedule."""
+        self._retry_exhausted_recovery()
+        if self.__dict__.get('_recovery_safety_pause', False):
+            self.request_entry_drain()  # Idempotent: exact owned entries only.
+
+    def _retry_exhausted_recovery(self):
+        """D-141: re-attempt full recovery on 30 s, 1, 2, then every 5 minutes."""
+        retries = self.__dict__.get('_exhausted_retries', 0)
+        wait = self.EXHAUSTED_RETRY_SECONDS[min(retries, len(self.EXHAUSTED_RETRY_SECONDS)-1)]
+        if (self.recovery_state == 'blocked_retry_exhausted' and self.account_subscribed
+                and not self.recovery_requested.is_set() and not self.writer.failed
+                and not self.stop_requested.is_set()
+                and self.clock()-self.__dict__.get('_recovery_blocked_at', self.clock()) >= wait):
+            self._recovery_blocked_at = self.clock()
+            self._exhausted_retries = retries+1
+            self.request_recovery('exhausted_retry')
+            return True
+        return False
+
+    @property
+    def accounting_result(self):
+        return self.__dict__.get('_accounting_result')
+
+    @accounting_result.setter
+    def accounting_result(self, result):
+        self._accounting_result = result
+        # D-141: every external cash movement the release accepted is visible.
+        for item in getattr(result, 'cash_adjustments', ()) or ():
+            counts = self.__dict__.setdefault('cash_adjustment_counts', {})
+            counts[item.kind] = counts.get(item.kind, 0)+1
+            diagnostics = self.__dict__.get('diagnostics')
+            if diagnostics is not None:
+                diagnostics.emit('cash_adjusted', cash_kind=item.kind,
+                                 amount_cents=int(item.amount*100))
 
     @property
     def entry_allowed(self):
@@ -1926,6 +1993,7 @@ class RecoveryRuntime:
         while not self.stop_requested.is_set():
             self._resume_risk_drain()
             self._request_post_drain_recovery()
+            self._safety_tick()
             if (self.account_subscribed and self.recovery_state == 'repaired_entries_blocked'
                     and not self.recovery_requested.is_set()
                     and (self.dispatch_supervisor is None
@@ -2181,6 +2249,10 @@ class RecoveryRuntime:
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,
             own_order_renewal=dict(self.own_order_renewal),
+            recovery_safety_pause=bool(self.__dict__.get('_recovery_safety_pause', False)),
+            recovery_safety_pauses=self.__dict__.get('recovery_safety_pauses', 0),
+            exhausted_retries=self.__dict__.get('_exhausted_retries', 0),
+            cash_adjustment_counts=dict(self.__dict__.get('cash_adjustment_counts', {})),
             chained_recoveries=self.chained_recoveries,
             history_floor=self.account.history_floor,
             routine_account_refresh=dict(attempts=self.routine_refresh_attempts,

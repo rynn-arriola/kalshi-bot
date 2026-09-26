@@ -730,6 +730,8 @@ class LaunchInputTests(unittest.TestCase):
                   patch.object(live, 'run', new=AsyncMock(return_value={'state':'STOPPED_FLAT'})),
                   patch.object(live, 'save_result', side_effect=OSError('synthetic disk failure')),
                   patch('builtins.print') as output):
+                import kalshi_bot.config as bot_config
+                self.addCleanup(setattr, bot_config, '_ACTIVE', bot_config._ACTIVE)
                 self.assertEqual(live.main(['run','--live','--initialize']), 2)
             result = json.loads(output.call_args.args[0])
             self.assertEqual(result['state'], 'NEEDS_ATTENTION')

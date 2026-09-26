@@ -304,13 +304,17 @@ def _cash_activity_rows(evidence):
             yield kind, event_key, payload, digest(encode([kind, event_key, payload]))
 
 
-def cash_activity_matches_baseline(ledger, evidence):
+def cash_activity_matches_baseline(ledger, evidence, *, allow_new_funding=False):
     """Prove approved activity, including narrow lifecycle enrichment.
 
     Kalshi may later add ``finalized_ts`` to an already-approved, applied
     pre-boundary deposit. Such a row then leaves the relevant interval, but the
     complete exhausted funding source still proves its identity and economics.
     No other changed field, status, record, later timestamp or omission passes.
+
+    D-141: with ``allow_new_funding`` a funding record absent from the baseline
+    is left to cash attribution; approved records must still match exactly and
+    any new transfer still fails.
     """
     baseline = ledger.connection.execute(
         'SELECT payload FROM accounting_baseline WHERE id=1').fetchone()
@@ -336,7 +340,9 @@ def cash_activity_matches_baseline(ledger, evidence):
     cash_rows = tuple(_cash_activity_rows(evidence))
     current = {(kind, key): (fingerprint, payload)
                for kind, key, payload, fingerprint in cash_rows}
-    if len(current) != len(cash_rows) or set(current)-set(expected):
+    extra = set(current)-set(expected)
+    if len(current) != len(cash_rows) or (extra and not (
+            allow_new_funding and all(kind == 'funding' for kind, _ in extra))):
         return False
     history = {('funding', encode([row.kind, row.record_id])): json.loads(encode(row))
                for row in evidence.funding_history}

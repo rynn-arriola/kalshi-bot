@@ -15,7 +15,7 @@ import shutil
 import time
 from uuid import uuid4
 
-from .config import BotConfig
+from .config import BotConfig, active as active_config, activate as activate_config
 from .candidate_inputs import CandidateInputs
 from .candidate_preparation import prepare_candidates
 from .dispatch_sources import InventoryDispatchSource
@@ -546,7 +546,7 @@ def main(argv=None):
                     args.inputs, datetime.now(timezone.utc), NO_LOG))
             code = 0
         else:
-            BotConfig.load(ROOT/'config'/'bot.json')  # Preserve approved risk configuration.
+            activate_config(BotConfig.load(ROOT/'config'/'bot.json'))  # D-142: run on approved file.
             if args.command == 'check-inputs':
                 inputs = LaunchInputs.load(args.inputs, datetime.now(timezone.utc))
                 result = dict(state='INPUTS_PARSED', tickers=inputs.tickers,

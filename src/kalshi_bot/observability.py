@@ -37,6 +37,8 @@ EVENTS = {
     'maintenance_cycle_finished': ('INFO', 'inventory'),
     'command_reclaim_failed': ('WARNING', 'writer'),
     'history_scope_high': ('WARNING', 'recovery'),
+    'cash_adjusted': ('WARNING', 'accounting'),
+    'recovery_safety_pause': ('WARNING', 'recovery'),
     'supervisor_started': ('INFO', 'supervisor'),
     'supervisor_stopped': ('INFO', 'supervisor'),
     'supervisor_failed': ('ERROR', 'supervisor'),
@@ -102,10 +104,10 @@ NUMBERS = frozenset(('attempt', 'generation', 'revision', 'backlog', 'http_statu
                      'checkpoint_failures', 'logging_backlog',
                      'ahead_hundredths', 'queue_hundredths', 'depth_hundredths',
                      'depletion_hundredths', 'queue_age_ms', 'horizon_ms', 'eta_ms',
-                     'latch_ms', 'order_count', 'rejected_count', 'dwell_ms'))
+                     'latch_ms', 'order_count', 'rejected_count', 'dwell_ms', 'amount_cents'))
 # Fixed vocabulary only: arbitrary exception text and source identifiers must
 # never be admitted as human-readable diagnostic reasons.
-RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed own_order_renewal_failed
+RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_failed own_order_renewal_failed exhausted_retry
     steady_refresh_failed mutation_observed mutation_persisted safety_mutation_persisted
     risk_cancel_outcome risk_cancel_retry_exhausted post_drain quota_restored private_fill_pending private_position
     private_scope_ambiguous private_order_pending account_subscribed opening_approved
@@ -123,6 +125,7 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
              'incomplete_pair_below_minimum', 'persistently_unscoring',
              'earning_window_ended')),
          'phase': RECOVERY_PHASES,
+         'cash_kind': frozenset(('deposit', 'withdrawal', 'unattributed_credit')),
          'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',
                               'timeout', 'io', 'recovered', 'checkpoint_failed',
                               # D-136 own-order renewal reasons

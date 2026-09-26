@@ -63,6 +63,7 @@ class ReleaseResult:
     venue_handoff_proven: bool = False
     live_ready: bool = False
     audit: object = None  # Writer-issued post-release audit, never a caller rebase.
+    cash_adjustments: tuple = ()  # D-141 adjustments committed with this release.
 
 
 def _approval_source(conn, opening, captured_digest):
@@ -569,15 +570,15 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
     if opening and evidence.proposed_boundary.isoformat() != opening['boundary']:
         blockers.append('opening_boundary_changed')
     holds = set(entry_blockers(ledger))-{'accounting_lease_required'}
-    attributed_cash_hold = ({'cash_activity_unattributed'}
-        if ('cash_activity_unattributed' in holds
-            and cash_activity_matches_baseline(ledger, evidence)) else set())
     settlement_proof = (_closed_settlement_proof(ledger, evidence.settlements,
         report.snapshot, opening) if 'settlement_reconciliation_required' in holds else None)
     attributed_settlement_hold = ({'settlement_reconciliation_required'}
         if settlement_proof is not None else set())
-    blockers.extend(holds-TRANSIENT-attributed_cash_hold-attributed_settlement_hold)
+    other_holds = holds-TRANSIENT-attributed_settlement_hold-{'cash_activity_unattributed'}
+    blockers.extend(other_holds)
+    cash_plan = None
     if baseline:
+        from . import cash_attribution
         local = {r[0]: decimal(Decimal(r[1])) for r in conn.execute('SELECT * FROM accounting_cash')}
         venue = {r.exchange_index: r.available for r in evidence.cash.exchange_balances}
         try:
@@ -585,31 +586,57 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
         except InvalidData:
             blockers.append('accounting_fee_reservation_missing')
             held = {}
-        if set(local) != set(venue) or any(
-                venue.get(k, ZERO) > v or venue.get(k, ZERO) < max(ZERO, v-held.get(k, ZERO))
-                for k, v in local.items()):
+        # D-141: deposits, withdrawals and reward credits are explained, never
+        # a permanent stop. A credit is only accepted from an otherwise fully
+        # consistent account; missing cash still blocks.
+        cash_plan = cash_attribution.plan(conn, evidence, local=local, venue=venue,
+                                          held=held, allow_credit=not blockers)
+        if cash_plan.unexplained:
             blockers.append('accounting_cash_unexplained')
+    # Approved baseline activity must still match exactly (omission or changed
+    # economics block); only genuinely new funding is left to D-141.
+    if 'cash_activity_unattributed' in holds and not (
+            cash_activity_matches_baseline(ledger, evidence, allow_new_funding=True)
+            and (cash_plan is None or cash_plan.activity_explained)):
+        blockers.append('cash_activity_unattributed')
     if blockers:
         return ReleaseResult(False, tuple(sorted(set(blockers)))), None
+    adjustments = cash_plan.adjustments if cash_plan is not None else ()
     with ledger.transaction():
         # Recheck revocation immediately at the commit boundary.
         if not fence.current():
             return ReleaseResult(False, ('accounting_source_stale',)), None
         resolved = tuple(tuple(r) for r in conn.execute(
             'SELECT code,evidence_digest,first_seen_at FROM accounting_holds ORDER BY code'))
+        adjustment_digests = []
+        for item in adjustments:
+            # Deterministic payload: a retried release deduplicates, never doubles.
+            record = encode(dict(source_key=item.source_key, exchange_index=item.exchange_index,
+                                 amount=item.amount, kind=item.kind, policy='D-141'))
+            adjustment_digest, added = _append(ledger, 'cash_adjustment', encode([item.source_key]),
+                                               record, now)
+            if not added and not conn.execute(
+                    "SELECT 1 FROM accounting_events WHERE digest=? AND kind='cash_adjustment'",
+                    (adjustment_digest,)).fetchone():
+                return ReleaseResult(False, ('accounting_journal_full',)), None
+            adjustment_digests.append(adjustment_digest)
         payload = encode(dict(checkpoint=opening['digest'], writer_epoch=epoch,
             writer_revision=revision, generation=fence.generation, source_revision=fence.revision,
             history=continuity.receipt_ids, private_epoch=continuity.stream_epoch_id,
             resolved=resolved, cash=evidence.cash, settlements=settlement_proof,
+            cash_adjustments=[a.source_key for a in adjustments],
             at=utc(now), policy='D-068'))
         fingerprint, inserted = _append(ledger, 'operational_release', uuid4().hex, payload, now)
         if not inserted:
             return ReleaseResult(False, ('accounting_journal_full',)), None
+        if adjustments:
+            from . import cash_attribution
+            cash_attribution.apply(conn, adjustments, event_digests=adjustment_digests, at=utc(now))
         conn.executemany('DELETE FROM accounting_holds WHERE code=?', ((code,) for code in holds))
         from .risk import WindowRisk
         window = WindowRisk(ledger).observe(now)
         lease = AccountingLease(uuid4().hex, epoch, opening['digest'], fingerprint, fence, evidence.cash)
-    return ReleaseResult(True, (), fingerprint, window), lease
+    return ReleaseResult(True, (), fingerprint, window, cash_adjustments=adjustments), lease
 
 
 def validate_cash(ledger):
@@ -670,6 +697,11 @@ def validate_cash(ledger):
                 'SELECT quantity FROM closes WHERE fill_id=?', (row['id'],))), ZERO)
             unit = decimal(data[3]) if data[1] == 'bid' else 1-decimal(data[3])
             expected[order.exchange_index] += matched-decimal(data[2])*unit-decimal(data[4])
+    from . import cash_attribution
+    for shard, amount in cash_attribution.totals(conn).items():
+        if shard not in expected:
+            raise InvalidData('cash adjustment outside approved shards')
+        expected[shard] += amount  # D-141 journaled external movements.
     actual = {r[0]: decimal(Decimal(r[1])) for r in conn.execute('SELECT * FROM accounting_cash')}
     if actual != expected:
         raise InvalidData('derived cash differs from retained fills')

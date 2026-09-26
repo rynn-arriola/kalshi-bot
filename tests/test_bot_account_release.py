@@ -193,14 +193,15 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('cash_activity_unattributed',
                          (await self.writer.accounting_status()).holds)
 
-    async def test_new_cash_activity_after_baseline_remains_blocked(self):
+    async def test_applied_deposit_not_in_cash_blocks_as_missing_cash(self):
+        # D-141: an applied deposit is credited, so cash that lacks it is missing.
         await self.refresh()
         later = self.deposit | dict(id='later-deposit', amount_cents=1,
             created_ts=int((BOUNDARY+timedelta(seconds=1)).timestamp()))
         result = await self.release(reads=Reads(self.cash,
             deposits=(self.deposit, later), intra_transfers=(self.transfer,)))
         self.assertFalse(result.released)
-        self.assertIn('cash_activity_unattributed', result.blockers)
+        self.assertIn('accounting_cash_unexplained', result.blockers)
 
     async def test_approved_deposit_finalization_enrichment_releases(self):
         await self.refresh()
@@ -336,9 +337,10 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
         await self.ready()
         self.assertTrue((await self.reserve()).reserved)
 
-    async def test_unexplained_cash_cannot_become_spendable(self):
-        self.cash = balance() | dict(balance_dollars='501', balance=50100,
-            balance_breakdown=[dict(exchange_index=0, balance='301'),
+    async def test_missing_cash_still_blocks(self):
+        # D-141 accepts surplus credits (reward payouts) but never missing cash.
+        self.cash = balance() | dict(balance_dollars='499', balance=49900,
+            balance_breakdown=[dict(exchange_index=0, balance='299'),
                                dict(exchange_index=1, balance='200')])
         await self.refresh()
         self.assertIn('accounting_cash_unexplained', (await self.release()).blockers)

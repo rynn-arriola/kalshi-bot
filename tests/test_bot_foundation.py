@@ -44,14 +44,19 @@ class ValueConfigTests(unittest.TestCase):
             with self.assertRaises(InvalidData): price(value)
 
     def test_policy_defaults_follow_verified_poly_exposure_reference(self):
+        # D-142: the running bot uses the approved file; defaults stay the
+        # original reference profile used by offline fixtures.
         config = BotConfig.load(ROOT / "config/bot.json")
-        self.assertEqual(config.managed_market_slots, 20)
+        self.assertEqual((config.capital_usd, config.entry_contracts, config.window_stop_usd),
+                         (D(780), D(30), D(25)))
+        self.assertEqual(config.managed_market_slots, 16)
         self.assertEqual(config.minimum_entry_retained_value, D('.70'))
         self.assertEqual(config.minimum_projected_reward_usd, D(1))
         self.assertEqual(config.priority_projected_reward_usd, D(2))
-        self.assertEqual(config.portfolio_exposure_usd, 300)
-        self.assertEqual(config, BotConfig())
-        self.assertEqual(config.market_exposure_usd, 90)
+        self.assertEqual(config.portfolio_exposure_usd, 780)
+        self.assertLessEqual(config.portfolio_exposure_usd, config.capital_usd)
+        self.assertEqual(config.market_exposure_usd, 270)
+        self.assertEqual(BotConfig().portfolio_exposure_usd, 300)  # reference
         self.assertTrue(config.live_blockers())
 
     def test_portfolio_formula(self):

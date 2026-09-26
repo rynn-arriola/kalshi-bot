@@ -27,6 +27,11 @@ def validate_tick(value: Decimal, bands: tuple[PriceBand, ...]) -> Decimal:
     return p
 
 
+def active_config():
+    from .config import active
+    return active()
+
+
 def create_payload(*, ticker: str, client_id: str, outcome: str, outcome_price: Decimal,
                    quantity: Decimal, bands: tuple[PriceBand, ...], reducing: bool = False,
                    position: Decimal = Decimal(0), expiration_time: int | None = None) -> dict:
@@ -41,8 +46,9 @@ def create_payload(*, ticker: str, client_id: str, outcome: str, outcome_price: 
     if reducing:
         if pos == 0 or q > abs(pos) or side != ("ask" if pos > 0 else "bid"):
             raise InvalidData("reducer must strictly reduce known exact inventory")
-    elif q != 10 or pos != 0:
-        raise InvalidData("entries require size 10 and flat inventory")
+    elif q != active_config().entry_contracts or pos != 0:
+        # D-142: the operator-approved entry size from the active config.
+        raise InvalidData("entries require the approved size and flat inventory")
     # Kalshi V2 rejects reduce_only on resting GTC orders. Passive reducers are
     # still reducer-authorized by the durable managed-exit proof; only IOC/FOK
     # may ask the venue to enforce reduce_only.

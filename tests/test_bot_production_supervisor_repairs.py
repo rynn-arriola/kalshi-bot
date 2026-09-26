@@ -122,7 +122,7 @@ class ProductionRepairTests(unittest.IsolatedAsyncioTestCase):
                                              lambda _value:WindowsLease(identity)))
             stack.enter_context(patch.object(child, 'WindowsControlMutex',
                                              return_value=mutex))
-            stack.enter_context(patch.object(child.BotConfig, 'load'))
+            stack.enter_context(patch.object(child.BotConfig, 'load', return_value=child.BotConfig()))
             stack.enter_context(patch.object(child.SupervisorStore,
                                              'read_only_recovery_fence', return_value=None))
             stack.enter_context(patch.object(child.LaunchInputs, 'load',

@@ -283,10 +283,10 @@ class MutationDispatcher:
                 return DispatchResult('WAITING', ticker, priority,
                     current.attempt_id, ('candidate_route_changed',), 0.0)
             if priority == ENTRY_PAIR:
-                from .config import BotConfig
+                from .config import active as active_config
                 prepared = await self.writer.reserve_entry_pair(
                     current.requests, batch_id=current.batch_id,
-                    view=current.view, config=BotConfig(), now=self.now(),
+                    view=current.view, config=active_config(), now=self.now(),
                     free_cash=current.free_cash, account_known=True,
                     offline_fixture=self.offline_fixture,
                     fee_per_contract_bound=current.fee_per_contract_bound)

@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from decimal import Decimal, localcontext
 
-from .config import BotConfig
+from .config import BotConfig, active as active_config, activate as activate_config
 from .exits import ExitTerms, cross
 from .portfolio import PortfolioView
 from .ranking import RankingBoard, RankedMarket
@@ -23,8 +23,8 @@ class SelectionReport:
 
 
 class MarketSelector:
-    def __init__(self, capacity=128):
-        self.board = RankingBoard(capacity)
+    def __init__(self, capacity=128, quantity=None):
+        self.board = RankingBoard(capacity, quantity)
         self._fees = {}
         self.exit_stress = {}  # Diagnostic loss on current visible depth, not expected loss.
         self.entry_retained_value = {}  # Per-side current-depth value ratio after fee bound.
@@ -66,7 +66,7 @@ class MarketSelector:
             position=position, blockers=reasons, proposed=proposed, reflected=reflected,
             entry_until=terms.deadline)
         # Check every program's actual quote set, not just the current best row.
-        rows, config = [], BotConfig()
+        rows, config = [], active_config()
         for row in self.board.markets[book.ticker]:
             if row.blockers:
                 rows.append(row)
@@ -148,7 +148,7 @@ class MarketSelector:
             return SelectionReport((), tuple(sorted(retained)), (), tuple(dict.fromkeys(reasons)))
         additions, exclusions = [], []
         entries, spent = view.entry_count, Decimal(0)
-        config = BotConfig()
+        config = active_config()
         ranked = self.board.ranked_programs(now=now, by='selection')
         # Stable tiers preserve the existing reward-rate/capital ordering within
         # each tier while reserving available slots for projected $2+ programs.

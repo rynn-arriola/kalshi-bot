@@ -199,7 +199,8 @@ def reference_plan(book: Book, program: Program, bands: tuple[PriceBand, ...], *
                          reflected=reflected)[0]
 
 
-def program_plans(book, programs, bands, *, now, market_open, reflected=(), proposed=None):
+def program_plans(book, programs, bands, *, now, market_open, reflected=(), proposed=None,
+                  quantity=Decimal(10)):
     """Validate a shared book once for a bounded set of independent programs.
 
     Each scoring pass gets its own ladder copy. Never accumulate hypothetical
@@ -221,7 +222,7 @@ def program_plans(book, programs, bands, *, now, market_open, reflected=(), prop
             base = _base(book, bands, reflected)
         levels = {s: dict(rows) for s, rows in base.items()}
         quotes = (proposed if proposed is not None else
-                  tuple(Quote(s, p, Decimal(10)) for s in ('bid', 'ask')
+                  tuple(Quote(s, p, quantity) for s in ('bid', 'ask')
                         if (p := _reference(levels[s], program.target, s)) is not None))
         bid, ask, share = _snapshot_from_base(levels, program, bands, quotes)
         if bid.cutoff is None or ask.cutoff is None or (proposed is None and len(quotes) != 2):

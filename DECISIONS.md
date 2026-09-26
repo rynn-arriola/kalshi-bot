@@ -10,6 +10,36 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-142 — 30 contracts, $780 capital, run on the approved config file
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator added $300 (verified cash $786.85) and chose
+  “30 contracts” for 50 orders after the collateral/exposure comparison.
+- **Scope:** Approved money set (780, 30, 25): portfolio cap 30 × (16+10) =
+  $780, market cap $270, $25 six-hour loss stop unchanged. The live bot now
+  activates `config/bot.json`; built-in defaults remain the original approved
+  reference profile (500, 10, 25) used by offline fixtures. Reference quotes
+  and the entry-size check follow the active size.
+- **Boundary:** ~81% of cash as collateral at 50 orders; per-sweep loss ~3× the
+  10-contract size; loss-ratchet steps reach sooner. Size changes need a new
+  approved set.
+
+### D-141 — Deposits, withdrawals and reward credits never stop trading
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Make sure the bot dont crash on reward payments
+  deposits and withdrawals”, “the orders should have cancelled”, “survive
+  those errors and recover itself once it knows it safe to trade again”.
+- **Scope:** Applied post-baseline deposits/withdrawals adjust expected cash by
+  their exact record; pending ones widen the bound without double counting;
+  surplus cash from an otherwise fully consistent account is journaled as an
+  unattributed credit (reward payouts have no API record). Approved baseline
+  activity must still match exactly; missing cash, new transfers and every
+  other inconsistency still block. Adjustments are journaled and reproduced by
+  the cold cash audit. When recovery cannot prove the account, a safety pause
+  drains owned entries and recovery retries at 30 s, 1, 2, then every 5 min.
+- **Boundary:** Kalshi's account-wide cancel-all is not used automatically (it
+  also cancels exits, manual orders and new orders for a minute).
 ### D-139 — Unattended 2-hour status scheduler with restart and fix authority
 
 - **Status:** ACCEPTED, 2026-09-26.
