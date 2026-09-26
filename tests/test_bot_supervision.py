@@ -16,6 +16,8 @@ from scripts.benchmark_supervision import measure_idle
 
 
 POLICY = SupervisorPolicy()
+# Mechanism tests keep the former 60 s allowance explicitly (D-136).
+SIXTY = SupervisorPolicy(startup_timeout_seconds=60.0)
 
 
 class ControlledClock:
@@ -410,9 +412,17 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(exited.state.state, SupervisorState.ATTENTION_REQUIRED)
         self.assertEqual(exited.state.attention_reason, AttentionReason.INTEGRITY_FAILURE)
 
+    def test_measured_slow_start_is_not_stopped(self):
+        # D-136: live starts reached runtime at 56-58 s; 60 s stopped one.
+        active = start(arm(self.state))
+        for at in (161, 220, 279):
+            decision = decide(active, event(EventKind.TICK, at), POLICY)
+            self.assertEqual(decision.state.state, active.state)
+            self.assertEqual(decision.actions, ())
+
     def test_startup_timeout_requests_graceful_stop(self):
         active = start(arm(self.state))
-        decision = decide(active, event(EventKind.TICK, 161), POLICY)
+        decision = decide(active, event(EventKind.TICK, 281), POLICY)
         self.assertEqual(decision.state.state, SupervisorState.STOPPING)
         self.assertEqual(decision.state.attention_reason, AttentionReason.STARTUP_TIMEOUT)
         self.assertEqual(decision.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
@@ -441,7 +451,7 @@ class PolicyTests(unittest.TestCase):
         active = start(arm(self.state))
         early = None
         for stamp in range(101, 131):
-            early = decide(active, event(EventKind.TICK, stamp), POLICY)
+            early = decide(active, event(EventKind.TICK, stamp), SIXTY)
             active = early.state
             self.assertEqual(active.state, SupervisorState.STARTING)
         started_state = started(early.state, 131)
@@ -449,8 +459,8 @@ class PolicyTests(unittest.TestCase):
             started_state = decide(started_state, event(EventKind.CHILD_STATUS, stamp,
                 expected_generation=started_state.child_generation,
                 child_id=started_state.child_id, child_phase=ChildPhase.STARTING,
-                progress_sequence=sequence), POLICY).state
-        expired = decide(started_state, event(EventKind.TICK, 160), POLICY)
+                progress_sequence=sequence), SIXTY).state
+        expired = decide(started_state, event(EventKind.TICK, 160), SIXTY)
         self.assertEqual(expired.state.state, SupervisorState.STOPPING)
         self.assertEqual(expired.state.attention_reason, AttentionReason.STARTUP_TIMEOUT)
 
@@ -458,7 +468,7 @@ class PolicyTests(unittest.TestCase):
         active = started(start(arm(self.state)), 101)
         expired = decide(active, event(EventKind.CHILD_STATUS, 160,
             expected_generation=active.child_generation, child_id=active.child_id,
-            child_phase=ChildPhase.HEALTHY, progress_sequence=1), POLICY)
+            child_phase=ChildPhase.HEALTHY, progress_sequence=1), SIXTY)
         self.assertEqual(expired.state.state, SupervisorState.STOPPING)
         self.assertEqual(expired.state.attention_reason, AttentionReason.STARTUP_TIMEOUT)
         self.assertEqual(expired.actions, (SupervisorAction.REQUEST_GRACEFUL_STOP,))
@@ -861,14 +871,14 @@ class StoreTests(unittest.TestCase):
             reserved = store.apply(event(EventKind.START_REQUESTED, 100,
                 expected_generation=armed.generation, child_id="child-a")).state
             clock.advance(60)
-            timed_out = store.apply(event(EventKind.TICK, 160)).state
+            timed_out = store.apply(event(EventKind.TICK, 160), SIXTY).state
             self.assertEqual(timed_out.attention_reason, AttentionReason.STARTUP_TIMEOUT)
         clock.advance(1)
         with self.open(clock=clock.utc, monotonic_clock=clock.monotonic,
                 boot_id=clock.boot_id) as store:
             failed = store.apply(event(EventKind.SPAWN_FAILED, 161,
                 expected_generation=reserved.child_generation,
-                child_id=reserved.child_id)).state
+                child_id=reserved.child_id), SIXTY).state
             self.assertEqual(failed.state, SupervisorState.ATTENTION_REQUIRED)
             self.assertEqual(failed.attention_reason, AttentionReason.STARTUP_TIMEOUT)
             self.assertIsNone(failed.child_id)

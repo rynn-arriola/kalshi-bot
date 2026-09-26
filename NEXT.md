@@ -2,13 +2,10 @@
 
 ## Pending issues in operator priority order (2026-09-26)
 
-0. **After D-133–D-135 deployment (run `de0b24bd`):** (a) supervisor
-   startup allowance is 60 s against measured 56–58 s starts; an automatic
-   restart can miss it and require attention. Recommend raising it (operator
-   decision). (b) Own-order renewal escalates ~2/3 of attempts; add a fixed
-   reason to `account_refresh_failed` and treat only "own acknowledged order
-   not yet visible" as a bounded retry. (c) Measure lockout downtime,
-   withdrawals per market-hour and fills after re-entry over hours.
+0. **After D-133–D-135 deployment (run `de0b24bd`):** (a)+(b) done as
+   D-136 (published, not deployed; ship with the next authorized restart).
+   (c) Measure lockout downtime, withdrawals per market-hour and fills after
+   re-entry over hours; then the contract-size analysis the operator asked for.
 
 1. **Full-recovery time after accepted orders:** D-133 and D-134 items 1–5
    done (published, not deployed). Deploy once together (item 6) after

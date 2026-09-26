@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-136 — Startup allowance and own-order renewal fallback reasons
+
+- **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
+- **Decision owner:** Operator: “Ok do recommendation”, accepting the
+  post-deployment recommendations to raise the startup allowance and to log and
+  retry the not-yet-listed own-order case.
+- **Scope:** Finding 207. Supervisor startup timeout 60 → 180 s; the separate
+  work-deadline cap stays 60 s. Own-order renewal records a fixed failure reason
+  and retries only the not-yet-listed case (≤3), else full recovery.
+- **Boundary:** No other supervision, risk or recovery rule changes. Deploy
+  with the next operator-authorized restart.
+
 ### D-135 — Adaptive re-entry lockout after protective withdrawals
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.

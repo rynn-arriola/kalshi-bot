@@ -119,6 +119,52 @@ class OwnOrderRenewalTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(runtime.recovery_requested.is_set())
         self.assertEqual(runtime.own_order_renewal['retries'], runtime.OWN_ORDER_RETRIES)
 
+    # ---- D-136: an acknowledged order the venue has not listed yet ----
+
+    def capture(self, runtime):
+        events = []
+        original = runtime.diagnostics.emit
+        def emit(name, **context):
+            events.append((name, context))
+            return original(name, **context)
+        runtime.diagnostics.emit = emit
+        return events
+
+    async def test_not_yet_listed_own_order_retries_then_renews(self):
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        listed, runtime.reads.orders = runtime.reads.orders, ()  # REST lags the ACK.
+        events = self.capture(runtime)
+        self.assertFalse((await self.renew_own(runtime))[1])
+        self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.own_order_renewal['retries'], 1)
+        failed = [c for n, c in events if n == 'account_refresh_failed']
+        self.assertEqual(failed[-1]['outcome'], 'order_not_visible')
+        runtime.reads.orders = listed  # The venue now lists it.
+        self.assertTrue((await self.renew_own(runtime))[1])
+        self.assertFalse(runtime.recovery_requested.is_set())
+
+    async def test_order_that_never_appears_escalates_after_bounded_retries(self):
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        runtime.reads.orders = ()
+        for _ in range(runtime.OWN_ORDER_RETRIES):
+            self.assertFalse((await self.renew_own(runtime))[1])
+            self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertFalse((await self.renew_own(runtime))[1])
+        self.assertTrue(runtime.recovery_requested.is_set())
+
+    async def test_other_audit_disagreement_escalates_immediately(self):
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        runtime.reads.orders += (resting_row('foreign-order', 'someone-else'),)
+        events = self.capture(runtime)
+        self.assertFalse((await self.renew_own(runtime))[1])
+        self.assertTrue(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.own_order_renewal['retries'], 0)
+        failed = [c for n, c in events if n == 'account_refresh_failed']
+        self.assertEqual(failed[-1]['outcome'], 'audit_blocked')
+
     async def test_economic_event_ends_chain_reuse(self):
         runtime = await self.runtime()
         self.assertIsNotNone(runtime._chain_anchor())

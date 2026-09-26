@@ -1,5 +1,31 @@
 # Findings — kalshi-bot
 
+## 207. Startup allowance and own-order renewal fallbacks — 2026-09-26
+
+**MEASURED — startup margin.** Child start to `runtime_started` took 55.9 s
+(gen 172) and 58.0 s (run `bbc9c839`, stopped by the supervisor's 60 s
+`startup_timeout` although it recovered normally); the successful retry took
+56 s. Time is candidate discovery with 4–7 public `/markets` 429 retries plus
+a 16–20 s quota refresh. Automatic crash restarts share the same margin.
+
+**MEASURED — own-order renewal (run `c4cd469d`, first 10 min).** 21 attempts,
+8 completed, 13 escalated, all logged `source_changed` with no retry, so the
+snapshot was not explained, yet positions were flat. The log did not say which
+condition failed. INFERRED: the just-acknowledged order was not yet listed by
+REST, which the writer audit reports as a missing owned order/unbound intent.
+
+**OBSERVED, no change:** one `rest_failed` 404 for a single-order lookup
+02:20:17 during a post-drain recovery; that pass stopped (`missing_orders`)
+and the next succeeded. Faster recovery now reaches the venue while a cancel
+is still settling; 404 is still never treated as canceled.
+
+**Repair (D-136):** supervisor startup allowance 180 s (work-deadline cap kept
+at 60 s as its own field). Own-order renewal logs a fixed reason
+(`position_changed`, `cash_changed`, `position_mismatch`,
+`order_not_visible`, `audit_blocked`); only `order_not_visible` (audit
+blockers limited to a missing owned order or unbound intent) retries, at most
+three times, before full recovery.
+
 ## 206. Protective withdrawals: mostly false alarms, cost is the lockout — 2026-09-26
 
 **Scope:** Generation 172 child log (00:20–01:35 UTC), a read-only ledger copy

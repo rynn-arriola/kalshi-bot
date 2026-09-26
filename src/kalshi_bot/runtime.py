@@ -820,17 +820,35 @@ class RecoveryRuntime:
         return (self._chain_anchor() is not None and not self.recovery_requested.is_set()
                 and not self.recovery_lock.locked())
 
-    def _snapshot_explained(self, report, proof, *, own_orders):
+    # D-136: the only audit blockers a just-acknowledged own order can cause
+    # before the venue's REST enumeration lists it. Bounded retry, then full
+    # recovery; every other blocker is evidence and escalates at once.
+    OWN_ORDER_PENDING_BLOCKERS = frozenset(('owned_working_order_missing',
+                                            'unbound_order_intents'))
+
+    def _own_order_unexplained(self, report, proof):
+        """None when only the bot's own working orders (and cash with them) changed."""
         signature = self._snapshot_signature(report)
-        if not own_orders:
-            return signature == proof.snapshot_signature
         positions, orders, balance, subaccount = proof.snapshot_signature
-        # Only working orders may differ, and cash only with them. The writer
-        # audit must bind every visible order to a settled owned command.
         audit = report.audit
-        return (signature[0] == positions and signature[3] == subaccount
-                and (signature[2] == balance or signature[1] != orders)
-                and report.positions_match and audit is not None and audit.consistent)
+        if signature[0] != positions or signature[3] != subaccount:
+            return 'position_changed'
+        if signature[2] != balance and signature[1] == orders:
+            return 'cash_changed'
+        if not report.positions_match:
+            return 'position_mismatch'
+        if audit is None:
+            return 'audit_blocked'
+        if audit.consistent:
+            return None
+        if set(audit.blockers) <= self.OWN_ORDER_PENDING_BLOCKERS:
+            return 'order_not_visible'
+        return 'audit_blocked'
+
+    def _snapshot_explained(self, report, proof, *, own_orders):
+        if not own_orders:
+            return self._snapshot_signature(report) == proof.snapshot_signature
+        return self._own_order_unexplained(report, proof) is None
 
     def _current_routine_proof(self):
         proof = self._routine_account_proof
@@ -906,6 +924,8 @@ class RecoveryRuntime:
                     expected = start_source if own else proof.source
                     unexplained = (report is not None and self.account.current_report(self.now()) is report
                                    and not self._snapshot_explained(report, proof, own_orders=own))
+                    if unexplained and own:
+                        unexplained = self._own_order_unexplained(report, proof)
                     if (history is None or report is None
                             or history.enumeration.omitted_rows
                             or (self._chain_anchor() if own else self._routine_account_proof) is not proof
@@ -959,7 +979,8 @@ class RecoveryRuntime:
                     cause = 'own_order_renewal_failed' if own else 'routine_refresh_failed'
                     if own and released is False:
                         self._last_proof = None  # Release rejected the chain itself.
-                    if (own and failure is None and released is None and not unexplained
+                    if (own and failure is None and released is None
+                            and unexplained in (False, 'order_not_visible')
                             and self._own_renewal_retries < self.OWN_ORDER_RETRIES
                             and self._chain_anchor() is not None):
                         # A non-economic source change raced this attempt (for
@@ -980,7 +1001,9 @@ class RecoveryRuntime:
                         outcome=('quota_wait' if isinstance(failure, QuotaUnavailable)
                             else 'timeout' if isinstance(failure, TimeoutError)
                             else 'io' if isinstance(failure, OSError)
-                            else 'invalid_data' if failure is not None else 'source_changed'))
+                            else 'invalid_data' if failure is not None
+                            else unexplained if isinstance(unexplained, str)
+                            else 'source_changed'))
 
     def _schedule_account_refresh(self, scope):
         # A just-canceled owner can be flat and absent from inventory repair.

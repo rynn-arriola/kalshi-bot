@@ -1,5 +1,12 @@
 # Current status
 
+## D-136 startup allowance and renewal reasons — 2026-09-26 (published, not deployed)
+
+Supervisor startup allowance 180 s (starts measured 56–58 s vs 60 s limit);
+own-order renewal logs why it falls back and retries only the not-yet-listed
+case. Running generation (run `de0b24bd`) is unchanged; deploy with the next
+authorized restart. Finding 207.
+
 ## D-133–D-135 deployed by Command 1 — 2026-09-26
 
 **Deployed and running** (run `de0b24bd`, supervisor generation 177, build

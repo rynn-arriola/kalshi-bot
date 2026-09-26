@@ -124,7 +124,10 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
              'earning_window_ended')),
          'phase': RECOVERY_PHASES,
          'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',
-                              'timeout', 'io', 'recovered', 'checkpoint_failed')),
+                              'timeout', 'io', 'recovered', 'checkpoint_failed',
+                              # D-136 own-order renewal reasons
+                              'position_changed', 'cash_changed', 'position_mismatch',
+                              'order_not_visible', 'audit_blocked')),
          'command': frozenset(('close', 'fill', 'stage_fill', 'pending_fills', 'apply_pending', 'observe',
             'market_inventory', 'portfolio', 'reserve_entry', 'inventory', 'reconcile_snapshot', 'order',
             'orders', 'order_batch', 'fill_scope', 'order_evidence', 'recover_fills', 'venue_snapshot',

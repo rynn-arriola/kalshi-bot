@@ -123,8 +123,14 @@ class SupervisorPolicy:
     healthy_reset_seconds: float = 600.0
     heartbeat_seconds: float = 2.0
     progress_timeout_seconds: float = 30.0
-    startup_timeout_seconds: float = 60.0
+    # D-136: measured live starts take 56-58 s to runtime_started (candidate
+    # discovery with public 429 retries plus quota refresh); 60 s stopped a
+    # healthy start. Still bounded, so a hung start requests a graceful stop.
+    startup_timeout_seconds: float = 180.0
     shutdown_timeout_seconds: float = 60.0
+    # The longest work deadline a child may declare beyond its last progress
+    # (formerly the startup allowance; unchanged at 60 s).
+    work_deadline_limit_seconds: float = 60.0
 
     def __post_init__(self):
         if not isinstance(self.restart_delays, (tuple, list)) or not self.restart_delays:
@@ -137,7 +143,7 @@ class SupervisorPolicy:
         integer(self.rolling_restart_limit, 1, 32)
         for field in ("rolling_restart_seconds", "healthy_reset_seconds", "heartbeat_seconds",
                       "progress_timeout_seconds", "startup_timeout_seconds",
-                      "shutdown_timeout_seconds"):
+                      "shutdown_timeout_seconds", "work_deadline_limit_seconds"):
             value = _time(getattr(self, field), field)
             if value <= 0:
                 raise InvalidData(f"{field} must be positive")
@@ -672,7 +678,7 @@ def decide(state, event, policy=SupervisorPolicy(), *, control_utc=None,
         if deadline is not None and deadline <= event.observed_utc:
             deadline = None
         if (deadline is not None and (progress_time is None
-                or deadline-progress_time > policy.startup_timeout_seconds)):
+                or deadline-progress_time > policy.work_deadline_limit_seconds)):
             return _attention(state, event, AttentionReason.INTEGRITY_FAILURE,
                               request_stop=True)
         holds = tuple(dict.fromkeys(state.retry_holds+event.retry_holds))
