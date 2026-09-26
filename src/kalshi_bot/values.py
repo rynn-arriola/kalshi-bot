@@ -1,6 +1,13 @@
 """Strict exact values at trust boundaries; never silently round exchange data."""
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+import re
+
+# Review #5: constants built once; these validators run hundreds of thousands
+# of times per hour on the event loop. Semantics are unchanged.
+_LIMIT = Decimal("1000000000000")
+_CENT = Decimal("0.01")
+_CONTROL = re.compile(r"[\x00-\x1f]")
 
 
 class InvalidData(ValueError):
@@ -14,7 +21,7 @@ def decimal(value: object) -> Decimal:
         result = Decimal(value)
     except (InvalidOperation, ValueError) as exc:
         raise InvalidData("invalid decimal") from exc
-    if not result.is_finite() or abs(result) > Decimal("1000000000000"):
+    if not result.is_finite() or abs(result) > _LIMIT:
         raise InvalidData("decimal is non-finite or outside safety range")
     # Derived Decimal accounting can carry average basis beyond wire precision.
     minimum_exponent = -60 if isinstance(value, Decimal) else -12
@@ -25,7 +32,7 @@ def decimal(value: object) -> Decimal:
 
 def count(value: object, *, zero: bool = False) -> Decimal:
     result = decimal(value)
-    if result < 0 or (not zero and result == 0) or result % Decimal("0.01"):
+    if result < 0 or (not zero and result == 0) or result % _CENT:
         raise InvalidData("count must be positive and aligned to 0.01")
     return result
 
@@ -46,10 +53,12 @@ def integer(value: object, minimum: int, maximum: int) -> int:
 def utc(value: datetime) -> datetime:
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise InvalidData("timezone-aware datetime required")
+    if value.tzinfo is timezone.utc:
+        return value  # Already UTC: astimezone would only copy it.
     return value.astimezone(timezone.utc)
 
 
 def identity(value: object) -> str:
-    if not isinstance(value, str) or not value or len(value) > 200 or any(ord(c) < 32 for c in value):
+    if not isinstance(value, str) or not value or len(value) > 200 or _CONTROL.search(value):
         raise InvalidData("invalid identifier")
     return value
