@@ -567,6 +567,113 @@ class LedgerWriter:
     async def mutations(self):
         return await self._wait(self._submit("mutations"))
 
+    def _reduction_evidence(self, ledger, args):
+        from .execution import encoded_request, reduction_authority, validate_request
+        from .management import ManagedPlan
+        request, plan, now = json.loads(args[0]), args[1], args[2]
+        validate_request('create', request)
+        passive = (request['time_in_force'] == 'good_till_canceled'
+                   and request['post_only'] is True
+                   and request['reduce_only'] is False)
+        ioc = (request['time_in_force'] == 'immediate_or_cancel'
+               and request['post_only'] is False
+               and request['reduce_only'] is True)
+        if not (passive or ioc) or not isinstance(plan, ManagedPlan):
+            raise InvalidData('reduction evidence requires managed exit request')
+        inventory, exit_plan, terms = plan.inventory, plan.exit, plan.terms
+        if (plan.ticker != request['ticker'] or exit_plan is None or terms is None
+                or inventory.ticker != request['ticker']
+                or (inventory.writer_epoch, inventory.writer_revision) !=
+                   (self.epoch, self._revision)
+                or plan.observed_at > now or now-plan.observed_at > timedelta(seconds=5)
+                or not terms.observed_at <= now < terms.valid_until
+                or inventory.blockers
+                or (exit_plan.blockers and not exit_plan.passive_allowed)):
+            return None
+        quantity = count(request['count'])
+        limit_price = price(request['price'])
+        passive = request['time_in_force'] == 'good_till_canceled'
+        action_matches = (
+            exit_plan.passive_allowed
+            and exit_plan.passive.keep_id is None
+            and not exit_plan.passive.cancel_ids
+            and exit_plan.passive.reduce_side == request['side']
+            and exit_plan.passive.reduce_quantity == quantity
+            and exit_plan.limit_price == limit_price
+        ) if passive else (
+            exit_plan.mode == 'ioc'
+            and exit_plan.quantity == quantity
+            and exit_plan.limit_price == limit_price
+        )
+        if not action_matches:
+            return None
+        episode, position, route, authority_blockers = reduction_authority(ledger, request)
+        if (episode is None or not position or route is None
+                or set(authority_blockers)-{'reduction_route_changed'}):
+            return None
+        journal = inventory.exit_journal
+        decision = encoded_request({
+            'type': 'managed_exit', 'ticker': plan.ticker,
+            'observed_at': plan.observed_at.isoformat(),
+            'account_generation': plan.generation,
+            'account_revision': plan.account_revision,
+            'book_generation': plan.book_generation,
+            'book_revision': plan.book_revision,
+            'writer_epoch': inventory.writer_epoch,
+            'writer_revision': inventory.writer_revision,
+            'terms_observed_at': terms.observed_at.isoformat(),
+            'terms_valid_until': terms.valid_until.isoformat(),
+            'fee_per_contract_bound': (str(terms.taker_fee_per_contract_bound)
+                if terms.taker_fee_per_contract_bound is not None else None),
+            'mode': exit_plan.mode,
+            'limit_price': str(exit_plan.limit_price),
+            'quantity': str(quantity),
+            'attempts': journal.attempts,
+            'started_at': journal.started_at.isoformat() if journal.started_at else None})
+        return ReductionEvidence(self.epoch, self._revision, episode,
+            request['ticker'], request['subaccount'], route, position,
+            encoded_request(request), decision)
+
+    def _recover_fills(self, ledger, args):
+        records, scope, now = args
+        receipts, missing = [], []
+        with ledger.transaction():
+            for record in records:
+                fill = record.fill
+                if record.subaccount != scope:
+                    raise InvalidData("recovered fill account scope conflicts")
+                # A separately audited incident repair may have already
+                # imported an exact venue fill whose order was not created
+                # by this bot (for example, an operator-placed close).  The
+                # durable fill is the accounting fact in that case.  Let
+                # record_fill validate its immutable economics and venue
+                # timestamp before asking for ordinary bot-order ownership.
+                # This never imports a new unbound history row.
+                actual = ledger.connection.execute(
+                    "SELECT 1 FROM fills WHERE id=?", (fill.key,)).fetchone()
+                if actual is not None:
+                    receipts.append(self._execute(ledger, "fill", (
+                        replace(fill, executed_us=record.executed_us,
+                                execution_precision_us=1), now)))
+                    continue
+                row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?",
+                                                (fill.order_id,)).fetchone()
+                if row is None:
+                    missing.append(fill.key)
+                    continue
+                order = OrderUpdate.decode(row[0])
+                if (order.subaccount, order.exchange_index, order.ticker, order.side) != (
+                        scope, record.exchange_index, fill.ticker, fill.book_side):
+                    raise InvalidData("recovered fill differs from owned order scope")
+                # Preserve exact venue time even for a constructed history record.
+                receipt = self._execute(ledger, "fill", (replace(fill, executed_us=record.executed_us,
+                                                              execution_precision_us=1), now))
+                total = ledger.filled_quantity(fill.order_id)
+                if total > order.initial or (order.terminal and total > order.filled):
+                    raise InvalidData("recovered executions exceed authoritative order quantity")
+                receipts.append(receipt)
+        return RecoveredChunk(tuple(receipts), tuple(missing))
+
     def _execute(self, ledger, command, args):
         if command == 'approve_opening':
             from .account_release import approve_opening
@@ -730,71 +837,7 @@ class LedgerWriter:
                     update.ticker, update.subaccount, update.exchange_index)
             return None
         if command == 'reduction_evidence':
-            from .execution import encoded_request, reduction_authority, validate_request
-            from .management import ManagedPlan
-            request, plan, now = json.loads(args[0]), args[1], args[2]
-            validate_request('create', request)
-            passive = (request['time_in_force'] == 'good_till_canceled'
-                       and request['post_only'] is True
-                       and request['reduce_only'] is False)
-            ioc = (request['time_in_force'] == 'immediate_or_cancel'
-                   and request['post_only'] is False
-                   and request['reduce_only'] is True)
-            if not (passive or ioc) or not isinstance(plan, ManagedPlan):
-                raise InvalidData('reduction evidence requires managed exit request')
-            inventory, exit_plan, terms = plan.inventory, plan.exit, plan.terms
-            if (plan.ticker != request['ticker'] or exit_plan is None or terms is None
-                    or inventory.ticker != request['ticker']
-                    or (inventory.writer_epoch, inventory.writer_revision) !=
-                       (self.epoch, self._revision)
-                    or plan.observed_at > now or now-plan.observed_at > timedelta(seconds=5)
-                    or not terms.observed_at <= now < terms.valid_until
-                    or inventory.blockers
-                    or (exit_plan.blockers and not exit_plan.passive_allowed)):
-                return None
-            quantity = count(request['count'])
-            limit_price = price(request['price'])
-            passive = request['time_in_force'] == 'good_till_canceled'
-            action_matches = (
-                exit_plan.passive_allowed
-                and exit_plan.passive.keep_id is None
-                and not exit_plan.passive.cancel_ids
-                and exit_plan.passive.reduce_side == request['side']
-                and exit_plan.passive.reduce_quantity == quantity
-                and exit_plan.limit_price == limit_price
-            ) if passive else (
-                exit_plan.mode == 'ioc'
-                and exit_plan.quantity == quantity
-                and exit_plan.limit_price == limit_price
-            )
-            if not action_matches:
-                return None
-            episode, position, route, authority_blockers = reduction_authority(ledger, request)
-            if (episode is None or not position or route is None
-                    or set(authority_blockers)-{'reduction_route_changed'}):
-                return None
-            journal = inventory.exit_journal
-            decision = encoded_request({
-                'type': 'managed_exit', 'ticker': plan.ticker,
-                'observed_at': plan.observed_at.isoformat(),
-                'account_generation': plan.generation,
-                'account_revision': plan.account_revision,
-                'book_generation': plan.book_generation,
-                'book_revision': plan.book_revision,
-                'writer_epoch': inventory.writer_epoch,
-                'writer_revision': inventory.writer_revision,
-                'terms_observed_at': terms.observed_at.isoformat(),
-                'terms_valid_until': terms.valid_until.isoformat(),
-                'fee_per_contract_bound': (str(terms.taker_fee_per_contract_bound)
-                    if terms.taker_fee_per_contract_bound is not None else None),
-                'mode': exit_plan.mode,
-                'limit_price': str(exit_plan.limit_price),
-                'quantity': str(quantity),
-                'attempts': journal.attempts,
-                'started_at': journal.started_at.isoformat() if journal.started_at else None})
-            return ReductionEvidence(self.epoch, self._revision, episode,
-                request['ticker'], request['subaccount'], route, position,
-                encoded_request(request), decision)
+            return self._reduction_evidence(ledger, args)
         if command == 'prepare_cancel':
             from .execution import prepare_cancel
             attempt_id, request, evidence, now = args
@@ -928,44 +971,7 @@ class LedgerWriter:
         if command == "exit_basis":
             return exit_basis(ledger, *args)
         if command == "recover_fills":
-            records, scope, now = args
-            receipts, missing = [], []
-            with ledger.transaction():
-                for record in records:
-                    fill = record.fill
-                    if record.subaccount != scope:
-                        raise InvalidData("recovered fill account scope conflicts")
-                    # A separately audited incident repair may have already
-                    # imported an exact venue fill whose order was not created
-                    # by this bot (for example, an operator-placed close).  The
-                    # durable fill is the accounting fact in that case.  Let
-                    # record_fill validate its immutable economics and venue
-                    # timestamp before asking for ordinary bot-order ownership.
-                    # This never imports a new unbound history row.
-                    actual = ledger.connection.execute(
-                        "SELECT 1 FROM fills WHERE id=?", (fill.key,)).fetchone()
-                    if actual is not None:
-                        receipts.append(self._execute(ledger, "fill", (
-                            replace(fill, executed_us=record.executed_us,
-                                    execution_precision_us=1), now)))
-                        continue
-                    row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?",
-                                                    (fill.order_id,)).fetchone()
-                    if row is None:
-                        missing.append(fill.key)
-                        continue
-                    order = OrderUpdate.decode(row[0])
-                    if (order.subaccount, order.exchange_index, order.ticker, order.side) != (
-                            scope, record.exchange_index, fill.ticker, fill.book_side):
-                        raise InvalidData("recovered fill differs from owned order scope")
-                    # Preserve exact venue time even for a constructed history record.
-                    receipt = self._execute(ledger, "fill", (replace(fill, executed_us=record.executed_us,
-                                                                  execution_precision_us=1), now))
-                    total = ledger.filled_quantity(fill.order_id)
-                    if total > order.initial or (order.terminal and total > order.filled):
-                        raise InvalidData("recovered executions exceed authoritative order quantity")
-                    receipts.append(receipt)
-            return RecoveredChunk(tuple(receipts), tuple(missing))
+            return self._recover_fills(ledger, args)
         if command == "fill":
             fill, now = args
             with ledger.transaction():
