@@ -67,6 +67,8 @@ class InventoryDispatchSource:
         self.runtime = runtime
         self.offline_fixture = offline_fixture is True
         self._proof = None
+        self._entry_contexts = {}  # D-151: batch id -> placement context.
+        self.shadow_screen_failures = 0
         self._refreshing = False
         self._generation = 0
         self._stopped = False
@@ -150,8 +152,11 @@ class InventoryDispatchSource:
             refresh=self.refresh, clock_pair=clock_pair, now=self.runtime.now,
             offline_fixture=self.offline_fixture, after_result=self._dispatch_result)
 
-    def _shadow_screen(self, ticker, row, market):
-        """Review #9: log the proposed fill-avoidance rules; never blocks an entry."""
+    def _shadow_screen(self, ticker, row, market, batch_id=None):
+        """Review #9: log the proposed fill-avoidance rules; never blocks an entry.
+
+        D-151: also keeps the placement context until the pair's outcome.
+        """
         from .entry_screen import cents, screen
         try:
             result = screen(remaining_reward=row.gross_remaining_usd, quotes=row.quotes,
@@ -161,8 +166,42 @@ class InventoryDispatchSource:
                 screen=result['verdict'], reward_cents=cents(result['reward']),
                 risk_cents=cents(result['risk']),
                 volume_24h_contracts=None if volume is None else int(volume))
+            if batch_id is not None and getattr(self.runtime, 'research', None) is not None:
+                self._stash_entry_context(batch_id, ticker, row, market, result)
         except Exception:
-            self.shadow_screen_failures = getattr(self, 'shadow_screen_failures', 0)+1
+            self.shadow_screen_failures += 1
+
+    def _stash_entry_context(self, batch_id, ticker, row, market, result):
+        from decimal import Decimal
+        contexts = self._entry_contexts
+        book = self.runtime.management._book(ticker)[1]
+        quotes = []
+        for quote in row.quotes:
+            ahead = None
+            if book is not None:
+                ladder = book.bids if quote.side == 'bid' else book.asks
+                ahead = sum((size for level, size in ladder.levels.items()
+                             if (level >= quote.yes_price if quote.side == 'bid'
+                                 else level <= quote.yes_price)), Decimal(0))
+            quotes.append(dict(side=quote.side, price=quote.yes_price,
+                               quantity=quote.quantity, visible_ahead=ahead))
+        contexts[batch_id] = dict(ticker=ticker, program_id=row.program_id, quotes=quotes,
+            bid_reference=row.bid_reference, ask_reference=row.ask_reference,
+            remaining_reward_usd=row.gross_remaining_usd, hourly_reward_usd=row.gross_hourly_usd,
+            snapshot_share=row.snapshot_share, program_end=row.program_end,
+            volume_24h=getattr(market, 'volume_24h', None), exchange=getattr(market, 'exchange', None),
+            screen=result['verdict'], worst_fill_loss_usd=result['risk'])
+        while len(contexts) > 64:
+            contexts.pop(next(iter(contexts)))
+
+    def _research_entry(self, result):
+        """D-151: an acknowledged (or partly acknowledged) pair and its context."""
+        context = self._entry_contexts.pop(result.attempt_id, None)
+        research = getattr(self.runtime, 'research', None)
+        if context is None or research is None or not result.order_ids:
+            return
+        research.record('entries', result.attempt_id, state=result.state,
+                        order_ids=result.order_ids, **context)
 
     def _dispatch_result(self, result):
         if (result.priority in {SAFETY_CANCEL, QUOTE_CANCEL, DUE_IOC, PASSIVE_REDUCER}
@@ -201,6 +240,8 @@ class InventoryDispatchSource:
             elif result.state not in {'WAITING', 'ACK'}:
                 self._risk_drains.pop(result.ticker, None)
                 self.runtime.request_recovery('risk_cancel_outcome')
+        if result.priority == ENTRY_PAIR:
+            self._research_entry(result)
         selection = self.runtime.selection
         if selection is not None and result.priority == ENTRY_PAIR:
             selection.record_dispatch_result(result)
@@ -550,7 +591,7 @@ class InventoryDispatchSource:
                     entry_selection)
                 selection.stage_dispatch_evidence(candidate.batch_id, row,
                     tuple(request['client_order_id'] for request in requests))
-                self._shadow_screen(ticker, row, source.value)
+                self._shadow_screen(ticker, row, source.value, candidate.batch_id)
                 return candidate
             exit_plan, passive = plan.exit, plan.passive
             journal = plan.inventory.exit_journal

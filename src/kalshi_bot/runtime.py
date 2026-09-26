@@ -64,6 +64,7 @@ class RecoveryRuntime(AccountProofMixin):
     post_drain_renewals = 0
     routine_own_fallbacks = 0
     order_groups = None
+    research = None  # D-151 research dataset; opt-in, never authority.
     last_full_recovery_mono = None
     _recovery_blocked_at = None
 
@@ -184,6 +185,7 @@ class RecoveryRuntime(AccountProofMixin):
         self.rewards = None  # Actual-order telemetry only; never financial authority.
         self.maintenance = None  # Opt-in same-market policy, never a writer.
         self.order_groups = None  # D-145 venue-side entry fill cap; opt-in.
+        self._research_ended = {}  # D-151: order ids whose end was recorded.
         self.admission = None  # Explicit offline subscription owner, not order authority.
         self._epoch = None
         self._epoch_ingress = 0
@@ -914,6 +916,8 @@ class RecoveryRuntime(AccountProofMixin):
             if generation != self.account.generation or not self.account.connected:
                 return  # Old order/position projection will be re-enumerated.
             result = await self.account.on_event(event, generation=generation, received_at=self.now())
+            if result is not None and getattr(self, 'research', None) is not None:
+                self._research_entry_end(result)
             if isinstance(result, UnscopedPositionUpdate):
                 self._epoch_ambiguous = True
                 if not self._unscoped_position_requested:
@@ -941,6 +945,23 @@ class RecoveryRuntime(AccountProofMixin):
                 await self.management.refresh(ticker)
                 self._request_inventory_dispatch(ticker)
             self._resume_risk_drain()
+
+    def _research_entry_end(self, result):
+        """D-151: record once how each owned entry order ended (never reducers)."""
+        order = getattr(result, 'order', None)
+        if (order is None or not getattr(result, 'owned', False) or getattr(result, 'reducing', False)
+                or not order.terminal or order.order_id in self._research_ended):
+            return
+        self._research_ended[order.order_id] = None
+        while len(self._research_ended) > 4096:
+            self._research_ended.pop(next(iter(self._research_ended)))
+        cycle = (self.maintenance.risk_cycle_for(order.ticker)
+                 if self.maintenance is not None else None)
+        withdrawn = cycle is not None and order.order_id in cycle.order_ids
+        self.research.record('entry_ends', order.order_id, ticker=order.ticker,
+            side=order.side, price=order.yes_price, initial=order.initial,
+            filled=order.filled, remaining=order.remaining, status=order.status,
+            withdrawn=withdrawn, entry_pause=self.entry_pause_active)
 
     def _resume_risk_drain(self):
         source = getattr(self.dispatch_supervisor, 'source', None)
@@ -1766,6 +1787,11 @@ class RecoveryRuntime(AccountProofMixin):
                     await self.rewards.close()
                 except BaseException as exc:
                     failures.append(exc)
+            if self.research is not None:
+                try:
+                    self.research.close()  # D-151: flush the research queue.
+                except BaseException as exc:
+                    failures.append(exc)
             for task in tasks:
                 task.cancel()
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1999,6 +2025,7 @@ class RecoveryRuntime(AccountProofMixin):
             maintenance=self.maintenance.status() if self.maintenance is not None else None,
             order_groups=(self.order_groups.status()
                           if self.order_groups is not None else None),
+            research=self.research.status() if self.research is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

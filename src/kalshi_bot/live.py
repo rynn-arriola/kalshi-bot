@@ -262,6 +262,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
+    # D-151: research dataset beside the ledger; background writer only.
+    from .research import ResearchStore
+    runtime.research = ResearchStore(Path(writer.path).with_name('research.db')).start()
     if not session.entries_paused:
         # D-145: entries are capped by a Kalshi order group per shard.
         runtime.attach_order_groups(transport, inputs.exchange_indices)
