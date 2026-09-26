@@ -21,6 +21,11 @@ and explicitly withdraws the proposed fixed 60-market pool.
   the running generation-170 logs read-only, repair defects they reveal, verify
   and publish. The restart itself follows the operator's confirmation.
 - **Boundary:** No live action, restart or order mutation during this work.
+- **Later operation:** After the review, the operator invoked `Command 1`,
+  authorizing the supported drain to verified flat, integrity-checked ledger
+  backup, fast-forward of the canonical checkout to the published D-129–D-132
+  release and normal restart. Generation 170 held no position, so no market
+  close was needed; STATUS owns deployment evidence.
 
 ### D-131 — Fix remaining issues 2–9 before deployment
 
