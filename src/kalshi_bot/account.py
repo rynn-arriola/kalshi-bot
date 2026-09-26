@@ -431,18 +431,52 @@ class AccountCoordinator:
                 self._invalidate()
             raise
 
-    async def recover_history(self, reads: RestReads, *, start, end, now):
+    def prefetch_history(self, reads: RestReads, *, start, end, now):
+        """D-134: start the history download alongside the first snapshot.
+
+        Pure REST, no account state. The returned claim is only usable by
+        ``recover_history`` if no private event or reconnect happened since.
+        """
+        self._check_owner()
+        started_at = utc(now())
+        task = asyncio.ensure_future(fetch_history(reads, start=start, end=end,
+                                                   subaccount=self.subaccount))
+        return (task, started_at, self.generation, self.revision)
+
+    @staticmethod
+    async def discard_prefetch(prefetched):
+        if prefetched is not None:
+            prefetched[0].cancel()
+            await asyncio.gather(prefetched[0], return_exceptions=True)
+
+    async def recover_history(self, reads: RestReads, *, start, end, now, prefetched=None):
         """D-025: stage/validate, resolve bounded missing bindings, import once.
 
         Positive executions can repair the ledger; never infer complete history
         or entry readiness from cursor exhaustion or matching net positions.
         """
-        token = self.begin_reconciliation(now())
         try:
-            evidence = await fetch_history(reads, start=start, end=end, subaccount=self.subaccount)
+            token = self.begin_reconciliation(now())
+        except BaseException:
+            await self.discard_prefetch(prefetched)
+            raise
+        try:
+            evidence, read_started_at = None, token.started_at
+            if prefetched is not None:
+                task, started_at, generation, revision = prefetched
+                if (generation, revision) == (token.generation, token.revision):
+                    # The download began at ``started_at`` with no account
+                    # change since; record that real read start as provenance.
+                    evidence, read_started_at = await task, started_at
+                else:
+                    await self.discard_prefetch(prefetched)
+                if not self._current(token):
+                    return None
+            if evidence is None:
+                evidence = await fetch_history(reads, start=start, end=end, subaccount=self.subaccount)
             if not self._current(token):
                 return None
-            staged = await self.writer.audit_history(evidence, now(), read_started_at=token.started_at,
+            staged = await self.writer.audit_history(evidence, now(), read_started_at=read_started_at,
                                                      generation=token.generation, source_revision=token.revision)
             if not self._current(token):
                 return None

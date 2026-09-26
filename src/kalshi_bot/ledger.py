@@ -147,6 +147,12 @@ CREATE TABLE IF NOT EXISTS command_capacity_counters (
 CREATE INDEX IF NOT EXISTS command_episodes_state ON command_episodes(state,created_at);
 CREATE INDEX IF NOT EXISTS authorizations_episode ON command_authorizations(episode_id);
 CREATE INDEX IF NOT EXISTS recovery_fills_order ON recovery_fills(json_extract(id,'$[0]'));
+-- D-134: hot per-order/per-market lookups previously scanned whole tables.
+CREATE INDEX IF NOT EXISTS authorizations_subject ON command_authorizations(subject_id,kind);
+CREATE INDEX IF NOT EXISTS authorizations_proof_type ON command_authorizations(
+  kind,json_extract(proof,'$.type'));
+CREATE INDEX IF NOT EXISTS mutations_phase ON mutation_attempts(phase);
+CREATE INDEX IF NOT EXISTS order_evidence_ticker ON order_evidence(json_extract(payload,'$.ticker'));
 CREATE TABLE IF NOT EXISTS command_archive_rollup (
   id INTEGER PRIMARY KEY CHECK(id=1), root TEXT NOT NULL, archive_count INTEGER NOT NULL,
   attempt_count INTEGER NOT NULL, intent_count INTEGER NOT NULL,
@@ -351,6 +357,13 @@ class Ledger:
     def position(self, ticker: str) -> Decimal:
         rows = self.connection.execute("SELECT direction,quantity FROM lots WHERE ticker=?", (ticker,))
         return sum((Decimal(row[1]) * row[0] for row in rows), Decimal(0))
+
+    def filled_quantities(self) -> dict[str, Decimal]:
+        """Every order's durable filled total in one read (same sum as below)."""
+        totals = {}
+        for order_id, payload in self.connection.execute("SELECT json_extract(id,'$[0]'),payload FROM fills"):
+            totals[order_id] = totals.get(order_id, Decimal(0))+Decimal(json.loads(payload)[2])
+        return totals
 
     def filled_quantity(self, order_id: str) -> Decimal:
         identity(order_id)

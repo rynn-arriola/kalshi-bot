@@ -16,6 +16,13 @@ def timestamp_us(value: str) -> int:
         raise InvalidData("invalid execution/update timestamp") from exc
 
 
+# Exact durable payload text -> its validated frozen update. Account checks
+# re-read every stored order several times per pass; identical text always
+# validates to the identical value, so reuse it (bounded, process-local).
+_DECODED = {}
+_DECODED_LIMIT = 8192
+
+
 @dataclass(frozen=True)
 class OrderUpdate:
     order_id: str
@@ -61,7 +68,15 @@ class OrderUpdate:
 
     @classmethod
     def decode(cls, payload):
-        return cls(**json.loads(payload))
+        if type(payload) is not str:
+            return cls(**json.loads(payload))
+        cached = _DECODED.get(payload)
+        if cached is None:
+            cached = cls(**json.loads(payload))
+            if len(_DECODED) >= _DECODED_LIMIT:
+                _DECODED.clear()
+            _DECODED[payload] = cached
+        return cached
 
 
 def parse_order(row: dict, *, scope: int | None = None) -> OrderUpdate:
@@ -106,18 +121,39 @@ def settle_orders(ledger, order_ids):
     managed_exits = frozenset(r[0] for r in ledger.connection.execute(
         "SELECT subject_id FROM command_authorizations WHERE kind='create' "
         "AND json_extract(proof,'$.type')='managed_exit'"))
-    return tuple(_settle_order(ledger, order_id, managed_exits) for order_id in order_ids)
+    # One read per table instead of three per order; the same rows and the
+    # same per-order checks. A client identity binds exactly one order, so a
+    # transition made for one order never changes another order's prefetch.
+    prefetched = (dict(ledger.connection.execute("SELECT order_id,payload FROM order_evidence")),
+                  {r[0]: (r[1], r[2]) for r in ledger.connection.execute(
+                      "SELECT client_id,state,payload FROM intents")},
+                  ledger.filled_quantities(),
+                  # Clients whose credit release or episode retirement could
+                  # still do anything. Settlement only releases and retires,
+                  # so this start-of-scan superset never omits needed work.
+                  frozenset(r[0] for r in ledger.connection.execute(
+                      "SELECT owner_id FROM command_credits WHERE owner_id IS NOT NULL AND "
+                      "(state='HELD' OR episode_id IN (SELECT id FROM command_episodes "
+                      "WHERE state='ACTIVE'))")))
+    return tuple(_settle_order(ledger, order_id, managed_exits, prefetched) for order_id in order_ids)
 
 
-def _settle_order(ledger, order_id, managed_exits=None):
-    row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?", (order_id,)).fetchone()
-    if row is None:
+def _settle_order(ledger, order_id, managed_exits=None, prefetched=None):
+    if prefetched is None:
+        row = ledger.connection.execute("SELECT payload FROM order_evidence WHERE order_id=?", (order_id,)).fetchone()
+        payload = row[0] if row is not None else None
+    else:
+        payload = prefetched[0].get(order_id)
+    if payload is None:
         return None
-    update = OrderUpdate.decode(row[0])
-    intent = ledger.connection.execute("SELECT state,payload FROM intents WHERE client_id=?", (update.client_id,)).fetchone()
+    update = OrderUpdate.decode(payload)
+    intent = (ledger.connection.execute("SELECT state,payload FROM intents WHERE client_id=?",
+              (update.client_id,)).fetchone() if prefetched is None
+              else prefetched[1].get(update.client_id))
     if intent is None:
         raise InvalidData("owned order lost its durable intent")
-    quantity = ledger.filled_quantity(order_id)
+    quantity = (ledger.filled_quantity(order_id) if prefetched is None
+                else prefetched[2].get(order_id, Decimal(0)))
     waiting = quantity != update.filled
     state = intent[0]
     if state == "TERMINAL" and waiting:
@@ -125,7 +161,8 @@ def _settle_order(ledger, order_id, managed_exits=None):
     if update.terminal and not waiting and state == "ACKNOWLEDGED":
         ledger.transition_intent(update.client_id, "TERMINAL")
         state = "TERMINAL"
-    if update.terminal and not waiting and state == 'TERMINAL':
+    if (update.terminal and not waiting and state == 'TERMINAL'
+            and (prefetched is None or update.client_id in prefetched[3])):
         from .command_capacity import (episode_for_client, maybe_retire_episode,
                                        release_client_credits)
         episode = episode_for_client(ledger, update.client_id)

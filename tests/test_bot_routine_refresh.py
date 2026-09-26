@@ -239,7 +239,10 @@ class RoutineRefreshTests(unittest.IsolatedAsyncioTestCase):
               patch.object(runtime.account, 'reconcile_accounting',
                   AsyncMock(side_effect=AssertionError('serial financial reads')))):
             self.assertTrue(await runtime.recover_once())
-        self.assertEqual(calls, 3)
+        # D-133/D-134: the unchanged first snapshot is re-audited; the tail
+        # snapshot still collects every financial source concurrently.
+        self.assertEqual(calls, 2)
+        self.assertEqual(runtime.recovery_final_reaudits, 1)
         self.assertTrue(runtime.accounting_result.released)
 
     async def test_slow_snapshot_fails_freshness_without_widening_lease(self):

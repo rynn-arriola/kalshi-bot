@@ -1410,15 +1410,27 @@ class RecoveryRuntime:
         if generation != self.account.generation or not self.account.connected:
             return False
         self.recovery_phase = 'first_snapshot'
-        first = await self.account.reconcile(reads, now=self.now)
+        # D-134: download history concurrently with the first snapshot. Its
+        # import still runs after the snapshot under the ordinary token; any
+        # private event in between discards it and fetches again.
+        history_end = self.now()
+        prefetched = self.account.prefetch_history(reads, start=self.history_start,
+                                                   end=history_end, now=self.now)
+        history_started = self.clock()
+        try:
+            first = await self.account.reconcile(reads, now=self.now)
+        except BaseException:
+            await self.account.discard_prefetch(prefetched)
+            raise
         if first is None:
+            await self.account.discard_prefetch(prefetched)
             return False
         first_mark, lookups = self.account.report_mark(first), reads.order_lookups
         history_ingress = self.ingress_revision
         self.recovery_phase = 'history'
-        history_started = self.clock()
         history = await self.account.recover_history(reads, start=self.history_start,
-                                                    end=self.now(), now=self.now)
+                                                    end=history_end, now=self.now,
+                                                    prefetched=prefetched)
         if history is None:
             return False
         self._observe_history_scope(history, self.clock()-history_started)

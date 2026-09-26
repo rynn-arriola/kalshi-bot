@@ -1,5 +1,42 @@
 # Findings — kalshi-bot
 
+## 204. Ledger query cost and recovery overlap (D-134 items 2, 3, 5) — 2026-09-26
+
+**Scope:** Read-only copy of the live `account.db` (1,581 orders, 3,183
+command authorizations, 3,163 mutation attempts) and offline tests.
+
+**MEASURED — order settlement scan (item 2).** Every account snapshot settles
+all stored orders: 0.09 s per scan, three to four scans per full recovery,
+growing with order history. Most cost was re-validating unchanged stored order
+text and three queries per order. Now: validated payloads are reused
+(bounded, process-local), orders/intents/fill totals are read once per scan,
+and credit/episode cleanup is skipped only for clients a start-of-scan
+superset proves cannot need it. 0.09 → 0.03 s; receipts and all ledger effects
+are byte-identical to the per-order path on the production copy.
+
+**VERIFIED defect — missing indexes (item 5).** A sweep of every SQL statement
+against the production copy found full-table scans on hot paths:
+- managed-exit lookup per active order (market inventory, single-order
+  settlement, reducer checks): 9.6 ms per market query → 0.02 ms;
+- release check of sending/unknown mutations: 2.4 → 0.02 ms;
+- orders by market (exit basis, position-cost stream): 1.0 → 0.02–0.05 ms;
+- managed-exit classification per scan: 4.2 → 0.13 ms.
+Market inventory for 14 markets: 117 → 13 ms. Four indexes were added; results
+are identical; integrity check ok. An account-scope expression index was
+rejected because it misled the planner on another query. Remaining scans are
+deliberate whole-ledger audits/archival.
+
+**Item 3.** The history download (pure REST) now starts concurrently with the
+first recovery snapshot. Its import still runs afterwards under the ordinary
+reconciliation token and records the real read start, so receipt coverage is
+honest; any private event or reconnect in between discards it and downloads
+again; a failed/stale first snapshot never leaves it running.
+
+**Found while designing items 1 and 4:** every private event (including the
+bot's own order acknowledgements) advances the account revision, and release
+accepts only history receipts bound to the current revision (D-068). That is
+why every accepted order forces re-enumeration from the opening boundary.
+
 ## 203. Full recovery after accepted orders — where the time goes — 2026-09-26
 
 **Scope:** Generation 172 child log (first ~15 minutes after deployment, 35

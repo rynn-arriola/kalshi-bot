@@ -49,11 +49,12 @@ def audit_snapshot(ledger, snapshot, *, epoch, revision, capacity):
     if foreign:
         blockers.add("foreign_resting_orders")
     market_shards = {}
+    filled = ledger.filled_quantities()
     for key, order in orders.items():
         if order.subaccount != snapshot.subaccount:
             blockers.add("account_scope_conflict")
         market_shards.setdefault(order.ticker, set()).add(order.exchange_index)
-        if ledger.filled_quantity(key) != order.filled:
+        if filled.get(key, Decimal(0)) != order.filled:
             waiting.append(key)
         row = visible.get(key)
         if not order.terminal and row is None:

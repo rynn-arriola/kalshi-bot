@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-134 — Implement all recovery-efficiency recommendations
+
+- **Status:** ACCEPTED, 2026-09-26; items 2, 3, 5 implemented and verified.
+- **Decision owner:** Operator: “Lets do all recommendations”, after the D-133
+  report ranked: (1) accept the bot's own acknowledged orders in routine
+  renewal instead of full recovery (relaxes D-113), (2) cheaper order scans,
+  (3) concurrent first snapshot/history, (4) stop re-proving history from the
+  opening boundary (relaxes the D-035/D-068 receipt provenance rule),
+  (5) exit-plan refresh cost, (6) deploy together.
+- **Scope:** Items 1 and 4 are explicitly authorized design changes; they
+  must still fail closed on any fill, reconnect, stream gap, unexplained
+  snapshot difference or uncertainty, and keep fresh cash/settlement proof.
+- **Boundary:** Deployment (item 6) is a live restart and is confirmed with
+  the operator at that time. No other risk, ranking or limit change.
+
 ### D-133 — Re-audit an unchanged first snapshot in full recovery
 
 - **Status:** ACCEPTED, implemented and verified, 2026-09-26; not deployed.
