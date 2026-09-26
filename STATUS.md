@@ -1,9 +1,11 @@
 # Current status
 
-## D-152 measurement build ready — 2026-09-26
+## D-152 measurement build deployed — 2026-09-26
 
-Built on `fix/d129-capacity-archive`, not deployed (running build `32d1934`).
-Adds `entry_blocked_fraction` to `health_hourly` and research failure sites to
+**Running** build `04ff303` since 21:51 UTC (operator "command 1"; no positions,
+so an ordinary clean stop and restart, no flatten trades; 0 orders and 0
+positions at stop). First 3 minutes: healthy, entries refilling (34+), order
+group active, 0 errors, research alive with `failure_sites` reporting. Adds `entry_blocked_fraction` to `health_hourly` and research failure sites to
 status, plus the report's pull-vs-real-trades replay (works on data already
 collected). Finding 213: pulls ~97% false alarms, but Finding 206 shows the one
 real save came from cancels before a sweep, so no trigger change until the

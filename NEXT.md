@@ -1,6 +1,6 @@
 # Active work queue
 
-## Pending work (2026-09-26; build 32d1934 live with D-151; D-152 built)
+## Pending work (2026-09-26; build 04ff303 live with D-151 and D-152)
 
 **Dated follow-ups — do not drop:**
 
