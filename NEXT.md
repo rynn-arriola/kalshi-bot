@@ -2,6 +2,8 @@
 
 ## Pending work (2026-09-26 14:25 UTC; D-145–D-148 live, build 4979a14)
 
+0. **Deploy the review batch** (D-149, D-150, refactors) with one approved
+   restart; confirm `telemetry.jsonl` appears and `entry_screen_shadow` logs.
 1. **Measure D-145–D-148 over hours** (WATCHLIST item 10): fills, protective
    pulls per market-hour, blind withdrawals, order-group state, full recoveries
    vs `post_drain_renewals` / `routine_own_fallbacks` (first 32 min: 24 full

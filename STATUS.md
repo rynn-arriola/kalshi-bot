@@ -1,5 +1,17 @@
 # Current status
 
+## Architecture review done; D-149, D-150 and refactors ready — 2026-09-26
+
+Built, tested and published, **not deployed** (live bot still on `4979a14`):
+D-149 separate telemetry log (events.jsonl ~6 days), D-150 shadow-only
+fill-avoidance screen, and behavior-preserving refactors (unsent-abort helper,
+hot-path validators −37% / evaluation −16%, runtime `__dict__` defaults,
+`account_proof.py` extraction, named writer branches). Exception audit and CPU
+profile: Finding 212. Workspace: 11 merged worktrees and 15 merged branches
+removed; loose files in `data/worktree-archive-2026-09-26/`; `command1-dev`
+kept (uncommitted draft, backed up). Full suite 2,011 tests and native gate pass.
+Deploy needs one operator-approved restart.
+
 ## D-147 and D-148 running — 2026-09-26
 
 **Running** build `3223f7a` since 13:53 UTC (operator-approved stop: clean, zero
