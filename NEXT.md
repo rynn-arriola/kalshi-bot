@@ -4,6 +4,11 @@
 
 00. **Check D-151 after a few hours:** `health_hourly` rows each hour,
     `withdrawal_marks` after pulls, research status `alive` with no drops.
+    First 22 min: 482 rows, 0 dropped; `failures_in_runtime` 3 (one of 380
+    programs had no computable estimate; 2 unattributed). Small follow-up for
+    the next deploy: count research failures by site and exception type in
+    status. Trades 0 is real (one trade in 30 min across pulled markets); the
+    13 pulls were driven by cancellations ahead, not trading.
 0. **Shadow screen evaluation (D-150):** after 1–2 days, run
    the calibration report, `scripts/calibration_report.py` (verdict × fills × reward); the 25%
    reward-to-risk cut flags ~80% of entries at 30 contracts, so it needs
