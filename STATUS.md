@@ -1,5 +1,13 @@
 # Current status
 
+## D-132 final pre-restart review — 2026-09-25
+
+**Complete; ready for an operator-authorized restart.** Finding 202: live
+logs show no errors; one verified defect (passive exit reducer churn) is
+repaired, and a sweep fill is recorded as strategy risk. All D-129–D-132 work
+is verified (1,877 tests) and published. Generation 170 still runs the old
+code with no position and 28 resting entries at its last saved status.
+
 ## D-131 items 7–9 — 2026-09-25
 
 **Implemented, reviewed and verified offline; not deployed.** Finding 201:

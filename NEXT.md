@@ -1,6 +1,6 @@
 # Active work queue
 
-## Deploy D-129 + D-130 together (Findings 196–198)
+## Deploy D-129–D-132 together (Findings 196–202)
 
 1. **Awaiting operator authority (bot left running by request):** deploy
    only through Command 1/supported restart — stop to verified flat, back up

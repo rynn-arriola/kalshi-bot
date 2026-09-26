@@ -10,6 +10,18 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-132 — Final pre-restart review and live-log check
+
+- **Status:** ACCEPTED, 2026-09-25.
+- **Decision owner:** Operator: “do 1 last review of all things we fix the
+  address any issue that you encounter then check the running bot logs to see
+  if you encounter any issue that is not working then fix it then we can
+  restart” (after interrupting a “Command 1” request).
+- **Scope:** Review every D-129–D-131 change, repair defects found, analyse
+  the running generation-170 logs read-only, repair defects they reveal, verify
+  and publish. The restart itself follows the operator's confirmation.
+- **Boundary:** No live action, restart or order mutation during this work.
+
 ### D-131 — Fix remaining issues 2–9 before deployment
 
 - **Status:** ACCEPTED, 2026-09-25.

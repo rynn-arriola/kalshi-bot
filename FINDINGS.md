@@ -1,5 +1,43 @@
 # Findings — kalshi-bot
 
+## 202. Final pre-restart review and live-log check — 2026-09-25
+
+**Scope:** Read-only analysis of generation 170's retained child log
+(18:15–23:46 UTC, 265,848 events: 0 ERROR, 123 WARNING), parent log, saved
+status and a read-only ledger copy; final review of all D-129–D-131 changes.
+
+**VERIFIED defect — passive exit churn.** The first live fill-and-exit cycle
+(`KXWYCOAL-27APR01-T210`: bought 10 YES at 0.33 at 22:51:42; exited by taker IOC
+at 0.31 at 23:07:18 after the 900 s age limit; −$0.35 incl. $0.15 fee) shows
+the passive reducer (ask 10 @ 0.33) placed and canceled 16 times in 15 minutes,
+each copy living 10–50 s and losing queue priority. Only one reducer existed at
+a time. Offline replay of the real planner reproduces a cancel whenever the
+target moves off 0.33 (e.g. a competing ask flickering at 0.32); the book
+states were not logged, so the flicker is a HYPOTHESIS. Repaired (D-132): a
+lone exact reducer is kept until a new target has persisted 5 s; IOC/deadline
+modes and all other cancels are unchanged; status reports hold/release counts.
+
+**MEASURED, not a code defect — sweep fill.** For a minute before the fill the
+order had 250 contracts ahead, depth 251 and zero depletion; within 6 s the
+level was swept and the order filled. A depletion-rate estimate cannot foresee
+a single sweep. The same market filled adversely earlier (15:32→15:48, −$0.95)
+and remains in priority candidate memory; any post-fill cooldown is a strategy
+decision.
+
+**Other log observations:** 41 routine renewals failed on source change and 17
+on read-quota rollover waits (both escalate to full recovery; the first class
+is addressed by D-130); entries were allowed in a minority of health samples
+(recovery churn); engine backlog median 20.5, max 623; no reader, writer,
+engine, quota, REST or mutation failure; supervisor parent log clean.
+
+**Final review:** my own reprice edit had displaced the Command 1
+`flatten_at` initializer below a `return`, breaking 52 tests and hanging one
+suite; the release gate caught it before publication and it is fixed. A
+package-wide scan finds no other unreachable statements. Complete release
+suite: 1,877 tests in 293.6 s, no failures, one expected Windows skip.
+Production-ledger copy: archival 194 rows in 216 ms, integrity ok, financial
+hash unchanged, cold writer start ok.
+
 ## 201. D-131 items 7–9: concurrent withdrawals, repeat tracking, Command 1 — 2026-09-25
 
 **Item 7:** a threatened market now latches immediately as a secondary

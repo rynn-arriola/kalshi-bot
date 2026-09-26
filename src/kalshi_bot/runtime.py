@@ -1963,6 +1963,8 @@ class RecoveryRuntime:
             recovery_risk_drain_waits=self.recovery_risk_drain_waits,
             unsent_rebases=self.unsent_rebases,
             history_scope=self.history_scope,
+            reducer_reprice=dict(holds=self.management.reprice_holds,
+                                 releases=self.management.reprice_releases),
             history_scope_warnings=self.history_scope_warnings,
             recovery_retry_rounds=self.recovery_retry_rounds,
             completed_repair_passes=self.recovery_passes,

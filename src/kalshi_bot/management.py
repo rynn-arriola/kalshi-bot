@@ -1,6 +1,7 @@
 """Bounded advisory inventory plans. Never dispatches orders/cancels/IOC."""
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from .orders import InventoryPlan, inventory_plan
 from .exits import ExitTerms, ExitPlan, plan_exit
@@ -33,7 +34,49 @@ class InventoryManager:
         self._logged_states = {}  # bounded by managed market scope, no tick-by-tick logs
         self._inventory_revision = None
         self._inventory_cache = {}
+        # D-132: ticker -> (target price, first monotonic sighting) for a
+        # pending passive-reducer reprice; bounded by the managed scope.
+        self._reprice_seen = {}
+        self.reprice_holds = 0
+        self.reprice_releases = 0
         self.flatten_at = None
+
+    REPRICE_SETTLE_SECONDS = 5
+
+    def _settle_reprice(self, ticker, inventory, exit_plan, now_mono):
+        """Keep a lone exact passive reducer until a new target price settles.
+
+        Live evidence (Finding 202): a flickering competing quote made the
+        planner cancel and re-place the same 0.33 exit 16 times in 15 minutes,
+        losing queue priority each time. Holding an exact reducing order only
+        reduces inventory; IOC/deadline modes and every other cancel are
+        untouched, and a target stable for the settle period still reprices.
+        """
+        from .orders import InventoryPlan
+        passive = exit_plan.passive
+        working = [r for r in inventory.orders if r.owned and not r.order.terminal]
+        side = 'ask' if inventory.position > 0 else 'bid'
+        if (exit_plan.mode not in {'passive', 'passive_deferred'} or len(working) != 1
+                or not working[0].reducing or working[0].awaiting_fills
+                or working[0].order.side != side
+                or working[0].order.remaining != abs(inventory.position)
+                or passive.cancel_ids != (working[0].order.order_id,)
+                or exit_plan.limit_price is None
+                or exit_plan.limit_price == working[0].order.yes_price):
+            self._reprice_seen.pop(ticker, None)
+            return exit_plan
+        seen = self._reprice_seen.get(ticker)
+        if seen is None or seen[0] != exit_plan.limit_price or now_mono < seen[1]:
+            seen = self._reprice_seen[ticker] = (exit_plan.limit_price, now_mono)
+        if now_mono-seen[1] >= self.REPRICE_SETTLE_SECONDS:
+            self._reprice_seen.pop(ticker, None)
+            self.reprice_releases += 1
+            return exit_plan
+        self.reprice_holds += 1
+        held = InventoryPlan((), working[0].order.order_id, None, Decimal(0),
+                             tuple(b for b in passive.blockers
+                                   if b != 'await_terminal_cancellation_and_fill_proof'))
+        return replace(exit_plan, passive=held)
 
     def request_flatten(self, now):
         """Explicit operator deadline; cannot enable entries or grant proof."""
@@ -189,6 +232,10 @@ class InventoryManager:
         exit_plan = plan_exit(ticker=ticker, position=inventory.position, basis=inventory.yes_basis,
             first_seen_at=inventory.first_seen_at, orders=inventory.orders, book=new_book,
             terms=terms, journal=inventory.exit_journal, now=now, complete_scope=complete)
+        if inventory.position:
+            exit_plan = self._settle_reprice(ticker, inventory, exit_plan, runtime.clock())
+        else:
+            self._reprice_seen.pop(ticker, None)
         if terms is not None:
             passive = exit_plan.passive
         blockers = list(inventory.blockers)+list(passive.blockers)

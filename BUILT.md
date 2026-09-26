@@ -1,5 +1,11 @@
 # What exists
 
+## Passive reducer reprice settling — D-132
+
+A lone exact passive exit order is kept until a new target price has held for
+5 s, preventing cancel/re-place churn that forfeits queue priority; forced IOC
+and deadline exits are unchanged. See Finding 202; not deployed.
+
 ## Concurrent withdrawals, repeat counts and Command 1 — D-131
 
 Quote maintenance latches up to four protective cycles; the dispatch source
