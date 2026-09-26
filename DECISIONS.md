@@ -150,7 +150,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   - The operator's words: "the point of this is to fix an issue unattended", and "if you think the fix is critical then you should fix it, but if bot is running and this is not urgent then no need to restart."
   - Critical problems (crashed, stuck, cannot trade): the scheduler fixes, tests, ships and deploys unattended through fixed scripts, with automatic rollback.
   - Clarified by the operator: "what I want you to fix is something that crashes the bot and stopped it from trading, so you fix it back so it doesn't lose resting time."
-  - Non-urgent problems while the bot is running and trading are reported with a proposed fix; no unattended code change.
+  - Non-urgent problems while the bot is running and trading are reported with a proposed fix; no unattended change to `src/kalshi_bot`.
+  - The operator's words: "other simple fix that dont require bot restart then just fix it with no restart".
+  - Accordingly, bugs only in `scripts/*.py` helper/report tools, which the live bot does not load, may be fixed, tested and committed unattended without a restart.
   - Protected strategy/risk/selection/quoting/exit files are never edited unattended.
   - Every D-139 boundary above still applies.
 
