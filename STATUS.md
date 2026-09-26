@@ -9,8 +9,9 @@ own-order renewals versus 1 full recovery (was one full recovery per drain);
 2 routine renewals handed over to own renewal; own renewals 35 of 36 completed
 with 0 escalations. Full recoveries: 6 in ~6 min (≈18 per 6 min before).
 Earlier today: D-145 (fill protection), D-146 (send-edge crash fix), manual
-close reconciled (net −$18.3604). Operator action still pending: install the
-autostart task (`scripts\Install-LiquidityBotAutostart.ps1`).
+close reconciled (net −$18.3604). Autostart task `KalshiLiquidityBot-Autostart`
+registered at the operator's request (runs 2 minutes after sign-in; Windows
+automatic sign-in is the operator's own setting).
 
 ## Bot stopped after an adverse fill; D-145 fill protection ready — 2026-09-26
 
