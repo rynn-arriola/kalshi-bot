@@ -1,5 +1,13 @@
 # Current status
 
+## D-156 and D-158 deployed; entries restored — 2026-09-27
+
+**Running** build `4b21bb0` since 19:16 UTC (operator "command 1"; flat, no
+flatten trades). The restart also cleared a 75-minute entry outage caused by
+an outside burst of public requests (Finding 218). Entries refilled (28+ and
+rising), sweep filter loaded, no positions. First full-scan pass failed on a
+read-quota refresh; the retry fix is built on the branch for the next restart.
+
 ## D-158 full-market scan built — 2026-09-27
 
 Built and tested on the branch, not deployed (operator: no restart). Every

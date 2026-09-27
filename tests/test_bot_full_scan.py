@@ -171,6 +171,47 @@ class ScanTests(unittest.IsolatedAsyncioTestCase):
         self.mono[0] += self.scan.FRESH_SECONDS+1
         self.assertIsNone(self.scan.fresh_scores())
 
+    async def test_a_batch_overlapping_a_quota_refresh_is_retried(self):
+        from kalshi_bot.quota import QuotaUnavailable
+        real = self.r.reads.read
+        refreshes = ['orderbooks']
+        async def read(name, **params):
+            if name in refreshes:
+                refreshes.remove(name)
+                raise QuotaUnavailable('quota_revision_changed')
+            return await real(name, **params)
+        self.r.reads = NS(read=read)
+        self.scan.READ_PAUSE_SECONDS = 0
+        scores = await self.scan.scan_once()
+        self.assertEqual(set(scores), {'A', 'B'})
+
+    async def test_a_persistent_quota_problem_fails_the_pass_after_bounded_tries(self):
+        from kalshi_bot.quota import QuotaUnavailable
+        calls = []
+        async def read(name, **params):
+            calls.append(name)
+            raise QuotaUnavailable('quota_revision_changed')
+        self.r.reads = NS(read=read)
+        self.scan.READ_PAUSE_SECONDS = 0
+        with self.assertRaises(QuotaUnavailable):
+            await self.scan.scan_once()
+        self.assertEqual(len(calls), self.scan.READ_ATTEMPTS)
+
+    async def test_a_failed_pass_retries_soon_and_a_good_one_waits_the_interval(self):
+        runs = []
+        async def once():
+            runs.append(len(runs))
+            if len(runs) == 1:
+                raise InvalidData('first pass fails')
+            return {}
+        self.scan.scan_once = once
+        self.scan.FIRST_DELAY_SECONDS, self.scan.RETRY_SECONDS, self.scan.INTERVAL_SECONDS = .01, .01, 999
+        task = asyncio.create_task(self.scan.run())
+        await asyncio.sleep(.2)
+        self.r.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertEqual(runs, [0, 1])  # Retried quickly once, then waits the long interval.
+
     async def test_a_failing_scan_is_counted_and_retried_later(self):
         self.r.incentives = NS(current=lambda: None)
         self.scan.FIRST_DELAY_SECONDS = .01

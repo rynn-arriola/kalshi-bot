@@ -16,6 +16,7 @@ from decimal import Decimal
 from .books import Book, Ladder
 from .market_inputs import tick_bands
 from .ranking import RankingBoard
+from .quota import QuotaUnavailable
 from .values import InvalidData, utc
 
 
@@ -60,6 +61,9 @@ class FullMarketScan:
     FRESH_SECONDS = 2700        # older scores fall back to the pool hint
     MARKET_BATCH = 50
     BOOK_BATCH = 100
+    RETRY_SECONDS = 300       # a failed pass retries soon, not after 30 minutes
+    READ_ATTEMPTS = 4         # a batch overlapping a read-quota refresh is retried
+    READ_PAUSE_SECONDS = 2.0
 
     def __init__(self, runtime):
         self.runtime = runtime
@@ -69,6 +73,16 @@ class FullMarketScan:
         self.runs = self.failures = 0
         self.markets = self.scoring = 0
         self.last_error = None
+
+    async def _read(self, name, **params):
+        """One batch read; a read-quota refresh mid-request is retried, not fatal."""
+        for attempt in range(self.READ_ATTEMPTS):
+            try:
+                return await self.runtime.reads.read(name, reason='scan', **params)
+            except QuotaUnavailable:
+                if attempt == self.READ_ATTEMPTS-1:
+                    raise
+                await asyncio.sleep(self.READ_PAUSE_SECONDS)
 
     def fresh_scores(self):
         mono = self.scored_mono
@@ -92,7 +106,7 @@ class FullMarketScan:
         bands = {}
         for i in range(0, len(tickers), self.MARKET_BATCH):
             chunk = tickers[i:i+self.MARKET_BATCH]
-            result = await r.reads.read('markets', reason='scan', tickers=','.join(chunk), limit=1000)
+            result = await self._read('markets', tickers=','.join(chunk), limit=1000)
             for market in result.payload.get('markets') or ():
                 try:
                     if market.get('status') == 'active' and market.get('ticker') in programs:
@@ -104,7 +118,7 @@ class FullMarketScan:
         active = sorted(bands)
         for i in range(0, len(active), self.BOOK_BATCH):
             chunk = tuple(active[i:i+self.BOOK_BATCH])
-            result = await r.reads.read('orderbooks', reason='scan', tickers=chunk)
+            result = await self._read('orderbooks', tickers=chunk)
             for row in result.payload.get('orderbooks') or ():
                 try:
                     books[row['ticker']] = parse_book(row['ticker'], row.get('orderbook_fp') or {})
@@ -131,12 +145,13 @@ class FullMarketScan:
                 scores = await self.scan_once()
                 if getattr(r, 'research', None) is not None:
                     r._research_safely(self._record, scores)
+                delay = self.INTERVAL_SECONDS
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 self.failures += 1
                 self.last_error = f'{type(exc).__name__}: {str(exc)[:160]}'
-            delay = self.INTERVAL_SECONDS
+                delay = self.RETRY_SECONDS
 
     def _record(self, scores):
         """D-156/D-158: the scan's top markets, for the report and a later ranker."""

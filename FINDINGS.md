@@ -1,5 +1,28 @@
 # Findings — kalshi-bot
 
+## 218. An outside burst of public requests stopped entries for 75 minutes — 2026-09-27
+
+**MEASURED (events log, status).** About 17:52–18:01 UTC a read-only public
+market scan run from the same machine (6 parallel workers, ~10,000 public
+requests; the operator's AI assistant) tripped Kalshi's per-IP rate limit.
+18:00–18:10 the bot logged 429 retries on `/events` (77), `/historical/cutoff`
+(79), `/markets/trades` (50) and others, 11 `metadata_exhausted`, 34
+`metadata_dependency_failed`. From ~18:00 every one of the 1,024 candidates
+showed `selection_evidence_unavailable`; the last entry attempt was 18:00:55
+and resting entries fell to 0. The 429s stopped by 18:10 but selection never
+recovered until the 19:15 restart (command 1), after which entries refilled
+normally. Status said `healthy` throughout.
+
+**Weaknesses exposed:** (1) exhausted metadata does not self-heal after the
+cause clears; (2) health does not flag "entries allowed but none resting" for
+a long time; (3) public tools on the bot's machine share its rate limit. The
+public scan script now paces at ~5 requests/s (its second run caused no 429).
+
+**Also after the restart:** the first D-158 full-scan pass failed on one
+`QuotaUnavailable: quota_revision_changed` (a batch overlapping a read-quota
+refresh) and, as built, would wait 30 minutes; fixed on the branch (batch
+retried up to 4 times; a failed pass retries after 5 minutes).
+
 ## 217. Reporting audit: which numbers are money, which are estimates — 2026-09-27
 
 **VERIFIED (ledger, tracker checkpoint, research.db).**

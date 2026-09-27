@@ -4,6 +4,15 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Finding 218 fixes (next build):** (1) exhausted market metadata retries
+  on a bounded cooldown once 429s stop, so selection evidence self-heals;
+  (2) health warns (and the watchlist flags) when entries are allowed but none
+  have rested for 15+ minutes; (3) never run parallel public scans on the bot
+  machine — use `scripts/market_scan.py` (paced) or the in-bot scan.
+- **Deploy the D-158 scan retry fix** (built, on the branch) at the next
+  approved restart; until then a failed pass waits 30 minutes and discovery
+  falls back to the pool hint (safe).
+
 - **Deploy D-158 with D-156 at the next approved restart.** Then check
   `full_scan` in status (runs, markets ~5,000, scoring, fresh) after the first
   pass (2 minutes after start), that entries stay near 50, and the read budget
