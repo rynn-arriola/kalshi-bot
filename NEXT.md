@@ -15,6 +15,16 @@
 - **Entry gate: answered (Finding 213).** Lease revoked by each account write
   and renewed seconds later; resting entries 49.6–49.9 of 50, so no fix
   needed now. Recheck only if average resting falls below ~45.
+- **Full account checks from snapshot lag (measured 21:55–02:00 UTC).** 64–79
+  full recoveries/hour, 4.8% of the time; the largest cause is own-order
+  renewal escalating (40/h). `order_not_visible`: 265 of 290 within 2 s of
+  our own placement/cancel, i.e. Kalshi's REST snapshot lags the stream.
+  Candidate fix (bundle with the 2026-09-27 restart): when a renewal fails
+  only on orders we changed in the last ~3 s, wait ~1.5 s and retry once
+  before a full recovery (also WATCHLIST 5's 404s).
+  `owned_order_terms_mismatch` (150): only 79 within 5 s of our own action;
+  71 are not explained by our lag. First log which field differs (terminal
+  in our ledger vs resting at Kalshi, or remaining/price), then decide.
 - **Research failures: answered.** All `trades_read:QuotaUnavailable` during
   read-quota refreshes; no data lost. Optional cleanup at a later deploy:
   count them as a skip, not a failure.
