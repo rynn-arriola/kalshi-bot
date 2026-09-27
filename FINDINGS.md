@@ -1,5 +1,26 @@
 # Findings — kalshi-bot
 
+## 216. Calibration report, 40 hours: 1,250 protective pulls, no fill avoided; first payout — 2026-09-27
+
+**MEASURED (research.db 2026-09-26 19:15 → 2026-09-27 11:00 UTC, Kalshi trades).**
+`time_to_fill` 1,241 pulls, 2% with our level gone 60 s later; 5 trade-backed.
+Of the 19 pulls whose level was gone, 18 had no trade through our price within
+90 s (cancels or quote moves); the 19th was KXTXOIL 02:14:19, the same second
+the sweep filled us, so the pull did not prevent it. `short_queue` 9 pulls, 0
+justified. 60–78% of entry orders ended by being pulled. Three fills in the
+window, all single sweeps with no trade on our side in the 30 s before. Fill
+rates by shadow verdict, 24-h volume and depth ahead: too few fills (3) to
+separate them.
+
+**First reward-like credit:** $1.22 unattributed credit at 10:13 UTC
+(6:13 AM ET), consistent with a program that ended 2026-09-26. Our per-program
+estimates (tracking since 2026-09-26 19:00 only) are all under $1 for programs
+ending by 2026-10-04, so they understate full-period earnings.
+
+**Implication:** in this window the pull trigger cost quoting time and account
+churn and prevented nothing; Finding 206's single cancel-before-sweep save has
+not recurred. Decision with the operator.
+
 ## 215. Loss review: 19 round trips, −$41.12; about a third was predictable — 2026-09-27
 
 **MEASURED (ledger fills 2026-09-23 11:29 → 2026-09-27 05:36 UTC, Kalshi public
