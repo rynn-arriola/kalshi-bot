@@ -24,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Kalshi pays liquidity rewards around 2-4 AM ET the day after a program's end
 # (operator-supplied community evidence, 2026-09-26); allow a two-day window.
 PAYOUT_WINDOW = timedelta(days=2)
+# Kalshi pays nothing for a program whose reward ends under $1 (all or nothing).
+MINIMUM_PAYOUT = Decimal(1)
+# D-154/D-155 loss filters (cooldown, downside cap, family memory, sweep filter)
+# were all live from this build start; fills before and after are compared.
+FILTERS_LIVE = datetime(2026, 9, 27, 11, 42, tzinfo=timezone.utc)
 
 
 def load(db, since):
@@ -78,6 +83,100 @@ def resting_estimates(data, now):
             row['hours'] += hours
             row['estimate'] += rate*hours/2
     return per
+
+
+def _end(value):
+    return None if not value else datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+
+
+def finish_line(data, tracker, now):
+    """Per live program we have rested on: earned so far, our resting share of
+    its time since we first entered, and whether it can still reach Kalshi's
+    $1 minimum before it ends at that share. Verdicts use the resting-based
+    estimate, which leans high: "cannot reach" is reliable, "on track" is
+    optimistic."""
+    strict = {p['program_id']: p['estimate'] for p in tracker or ()}
+    resting = resting_estimates(data, now)
+    first, rate = {}, {}
+    for at, _, entry in data['entries']:
+        pid = entry.get('program_id')
+        first.setdefault(pid, datetime.fromisoformat(at))
+        rate[pid] = dec(entry.get('hourly_reward_usd')) or Decimal(0)  # latest pair rate
+        resting[pid]['ticker'] = entry.get('ticker')
+    rows = []
+    for pid, r in resting.items():
+        end = _end(r['end'])
+        if end is None or end <= now:
+            continue
+        elapsed = Decimal(str((now-first[pid]).total_seconds()))/3600
+        left = Decimal(str((end-now).total_seconds()))/3600
+        share = min(Decimal(1), r['hours']/2/elapsed) if elapsed > 0 else Decimal(0)
+        need = MINIMUM_PAYOUT-r['estimate']
+        if need <= 0:
+            needed, verdict = Decimal(0), 'cleared $1'
+        elif not rate[pid]:
+            needed, verdict = None, 'cannot reach'
+        else:
+            needed = need/(rate[pid]*left)
+            verdict = ('cannot reach' if needed > 1 else 'on track' if needed <= share
+                       else 'needs more resting')
+        rows.append(dict(program_id=pid, ticker=r.get('ticker'), left=left, share=share,
+                         needed=needed, verdict=verdict, rate=rate[pid], earned=r['estimate'],
+                         strict=strict.get(pid)))
+    return rows
+
+
+FINISH_ORDER = ('cleared $1', 'on track', 'needs more resting', 'cannot reach')
+
+
+def finish_line_section(data, tracker, now):
+    rows = finish_line(data, tracker, now)
+    out = ['## $1 finish line (live programs we have rested on)',
+           'Kalshi pays nothing for a program that ends under $1. "Share" is the part of '
+           'the time since we first entered that we were resting; "needed" is the share '
+           'of the time left that would still reach $1. Verdicts use the resting-based '
+           'estimate (leans high): "cannot reach" is reliable, "on track" is optimistic.']
+    if not rows:
+        return '\n'.join(out+['No live programs with entries in this window.'])
+    summary = []
+    for verdict in FINISH_ORDER:
+        group = [r for r in rows if r['verdict'] == verdict]
+        summary.append((verdict, len(group), f"{sum((r['earned'] for r in group), Decimal(0)):.2f}"))
+    out.append(table(['verdict', 'programs', 'earned so far $ (resting-based)'], summary))
+    at_risk = sum((r['earned'] for r in rows if r['verdict'] in FINISH_ORDER[2:]), Decimal(0))
+    out.append(f'Estimated earnings on programs not yet on track for $1 (pay nothing unless '
+               f'that changes): ${at_risk:.2f}. Median resting share: '
+               f"{median(r['share'] for r in rows):.0%}.")
+    rows.sort(key=lambda r: (FINISH_ORDER.index(r['verdict']), -r['earned']))
+    out.append(table(['market', 'ends in (h)', 'earned $ strict', 'earned $ resting-based',
+                      'rate $/h', 'share', 'needed', 'verdict'],
+        [(r['ticker'], f"{r['left']:.1f}", '–' if r['strict'] is None else f"{r['strict']:.2f}",
+          f"{r['earned']:.2f}", f"{r['rate']:.2f}", f"{r['share']:.0%}",
+          '–' if r['needed'] is None else f"{min(r['needed'], Decimal(9.99)):.0%}", r['verdict'])
+         for r in rows[:40]]))
+    return '\n'.join(out)
+
+
+def loss_filter_section(ledger, now):
+    """Fill losses before and after the D-154/D-155 loss filters (ledger money)."""
+    out = ['## Fill losses before and after the loss filters',
+           f'Filters (cooldown, downside cap, family memory, sweep filter) live from '
+           f'{FILTERS_LIVE:%Y-%m-%d %H:%M} UTC. Small samples: read as direction, not proof.']
+    if ledger is None or not ledger['realized']:
+        return '\n'.join(out+['No ledger fills.'])
+    first = min(at for at, _, _ in ledger['realized'])
+    rows = []
+    for label, start, stop in (('before', first, FILTERS_LIVE), ('after', FILTERS_LIVE, now)):
+        fills = [(p, f) for at, p, f in ledger['realized'] if start <= at < stop]
+        days = Decimal(str(max(0., (stop-start).total_seconds())))/86400
+        money = sum((p for p, _ in fills), Decimal(0))
+        rows.append((label, f'{days:.1f}', len(fills), f'{money:+.2f}',
+                     f'{money/len(fills):+.2f}' if fills else '–',
+                     f'{len(fills)/days:.1f}' if days else '–',
+                     f'{money/days:+.2f}' if days else '–'))
+    out.append(table(['period', 'days', 'fill events', 'trading $ (after fees)', '$ per fill',
+                      'fills per day', '$ per day'], rows))
+    return '\n'.join(out)
 
 
 def business_section(ledger, tracker, data, *, days, now):
@@ -441,6 +540,7 @@ def report(data, *, days, now, tracker=None, ledger=None):
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
         business_section(ledger, tracker, data, days=days, now=now),
+        loss_filter_section(ledger, now), finish_line_section(data, tracker, now),
         entries_section(data), fills_section(data), withdrawals_section(data),
         trade_evidence_section(data), sweeps_section(data), rewards_section(data, tracker, now), health_section(data)])+'\n'
 

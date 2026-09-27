@@ -72,6 +72,10 @@ class ReportTests(unittest.TestCase):
     def line(self, start):
         return next(l for l in self.text.splitlines() if l.startswith(start))
 
+    def test_report_includes_the_business_decision_sections(self):
+        self.assertIn('## Fill losses before and after the loss filters', self.text)
+        self.assertIn('## $1 finish line', self.text)
+
     def test_entry_outcomes_by_verdict_volume_and_depth(self):
         self.assertEqual(self.line('| reward_risk'), '| reward_risk | 1 | 2 | 1 | 50% | 0% |')
         self.assertEqual(self.line('| pass'), '| pass | 2 | 4 | 0 | 0% | 25% |')
@@ -248,6 +252,59 @@ class ReportTests(unittest.TestCase):
 
     def test_hourly_health(self):
         self.assertIn('| 2026-10-08T00 | 360 | 90% | 48 | 3 | 7 | 1 |', self.text)
+
+
+class FinishLineTests(unittest.TestCase):
+    """Kalshi pays nothing under $1: each live program's path to the minimum."""
+    def data(self, programs):
+        entries, ends = [], []
+        for pid, rate, rested_hours, end_hours in programs:
+            placed = NOW-timedelta(hours=10)
+            entries.append((placed.isoformat(), pid, dict(program_id=pid, ticker='T'+pid,
+                hourly_reward_usd=str(rate), order_ids=[pid+'b', pid+'a'],
+                program_end=(NOW+timedelta(hours=end_hours)).isoformat())))
+            for leg in ('b', 'a'):
+                ends.append(((placed+timedelta(hours=rested_hours)).isoformat(), pid+leg, {}))
+        return dict(entries=entries, entry_ends=ends)
+
+    def test_each_verdict(self):
+        data = self.data([('clear', '0.5', 4, 5),     # earned 0.5*4 = $2
+                          ('track', '0.05', 5, 20),   # $0.25; needs 0.75/(0.05*20)=75%, has 50%
+                          ('ok', '0.05', 8, 40),      # $0.40; needs 0.6/(0.05*40)=30%, has 80%
+                          ('never', '0.01', 2, 5),    # $0.02; needs 0.98/0.05 > 100%
+                          ('short', '0.1', 1, 5),     # $0.10; needs 0.9/0.5 = 180%
+                          ('ended', '1', 5, -1)])     # ended: not a live program
+        rows = {r['program_id']: r for r in calibration_report.finish_line(
+            data, [dict(program_id='ok', estimate=D('0.1'))], NOW)}
+        self.assertEqual({k: r['verdict'] for k, r in rows.items()},
+                         dict(clear='cleared $1', track='needs more resting', ok='on track',
+                              never='cannot reach', short='cannot reach'))
+        self.assertEqual(rows['track']['share'], D('0.5'))
+        self.assertEqual(rows['track']['needed'], D('0.75'))
+        self.assertEqual(rows['ok']['earned'], D('0.4'))
+        self.assertEqual((rows['ok']['strict'], rows['clear']['strict']), (D('0.1'), None))
+
+    def test_the_section_totals_earnings_that_are_not_yet_on_track(self):
+        text = calibration_report.finish_line_section(self.data(
+            [('track', '0.05', 5, 20), ('never', '0.01', 2, 5), ('ok', '0.05', 8, 40),
+             ('big', '0.1', 6, 5)]), None, NOW)  # big: $0.60 earned, needs more resting
+        self.assertIn('pay nothing unless that changes): $0.87', text)
+        self.assertLess(text.index('| Tok |'), text.index('| Tbig |'))  # verdict before size
+        self.assertLess(text.index('| Tbig |'), text.index('| Ttrack |'))
+        self.assertIn('No live programs', calibration_report.finish_line_section(
+            dict(entries=[], entry_ends=[]), None, NOW))
+
+
+class LossFilterTests(unittest.TestCase):
+    def test_fills_are_split_at_the_filter_start(self):
+        live = calibration_report.FILTERS_LIVE
+        ledger = dict(realized=[(live-timedelta(days=2), D('-3'), D('0.1')),
+                                (live-timedelta(days=1), D('-1'), D('0.1')),
+                                (live+timedelta(hours=6), D('-0.5'), D('0.1'))], cash=[], open_lots=0)
+        text = calibration_report.loss_filter_section(ledger, live+timedelta(days=1))
+        self.assertIn('| before | 2.0 | 2 | -4.00 | -2.00 | 1.0 | -2.00 |', text)
+        self.assertIn('| after | 1.0 | 1 | -0.50 | -0.50 | 1.0 | -0.50 |', text)
+        self.assertIn('No ledger fills', calibration_report.loss_filter_section(None, live))
 
 
 if __name__ == '__main__':
