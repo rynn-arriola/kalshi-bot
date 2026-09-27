@@ -1,5 +1,31 @@
 # Findings — kalshi-bot
 
+## 214. Swept twice in one market 27 minutes apart; the bot walked back in — 2026-09-27
+
+**MEASURED (ledger + Kalshi public trades).** KXTXOIL-27MAR31-T5.8 (Texas crude
+production, ~4,660 contracts/24 h). 01:34:20 UTC a single seller swept about
+3,700 YES at 0.64 (every bid). 01:47:07 a 263-contract sweep at 0.58 filled our
+30-contract bid (maker, no fee); the 15-minute exit rule sold 20 at 0.58 and 10
+at 0.53 at 02:02:15 (−$1.02 with taker fees). 02:14:19 the bot had re-entered
+the same market and a ~560-contract sweep at 0.51–0.53 filled 30 at 0.53; 8 s
+later trades printed at 0.21. The exit rule sold 30 at 0.35 at 02:29:38.
+Window realized −$6.89; the loss ratchet cut entries to 41. The 31-contract
+order group capped each hit as designed.
+
+**Causes.** (1) No re-entry lockout after a fill: the market was eligible again
+as soon as the position was flat (Finding 210 had proposed a post-fill
+cooldown). (2) No "recently swept" screen: the first fill came 13 minutes after
+a 3,700-contract sweep. (3) The D-150 volume screen (shadow only) would have
+flagged this market (> 286/day). Every fill was again a single sweep with no
+warning trade, so no cancel trigger could have helped.
+
+**Also found:** these fills reached the ledger during a concurrent renewal /
+recovery, not through the stream fill hook, so the D-151 research `fills`
+table missed them.
+
+**Repair:** D-154 (24-hour post-fill cooldown from the ledger; research fills
+backfilled from the ledger). The swept-market screen is a follow-up.
+
 ## 213. D-145 pulls are still ~97% false alarms; entries closed about half the time — 2026-09-26
 
 **Scope:** first 1.6 h of the D-151 research dataset (build `32d1934`, 19:15–20:55

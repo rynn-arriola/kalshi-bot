@@ -259,6 +259,8 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     runtime.attach_rewards(scope='primary-account', checkpoint_path=Path(writer.path).with_suffix('.rewards.json'))
     if not session.entries_paused:
         runtime.attach_maintenance()
+        # D-154: no re-entry for 24 h in a market that filled us.
+        runtime.maintenance.fill_cooldown_required = True
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

@@ -429,6 +429,10 @@ class LedgerWriter:
             raise InvalidData('bounded fill identities required')
         return await self._wait(self._submit('refined_fills', keys))
 
+    async def recent_fills(self, since_us):
+        """Read-only (D-154): own fills executed at or after ``since_us``, oldest first."""
+        return await self._wait(self._submit('recent_fills', integer(since_us, 0, 2**63-1)))
+
     async def reaudit(self, snapshot):
         """Read-only local audit of an unchanged venue snapshot (D-130).
 
@@ -750,6 +754,14 @@ class LedgerWriter:
                     snapshot.subaccount, now))
                 return audit_snapshot(ledger, snapshot, epoch=self.epoch, revision=self._revision,
                                       capacity=self.market_capacity)
+        if command == 'recent_fills':
+            rows = ledger.connection.execute(
+                "SELECT id,payload,executed_us FROM fills WHERE executed_us >= ? "
+                "ORDER BY executed_us LIMIT 4097", (args[0],)).fetchall()
+            if len(rows) > 4096:
+                raise InvalidData('recent fills exceed bound')
+            return tuple((tuple(json.loads(key)), tuple(json.loads(payload)), executed)
+                         for key, payload, executed in rows)
         if command == 'refined_fills':
             found = set()
             keys = args[0]
@@ -1068,7 +1080,7 @@ class LedgerWriter:
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'next_entry_cancel_evidence', 'reduction_evidence',
                                  'command_capacity', 'accounting_status', 'reaudit',
-                                 'refined_fills', 'unknown_creates'}
+                                 'refined_fills', 'unknown_creates', 'recent_fills'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

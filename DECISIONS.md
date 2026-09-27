@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-154 — No re-entry for 24 hours in a market that filled us
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27.
+- **Decision owner:** Operator: "Do recommendation" (stop while flat, build a
+  24-hour cooldown, restart), after Finding 214.
+- **Rule:** a market with any own fill in the last 24 hours gets no new entry
+  (selection and dispatch both use `QuoteMaintenance.entry_allowed`). Exits and
+  cancels are unaffected.
+- **Source of truth:** the ledger's `fills` table via the read-only writer
+  command `recent_fills`, refreshed every 15 s, so it survives restarts and
+  covers every fill path. Fails closed: no entries at all until the first
+  ledger read, or when the last read is over 5 minutes old. Status:
+  `maintenance.fill_cooldown` (markets, hours left, blocks, failures).
+- **Also:** the same loop records any ledger fill missing from the D-151
+  research `fills` table (`role='ledger'`; mark-outs only for fills under 60 s
+  old).
+- **Boundary:** can only block entries; never adds orders, changes size,
+  exits or protection.
+
 ### D-153 — Label owned-order audit mismatches before changing renewal
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not

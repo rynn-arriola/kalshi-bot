@@ -4,6 +4,12 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Swept-market screen (Finding 214).** Stay out of a market for a while
+  after a large one-sided sweep (e.g. ≥ 5× our size) on the side we quote; the
+  research `trades` table has the data. Size the rule from the calibration
+  report's sweep section at the 2026-09-27 review, together with the pull
+  decision and the D-150 volume screen verdicts.
+
 - **2026-09-27 ~20:00 UTC — pull retune decision (D-152, Finding 213).** Run
   `python -B scripts/calibration_report.py --days 2`. Read "Protective pulls"
   precision and "Pull trigger vs real trades": trade-backed share and

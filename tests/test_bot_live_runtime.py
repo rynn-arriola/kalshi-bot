@@ -975,6 +975,7 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(guard.listeners), 5)
                 self.assertFalse(runtime.observation_only)
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
+                self.assertTrue(runtime.maintenance.fill_cooldown_required)  # D-154
                 self.assertIsNone(runtime.admission)
                 self.assertTrue(runtime.broad_discovery)
                 self.assertEqual(runtime.metadata_scheduler.concurrency, 4)

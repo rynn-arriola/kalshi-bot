@@ -7,6 +7,7 @@ must close the writer after run() returns so accepted writes finish draining.
 import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import random
 import time
 from uuid import uuid4
@@ -1020,6 +1021,7 @@ class RecoveryRuntime(AccountProofMixin):
             withdrawing = cycle is not None and fill.order_id in cycle.order_ids
         now = self.clock()
         key = f'{fill.order_id}/{fill.trade_id}'
+        self.__dict__.setdefault('_research_ledger_seen', set()).add(key)  # D-154
         self.research_fills_recorded += 1
         self.research.record('fills', key, ticker=fill.ticker, order_id=fill.order_id,
             side=fill.book_side, price=fill.yes_price, quantity=fill.quantity, fee=fill.fee,
@@ -1037,6 +1039,57 @@ class RecoveryRuntime(AccountProofMixin):
             self._research_marks_pending += 1
             loop.call_later(delay, self._research_mark, key, fill.ticker, fill.book_side,
                             fill.yes_price, delay)
+
+    FILL_HISTORY_SECONDS = 15  # D-154
+
+    async def _fill_history_loop(self):
+        """D-154: the fill cooldown and research fills, from the ledger itself.
+
+        The ledger holds every fill however it arrived (stream, renewal or
+        recovery), so neither the cooldown nor research depends on one path.
+        """
+        maintenance = self.maintenance
+        while not self.stop_requested.is_set():
+            try:
+                now_us = int(utc(self.now()).timestamp()*1_000_000)
+                rows = await self.writer.recent_fills(
+                    max(0, now_us-maintenance.FILL_COOLDOWN_SECONDS*1_000_000))
+                maintenance.set_fill_history(rows, self.clock())
+                if self.research is not None:
+                    self._research_safely(self._research_ledger_fills, rows, now_us)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                maintenance.fill_cooldown_failures += 1
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), self.FILL_HISTORY_SECONDS)
+            except TimeoutError:
+                pass
+
+    def _research_ledger_fills(self, rows, now_us):
+        """D-154: record fills the stream hook missed (duplicates are ignored)."""
+        seen = self.__dict__.setdefault('_research_ledger_seen', set())
+        for (order_id, trade_id), payload, executed in rows:
+            key = f'{order_id}/{trade_id}'
+            if key in seen:
+                continue
+            seen.add(key)
+            ticker, side, quantity, price, fee = (
+                payload[0], payload[1], *(format(Decimal(v), 'f') for v in payload[2:5]))
+            self.research.record('fills', key, ticker=ticker, order_id=order_id, side=side,
+                price=price, quantity=quantity, fee=fee, executed_us=executed, role='ledger',
+                withdrawal_in_progress=None, estimated_ahead=None,
+                **self._research_top(self.management._book(ticker)[1]))
+            fresh = type(executed) is int and now_us-executed < 60_000_000
+            if (not fresh or self._research_marks_pending+len(self.RESEARCH_MARK_SECONDS)
+                    > self.RESEARCH_MAX_PENDING_MARKS):
+                continue  # Old fills (e.g. after a restart) get no late mark-outs.
+            loop = asyncio.get_running_loop()
+            for delay in self.RESEARCH_MARK_SECONDS:
+                self._research_marks_pending += 1
+                loop.call_later(delay, self._research_mark, key, ticker, side, price, delay)
+        while len(seen) > 8192:
+            seen.pop()
 
     def _research_mark(self, key, ticker, side, price, delay):
         self._research_marks_pending = max(0, self._research_marks_pending-1)
@@ -2106,6 +2159,9 @@ class RecoveryRuntime(AccountProofMixin):
                 if self.research is not None:
                     tasks.append(asyncio.create_task(self._research_loop(),
                                                      name='kalshi-research'))
+                if self.maintenance is not None and self.maintenance.fill_cooldown_required:
+                    tasks.append(asyncio.create_task(self._fill_history_loop(),
+                                                     name='kalshi-fill-cooldown'))
                 if self.order_groups is not None:
                     tasks.append(asyncio.create_task(self.order_groups.run(),
                                                      name='kalshi-order-groups'))

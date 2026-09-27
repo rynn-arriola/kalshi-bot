@@ -105,6 +105,13 @@ class QuoteMaintenance:
         self._risk_gap_counts = {}
         self._anchors = {}      # order_id -> QueueAnchor (D-145)
         self._research_marks_pending = 0  # D-151 #4
+        # D-154: ticker -> newest own fill (venue microseconds); None until the
+        # first ledger load. Live composition sets ``fill_cooldown_required``.
+        self.fill_cooldown_required = False
+        self.fill_cooldown = None
+        self.fill_cooldown_loaded_mono = None
+        self.fill_cooldown_failures = 0
+        self.fill_cooldown_blocks = 0
         self._blind_since = {}  # order_id -> first clock seen without an anchor
         self.queue_reader_active = False
         self._queue_wake = None
@@ -136,9 +143,55 @@ class QuoteMaintenance:
         return (self._queue_ok_at is not None
                 and 0 <= self.runtime.clock()-self._queue_ok_at <= self.BLIND_SECONDS)
 
+    FILL_COOLDOWN_SECONDS = 24*3600  # D-154
+    FILL_COOLDOWN_STALE_SECONDS = 300
+
+    def set_fill_history(self, rows, mono):
+        """D-154: newest own fill per market from the ledger (any fill path)."""
+        newest = {}
+        for _, payload, executed in rows:
+            if type(executed) is int and payload:
+                newest[payload[0]] = max(executed, newest.get(payload[0], 0))
+        self.fill_cooldown = newest
+        self.fill_cooldown_loaded_mono = mono
+
+    def fill_cooldown_allows(self, ticker):
+        """D-154: no new entry in a market that filled us within 24 hours.
+
+        Fails closed until the ledger has been read, and when that read is
+        more than five minutes old, so a restart never re-enters blindly.
+        """
+        if not self.fill_cooldown_required:
+            return True
+        loaded = self.fill_cooldown_loaded_mono
+        if (self.fill_cooldown is None or loaded is None
+                or self.runtime.clock()-loaded > self.FILL_COOLDOWN_STALE_SECONDS):
+            return False
+        last = self.fill_cooldown.get(ticker)
+        if last is None:
+            return True
+        now_us = int(utc(self.runtime.now()).timestamp()*1_000_000)
+        return now_us-last >= self.FILL_COOLDOWN_SECONDS*1_000_000
+
+    def fill_cooldown_status(self):
+        if not self.fill_cooldown_required:
+            return dict(required=False)
+        now_us = int(utc(self.runtime.now()).timestamp()*1_000_000)
+        horizon = self.FILL_COOLDOWN_SECONDS*1_000_000
+        cooling = {t: round((last+horizon-now_us)/3.6e9, 2)
+                   for t, last in (self.fill_cooldown or {}).items() if now_us-last < horizon}
+        age = (None if self.fill_cooldown_loaded_mono is None
+               else round(self.runtime.clock()-self.fill_cooldown_loaded_mono, 1))
+        return dict(required=True, loaded=self.fill_cooldown is not None, load_age_seconds=age,
+                    failures=self.fill_cooldown_failures, blocks=self.fill_cooldown_blocks,
+                    hours_left=dict(sorted(cooling.items())[:30]), markets=len(cooling))
+
     def entry_allowed(self, ticker, program_id):
         if self.queue_reader_active and not self.protection_current():
             return False  # Never place an entry that cannot be protected.
+        if not self.fill_cooldown_allows(ticker):
+            self.fill_cooldown_blocks += 1
+            return False
         deadline = self._risk_cooldown.get(ticker)
         if deadline is not None:
             if self.runtime.clock() < deadline:
@@ -971,6 +1024,7 @@ class QuoteMaintenance:
             evidence_gap_limit_seconds=self.MAX_EVIDENCE_GAP_SECONDS,
             cooldown_seconds=30,
             fill_risk=self.fill_risk.status(),
+            fill_cooldown=self.fill_cooldown_status(),
             risk_cooldowns={t:max(0, until-self.runtime.clock()) for t,until in self._risk_cooldown.items()
                             if until > self.runtime.clock()},
             fill_protection=dict(reader_active=self.queue_reader_active,

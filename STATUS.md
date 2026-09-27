@@ -1,5 +1,13 @@
 # Current status
 
+## Stopped after two sweeps in one market; D-154 cooldown built — 2026-09-27
+
+Operator-approved stop at 02:39 UTC while flat (0 orders, 0 positions) after
+KXTXOIL filled us twice in 27 minutes (Finding 214; window realized −$6.89,
+loss ratchet at 41). D-154 (24-hour post-fill cooldown from the ledger, research
+fill backfill) and D-153 (audit mismatch labels) are built and tested; deploy
+restarts the bot.
+
 ## D-153 audit-mismatch diagnostic ready — 2026-09-27
 
 Built on the branch, not deployed (running build `04ff303`). Logs which
