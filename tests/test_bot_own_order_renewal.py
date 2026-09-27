@@ -195,6 +195,22 @@ class OwnOrderRenewalTests(unittest.IsolatedAsyncioTestCase):
                          (1, ['terminal_but_resting']))
         self.assertTrue(runtime.recovery_requested.is_set())  # Behavior unchanged.
 
+    async def test_just_canceled_order_still_listed_retries_like_not_visible(self):
+        """D-155: Kalshi's snapshot lags our own cancel by ~2 s; retry, no full recovery."""
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        young = int(runtime.now().timestamp()*1_000_000)-1_500_000
+        await self.writer.order(OrderUpdate('order-own-1', 'own-1', 'A', 'bid', D('.01'),
+            D(10), D(0), D(0), 'canceled', 0, 1, young), self.now)
+        runtime._revoke(economic=False)
+        listed = runtime.reads.orders
+        self.assertFalse((await self.renew_own(runtime))[1])
+        self.assertFalse(runtime.recovery_requested.is_set())
+        self.assertEqual(runtime.own_order_renewal['retries'], 1)
+        runtime.reads.orders = tuple(r for r in listed if r['order_id'] != 'order-own-1')
+        self.assertTrue((await self.renew_own(runtime))[1])
+        self.assertFalse(runtime.recovery_requested.is_set())
+
     async def test_economic_event_ends_chain_reuse(self):
         runtime = await self.runtime()
         self.assertIsNotNone(runtime._chain_anchor())

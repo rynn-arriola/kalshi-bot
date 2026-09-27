@@ -4,26 +4,15 @@
 
 **Dated follow-ups — do not drop:**
 
-- **Loss filters (Finding 215), decide at the 2026-09-27 review with the
-  calibration report:** (1) series memory: extend the D-154 cooldown from the
-  market to its series (ticker prefix) for about 7 days after a fill; (2) the
-  swept-market screen: no entry for ~60 min after a same-side sweep ≥ 150
-  contracts (needs trades for candidates, not just quoted markets); (3) a
-  downside cap per contract (e.g. no bids above ~0.60 or asks below ~0.40), or
-  make the D-150 reward-vs-risk screen real; (4) size 30 → 15–20 until payouts
-  prove the reward side. Each costs reward; weigh with the report first.
-- **Renewal settle-retry is now justified (D-153 data).** All 37
-  `owned_order_terms_mismatch` in 7.7 h were `terminal_but_resting` with our
-  evidence 1.5–2.1 s old (Kalshi snapshot lag). Give them the same bounded
-  retry as `order_not_visible` instead of a full recovery.
-- **Reward tracker `source_lost`:** 369 of 395 programs; check whether that is
-  only programs we stopped quoting (expected) or lost tracking of live ones.
+- **D-155 follow-up (weekly with the calibration report):** blocks by the
+  downside cap, family memory and sweep filter vs fills avoided and reward
+  given up; pull trigger re-evaluated as more sweeps accumulate (Finding 216
+  was balanced on 16 hours). Size stays 30 until payouts prove the reward side.
+- **Reward tracker `source_lost`: answered, no fix.** It means "no current
+  sample": every program in a market without our resting orders. All
+  programs with our orders show `observed_orders` (25 of 25 quoted markets).
+  It only makes the tracker's observed fraction look low.
 
-- **Swept-market screen (Finding 214).** Stay out of a market for a while
-  after a large one-sided sweep (e.g. ≥ 5× our size) on the side we quote; the
-  research `trades` table has the data. Size the rule from the calibration
-  report's sweep section at the 2026-09-27 review, together with the pull
-  decision and the D-150 volume screen verdicts.
 
 - **2026-09-27 ~20:00 UTC — pull retune decision (D-152, Finding 213).** Run
   `python -B scripts/calibration_report.py --days 2`. Read "Protective pulls"
@@ -49,9 +38,9 @@
   retry change from that, after the pull change has settled. Note: a venue
   showing *less* remaining without a fill is already rejected earlier as
   `invalid_data`, so those 71 are not that case.
-- **Research failures: answered.** All `trades_read:QuotaUnavailable` during
-  read-quota refreshes; no data lost. Optional cleanup at a later deploy:
-  count them as a skip, not a failure.
+- **Research failures: answered and cleaned up (D-155).** Trade reads that
+  overlap a read-quota refresh now count as `trade_read_skips`, not failures;
+  the window does not advance, so no data is lost.
 - **Storage (operator phrase "run storage management").** Run every 1–2 days
   until the backlog clears (~13 Polymarket daily backups and ~80k test
   folders; 8 GB per run). Daily schedule declined 2026-09-26. The 4.5 GB old

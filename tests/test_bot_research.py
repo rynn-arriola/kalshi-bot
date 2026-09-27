@@ -435,7 +435,7 @@ class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
         self.temp = TemporaryDirectory()
         self.path = Path(self.temp.name)/'research.db'
         self.store = ResearchStore(self.path).start()
-        self.calls, self.failing = [], set()
+        self.calls, self.failing, self.quota_refresh = [], set(), set()
         self.trades = {'A': [dict(trade_id='t1', created_time='2026-09-26T05:52:16.916817Z',
                                   taker_side='no', count_fp='488.00', yes_price_dollars='0.82')],
                        'B': []}
@@ -443,6 +443,9 @@ class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
             self.calls.append((name, params))
             if params['ticker'] in self.failing:
                 raise OSError('down')
+            if params['ticker'] in self.quota_refresh:
+                from kalshi_bot.quota import QuotaUnavailable
+                raise QuotaUnavailable('quota_revision_changed')
             return SimpleNamespace(payload={'trades': self.trades.get(params['ticker'], [])})
         plans = {'A': SimpleNamespace(inventory=SimpleNamespace(orders=(1,), position=0)),
                  'B': SimpleNamespace(inventory=SimpleNamespace(orders=(), position=5)),
@@ -489,6 +492,13 @@ class TradeHistoryTests(unittest.IsolatedAsyncioTestCase):
         await self.runtime._research_trades(self.stub)
         third = {p['ticker']: p['min_ts'] for _, p in self.calls[-2:]}
         self.assertEqual(third['A'], int(datetime(2026, 9, 26, 5, 59, 50, tzinfo=timezone.utc).timestamp()))
+
+    async def test_a_read_overlapping_a_quota_refresh_is_a_skip_not_a_failure(self):
+        self.quota_refresh.add('A')
+        await self.runtime._research_trades(self.stub)
+        self.assertEqual((self.stub.research_failures, self.stub.research_trade_skips), (0, 1))
+        self.assertNotIn('A', self.stub._research_trade_since)  # Retried from the same point.
+        self.assertIn('B', self.stub._research_trade_since)
 
     async def test_one_market_failing_does_not_stop_the_others(self):
         self.failing.add('A')

@@ -79,6 +79,24 @@ def audit_detail_fields(audit, now):
         return {}  # Diagnostics never change the renewal outcome.
 
 
+LAG_EVIDENCE_SECONDS = 10
+
+
+def snapshot_lag_only(audit, now):
+    """D-155: the audit failed only because Kalshi still lists orders we just
+    saw end (``terminal_but_resting``, our evidence under 10 s old)."""
+    try:
+        if (audit is None or set(audit.blockers) != {'owned_order_terms_mismatch'}
+                or not audit.details):
+            return False
+        now_us = int(utc(now).timestamp()*1_000_000)
+        return all(kind == 'mismatch' and labels == ('terminal_but_resting',)
+                   and type(version) is int and 0 <= now_us-version <= LAG_EVIDENCE_SECONDS*1_000_000
+                   for kind, labels, version in audit.details)
+    except Exception:
+        return False
+
+
 class AccountProofMixin:
     @staticmethod
     def _snapshot_signature(report):
@@ -344,7 +362,8 @@ class AccountProofMixin:
                     if own and released is False:
                         self._last_proof = None  # Release rejected the chain itself.
                     if (own and failure is None and released is None
-                            and unexplained in (False, 'order_not_visible')
+                            and (unexplained in (False, 'order_not_visible')
+                                 or snapshot_lag_only(failed_audit, self.now()))
                             and self._own_renewal_retries < self.OWN_ORDER_RETRIES
                             and self._chain_anchor() is not None):
                         # A non-economic source change raced this attempt (for

@@ -259,8 +259,11 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     runtime.attach_rewards(scope='primary-account', checkpoint_path=Path(writer.path).with_suffix('.rewards.json'))
     if not session.entries_paused:
         runtime.attach_maintenance()
-        # D-154: no re-entry for 24 h in a market that filled us.
+        # D-154/D-155: no re-entry for 7 days in a market family that filled
+        # us, and none for an hour after a big sweep anywhere in that market.
         runtime.maintenance.fill_cooldown_required = True
+        runtime.maintenance.sweep_filter_required = True
+        runtime.sweep_state_path = Path(writer.path).with_name('sweeps.json')
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

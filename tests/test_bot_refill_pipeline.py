@@ -154,6 +154,8 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
                     for r in orders.values() if r['status']=='resting']}
             elif path.startswith('/portfolio/orders/'):
                 doc = {'order':orders[path.rsplit('/',1)[1]]}
+            elif path == '/markets/trades':
+                doc = {'trades':[], 'cursor':''}  # D-155 sweep poll: quiet.
             elif path.startswith('/markets/'):
                 doc = {'market':markets[path.rsplit('/',1)[1]]}
             elif path == '/incentive_programs':

@@ -51,6 +51,7 @@ class ValueConfigTests(unittest.TestCase):
                          (D(780), D(30), D(25)))
         self.assertEqual(config.managed_market_slots, 16)
         self.assertEqual(config.minimum_entry_retained_value, D('.70'))
+        self.assertEqual(config.maximum_entry_downside, D('.80'))  # D-155
         self.assertEqual(config.minimum_projected_reward_usd, D(1))
         self.assertEqual(config.priority_projected_reward_usd, D(2))
         self.assertEqual(config.portfolio_exposure_usd, 780)
@@ -70,6 +71,7 @@ class ValueConfigTests(unittest.TestCase):
         for kwargs in ({"entry_contracts": "9"}, {"capital_usd":"501"},
                        {"window_stop_usd":"10"}, {"live_enabled":True},
                        {"minimum_entry_retained_value":".69"},
+                       {"maximum_entry_downside":".70"},
                        {"minimum_projected_reward_usd":".99"},
                        {"priority_projected_reward_usd":"1.99"},
                        {"live_enabled":0}, {"managed_market_slots":True},

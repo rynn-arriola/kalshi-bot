@@ -5,6 +5,7 @@
   "max_resting_entries": 50,
   "window_stop_usd": "25",
   "minimum_entry_retained_value": "0.70",
+  "maximum_entry_downside": "0.80",
   "minimum_projected_reward_usd": "1",
   "priority_projected_reward_usd": "2",
   "managed_market_slots": 16,

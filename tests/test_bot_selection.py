@@ -90,6 +90,20 @@ class SelectionTests(unittest.TestCase):
         self.assertIn('projected_reward_below_minimum', report.exclusions[0][1])
         self.assertFalse(self.choose(now=NOW+timedelta(seconds=5)).additions)
 
+    def test_entry_leg_that_could_lose_more_than_the_cap_is_not_selectable(self):
+        """D-155: KXBROSFT's 0.82 bid could lose 0.82 per contract."""
+        self.add(book=book(bids=(('.85', '1000'),), asks=(('.87', '1000'),)))
+        row = self.s.board.ranked(now=NOW, by='selection')[0]
+        self.assertIn('entry_downside_above_cap', row.blockers)
+        self.assertEqual(row.quotes, ())
+        self.assertFalse(self.choose().additions)
+        self.add('B', book=replace(book(bids=(('.13', '1000'),), asks=(('.15', '1000'),)), ticker='B'))
+        rowb = next(r for r in self.s.board.ranked(now=NOW, by='selection') if r.ticker == 'B')
+        self.assertIn('entry_downside_above_cap', rowb.blockers)  # Ask at .15 risks .85.
+        self.add('C', book=replace(book(bids=(('.49', '1000'),), asks=(('.51', '1000'),)), ticker='C'))
+        rowc = next(r for r in self.s.board.ranked(now=NOW, by='selection') if r.ticker == 'C')
+        self.assertNotIn('entry_downside_above_cap', rowc.blockers)
+
     def test_entry_requires_seventy_percent_retained_value_on_each_side(self):
         extreme = book(bids=(('.01', '1000'),), asks=(('.50', '1000'),))
         self.add(book=extreme)

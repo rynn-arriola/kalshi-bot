@@ -71,16 +71,16 @@ class CooldownTests(unittest.IsolatedAsyncioTestCase):
         self.load()
         self.assertTrue(self.m.fill_cooldown_allows('A'))
 
-    def test_a_market_that_filled_us_waits_24_hours(self):
+    def test_a_market_family_that_filled_us_waits_7_days(self):
         self.m.fill_cooldown_required = True
-        self.load(A=NOW-timedelta(hours=1), B=NOW-timedelta(hours=25))
+        self.load(A=NOW-timedelta(hours=1), B=NOW-timedelta(days=7, hours=1))
         self.assertFalse(self.m.fill_cooldown_allows('A'))
         self.assertTrue(self.m.fill_cooldown_allows('B'))
         self.assertTrue(self.m.fill_cooldown_allows('C'))
         blocks = self.m.fill_cooldown_blocks
         self.assertFalse(self.m.entry_allowed('A', 'p'))
         self.assertEqual(self.m.fill_cooldown_blocks, blocks+1)
-        self.now[0] = NOW+timedelta(hours=23, minutes=1)
+        self.now[0] = NOW+timedelta(days=6, hours=23, minutes=1)
         self.assertTrue(self.m.fill_cooldown_allows('A'))
         status = self.m.status()['fill_cooldown']
         self.assertEqual((status['required'], status['loaded'], status['markets']), (True, True, 0))
@@ -91,7 +91,18 @@ class CooldownTests(unittest.IsolatedAsyncioTestCase):
                  (('o2', 't2'), ('A', 'ask', '30', '0.35', '0'), US(NOW-timedelta(hours=2)))))
         self.m.set_fill_history(rows, self.r.clock())
         self.assertFalse(self.m.fill_cooldown_allows('A'))
-        self.assertAlmostEqual(self.m.fill_cooldown_status()['hours_left']['A'], 22, places=2)
+        self.assertAlmostEqual(self.m.fill_cooldown_status()['hours_left']['A'], 7*24-2, places=2)
+
+    def test_other_markets_in_the_same_family_wait_too(self):
+        """D-155: KXTXOIL filled us three times across strikes and days."""
+        self.m.fill_cooldown_required = True
+        rows = ((('o1', 't1'), ('KXTXOIL-27MAR31-T5.8', 'bid', '30', '0.53', '0'),
+                 US(NOW-timedelta(days=3))),)
+        self.m.set_fill_history(rows, self.r.clock())
+        self.assertFalse(self.m.fill_cooldown_allows('KXTXOIL-27MAR31-T6.2'))
+        self.assertFalse(self.m.fill_cooldown_allows('KXTXOIL-28MAR31-T5.8'))
+        self.assertTrue(self.m.fill_cooldown_allows('KXTXGAS-27MAR31-T5.8'))
+        self.assertEqual(list(self.m.fill_cooldown_status()['hours_left']), ['KXTXOIL'])
 
     def test_stale_ledger_read_fails_closed(self):
         self.m.fill_cooldown_required = True
@@ -132,7 +143,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         rows = ((('o-new', 't-new'), ('A', 'bid', '30', '0.53', '0'), now_us-5_000_000),
                 (('o-old', 't-old'), ('B', 'ask', '3E+1', '0.35', '0'), now_us-3_600_000_000))
         async def reader(since):
-            self.assertLessEqual(abs(since-(now_us-24*3600*1_000_000)), 5_000_000)
+            self.assertLessEqual(abs(since-(now_us-7*24*3600*1_000_000)), 5_000_000)
             return rows
         self.r.RESEARCH_MARK_SECONDS = (60,)
         await self.run_once(reader)

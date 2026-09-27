@@ -10,6 +10,34 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-155 — Loss filters: downside cap, family memory, big-sweep filter; lag retry
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27.
+- **Decision owner:** Operator: "Do recommendation" (Findings 215–216 review:
+  cap 0.80, 7-day family memory, snapshot-lag retry, pulls unchanged, size 30)
+  and "Also do the big sweep filter".
+- **Downside cap:** `BotConfig.maximum_entry_downside = 0.80` (approved value,
+  also in `config/bot.json`): a program row whose bid is above 0.80 or ask below
+  0.20 gets `entry_downside_above_cap` and cannot be selected. Costs ~8% of
+  estimated reward (Finding 216); would have blocked KXBROSFT (−$18.36).
+- **Family memory:** the D-154 cooldown is keyed by series (ticker before the
+  first `-`) and lasts 7 days.
+- **Big-sweep filter:** a background poll of Kalshi-wide public trades every
+  30 s (60-s windows, split down to 5 s when a window is too large, up to 10
+  minutes of catch-up); any market with one taker order of ≥150 contracts
+  (either side) gets no new entry for 60 minutes. Fails closed until the first
+  complete poll and when the last complete poll is over 5 minutes old. The
+  list is saved to `data/trader/sweeps.json` so a restart keeps the last hour.
+  Status: `maintenance.sweep_filter`.
+- **Snapshot-lag retry:** an own-order renewal that failed only on
+  `terminal_but_resting` mismatches with our evidence under 10 s old gets the
+  same bounded retry as `order_not_visible` (D-153 data: 1.5–2.1 s lag).
+- **Unchanged on purpose:** protective pulls (Finding 216's stay-out effect),
+  size 30, exits.
+- **Boundary:** the filters can only block entries; they never add orders,
+  change size, exits or protection. Existing resting orders are not pulled by
+  them.
+
 ### D-154 — No re-entry for 24 hours in a market that filled us
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27.

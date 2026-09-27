@@ -1066,6 +1066,86 @@ class RecoveryRuntime(AccountProofMixin):
             except TimeoutError:
                 pass
 
+    SWEEP_POLL_SECONDS = 30  # D-155
+    SWEEP_CHUNK_SECONDS = 60
+    SWEEP_MIN_CHUNK_SECONDS = 5
+    SWEEP_CATCH_UP_SECONDS = 600
+    sweep_state_path = None
+
+    async def _sweep_trades(self, start, end):
+        """All Kalshi trades in [start, end], splitting windows that are too big."""
+        from .quote_maintenance import sweeps_from_trades
+        try:
+            pages = await self.reads.collect('trades', reason='sweeps', max_pages=100,
+                                             max_rows=10000, limit=1000, min_ts=start, max_ts=end)
+        except InvalidData:
+            if end-start <= self.SWEEP_MIN_CHUNK_SECONDS:
+                raise
+            middle = (start+end)//2
+            first = await self._sweep_trades(start, middle)
+            second = await self._sweep_trades(middle, end)
+            return {t: max(first.get(t, 0), second.get(t, 0)) for t in set(first) | set(second)}
+        return sweeps_from_trades(pages.rows, self.maintenance.SWEEP_MIN_CONTRACTS)
+
+    def _load_sweep_state(self):
+        import json
+        path = self.sweep_state_path
+        if path is None or not path.exists():
+            return None
+        try:
+            state = json.loads(path.read_text(encoding='utf-8'))
+            self.maintenance.sweeps.update({t: int(at) for t, at in state['sweeps'].items()})
+            return int(state['polled_s'])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _save_sweep_state(self, polled_s):
+        import json, os
+        path = self.sweep_state_path
+        if path is None:
+            return
+        temp = path.with_suffix('.tmp')
+        temp.write_text(json.dumps(dict(polled_s=polled_s, sweeps=self.maintenance.sweeps)),
+                        encoding='utf-8')
+        os.replace(temp, path)
+
+    async def _sweep_watch_loop(self):
+        """D-155: Kalshi-wide trade poll feeding the big-sweep entry filter.
+
+        One background read per page; windows advance only after a complete
+        poll, so a failed poll is retried from the same point. The sweep list is
+        saved beside the ledger so a restart does not forget the last hour.
+        """
+        maintenance = self.maintenance
+        since = self._load_sweep_state()
+        while not self.stop_requested.is_set():
+            try:
+                now_s = int(utc(self.now()).timestamp())
+                start = (now_s-self.SWEEP_CHUNK_SECONDS if since is None
+                         else max(since-5, now_s-self.SWEEP_CATCH_UP_SECONDS))
+                latest = {}
+                chunk = start
+                while chunk < now_s:
+                    end = min(now_s, chunk+self.SWEEP_CHUNK_SECONDS)
+                    found = await self._sweep_trades(chunk, end)
+                    for ticker, at in found.items():
+                        latest[ticker] = max(at, latest.get(ticker, 0))
+                    chunk = end
+                maintenance.record_sweeps(latest, mono=self.clock(), polled_s=now_s)
+                since = now_s
+                try:
+                    self._save_sweep_state(now_s)
+                except OSError:
+                    maintenance.sweep_failures += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                maintenance.sweep_failures += 1
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), self.SWEEP_POLL_SECONDS)
+            except TimeoutError:
+                pass
+
     def _research_ledger_fills(self, rows, now_us):
         """D-154: record fills the stream hook missed (duplicates are ignored)."""
         seen = self.__dict__.setdefault('_research_ledger_seen', set())
@@ -1218,6 +1298,11 @@ class RecoveryRuntime(AccountProofMixin):
                 trades = result.payload.get('trades') or ()
             except asyncio.CancelledError:
                 raise
+            except QuotaUnavailable:
+                # D-155: the read overlapped a read-quota refresh; the window
+                # does not advance, so the next poll covers it. Not a failure.
+                self.research_trade_skips = getattr(self, 'research_trade_skips', 0)+1
+                continue
             except Exception as exc:
                 research_failed(self, 'trades_read', exc)
                 continue
@@ -2162,6 +2247,9 @@ class RecoveryRuntime(AccountProofMixin):
                 if self.maintenance is not None and self.maintenance.fill_cooldown_required:
                     tasks.append(asyncio.create_task(self._fill_history_loop(),
                                                      name='kalshi-fill-cooldown'))
+                if self.maintenance is not None and self.maintenance.sweep_filter_required:
+                    tasks.append(asyncio.create_task(self._sweep_watch_loop(),
+                                                     name='kalshi-sweep-filter'))
                 if self.order_groups is not None:
                     tasks.append(asyncio.create_task(self.order_groups.run(),
                                                      name='kalshi-order-groups'))
@@ -2345,6 +2433,7 @@ class RecoveryRuntime(AccountProofMixin):
                           if self.order_groups is not None else None),
             research=(dict(self.research.status(), failures_in_runtime=self.research_failures,
                            failure_sites=dict(self.research_failure_sites or {}),
+                           trade_read_skips=getattr(self, 'research_trade_skips', 0),
                            last_failure=self.research_last_failure,
                            pending_marks=self._research_marks_pending)
                       if self.research is not None else None),

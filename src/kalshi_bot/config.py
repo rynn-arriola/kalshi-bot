@@ -47,6 +47,9 @@ class BotConfig:
     max_resting_entries: int = 50  # D-138; must equal risk.MAX_RESTING_ENTRIES
     window_stop_usd: Decimal = Decimal("25")
     minimum_entry_retained_value: Decimal = Decimal("0.70")
+    # D-155: largest loss per contract one filled leg may carry (bid price, or
+    # 1 - ask price). Finding 216: 0.80 costs ~8% of reward, blocks KXBROSFT.
+    maximum_entry_downside: Decimal = Decimal("0.80")
     minimum_projected_reward_usd: Decimal = Decimal("1")
     priority_projected_reward_usd: Decimal = Decimal("2")
     # D-031: Poly's verified local default calibrates exposure, not occupancy.
@@ -62,12 +65,13 @@ class BotConfig:
     def __post_init__(self):
         for name in ("capital_usd", "entry_contracts", "window_stop_usd",
                      "minimum_entry_retained_value", "minimum_projected_reward_usd",
-                     "priority_projected_reward_usd"):
+                     "priority_projected_reward_usd", "maximum_entry_downside"):
             object.__setattr__(self, name, decimal(getattr(self, name)))
         integer(self.schema_version, 1, 1)
         if (self.capital_usd, self.entry_contracts, self.window_stop_usd) not in APPROVED_MONEY:
             raise InvalidData("unapproved money/size setting")
         if (self.minimum_entry_retained_value != Decimal("0.70")
+                or self.maximum_entry_downside != Decimal("0.80")
                 or self.minimum_projected_reward_usd != Decimal("1")
                 or self.priority_projected_reward_usd != Decimal("2")):
             raise InvalidData("unapproved entry-quality setting")

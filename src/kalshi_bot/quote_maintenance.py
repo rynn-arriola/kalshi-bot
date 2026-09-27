@@ -69,6 +69,27 @@ class QueueAnchor:
     marks: tuple
 
 
+def sweeps_from_trades(rows, minimum):
+    """D-155: newest sweep per market; one taker order = trades sharing a time and side."""
+    orders = {}
+    for row in rows:
+        try:
+            key = (row['ticker'], row['created_time'], row['taker_side'])
+            orders[key] = orders.get(key, Decimal(0))+Decimal(str(row['count_fp']))
+        except (KeyError, TypeError, ArithmeticError):
+            continue
+    latest = {}
+    for (ticker, created, _), size in orders.items():
+        if size < minimum:
+            continue
+        try:
+            at = int(datetime.fromisoformat(str(created).replace('Z', '+00:00')).timestamp())
+        except ValueError:
+            continue
+        latest[ticker] = max(at, latest.get(ticker, 0))
+    return latest
+
+
 class QuoteMaintenance:
     REPRICE_DWELL_SECONDS = 30
     # D-145 fill protection: a dedicated queue reader anchors every resting
@@ -112,6 +133,13 @@ class QuoteMaintenance:
         self.fill_cooldown_loaded_mono = None
         self.fill_cooldown_failures = 0
         self.fill_cooldown_blocks = 0
+        # D-155: ticker -> newest big sweep (epoch seconds), any direction.
+        self.sweep_filter_required = False
+        self.sweeps = {}
+        self.sweeps_loaded_mono = None
+        self.sweeps_polled_s = None
+        self.sweep_failures = 0
+        self.sweep_blocks = 0
         self._blind_since = {}  # order_id -> first clock seen without an anchor
         self.queue_reader_active = False
         self._queue_wake = None
@@ -143,20 +171,26 @@ class QuoteMaintenance:
         return (self._queue_ok_at is not None
                 and 0 <= self.runtime.clock()-self._queue_ok_at <= self.BLIND_SECONDS)
 
-    FILL_COOLDOWN_SECONDS = 24*3600  # D-154
+    FILL_COOLDOWN_SECONDS = 7*24*3600  # D-154, widened by D-155 to 7 days
+
+    @staticmethod
+    def market_family(ticker):
+        """D-155: the series part of a ticker (KXTXOIL-27MAR31-T5.8 -> KXTXOIL)."""
+        return ticker.split('-', 1)[0]
     FILL_COOLDOWN_STALE_SECONDS = 300
 
     def set_fill_history(self, rows, mono):
-        """D-154: newest own fill per market from the ledger (any fill path)."""
+        """D-154/D-155: newest own fill per market family, from the ledger."""
         newest = {}
         for _, payload, executed in rows:
             if type(executed) is int and payload:
-                newest[payload[0]] = max(executed, newest.get(payload[0], 0))
+                family = self.market_family(payload[0])
+                newest[family] = max(executed, newest.get(family, 0))
         self.fill_cooldown = newest
         self.fill_cooldown_loaded_mono = mono
 
     def fill_cooldown_allows(self, ticker):
-        """D-154: no new entry in a market that filled us within 24 hours.
+        """D-154/D-155: no new entry in a market family that filled us within 7 days.
 
         Fails closed until the ledger has been read, and when that read is
         more than five minutes old, so a restart never re-enters blindly.
@@ -167,7 +201,7 @@ class QuoteMaintenance:
         if (self.fill_cooldown is None or loaded is None
                 or self.runtime.clock()-loaded > self.FILL_COOLDOWN_STALE_SECONDS):
             return False
-        last = self.fill_cooldown.get(ticker)
+        last = self.fill_cooldown.get(self.market_family(ticker))
         if last is None:
             return True
         now_us = int(utc(self.runtime.now()).timestamp()*1_000_000)
@@ -186,11 +220,54 @@ class QuoteMaintenance:
                     failures=self.fill_cooldown_failures, blocks=self.fill_cooldown_blocks,
                     hours_left=dict(sorted(cooling.items())[:30]), markets=len(cooling))
 
+    SWEEP_MIN_CONTRACTS = Decimal(150)  # D-155 / Finding 215
+    SWEEP_BLOCK_SECONDS = 3600
+    SWEEP_STALE_SECONDS = 300
+
+    def record_sweeps(self, latest, *, mono, polled_s):
+        """D-155: merge a completed poll's sweeps and drop the expired ones."""
+        for ticker, at in latest.items():
+            self.sweeps[ticker] = max(at, self.sweeps.get(ticker, 0))
+        horizon = polled_s-self.SWEEP_BLOCK_SECONDS
+        self.sweeps = {t: at for t, at in self.sweeps.items() if at > horizon}
+        self.sweeps_loaded_mono, self.sweeps_polled_s = mono, polled_s
+
+    def sweep_allows(self, ticker):
+        """D-155: no new entry for an hour after a sweep of 150+ contracts.
+
+        Fails closed until the first complete poll and when the last complete
+        poll is more than five minutes old.
+        """
+        if not self.sweep_filter_required:
+            return True
+        loaded = self.sweeps_loaded_mono
+        if loaded is None or self.runtime.clock()-loaded > self.SWEEP_STALE_SECONDS:
+            return False
+        last = self.sweeps.get(ticker)
+        now_s = int(utc(self.runtime.now()).timestamp())
+        return last is None or now_s-last >= self.SWEEP_BLOCK_SECONDS
+
+    def sweep_status(self):
+        if not self.sweep_filter_required:
+            return dict(required=False)
+        now_s = int(utc(self.runtime.now()).timestamp())
+        age = (None if self.sweeps_loaded_mono is None
+               else round(self.runtime.clock()-self.sweeps_loaded_mono, 1))
+        blocked = sorted(((round((at+self.SWEEP_BLOCK_SECONDS-now_s)/60, 1), t)
+                          for t, at in self.sweeps.items() if now_s-at < self.SWEEP_BLOCK_SECONDS),
+                         reverse=True)
+        return dict(required=True, loaded=self.sweeps_loaded_mono is not None, poll_age_seconds=age,
+                    failures=self.sweep_failures, blocks=self.sweep_blocks,
+                    markets_blocked=len(blocked))
+
     def entry_allowed(self, ticker, program_id):
         if self.queue_reader_active and not self.protection_current():
             return False  # Never place an entry that cannot be protected.
         if not self.fill_cooldown_allows(ticker):
             self.fill_cooldown_blocks += 1
+            return False
+        if not self.sweep_allows(ticker):
+            self.sweep_blocks += 1
             return False
         deadline = self._risk_cooldown.get(ticker)
         if deadline is not None:
@@ -915,6 +992,7 @@ class QuoteMaintenance:
             target_blockers=target.blockers, action='retain')
         known_failures = {'proposed_quote_not_scoring', 'insufficient_two_sided_depth',
                           'exit_depth_missing', 'entry_retained_value_below_minimum',
+                          'entry_downside_above_cap',
                           'market_or_program_inactive', 'entry_horizon_ended'}
         if set(actual.blockers+target.blockers)-known_failures:
             self.samples[ticker]['state'] = 'UNKNOWN'
@@ -1025,6 +1103,7 @@ class QuoteMaintenance:
             cooldown_seconds=30,
             fill_risk=self.fill_risk.status(),
             fill_cooldown=self.fill_cooldown_status(),
+            sweep_filter=self.sweep_status(),
             risk_cooldowns={t:max(0, until-self.runtime.clock()) for t,until in self._risk_cooldown.items()
                             if until > self.runtime.clock()},
             fill_protection=dict(reader_active=self.queue_reader_active,

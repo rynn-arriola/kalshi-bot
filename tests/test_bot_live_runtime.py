@@ -918,6 +918,7 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 reward_row('B', 'reward-b'), reward_row('UNREVIEWED', 'reward-u')]
         if unsupported:
             docs['/series/S']['series']['fee_type'] = 'flat'
+        docs['/markets/trades'] = {'trades':[], 'cursor':''}  # D-155 sweep poll: quiet.
         docs['/events'] = {'events':[{**metadata.Reads().event,
             'markets':[market]+([metadata.market('B')] if discover else [])}],
             'milestones':[metadata.Reads().milestone], 'cursor':''}
@@ -976,6 +977,8 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(runtime.observation_only)
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)
                 self.assertTrue(runtime.maintenance.fill_cooldown_required)  # D-154
+                self.assertTrue(runtime.maintenance.sweep_filter_required)  # D-155
+                self.assertEqual(runtime.sweep_state_path.name, 'sweeps.json')
                 self.assertIsNone(runtime.admission)
                 self.assertTrue(runtime.broad_discovery)
                 self.assertEqual(runtime.metadata_scheduler.concurrency, 4)

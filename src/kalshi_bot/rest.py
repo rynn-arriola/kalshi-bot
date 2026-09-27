@@ -56,8 +56,8 @@ ENDPOINTS = {
     # D-144: public exchange/trading status for maintenance and pauses.
     "exchange_status": endpoint("/exchange/status", "", "metadata", False),
     # D-151 #5: public trades for the research dataset (background only).
-    "trades": endpoint("/markets/trades", "ticker min_ts limit cursor", "research", False,
-                       "trades"),
+    "trades": endpoint("/markets/trades", "ticker min_ts max_ts limit cursor", "research sweeps",
+                       False, "trades"),
     "balance": endpoint("/portfolio/balance", "subaccount exchange_index", "bootstrap reconcile cash"),
     "queue_positions": endpoint("/portfolio/orders/queue_positions",
                                 "market_tickers event_ticker subaccount",
@@ -684,7 +684,7 @@ class RestReads:
         key = (name, path, coalesce_scope, revision)
         task = self.inflight.get(key)
         if task is None:
-            background = reason in {'metadata','incentives','reflection','research'}
+            background = reason in {'metadata','incentives','reflection','research','sweeps'}
             admission_limit = self.inflight_limit-int(self.quota is not None and _control_scope is None)
             if (len(self.inflight) >= admission_limit or
                     (background and self.background_inflight >= self.background_limit)):

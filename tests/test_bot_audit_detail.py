@@ -67,6 +67,25 @@ class FieldTests(unittest.TestCase):
         self.assertEqual(future['missing_age_min_ms'], 0)
 
 
+class LagTests(unittest.TestCase):
+    def test_only_fresh_terminal_but_resting_counts_as_snapshot_lag(self):
+        from kalshi_bot.account_proof import snapshot_lag_only
+        fresh = (('mismatch', ('terminal_but_resting',), NOW_US-1_500_000),)
+        self.assertTrue(snapshot_lag_only(audit(fresh), NOW))
+        self.assertFalse(snapshot_lag_only(None, NOW))
+        self.assertFalse(snapshot_lag_only(audit(()), NOW))
+        other = AccountAudit('e', 1, True, 0, (), (), (), (), (), 0,
+                             ('owned_order_terms_mismatch', 'foreign_resting_orders'), fresh)
+        self.assertFalse(snapshot_lag_only(other, NOW))
+        self.assertFalse(snapshot_lag_only(audit((('mismatch', ('price_differs',), NOW_US-1_000),)), NOW))
+        self.assertFalse(snapshot_lag_only(audit((('mismatch', ('terminal_but_resting', 'price_differs'),
+                                                   NOW_US-1_000),)), NOW))
+        self.assertFalse(snapshot_lag_only(audit((('missing', (), NOW_US-1_000),)), NOW))
+        self.assertFalse(snapshot_lag_only(audit((('mismatch', ('terminal_but_resting',),
+                                                   NOW_US-11_000_000),)), NOW))
+        self.assertFalse(snapshot_lag_only(audit(fresh+(('mismatch', ('terminal_but_resting',), None),)), NOW))
+
+
 class LogTests(unittest.TestCase):
     def test_only_known_labels_and_numbers_reach_the_log(self):
         with TemporaryDirectory() as temp:

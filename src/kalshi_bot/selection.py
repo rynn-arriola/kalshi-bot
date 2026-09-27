@@ -93,6 +93,12 @@ class MarketSelector:
                     row = replace(row, quotes=(), gross_hourly_usd=None,
                                   gross_remaining_usd=None, gross_hourly_per_capital=None,
                                   blockers=row.blockers+('entry_retained_value_below_minimum',))
+                elif any((q.yes_price if q.side == 'bid' else 1-q.yes_price)
+                         > config.maximum_entry_downside for q in row.quotes):
+                    # D-155: one fill on this leg could lose too much per contract.
+                    row = replace(row, quotes=(), gross_hourly_usd=None,
+                                  gross_remaining_usd=None, gross_hourly_per_capital=None,
+                                  blockers=row.blockers+('entry_downside_above_cap',))
                 else:
                     self._fees[(row.ticker, row.program_id)] = reserve
             rows.append(row)
