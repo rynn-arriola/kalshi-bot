@@ -1,11 +1,14 @@
 # Current status
 
-## D-155 loss filters built — 2026-09-27
+## D-155 loss filters deployed — 2026-09-27
 
-Downside cap 0.80, 7-day market-family memory, Kalshi-wide big-sweep filter
-(≥150 contracts → 60 min out) and the snapshot-lag retry, built and tested on
-the branch (`config/bot.json` gains `maximum_entry_downside`). Deploy restarts
-the bot.
+**Running** build `84399ef` since 11:42 UTC (clean stop while flat; full suite
+2,083 OK, native supervisor gate twice OK). Live config loads with
+`maximum_entry_downside` 0.80. Family memory loaded 14 families (74–162 h
+left); sweep filter loaded 13 s after start, 0 failures, tracking 354–566
+swept markets Kalshi-wide; entries refilling, 0 errors. Downside cap 0.80,
+7-day family memory, big-sweep filter (≥150 contracts → 60 min out),
+snapshot-lag retry, research trade-read skips.
 
 ## D-154 cooldown and D-153 diagnostic deployed — 2026-09-27
 
