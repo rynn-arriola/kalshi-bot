@@ -60,6 +60,8 @@ class RequestTests(unittest.TestCase):
 
 class ScoreTests(unittest.TestCase):
     def setUp(self):
+        import kalshi_bot.config as bot_config  # Never leak the live size into other tests.
+        self.addCleanup(setattr, bot_config, '_ACTIVE', bot_config._ACTIVE)
         activate(BotConfig.load(ROOT/'config'/'bot.json'))
 
     def test_rest_no_bids_become_yes_asks(self):
@@ -94,6 +96,8 @@ class ScoreTests(unittest.TestCase):
 
 class ScanTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        import kalshi_bot.config as bot_config  # Never leak the live size into other tests.
+        self.addCleanup(setattr, bot_config, '_ACTIVE', bot_config._ACTIVE)
         activate(BotConfig.load(ROOT/'config'/'bot.json'))
         self.calls = []
         tickers = ['A', 'B', 'C']
