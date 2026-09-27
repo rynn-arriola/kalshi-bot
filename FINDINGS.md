@@ -24,6 +24,18 @@ samples all day, on the previous build too; first `health_hourly` row 51%, yet
 ruled out from status; the remaining terms are the accounting proof not
 released or its lease not current. D-152 samples which one.
 
+**MEASURED after D-152 (22:00–00:00 UTC, 441 samples).** Entries allowed 49–52%.
+Closed by the accounting lease: `lease_missing` 30–32% and `lease_stale`
+16–22% of samples; `accounting_unreleased` under 0.5%. By design the writer
+revokes the lease on every external account write (order update, ack,
+cancel, fill) and a proof renewal re-issues it seconds later, so the gate
+flickers with order churn rather than staying shut. Average resting entries
+49.6–49.9 of 50, so the coverage cost is negligible; refills wait a few
+seconds. Fewer false pulls would also mean fewer revocations. Research
+failures: all 19 are `trades_read:QuotaUnavailable` (`quota_revision_changed`,
+a trades read overlapping a read-quota refresh). The window does not advance
+on failure, so no trades are lost.
+
 ## 212. Architecture review 2026-09-26: exception audit and CPU profile
 
 **VERIFIED (static audit + profiling).** Broad handlers in `src/kalshi_bot`: 115

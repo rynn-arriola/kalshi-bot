@@ -12,11 +12,12 @@
   trigger (needs a separate `trade` feed), (b) stricter thresholds (e.g.
   sustained depletion over longer than the 10 s trend), or (c) short-queue +
   blind only, relying on the 31-contract cap. Run the new rule in shadow first.
-- **After the D-152 deploy — entry gate.** Read `entry_blocked_fraction` in
-  the next `health_hourly` rows; if `accounting_unreleased`/`lease_stale`
-  dominates, find why the proof is unreleased between renewals.
-- **After the D-152 deploy — research failures.** `research.failure_sites` in
-  status: fix any real bug behind the ~6/hour failures.
+- **Entry gate: answered (Finding 213).** Lease revoked by each account write
+  and renewed seconds later; resting entries 49.6–49.9 of 50, so no fix
+  needed now. Recheck only if average resting falls below ~45.
+- **Research failures: answered.** All `trades_read:QuotaUnavailable` during
+  read-quota refreshes; no data lost. Optional cleanup at a later deploy:
+  count them as a skip, not a failure.
 - **Storage (operator phrase "run storage management").** Run every 1–2 days
   until the backlog clears (~13 Polymarket daily backups and ~80k test
   folders; 8 GB per run). Daily schedule declined 2026-09-26. The 4.5 GB old
