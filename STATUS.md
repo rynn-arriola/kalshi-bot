@@ -1,5 +1,14 @@
 # Current status
 
+## Sweep-filter fix and full-scan retry deployed — 2026-09-27
+
+**Running** build `669e1a2` since 20:44 UTC (operator-approved restarts:
+"commans 1" at 20:22 for the scan retry fix, then "Ok" for the Finding 219
+fix; flat each time). At ~20,000 Kalshi trades/min the sweep filter loaded 43 s
+after start (was 18 min), entries refilled to 50 within 4 minutes, the full
+scan's first pass succeeded (4,355 markets scoring) and feeds discovery. Entry
+outages today: ~18:00–19:16 (Finding 218) and 20:22–20:40 (Finding 219).
+
 ## D-156 and D-158 deployed; entries restored — 2026-09-27
 
 **Running** build `4b21bb0` since 19:16 UTC (operator "command 1"; flat, no

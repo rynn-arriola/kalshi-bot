@@ -9,14 +9,9 @@
   (2) health warns (and the watchlist flags) when entries are allowed but none
   have rested for 15+ minutes; (3) never run parallel public scans on the bot
   machine — use `scripts/market_scan.py` (paced) or the in-bot scan.
-- **Deploy the D-158 scan retry fix** (built, on the branch) at the next
-  approved restart; until then a failed pass waits 30 minutes and discovery
-  falls back to the pool hint (safe).
 
-- **Deploy D-158 with D-156 at the next approved restart.** Then check
-  `full_scan` in status (runs, markets ~5,000, scoring, fresh) after the first
-  pass (2 minutes after start), that entries stay near 50, and the read budget
-  shows no throttling.
+- **D-156/D-158 live since 2026-09-27 (build `669e1a2`).** Watch `full_scan`
+  (a pass every 30 min, fresh, ~4,300+ scoring) and WATCHLIST 18–19.
 
 - **Each payout morning (09-28, 09-29, 10-05, 10-07):** run the calibration
   report; compare "paid ÷ strict" and "paid ÷ resting-based" (D-157). Base
