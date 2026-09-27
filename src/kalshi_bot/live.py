@@ -149,7 +149,7 @@ def _input_document(inputs):
         initial_tickers=list(inputs.initial_tickers))
 
 
-async def refresh_candidate_inputs(path, now, diagnostics):
+async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None):
     """Replace only the ignored candidate scope; preserve reviewed member fees."""
     if path.stat().st_size > 1048576:
         raise InvalidData('launch inputs exceed size limit')
@@ -165,8 +165,13 @@ async def refresh_candidate_inputs(path, now, diagnostics):
     # pacing across pages after a 429 instead of resetting at every URL.
     reads = RestReads(PublicDiscoveryBudget(), concurrency=4,
         diagnostics=diagnostics)
+    # D-159: the latest saved full-market scan (beside the ledger) chooses the
+    # watch list when fresh; missing, stale or corrupt falls back to the hint.
+    from .full_scan import load_scan
+    saved = load_scan(DATA/'market_scan.json' if scan_path is None else scan_path, now)
     try:
-        prepared = await prepare_candidates(reads, now=now)
+        prepared = await prepare_candidates(reads, now=now,
+                                            scan_scores=saved[1] if saved else None)
     finally:
         await reads.close()
     inputs = LaunchInputs(prepared.reviews, profile,
@@ -192,7 +197,8 @@ async def refresh_candidate_inputs(path, now, diagnostics):
         initial_websocket_markets=len(inputs.seed_tickers),
         incentive_rows=prepared.incentive_rows, market_rows=prepared.market_rows,
         milestone_rows=prepared.milestone_rows, excluded=dict(prepared.excluded),
-        trading_started=False)
+        scan_observed_at=saved[0].isoformat() if saved else None,
+        scan_markets=prepared.scanned, trading_started=False)
 
 
 async def recovery_launch_inputs(path, ledger_path, now, diagnostics):
@@ -267,6 +273,7 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         # D-158: score every rewarded market every 30 minutes for discovery.
         from .full_scan import FullMarketScan
         runtime.full_scan = FullMarketScan(runtime)
+        runtime.full_scan.state_path = Path(writer.path).with_name('market_scan.json')
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

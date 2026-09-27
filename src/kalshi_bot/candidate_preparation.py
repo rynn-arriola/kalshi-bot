@@ -35,6 +35,7 @@ class PreparedCandidates:
     market_rows: int
     milestone_rows: int
     excluded: tuple[tuple[str, int], ...]
+    scanned: int = 0   # D-159: reviews chosen from the saved full-market scan
 
 
 def _chunks(tickers, maximum=1800):
@@ -102,12 +103,30 @@ def _automatic_review(market, binding):
         early_close_reviewed=True), None
 
 
-async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128):
+SCAN_RESERVE_DIVISOR = 8  # D-159: 1/8 of the scope stays on the old order
+
+
+def _select_scanned(rows, limit, scan_scores):
+    """D-159: markets the saved full scan measured as scoring, best reward left
+    first, fill all but one eighth of the scope; the rest keeps the old
+    event-diverse, stratified order so new or unscanned programs stay seen."""
+    scanned = sorted((row for row in rows if scan_scores.get(row[1], 0) > 0),
+                     key=lambda row: (-scan_scores[row[1]], row[1]))
+    head = scanned[:limit-limit//SCAN_RESERVE_DIVISOR]
+    chosen = {row[1] for row in head}
+    rest = [row for row in rows if row[1] not in chosen]
+    return head+_select(rest, min(limit-len(head), len(rest))), len(head)
+
+
+async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128,
+                             scan_scores=None):
     """Resolve current programs to exact market rules and primary milestones.
 
     Cheap pool/time/target density is only a discovery ordering. The returned
     scope must still receive fresh WebSocket books and pass the existing exact
-    reward/capital ranking before an entry can be proposed.
+    reward/capital ranking before an entry can be proposed. D-159: fresh saved
+    full-scan scores (reward left per market), when given, choose most of the
+    scope instead of the hint; eligibility checks are unchanged.
     """
     now = utc(now)
     integer(max_reviews, 1, 1024)
@@ -235,7 +254,10 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
             continue
         eligible.append((-scores[ticker], ticker, market, review))
     eligible.sort(key=lambda row:(row[0], row[1]))
-    selected = _select(eligible, min(max_reviews, len(eligible)))
+    if scan_scores:
+        selected, scanned = _select_scanned(eligible, min(max_reviews, len(eligible)), scan_scores)
+    else:
+        selected, scanned = _select(eligible, min(max_reviews, len(eligible))), 0
     if not selected:
         raise InvalidData('no current reward market has one future primary milestone')
     reviews = tuple(row[3] for row in selected)
@@ -243,4 +265,4 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128)
     exchanges = tuple(sorted({0, *(row[2].exchange for row in selected)}))
     return PreparedCandidates(reviews, seeds, exchanges, len(incentives.rows),
                               len(markets), len(milestones.rows),
-                              tuple(sorted(excluded.items())))
+                              tuple(sorted(excluded.items())), scanned)

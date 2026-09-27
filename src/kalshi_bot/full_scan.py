@@ -10,14 +10,49 @@ reward still earnable per market before its program ends. Discovery uses fresh s
 markets to watch; entries still pass every live check. Never order authority.
 """
 import asyncio
+import json
+import os
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from .books import Book, Ladder
-from .market_inputs import tick_bands
+from .market_inputs import tick_bands, timestamp
 from .ranking import RankingBoard
 from .quota import QuotaUnavailable
 from .values import InvalidData, utc
+
+LAUNCH_FRESH_SECONDS = 3*3600   # D-159: an older saved scan is ignored at launch
+SAVED_BYTES_LIMIT = 4194304
+
+
+def save_scan(path, observed_at, scores):
+    """D-159: the pass's scoring markets, atomically, for the next launch."""
+    temp = path.with_suffix('.tmp')
+    temp.write_text(json.dumps(dict(observed_at=observed_at.isoformat(),
+        scores={t: str(v) for t, v in sorted(scores.items()) if v > 0})), encoding='utf-8')
+    os.replace(temp, path)
+
+
+def load_scan(path, now):
+    """Saved scan scores when present and fresh; otherwise None (launch then
+    falls back to the pool hint). A missing, oversized or corrupt file is
+    never fatal."""
+    try:
+        if path is None or path.stat().st_size > SAVED_BYTES_LIMIT:
+            return None
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        observed = timestamp(raw['observed_at'])
+        age = (utc(now)-observed).total_seconds()
+        if not 0 <= age <= LAUNCH_FRESH_SECONDS or type(raw['scores']) is not dict:
+            return None
+        scores = {}
+        for ticker, value in raw['scores'].items():
+            value = Decimal(value)
+            if isinstance(ticker, str) and value.is_finite() and value > 0:
+                scores[ticker] = value
+        return (observed, scores) if scores else None
+    except (OSError, ValueError, KeyError, TypeError, InvalidData, InvalidOperation):
+        return None
 
 
 def score_markets(programs, bands, books, now):
@@ -73,6 +108,8 @@ class FullMarketScan:
         self.runs = self.failures = 0
         self.markets = self.scoring = 0
         self.last_error = None
+        self.state_path = None   # D-159: saved beside the ledger for the next launch
+        self.save_failures = 0
 
     async def _read(self, name, **params):
         """One batch read; a read-quota refresh mid-request is retried, not fatal."""
@@ -145,6 +182,11 @@ class FullMarketScan:
                 scores = await self.scan_once()
                 if getattr(r, 'research', None) is not None:
                     r._research_safely(self._record, scores)
+                if self.state_path is not None:
+                    try:
+                        await asyncio.to_thread(save_scan, self.state_path, self.observed_at, scores)
+                    except OSError:
+                        self.save_failures += 1
                 delay = self.INTERVAL_SECONDS
             except asyncio.CancelledError:
                 raise
@@ -165,4 +207,4 @@ class FullMarketScan:
         age = None if self.scored_mono is None else round(self.runtime.clock()-self.scored_mono, 1)
         return dict(runs=self.runs, failures=self.failures, last_error=self.last_error,
                     markets=self.markets, scoring=self.scoring, age_seconds=age,
-                    fresh=self.fresh_scores() is not None)
+                    fresh=self.fresh_scores() is not None, save_failures=self.save_failures)

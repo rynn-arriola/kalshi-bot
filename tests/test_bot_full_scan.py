@@ -5,12 +5,15 @@ from decimal import Decimal as D
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType, SimpleNamespace as NS
+import json
 import time
 import unittest
+from unittest.mock import patch
 
 from kalshi_bot.config import BotConfig, activate
 from kalshi_bot.discovery_candidates import CandidateDiscovery
-from kalshi_bot.full_scan import FullMarketScan, score_markets, parse_book
+from kalshi_bot.full_scan import (FullMarketScan, LAUNCH_FRESH_SECONDS, load_scan,
+    parse_book, save_scan, score_markets)
 from kalshi_bot.incentive_discovery import IncentiveCatalog
 from kalshi_bot.rest import request_path
 from kalshi_bot.selection_runtime import ProgramObservation
@@ -281,3 +284,103 @@ class DiscoveryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SavedScanTests(unittest.TestCase):
+    """D-159: each pass is saved beside the ledger; the next launch reads it."""
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name)/'market_scan.json'
+
+    def test_a_saved_pass_loads_back_with_only_scoring_markets(self):
+        save_scan(self.path, NOW, {'A': D('2.5'), 'B': D(0), 'C': D('0.1')})
+        observed, scores = load_scan(self.path, NOW+timedelta(hours=1))
+        self.assertEqual(observed, NOW)
+        self.assertEqual(scores, {'A': D('2.5'), 'C': D('0.1')})
+        self.assertEqual(set(json.loads(self.path.read_text(encoding='utf-8'))['scores']), {'A', 'C'})
+        self.assertFalse(self.path.with_suffix('.tmp').exists())
+
+    def test_missing_stale_future_or_corrupt_files_fall_back(self):
+        self.assertIsNone(load_scan(self.path, NOW))
+        save_scan(self.path, NOW, {'A': D(1)})
+        self.assertIsNone(load_scan(self.path, NOW+timedelta(seconds=LAUNCH_FRESH_SECONDS+1)))
+        self.assertIsNone(load_scan(self.path, NOW-timedelta(minutes=5)))
+        self.assertIsNotNone(load_scan(self.path, NOW+timedelta(seconds=LAUNCH_FRESH_SECONDS)))
+        for text in ('{', '[]', '{"observed_at": "x", "scores": {}}',
+                     json.dumps(dict(observed_at=NOW.isoformat(), scores=['A']))
+                     , json.dumps(dict(observed_at=NOW.isoformat(), scores={'A': 'NaN'})),
+                     json.dumps(dict(observed_at=NOW.isoformat(), scores={'A': 'Infinity'})),
+                     json.dumps(dict(observed_at=NOW.isoformat(), scores={'A': 'bad'})),
+                     json.dumps(dict(observed_at=NOW.isoformat(), scores={'A': '0'}))):
+            self.path.write_text(text, encoding='utf-8')
+            self.assertIsNone(load_scan(self.path, NOW), text)
+
+    def test_an_oversized_file_is_ignored(self):
+        save_scan(self.path, NOW, {'A': D(1)})
+        with patch('kalshi_bot.full_scan.SAVED_BYTES_LIMIT', 10):
+            self.assertIsNone(load_scan(self.path, NOW))
+
+
+class SavedPassTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = ScanTests.asyncSetUp
+
+    async def run_one_pass(self):
+        self.scan.FIRST_DELAY_SECONDS, self.scan.INTERVAL_SECONDS = .01, 999
+        task = asyncio.create_task(self.scan.run())
+        await asyncio.sleep(.2)
+        self.r.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+
+    async def test_each_good_pass_is_saved_for_the_next_launch(self):
+        with TemporaryDirectory() as temp:
+            self.scan.state_path = Path(temp)/'market_scan.json'
+            await self.run_one_pass()
+            observed, scores = load_scan(self.scan.state_path, NOW)
+        expected = {t: v for t, v in self.scan.scores.items() if v > 0}
+        self.assertTrue(expected)
+        self.assertEqual((observed, scores), (NOW, expected))
+        self.assertEqual((self.scan.failures, self.scan.save_failures), (0, 0))
+
+    async def test_a_failed_save_is_counted_but_the_pass_still_counts(self):
+        with TemporaryDirectory() as temp:
+            self.scan.state_path = Path(temp)/'missing'/'market_scan.json'
+            await self.run_one_pass()
+        self.assertEqual((self.scan.runs, self.scan.failures), (1, 0))
+        self.assertEqual(self.scan.status()['save_failures'], 1)
+        self.assertIsNotNone(self.scan.fresh_scores())
+
+
+class LaunchWiringTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.inputs = Path(self.temp.name)/'live-inputs.json'
+        self.inputs.write_text(json.dumps(dict(fee_profile=dict(balance_quantum='.0001',
+            review_reference='synthetic-direct', valid_until='2099-01-01T00:00:00Z'))),
+            encoding='utf-8')
+        self.scan_path = Path(self.temp.name)/'market_scan.json'
+
+    async def prepared_with(self, now):
+        from kalshi_bot import live
+        seen = {}
+        class Stop(Exception):
+            pass
+        async def prepare(reads, **params):
+            seen.update(params)
+            raise Stop
+        with patch.object(live, 'prepare_candidates', prepare):
+            with self.assertRaises(Stop):
+                await live.refresh_candidate_inputs(self.inputs, now, None, scan_path=self.scan_path)
+        return seen['scan_scores']
+
+    async def test_launch_passes_a_fresh_saved_scan_and_falls_back_without_one(self):
+        self.assertIsNone(await self.prepared_with(NOW))
+        save_scan(self.scan_path, NOW, {'A': D(3)})
+        self.assertEqual(await self.prepared_with(NOW+timedelta(minutes=40)), {'A': D(3)})
+        self.assertIsNone(await self.prepared_with(NOW+timedelta(hours=4)))
+
+    def test_live_saves_the_scan_beside_the_ledger(self):
+        source = (ROOT/'src'/'kalshi_bot'/'live.py').read_text(encoding='utf-8')
+        self.assertIn("runtime.full_scan.state_path = Path(writer.path).with_name('market_scan.json')", source)
+        self.assertIn("DATA/'market_scan.json'", source)

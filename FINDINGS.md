@@ -14,6 +14,10 @@ their sister 6.50 (in scope) is quoted repeatedly. The scan itself works (5,080
 markets, 4,355 scoring, recorded to research). D-158's tests exercised the
 discovery ranking, not the live wiring; that gap let this through.
 
+**Repair (option A, D-159, on the branch):** each pass is saved; the next
+launch builds most of the watch list from the latest saved scan. Tests now
+cover the launch wiring itself, not only the ranking.
+
 ## 219. Sweep filter blocked all entries after a Sunday-evening restart — 2026-09-27
 
 **MEASURED.** After the 20:22 UTC restart (build `20af7e6`) the full scan's

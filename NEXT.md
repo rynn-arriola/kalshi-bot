@@ -4,12 +4,15 @@
 
 **Dated follow-ups — do not drop:**
 
-- **Finding 220 — make the scan choose the watch list (operator decision):**
-  (A) launch scope from the latest saved scan (low risk; still fixed between
-  restarts) and/or (B) a periodic, shard-by-shard rescope of the non-held part
-  of the watch list from fresh scores (full effect; touches book
-  subscriptions, needs careful design and tests). D-158 until then only
-  records.
+- **Finding 220 option A built (D-159); deploy at the next approved
+  restart.** Restart only after a pass has saved `data/trader/market_scan.json`
+  (every 30 min on the live build once D-159 is running — the first restart
+  after deploy still uses the pool hint, the one after that uses the scan).
+  Check the `candidate_scope_prepared` event: `scan_markets` ~896 and
+  `scan_observed_at` recent; scan top markets (e.g. Alaska diesel) watched.
+- **Finding 220 option B (later, design first):** periodic shard-by-shard
+  rescope of the non-held watch list from fresh scores, so the watch list
+  follows the scan without a restart.
 
 - **Finding 218 fixes (next build):** (1) exhausted market metadata retries
   on a bounded cooldown once 429s stop, so selection evidence self-heals;

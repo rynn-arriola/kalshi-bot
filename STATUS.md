@@ -1,5 +1,13 @@
 # Current status
 
+## D-159 built: launch watch list from the saved scan — 2026-09-27
+
+Built and tested on the branch, not deployed. Each full-scan pass saves its
+scores; a restart then builds 7/8 of the 1,024-market watch list from the
+latest scan (most reward left first) instead of the pool hint (Finding 220,
+option A). Needs one restart to deploy and a second, after a pass has been
+saved, for the scan to choose the list. Live build unchanged (`669e1a2`).
+
 ## Sweep-filter fix and full-scan retry deployed — 2026-09-27
 
 **Running** build `669e1a2` since 20:44 UTC (operator-approved restarts:

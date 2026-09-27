@@ -10,6 +10,28 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-159 — Launch the watch list from the latest saved full-market scan
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; takes
+  effect at the next approved restart.
+- **Decision owner:** Operator: "Ok do option A" (Finding 220, option A).
+- **Why:** in live broad mode the 1,024 watched markets are fixed at launch,
+  so D-158's scores never reached the live watch list (Finding 220).
+- **What:** after each good pass `FullMarketScan` saves every scoring market's
+  reward left to `data/trader/market_scan.json` (beside the ledger; temp file
+  then replace; a failed save is counted as `save_failures`, the pass still
+  counts). At launch, `refresh_candidate_inputs` loads it if written within the
+  last 3 hours; `prepare_candidates` then fills 7/8 of the scope with scanned,
+  eligible markets, most reward left first (event diversity does not demote
+  them; seeds are the top 128), and the last 1/8 keeps the old event-diverse,
+  stratified hint order so new or unscanned programs stay watched. A missing,
+  stale, future-dated, oversized or corrupt file falls back to the old order.
+  The launch result reports `scan_observed_at` and `scan_markets`.
+- **Boundary:** chooses what to watch at launch only; every eligibility check
+  (milestone binding, early close, market active, imminent milestone) and
+  every live entry check is unchanged. The scope is still fixed between
+  restarts; periodic rescoping is option B (not built).
+
 ### D-158 — Score every rewarded market; watch the best-scoring ones
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not
