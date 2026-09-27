@@ -56,6 +56,29 @@ class RecoveryReads:
         return await self.reads.collect(name, **kwargs)
 
 
+def audit_detail_fields(audit, now):
+    """D-153: which order terms differed and how old our evidence was (log only)."""
+    try:
+        if audit is None or not audit.details:
+            return {}
+        now_us = int(utc(now).timestamp()*1_000_000)
+        out = {}
+        for kind in ('mismatch', 'missing'):
+            rows = [row for row in audit.details if row[0] == kind]
+            if not rows:
+                continue
+            ages = [max(0, (now_us-version)//1000) for _, _, version in rows if type(version) is int]
+            out[f'{kind}_count'] = len(rows)
+            if ages:
+                out[f'{kind}_age_min_ms'], out[f'{kind}_age_max_ms'] = min(ages), max(ages)
+        kinds = sorted({label for row in audit.details for label in row[1]})
+        if kinds:
+            out['mismatch_kinds'] = kinds
+        return out
+    except Exception:
+        return {}  # Diagnostics never change the renewal outcome.
+
+
 class AccountProofMixin:
     @staticmethod
     def _snapshot_signature(report):
@@ -225,6 +248,7 @@ class AccountProofMixin:
         released = None
         unexplained = False
         audit_blockers = ()  # D-146: which audit check blocked an own renewal.
+        failed_audit = None  # D-153: the audit behind an unexplained own renewal.
         raced = False  # D-148: clean evidence, only the source moved mid-read.
         async with self.recovery_lock:
             try:
@@ -262,6 +286,8 @@ class AccountProofMixin:
                         unexplained = self._own_order_unexplained(report, proof)
                         if unexplained == 'audit_blocked' and report.audit is not None:
                             audit_blockers = tuple(report.audit.blockers)
+                        if unexplained in ('audit_blocked', 'order_not_visible'):
+                            failed_audit = report.audit
                     raced = (not own and report is not None and not unexplained
                              and self._raced_by_private(proof, history))
                     if (history is None or report is None
@@ -347,6 +373,7 @@ class AccountProofMixin:
                         self.request_recovery(cause)
                     self.diagnostics.emit('account_refresh_failed', error=failure,
                         cause=cause, phase=failed_phase, blockers=audit_blockers,
+                        **audit_detail_fields(failed_audit, self.now()),
                         elapsed_ms=self.routine_refresh_elapsed_ms,
                         outcome=('quota_wait' if isinstance(failure, QuotaUnavailable)
                             else 'timeout' if isinstance(failure, TimeoutError)

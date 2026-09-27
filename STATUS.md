@@ -1,5 +1,12 @@
 # Current status
 
+## D-153 audit-mismatch diagnostic ready — 2026-09-27
+
+Built on the branch, not deployed (running build `04ff303`). Logs which
+owned-order field differed from Kalshi's snapshot and how old our evidence
+was, for the ~40/h renewal escalations (NEXT, WATCHLIST 15). Deploys with the
+2026-09-27 pull-decision restart; no behavior change.
+
 ## D-152 measurement build deployed — 2026-09-26
 
 **Running** build `04ff303` since 21:51 UTC (operator "command 1"; no positions,

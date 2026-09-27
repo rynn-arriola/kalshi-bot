@@ -23,8 +23,11 @@
   only on orders we changed in the last ~3 s, wait ~1.5 s and retry once
   before a full recovery (also WATCHLIST 5's 404s).
   `owned_order_terms_mismatch` (150): only 79 within 5 s of our own action;
-  71 are not explained by our lag. First log which field differs (terminal
-  in our ledger vs resting at Kalshi, or remaining/price), then decide.
+  71 are not explained by our lag. D-153 (built, deploys with the 2026-09-27
+  restart) logs which field differs and how old our evidence is; decide the
+  retry change from that, after the pull change has settled. Note: a venue
+  showing *less* remaining without a fill is already rejected earlier as
+  `invalid_data`, so those 71 are not that case.
 - **Research failures: answered.** All `trades_read:QuotaUnavailable` during
   read-quota refreshes; no data lost. Optional cleanup at a later deploy:
   count them as a skip, not a failure.

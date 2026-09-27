@@ -167,6 +167,34 @@ class OwnOrderRenewalTests(unittest.IsolatedAsyncioTestCase):
         # D-146: the log names the audit check that blocked the renewal.
         self.assertIn('foreign_resting_orders', failed[-1]['blockers'])
 
+    async def test_not_visible_failure_logs_how_many_and_how_old(self):
+        """D-153: sizing the snapshot lag before any retry change."""
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        runtime.reads.orders = ()
+        events = self.capture(runtime)
+        self.assertFalse((await self.renew_own(runtime))[1])
+        failed = [c for n, c in events if n == 'account_refresh_failed'][-1]
+        self.assertEqual((failed['outcome'], failed['missing_count']), ('order_not_visible', 1))
+        self.assertGreaterEqual(failed['missing_age_min_ms'], 0)
+        self.assertNotIn('mismatch_count', failed)
+
+    async def test_canceled_order_still_listed_is_labelled(self):
+        """D-153: our record says canceled while Kalshi still lists it resting."""
+        runtime = await self.runtime()
+        await self.place_own_order(runtime)
+        await self.writer.order(OrderUpdate('order-own-1', 'own-1', 'A', 'bid', D('.01'),
+            D(10), D(0), D(0), 'canceled', 0, 1, 2), self.now)
+        runtime._revoke(economic=False)
+        events = self.capture(runtime)
+        self.assertFalse((await self.renew_own(runtime))[1])
+        failed = [c for n, c in events if n == 'account_refresh_failed'][-1]
+        self.assertEqual(failed['outcome'], 'audit_blocked')
+        self.assertIn('owned_order_terms_mismatch', failed['blockers'])
+        self.assertEqual((failed['mismatch_count'], failed['mismatch_kinds']),
+                         (1, ['terminal_but_resting']))
+        self.assertTrue(runtime.recovery_requested.is_set())  # Behavior unchanged.
+
     async def test_economic_event_ends_chain_reuse(self):
         runtime = await self.runtime()
         self.assertIsNotNone(runtime._chain_anchor())

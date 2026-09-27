@@ -1,5 +1,5 @@
 """Bounded LOCAL agreement checks. Not atomic venue/history/stream proof."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 import json
 
@@ -20,10 +20,35 @@ class AccountAudit:
     unbound_client_ids: tuple[str, ...]
     pending_fills: int
     blockers: tuple[str, ...]
+    # D-153 diagnostics only: (kind, mismatch labels, our last update time in
+    # venue microseconds) per missing/mismatched order. Never part of equality.
+    details: tuple = field(default=(), compare=False)
 
     @property
     def consistent(self):
         return not self.blockers
+
+
+DETAIL_LIMIT = 32
+
+
+def mismatch_kinds(order, row):
+    """D-153: how our record of an owned order differs from Kalshi's snapshot row."""
+    kinds = []
+    if order.terminal:
+        kinds.append('terminal_but_resting')
+    elif row.remaining > order.remaining:
+        kinds.append('remaining_venue_higher')
+    elif row.remaining < order.remaining:
+        kinds.append('remaining_venue_lower')
+    for ours, theirs, label in ((order.yes_price, row.yes_price, 'price_differs'),
+                                (order.side, row.book_side, 'side_differs'),
+                                (order.client_id, row.client_id, 'client_differs'),
+                                (order.ticker, row.ticker, 'ticker_differs'),
+                                (order.exchange_index, row.exchange_index, 'exchange_index_differs')):
+        if ours != theirs:
+            kinds.append(label)
+    return tuple(kinds)
 
 
 def audit_snapshot(ledger, snapshot, *, epoch, revision, capacity):
@@ -40,7 +65,7 @@ def audit_snapshot(ledger, snapshot, *, epoch, revision, capacity):
         raise InvalidData("account audit exceeds bounded ledger scope")
     positions = {r[0]: Decimal(r[2])*r[1] for r in lots}
     venue_positions = {p.ticker: p.quantity for p in snapshot.positions if p.quantity}
-    blockers, waiting, missing, mismatched = set(), [], [], []
+    blockers, waiting, missing, mismatched, details = set(), [], [], [], []
     if positions != venue_positions:
         blockers.add("position_ledger_mismatch")
     orders = {o.order_id: o for o in (OrderUpdate.decode(r[0]) for r in rows)}
@@ -59,10 +84,14 @@ def audit_snapshot(ledger, snapshot, *, epoch, revision, capacity):
         row = visible.get(key)
         if not order.terminal and row is None:
             missing.append(key)
+            if len(details) < DETAIL_LIMIT:
+                details.append(('missing', (), order.version_us))
         elif row is not None and (order.terminal or
                 (order.client_id, order.ticker, order.exchange_index, order.side, order.yes_price, order.remaining) !=
                 (row.client_id, row.ticker, row.exchange_index, row.book_side, row.yes_price, row.remaining)):
             mismatched.append(key)
+            if len(details) < DETAIL_LIMIT:
+                details.append(('mismatch', mismatch_kinds(order, row), order.version_us))
     for position in snapshot.positions:
         if position.quantity and market_shards.get(position.ticker) != {position.exchange_index}:
             blockers.add("position_order_scope_unproven")
@@ -82,4 +111,4 @@ def audit_snapshot(ledger, snapshot, *, epoch, revision, capacity):
             blockers.add(reason)
     return AccountAudit(epoch, revision, positions == venue_positions, len(intents), tuple(foreign),
         tuple(sorted(missing)), tuple(sorted(mismatched)), tuple(sorted(waiting)),
-        tuple(sorted(unbound)), pending, tuple(sorted(blockers)))
+        tuple(sorted(unbound)), pending, tuple(sorted(blockers)), tuple(details))

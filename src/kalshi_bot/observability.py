@@ -101,7 +101,9 @@ EVENTS = {
     'quota_stopped': ('INFO', 'rest'),
     'quota_rollover_deferred': ('INFO', 'rest'),
 }
-NUMBERS = frozenset(('reward_cents', 'risk_cents', 'volume_24h_contracts', 'attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
+NUMBERS = frozenset(('mismatch_count', 'mismatch_age_min_ms', 'mismatch_age_max_ms',
+                     'missing_count', 'missing_age_min_ms', 'missing_age_max_ms',
+                     'reward_cents', 'risk_cents', 'volume_24h_contracts', 'attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
                      'market_rows', 'milestone_rows', 'exit_code', 'count',
                      'recovery_requests', 'recovery_attempts', 'repair_passes',
@@ -123,6 +125,10 @@ RECOVERY_CAUSES = frozenset('''source_change snapshot_freshness routine_refresh_
 RECOVERY_PHASES = frozenset('''idle first_snapshot history pending_fills missing_orders
     final_snapshot management tail_snapshot accounting_release complete snapshot_and_tail'''.split())
 REFERENCES = frozenset(('market', 'operation', 'order', 'reason'))
+# D-153: how an owned order differed from Kalshi's snapshot (fixed labels only).
+MISMATCH_KINDS = frozenset(('terminal_but_resting', 'remaining_venue_higher', 'remaining_venue_lower',
+                            'price_differs', 'side_differs', 'client_differs', 'ticker_differs',
+                            'exchange_index_differs'))
 SAFE_CODES = frozenset(('venue_code',))
 ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-2', 'book-3')),
          'risk_state': frozenset(('observed', 'threat', 'queue_missing', 'identity_changed',
@@ -335,6 +341,9 @@ class Diagnostics:
                         and all(character.isalnum() or character in '._-'
                                 for character in value)):
                     context[key] = value
+            kinds = fields.get('mismatch_kinds')
+            if type(kinds) in (tuple, list) and len(kinds) <= 16:
+                context['mismatch_kinds'] = [k for k in kinds if type(k) is str and k in MISMATCH_KINDS]
             blockers = fields.get('blockers')
             if type(blockers) in (tuple, list) and len(blockers) <= 64:
                 context['blockers'] = [b for b in blockers if type(b) is str and b in BLOCKERS]

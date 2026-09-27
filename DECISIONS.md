@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-153 — Label owned-order audit mismatches before changing renewal
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not
+  deployed (goes with the 2026-09-27 pull-decision restart).
+- **Decision owner:** Operator: "Ok build it what u think we need", after the
+  recommendation to measure before any renewal retry change.
+- **Scope:** when an own-order renewal fails on `order_not_visible` or
+  `audit_blocked`, `account_refresh_failed` also logs `missing_count` /
+  `mismatch_count`, the youngest and oldest age of our own evidence for those
+  orders (`*_age_min_ms` / `*_age_max_ms`, from Kalshi `last_update_time`), and
+  fixed `mismatch_kinds` labels (`terminal_but_resting`,
+  `remaining_venue_higher`/`lower`, `price`/`side`/`client`/`ticker`/
+  `exchange_index_differs`). The audit carries these as `details`, excluded
+  from equality, and bounded to 32 orders.
+- **Question it answers:** are the ~40/h renewal escalations Kalshi's snapshot
+  lagging our own changes (young evidence, `terminal_but_resting`), or are we
+  missing updates (old evidence)? Only then decide on a settle-and-retry.
+- **Boundary:** logging only; renewal, audit and recovery decisions unchanged.
+
 ### D-152 — Measure before retuning protective pulls
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-26; not
