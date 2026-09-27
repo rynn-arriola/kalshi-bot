@@ -79,6 +79,7 @@ class RecoveryRuntime(AccountProofMixin):
     order_groups = None
     research = None  # D-151 research dataset; opt-in, never authority.
     full_scan = None  # D-158 full-market scan; opt-in, never authority.
+    resting_share = None  # Phase 3 measurement: per-market resting share; never authority.
     research_failures = 0
     research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
     research_last_failure = None
@@ -2421,10 +2422,26 @@ class RecoveryRuntime(AccountProofMixin):
             if cancelled_during_cleanup:
                 raise asyncio.CancelledError
 
+    def _sample_resting_share(self):
+        """Phase 3: one resting-share sample from the verified entry-order view;
+        saved beside the ledger every few minutes so restarts keep history."""
+        share, mono = self.resting_share, self.clock()
+        share.sample(mono, self.current_entry_orders())
+        if mono >= self.__dict__.get('_resting_share_saved', mono):
+            self._resting_share_saved = mono+share.SAVE_SECONDS
+            try:
+                share.save()
+            except OSError:
+                share.save_failures += 1
+
     async def _diagnostic_health(self):
         next_summary = self.clock()+60
+        next_share = self.clock()
         while not self.stop_requested.is_set():
             self.diagnostics.ensure_healthy()
+            if self.resting_share is not None and self.clock() >= next_share:
+                next_share = self.clock()+self.resting_share.SAMPLE_SECONDS
+                self._sample_resting_share()
             if self.clock() >= next_summary:
                 self._diagnostic_summary()
                 next_summary = self.clock()+60
@@ -2553,6 +2570,7 @@ class RecoveryRuntime(AccountProofMixin):
                            pending_marks=self._research_marks_pending)
                       if self.research is not None else None),
             full_scan=self.full_scan.status() if self.full_scan is not None else None,
+            resting_share=self.resting_share.status() if self.resting_share is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

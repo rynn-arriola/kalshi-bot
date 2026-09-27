@@ -1,5 +1,12 @@
 # Current status
 
+## Resting-share counter built (phase 3 measurement) — 2026-09-27
+
+Built and tested on the branch, not deployed: the bot will measure, per
+market, how much of the time since it first rested there it actually has
+orders resting (the number phase 3 needs), saved across restarts. No trading
+change. Needs one approved restart.
+
 ## Business plan and measurement added — 2026-09-27
 
 Agreed plan: measure, learn from payouts, concentrate on the $1 finish line,

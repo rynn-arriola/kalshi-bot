@@ -28,8 +28,13 @@
     entry gate is reused.
   - The full scan and launch scope (D-158/D-159) score markets the same way.
   - Unchanged: every loss check (downside cap, family memory, sweep filter,
-    loss limits). Needs an in-process resting-share counter per market
-    (research is write-only).
+    loss limits).
+  - In-process resting-share counter: BUILT (measurement only,
+    `resting_share.py`; per market, leg-time / 2 over time since first
+    rested, 5 s samples from the verified entry-order view, unverified time
+    and gaps > 30 s not counted, saved to `data/trader/resting_share.json`
+    every 5 min). Status: `runtime.resting_share` (markets, median_share).
+    Takes effect at the next approved restart.
 
 - **D-159 live since 2026-09-27 22:55 UTC (build `cec3b26`).** The deploy
   launch used a seeded top-200 scan (`scan_markets` 103). At the next restart

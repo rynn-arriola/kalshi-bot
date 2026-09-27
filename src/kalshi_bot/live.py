@@ -275,6 +275,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         from .full_scan import FullMarketScan
         runtime.full_scan = FullMarketScan(runtime)
         runtime.full_scan.state_path = Path(writer.path).with_name('market_scan.json')
+        # Phase 3 measurement: per-market resting share, kept across restarts.
+        from .resting_share import RestingShare
+        runtime.resting_share = RestingShare(Path(writer.path).with_name('resting_share.json')).load()
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

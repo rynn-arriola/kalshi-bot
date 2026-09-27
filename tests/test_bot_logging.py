@@ -485,6 +485,50 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(next(r for r in data if r['event'] == 'entries_idle')['context']
                          ['incentives_exhausted'], 0)
 
+    async def test_the_health_loop_samples_and_saves_resting_share(self):
+        """Phase 3 measurement runs on the health loop from the verified view."""
+        from types import SimpleNamespace as NS
+        from kalshi_bot.resting_share import RestingShare
+        runtime = self.runtime()
+        mono, rows = [0.], [NS(ticker='A'), NS(ticker='A')]
+        runtime.clock = lambda: mono[0]
+        runtime.current_entry_orders = lambda: rows
+        runtime.resting_share = RestingShare(self.path/'resting_share.json')
+        runtime._sample_resting_share()
+        self.assertTrue((self.path/'resting_share.json').exists())  # first save at once
+        (self.path/'resting_share.json').unlink()
+        for mono[0] in range(10, 300, 10):
+            runtime._sample_resting_share()
+        self.assertFalse((self.path/'resting_share.json').exists())  # next save after 300 s
+        mono[0] = 300
+        runtime._sample_resting_share()
+        self.assertTrue((self.path/'resting_share.json').exists())
+        self.assertEqual(runtime.status()['resting_share']['samples'], 31)
+        self.assertEqual(runtime.resting_share.markets['A'][0], 300)
+        runtime.current_entry_orders = lambda: None
+        runtime._sample_resting_share()
+        self.assertEqual(runtime.resting_share.unknown, 1)
+
+    async def test_a_failed_resting_share_save_is_counted_not_fatal(self):
+        from kalshi_bot.resting_share import RestingShare
+        runtime = self.runtime()
+        runtime.current_entry_orders = lambda: ()
+        runtime.resting_share = RestingShare(self.path/'missing'/'resting_share.json')
+        runtime._sample_resting_share()
+        self.assertEqual(runtime.resting_share.save_failures, 1)
+
+    async def test_health_loop_drives_the_resting_share_sampler(self):
+        from kalshi_bot.resting_share import RestingShare
+        runtime = self.runtime()
+        runtime.current_entry_orders = lambda: ()
+        runtime.resting_share = RestingShare()
+        runtime.resting_share.SAMPLE_SECONDS = 0
+        task = asyncio.create_task(runtime._diagnostic_health())
+        await asyncio.sleep(.6)
+        runtime.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertGreaterEqual(runtime.resting_share.samples, 2)
+
     async def test_launch_scope_scan_fields_reach_the_log(self):
         """D-159: the restart check reads scan_markets from candidate_scope_prepared."""
         self.log.emit('candidate_scope_prepared', reviewed_markets=1024, scan_markets=896,
