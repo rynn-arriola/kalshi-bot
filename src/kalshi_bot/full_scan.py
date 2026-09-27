@@ -6,7 +6,7 @@ could sit unseen. This background owner reads every live liquidity program's
 market details (50 per request) and order book (100 per request, the
 authenticated batch endpoint) on the low-priority read lane, scores them with
 the same ``RankingBoard`` the bot trades with, and publishes the estimated
-reward per hour per market. Discovery uses fresh scores to choose which
+reward still earnable per market before its program ends. Discovery uses fresh scores to choose which
 markets to watch; entries still pass every live check. Never order authority.
 """
 import asyncio
@@ -20,7 +20,9 @@ from .values import InvalidData, utc
 
 
 def score_markets(programs, bands, books, now):
-    """Best estimated gross reward per hour per market (0 when it does not score)."""
+    """Best estimated reward still earnable per market before its program ends
+    (0 when it does not score). Total left, not $/hour: an hour-long match can
+    show a high rate yet leave well under the bot's $1 entry minimum."""
     scores = {}
     board = RankingBoard(1024)
     for ticker in sorted(programs):
@@ -34,7 +36,8 @@ def score_markets(programs, bands, books, now):
         except InvalidData:
             continue
         rows = board.markets.get(ticker, ())
-        scores[ticker] = max((r.gross_hourly_usd for r in rows if r.gross_hourly_usd), default=Decimal(0))
+        scores[ticker] = max((r.gross_remaining_usd for r in rows
+                              if r.gross_remaining_usd and not r.blockers), default=Decimal(0))
     return scores
 
 
@@ -141,7 +144,7 @@ class FullMarketScan:
         top = sorted(((v, t) for t, v in scores.items() if v > 0), reverse=True)[:200]
         self.runtime.research.record('candidates', f'scan@{stamp}', source='full_scan',
             markets=self.markets, scoring=self.scoring,
-            rows=[dict(rank=i+1, ticker=t, hourly=v) for i, (v, t) in enumerate(top)])
+            rows=[dict(rank=i+1, ticker=t, remaining=v) for i, (v, t) in enumerate(top)])
 
     def status(self):
         age = None if self.scored_mono is None else round(self.runtime.clock()-self.scored_mono, 1)

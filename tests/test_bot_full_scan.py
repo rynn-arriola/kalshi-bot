@@ -94,6 +94,35 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(len(scores), 1030)
 
 
+class RemainingTests(unittest.TestCase):
+    def setUp(self):
+        import kalshi_bot.config as bot_config
+        self.addCleanup(setattr, bot_config, '_ACTIVE', bot_config._ACTIVE)
+        activate(BotConfig.load(ROOT/'config'/'bot.json'))
+
+    def test_a_long_program_outranks_a_short_one_with_a_higher_hourly_rate(self):
+        """Finding (2026-09-27 scan): hour-long matches show high $/hour but little left."""
+        from kalshi_bot.ranking import RankingBoard
+        short = program(ticker='S', program_id='p-S', start=NOW-timedelta(minutes=50),
+                        end=NOW+timedelta(minutes=10), pool_centicents=800000)
+        long = program(ticker='L', program_id='p-L', start=NOW-timedelta(days=1),
+                       end=NOW+timedelta(days=3), pool_centicents=20000000)
+        books = {t: parse_book(t, levels()) for t in ('S', 'L')}
+        scores = score_markets({'S': (short,), 'L': (long,)}, {'S': BANDS, 'L': BANDS}, books, NOW)
+        board = RankingBoard(4)
+        for t, p in (('S', short), ('L', long)):
+            board.update(books[t], (p,), BANDS, now=NOW, valid_until=NOW+timedelta(minutes=5), market_open=True)
+        hourly = {t: board.markets[t][0].gross_hourly_usd for t in ('S', 'L')}
+        self.assertGreater(hourly['S'], hourly['L'])  # The short one looks juicier per hour...
+        self.assertGreater(scores['L'], scores['S'])  # ...but the long one has more left to earn.
+        self.assertEqual(scores['L'], board.markets['L'][0].gross_remaining_usd)
+
+    def test_a_blocked_row_scores_zero(self):
+        thin = parse_book('T', dict(yes_dollars=[['0.50', '100']], no_dollars=[['0.40', '100']]))
+        scores = score_markets({'T': (program(ticker='T', program_id='p-T'),)}, {'T': BANDS}, {'T': thin}, NOW)
+        self.assertEqual(scores, {'T': D(0)})
+
+
 class ScanTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         import kalshi_bot.config as bot_config  # Never leak the live size into other tests.

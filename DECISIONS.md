@@ -24,7 +24,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (`/markets?tickers=`), order books 100 per request (authenticated
   `/markets/orderbooks`, repeated `tickers`), ~100 requests per pass. It scores
   every live, unpaid program with the bot's own `RankingBoard` in a worker
-  thread (never on the trading loop) and publishes estimated $/hour per market.
+  thread (never on the trading loop) and publishes, per market, the estimated
+  reward still earnable before its program ends (total left, not $/hour: the
+  first full scan showed hour-long sports and 15-minute crypto programs topping
+  $/hour with only $0.14–1.60 left, under the bot's $1 entry minimum).
   Discovery ranks fresh scores ahead of the pool hint and gives half the free
   watch slots to the best-scoring markets; owned markets stay first; scores
   older than 45 minutes fall back to the old order. Each pass's top 200 goes

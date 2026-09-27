@@ -59,7 +59,7 @@ def get(path, tries=6):
 
 
 def pool_per_hour(programs, now):
-    """Upper bound on our $/hour: the whole live pool rate (as if we were alone)."""
+    """The whole live pool rate in $/hour (as if we were the only liquidity)."""
     total = Decimal(0)
     for p in programs:
         if p.start <= now < p.end:
@@ -68,6 +68,16 @@ def pool_per_hour(programs, now):
             if p.max_reward_centicents is not None:
                 rate = min(rate, Decimal(p.max_reward_centicents)/10000/hours)
             total += rate
+    return total
+
+
+def pool_left(programs, now):
+    """Upper bound on what we could still earn: each live pool's unpaid rest."""
+    total = Decimal(0)
+    for p in programs:
+        if p.start <= now < p.end:
+            left = Decimal(str((p.end-now).total_seconds()))/3600
+            total += pool_per_hour((p,), now)*left
     return total
 
 
@@ -141,12 +151,12 @@ def main():
     now = datetime.now(timezone.utc)
     programs = {t: p for t, p in active_programs().items()
                 if any(x.start <= now < x.end and not x.paid_out for x in p)}
-    order = sorted(programs, key=lambda t: -pool_per_hour(programs[t], now))
+    order = sorted(programs, key=lambda t: -pool_left(programs[t], now))
     markets = markets_for(order)
     board, failures, read, scored = RankingBoard(1024), 0, 0, []
     for ticker in order:
-        bound = pool_per_hour(programs[ticker], now)
-        best = sorted((r.gross_hourly_usd for r in scored), reverse=True)
+        bound = pool_left(programs[ticker], now)
+        best = sorted((r.gross_remaining_usd for r in scored), reverse=True)
         if len(best) >= args.top and best[args.top-1] >= bound:
             break  # No unread market can beat the current top list.
         market = markets.get(ticker)
@@ -162,21 +172,22 @@ def main():
             live = tuple(p for p in programs[ticker] if p.start <= now < p.end)[:16]
             board.update(book, live, tick_bands(market['price_ranges']), now=now,
                          valid_until=now+timedelta(minutes=30), market_open=True)
-            scored += [r for r in board.markets.get(ticker, ()) if r.gross_hourly_usd]
+            scored += [r for r in board.markets.get(ticker, ())
+                       if r.gross_remaining_usd and not r.blockers]
         except Exception:
             failures += 1
     quoted, families, swept = own_state(Path(args.trader))
     best_per_market = {}
     for r in scored:
-        if r.ticker not in best_per_market or r.gross_hourly_usd > best_per_market[r.ticker].gross_hourly_usd:
+        if r.ticker not in best_per_market or r.gross_remaining_usd > best_per_market[r.ticker].gross_remaining_usd:
             best_per_market[r.ticker] = r
-    rows = sorted(best_per_market.values(), key=lambda r: -r.gross_hourly_usd)
+    rows = sorted(best_per_market.values(), key=lambda r: -r.gross_remaining_usd)
     cap = config.maximum_entry_downside
     print(f'# Market scan — {now:%Y-%m-%d %H:%M} UTC ({config.entry_contracts} contracts per side)')
     print(f'{len(programs)} markets with an active liquidity program; {len(rows)} scoring for our size; '
           f'{failures} could not be read. Estimated $ per hour uses the bot\'s own model '
           '(strict estimate; payouts so far ran higher).\n')
-    print('| # | market | est. $/hour | est. $ left to program end | program ends (UTC) | our bid / ask | '
+    print('| # | market | est. $ left to program end | est. $/hour | program ends (UTC) | our bid / ask | '
           'worst loss per contract | status |')
     print('|---|---|---|---|---|---|---|---|')
     for i, row in enumerate(rows[:args.top], 1):
@@ -193,10 +204,12 @@ def main():
                 reasons.append('family filled us <7d')
             if row.ticker in swept:
                 reasons.append('swept <60 min')
+            if row.gross_remaining_usd < config.minimum_projected_reward_usd:
+                reasons.append(f'under ${config.minimum_projected_reward_usd} minimum')
             reasons += [b for b in row.blockers]
             status = 'blocked: '+', '.join(reasons) if reasons else 'available'
-        print(f"| {i} | {row.ticker} | {row.gross_hourly_usd:.3f} | "
-              f"{(row.gross_remaining_usd or 0):.2f} | {row.program_end:%m-%d %H:%M} | "
+        print(f"| {i} | {row.ticker} | {row.gross_remaining_usd:.2f} | "
+              f"{(row.gross_hourly_usd or 0):.3f} | {row.program_end:%m-%d %H:%M} | "
               f"{quotes.get('bid', '–')} / {quotes.get('ask', '–')} | {downside:.2f} | {status} |")
 
 
