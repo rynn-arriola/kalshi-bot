@@ -1,6 +1,6 @@
 # Findings — kalshi-bot
 
-## 216. Calibration report, 40 hours: 1,250 protective pulls, no fill avoided; first payout — 2026-09-27
+## 216. Calibration report, 16 hours: pulls rarely right at 60 s, but staying out helped; first payout — 2026-09-27
 
 **MEASURED (research.db 2026-09-26 19:15 → 2026-09-27 11:00 UTC, Kalshi trades).**
 `time_to_fill` 1,241 pulls, 2% with our level gone 60 s later; 5 trade-backed.
@@ -17,9 +17,30 @@ separate them.
 estimates (tracking since 2026-09-26 19:00 only) are all under $1 for programs
 ending by 2026-10-04, so they understate full-period earnings.
 
-**Implication:** in this window the pull trigger cost quoting time and account
-churn and prevented nothing; Finding 206's single cancel-before-sweep save has
-not recurred. Decision with the operator.
+**Correction:** the dataset covers ~16 hours (2026-09-26 19:15 → 2026-09-27
+11:00 UTC), not 40.
+
+**MEASURED — deeper look (same window, Kalshi trades).**
+- *Cost of pulls:* after a pull we stayed out of that market a median 8.8 min
+  (p75 22, p90 61); 545 market-hours out in 15.8 h (about 34 markets out at
+  any time) while the 50 slots stayed full elsewhere (average resting 49.8).
+  The pulled markets' own estimated reward while out was at most $13.88
+  (~$0.88/h); the true loss is the gap to the lower-ranked replacements.
+- *Hidden benefit:* in 3 pulls (KXC4POS ask 0.79, KXMONSTERPOS ask 0.89,
+  KXKSWHEAT bid 0.73), a sweep of 105–298 contracts went through our old price
+  while we were out (within 60 min); staying in would likely have filled us.
+  Pulls act as an activity filter even though the 60-s prediction is 2%.
+- *Downside cap trade-off (2,079 entry pairs, 154 markets):* capping the worse
+  leg's loss per contract at 0.60 removes 54% of entries and ~53% of estimated
+  reward (avoids $21.45 of past loss); 0.75 removes 19% / 17%, 0.80 removes
+  9% / 8%, and both still avoid KXBROSFT's −$18.36 (45% of all losses).
+- *Near misses among quoted markets:* no large sweep missed us by luck; the
+  only sweeps ≥150 in quoted markets were the ones that filled us.
+
+**Implication:** turning off `time_to_fill` would save churn and some reward
+but lose the stay-out effect; the evidence is balanced, so test it rather than
+switch. A 0.75–0.80 downside cap is cheap relative to the loss it avoids;
+0.60 is not.
 
 ## 215. Loss review: 19 round trips, −$41.12; about a third was predictable — 2026-09-27
 
