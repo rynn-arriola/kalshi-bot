@@ -1,5 +1,15 @@
 # Current status
 
+## D-159 and Finding 218 fixes deployed — 2026-09-27
+
+**Running** build `cec3b26` since 22:55 UTC (operator-approved restart as part
+of "Do recommendation"; stopped flat, no positions). The launch watch list came
+from the saved scan (seeded from the 22:27 scan's top 200): 103 scanned
+markets in scope, all Alaska diesel markets included and seeded first. Entries
+refilled to 50 in ~4 minutes; sweep filter loaded; first scan pass saved 4,093
+scoring markets to `market_scan.json`; catalog healthy (4,873 markets). The
+next restart will build ~7/8 of the scope from the full saved scan.
+
 ## D-159 built: launch watch list from the saved scan — 2026-09-27
 
 Built and tested on the branch, not deployed. Each full-scan pass saves its

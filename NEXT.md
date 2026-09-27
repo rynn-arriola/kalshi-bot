@@ -4,17 +4,15 @@
 
 **Dated follow-ups — do not drop:**
 
-- **Finding 220 option A built (D-159); deploy at the next approved
-  restart.** Restart only after a pass has saved `data/trader/market_scan.json`
-  (every 30 min on the live build once D-159 is running — the first restart
-  after deploy still uses the pool hint, the one after that uses the scan).
-  Check the `candidate_scope_prepared` event: `scan_markets` ~896 and
-  `scan_observed_at` recent; scan top markets (e.g. Alaska diesel) watched.
+- **D-159 live since 2026-09-27 22:55 UTC (build `cec3b26`).** The deploy
+  launch used a seeded top-200 scan (`scan_markets` 103). At the next restart
+  check `candidate_scope_prepared`: `scan_markets` in the hundreds (up to
+  896) and `scan_age_minutes` under 180.
 - **Finding 220 option B (later, design first):** periodic shard-by-shard
   rescope of the non-held watch list from fresh scores, so the watch list
   follows the scan without a restart.
 
-- **Finding 218 fixes built; deploy with D-159.** Catalog and market
+- **Finding 218 fixes live (build `cec3b26`).** Catalog and market
   metadata now retry after exhaustion; `entries_idle` warns after 15 minutes
   at 0 resting. Never run parallel public scans on the bot machine — use
   `scripts/market_scan.py` (paced) or the in-bot scan.
