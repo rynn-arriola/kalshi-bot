@@ -83,7 +83,9 @@ ENDPOINTS = {
     "incentives": endpoint("/incentive_programs", "status type incentive_description limit cursor",
                            "incentives", False, "incentive_programs", "next_cursor"),
     "markets": endpoint("/markets", "tickers status mve_filter limit cursor",
-                        "candidate", False, "markets"),
+                        "candidate scan", False, "markets"),
+    # D-158: up to 100 order books per request for the full-market scan.
+    "orderbooks": endpoint("/markets/orderbooks", "tickers", "scan", True, "orderbooks"),
     "events": endpoint("/events", "tickers limit cursor with_nested_markets with_milestones",
                        "metadata", False, "events"),
     "milestones": endpoint("/milestones", "minimum_start_date limit cursor",
@@ -113,6 +115,18 @@ def request_path(name: str, params: dict, reason: str) -> tuple[Endpoint, str]:
             raise InvalidData("invalid scoped read path")
         path = path.replace("{"+key+"}", value)
     for key, value in query.items():
+        if name == 'orderbooks' and key == 'tickers':
+            # D-158: repeated query parameter, one validated ticker each.
+            if (type(value) not in (list, tuple) or not 1 <= len(value) <= 100
+                    or any(not isinstance(t, str)
+                           or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}", t) for t in value)):
+                raise InvalidData("one to 100 valid tickers required")
+            continue
+        if name == 'markets' and key == 'tickers':
+            if (not isinstance(value, str) or len(value) > 4096
+                    or not re.fullmatch(r"[A-Za-z0-9_.,-]+", value)):
+                raise InvalidData("invalid ticker list")
+            continue
         if key in {"limit", "depth", "min_ts", "max_ts", "subaccount", "exchange_index"}:
             ceiling = 1000 if key in {"limit", "depth"} else 2**63-1
             if name == 'events' and key == 'limit':
@@ -126,7 +140,8 @@ def request_path(name: str, params: dict, reason: str) -> tuple[Endpoint, str]:
     if "min_ts" in query and "max_ts" in query and query["min_ts"] > query["max_ts"]:
         raise InvalidData("inverted history range")
     if query:
-        path += "?" + urlencode(sorted(query.items()))
+        path += "?" + urlencode(sorted((k, list(v) if type(v) is tuple else v)
+                                       for k, v in query.items()), doseq=True)
     return spec, path
 
 
@@ -684,7 +699,7 @@ class RestReads:
         key = (name, path, coalesce_scope, revision)
         task = self.inflight.get(key)
         if task is None:
-            background = reason in {'metadata','incentives','reflection','research','sweeps'}
+            background = reason in {'metadata','incentives','reflection','research','sweeps','scan'}
             admission_limit = self.inflight_limit-int(self.quota is not None and _control_scope is None)
             if (len(self.inflight) >= admission_limit or
                     (background and self.background_inflight >= self.background_limit)):

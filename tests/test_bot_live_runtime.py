@@ -979,6 +979,8 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(runtime.maintenance.fill_cooldown_required)  # D-154
                 self.assertTrue(runtime.maintenance.sweep_filter_required)  # D-155
                 self.assertEqual(runtime.sweep_state_path.name, 'sweeps.json')
+                self.assertIsNotNone(runtime.full_scan)  # D-158
+                self.assertIn('full_scan', runtime.status())
                 self.assertIsNone(runtime.admission)
                 self.assertTrue(runtime.broad_discovery)
                 self.assertEqual(runtime.metadata_scheduler.concurrency, 4)

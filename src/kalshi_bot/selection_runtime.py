@@ -249,7 +249,9 @@ class RuntimeSelection:
         candidates = self._discovery.choose(catalog,now=r.now(),budget=r.writer.market_capacity,
                                       protected=tuple(sorted(owned)),incumbents=incumbents,
                                       eligible=eligible,
-                                      subscribed=tuple(sorted(r.engine.market_shard)))
+                                      subscribed=tuple(sorted(r.engine.market_shard)),
+                                      scores=(r.full_scan.fresh_scores()
+                                              if getattr(r, 'full_scan', None) is not None else None))
         release = r.accounting_result
         window = release.window if release is not None and release.released else None
         now = utc(r.now())

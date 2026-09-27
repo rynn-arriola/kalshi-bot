@@ -23,13 +23,14 @@ class CandidateDiscovery:
         self.pending = ()  # At most the 10,000-row catalog bound; no per-tick work.
 
     def choose(self, catalog, *, now, budget, protected=(), incumbents=(), eligible=None,
-               subscribed=()):
+               subscribed=(), scores=None):
         """Budget is engineering capacity, NOT desired market/order occupancy.
 
         Pool/time/target is only a cheap exploration hint. Actual selection still
         requires fresh book competition, fees, event deadlines and account gates.
         """
         now = utc(now)
+        measured = scores  # D-158: estimated $/hour per market from the full scan
         integer(budget,1,1024)
         for values in (protected,incumbents,subscribed):
             if type(values) is not tuple or len(values) > 1024 or len(set(values)) != len(values):
@@ -52,11 +53,16 @@ class CandidateDiscovery:
             for ticker, observation in catalog.observations.items():
                 if eligible is not None and ticker not in eligible:
                     continue
-                scores = [Decimal(p.pool_centicents)/seconds(p.end-p.start)/p.target
+                hints = [Decimal(p.pool_centicents)/seconds(p.end-p.start)/p.target
                     for p in observation.programs if not p.paid_out and p.start <= now < p.end
                     and p.max_reward_centicents is None and p.pool_centicents > 0]
-                if scores: ranked.append((-max(scores),ticker))
+                if hints: ranked.append((-max(hints),ticker))
         ranked.sort()
+        if measured is not None:
+            # D-158: a fresh full-market scan outranks the cheap pool hint:
+            # markets that score for our size first, best first; the rest keep
+            # the hint order behind them.
+            ranked.sort(key=lambda item: (-measured.get(item[1], 0), item))
         eligible = {ticker for _,ticker in ranked}
         # A proposed slate is NOT an admission acknowledgement. Keep unjoined
         # candidates at the front, even across partial joins or failed retries.
@@ -81,6 +87,9 @@ class CandidateDiscovery:
         # Keep enough cheap leaders visible to fill the approved entry cap
         # (D-138); the rest remains a rotating exploration tail ranked by books.
         head = min(slots,max(1,min(MAX_RESTING_ENTRIES,budget//4))) if slots else 0
+        if measured is not None and slots:
+            # D-158: with measured scores, half the free watch slots follow them.
+            head = max(head, slots//2)
         selected.extend(remaining[:head])
         chosen.update(selected)
         tail, slots = [t for t in self.pending if t not in chosen],slots-head

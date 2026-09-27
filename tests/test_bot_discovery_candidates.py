@@ -130,6 +130,26 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(self.f.r.engine.market_shard),{'A'})
         self.assertFalse(result.authorized)
 
+    async def test_fresh_full_scan_scores_reach_discovery(self):
+        """D-158: the runtime hands fresh scan scores to discovery; stale ones never."""
+        from decimal import Decimal
+        from unittest import mock
+        self.f.pages[0]['incentive_programs'] += [fixtures.row('B','b')]
+        await self.f.refresh()
+        seen = []
+        real = CandidateDiscovery.choose
+        def spy(discovery, *args, **kwargs):
+            seen.append(kwargs.get('scores'))
+            return real(discovery, *args, **kwargs)
+        scan = SimpleNamespace(fresh_scores=lambda: {'B': Decimal('0.9')})
+        self.f.r.full_scan = scan
+        with mock.patch.object(CandidateDiscovery, 'choose', spy):
+            result = await self.f.s.discovery_candidates()
+            scan.fresh_scores = lambda: None
+            await self.f.s.discovery_candidates()
+        self.assertEqual(seen, [{'B': Decimal('0.9')}, None])
+        self.assertIn('B', result.tickers)
+
     async def test_refill_requires_fresh_released_window_and_two_free_slots(self):
         await self.f.refresh()
         r = self.f.r

@@ -78,6 +78,7 @@ class RecoveryRuntime(AccountProofMixin):
     routine_own_fallbacks = 0
     order_groups = None
     research = None  # D-151 research dataset; opt-in, never authority.
+    full_scan = None  # D-158 full-market scan; opt-in, never authority.
     research_failures = 0
     research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
     research_last_failure = None
@@ -2326,6 +2327,9 @@ class RecoveryRuntime(AccountProofMixin):
                 if self.maintenance is not None and self.maintenance.fill_cooldown_required:
                     tasks.append(asyncio.create_task(self._fill_history_loop(),
                                                      name='kalshi-fill-cooldown'))
+                if self.full_scan is not None:
+                    tasks.append(asyncio.create_task(self.full_scan.run(),
+                                                     name='kalshi-full-scan'))
                 if self.maintenance is not None and self.maintenance.sweep_filter_required:
                     tasks.append(asyncio.create_task(self._sweep_watch_loop(),
                                                      name='kalshi-sweep-filter'))
@@ -2516,6 +2520,7 @@ class RecoveryRuntime(AccountProofMixin):
                            last_failure=self.research_last_failure,
                            pending_marks=self._research_marks_pending)
                       if self.research is not None else None),
+            full_scan=self.full_scan.status() if self.full_scan is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

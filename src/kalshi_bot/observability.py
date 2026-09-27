@@ -156,7 +156,7 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
             '/portfolio/fills', '/historical/fills', '/historical/orders', '/historical/cutoff',
             '/portfolio/balance', '/account/limits', '/account/endpoint_costs', '/incentive_programs',
             '/markets', '/events', '/milestones', '/portfolio/orders/queue_positions',
-            '/markets/trades',
+            '/markets/trades', '/markets/orderbooks',
             '/markets/{ticker}', '/events/{event_ticker}', '/series/{series_ticker}',
             '/milestones/{milestone_id}', '/events/fee_changes', '/series/fee_changes')),
          'screen': frozenset(('pass', 'volume', 'reward_risk', 'both', 'unknown')),

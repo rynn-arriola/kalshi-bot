@@ -4,6 +4,11 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Deploy D-158 with D-156 at the next approved restart.** Then check
+  `full_scan` in status (runs, markets ~5,000, scoring, fresh) after the first
+  pass (2 minutes after start), that entries stay near 50, and the read budget
+  shows no throttling.
+
 - **Each payout morning (09-28, 09-29, 10-05, 10-07):** run the calibration
   report; compare "paid ÷ strict" and "paid ÷ resting-based" (D-157). Base
   reward decisions on whichever tracks payouts; if both are far off, fix the

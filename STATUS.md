@@ -1,5 +1,13 @@
 # Current status
 
+## D-158 full-market scan built — 2026-09-27
+
+Built and tested on the branch, not deployed (operator: no restart). Every
+30 minutes the bot will score all ~5,100 rewarded markets (about 100 batched
+reads, scored off the trading loop) and watch the best-scoring ones first;
+entries keep every live check. Also on the branch awaiting the same restart:
+D-156 ranker inputs, D-157 report (report runs now from the dev copy).
+
 ## D-156 ranker inputs and reward-truth report built — 2026-09-27
 
 Built and tested on the branch, not deployed (operator: no restart). Report:

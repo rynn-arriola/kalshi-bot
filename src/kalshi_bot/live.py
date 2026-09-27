@@ -264,6 +264,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         runtime.maintenance.fill_cooldown_required = True
         runtime.maintenance.sweep_filter_required = True
         runtime.sweep_state_path = Path(writer.path).with_name('sweeps.json')
+        # D-158: score every rewarded market every 30 minutes for discovery.
+        from .full_scan import FullMarketScan
+        runtime.full_scan = FullMarketScan(runtime)
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

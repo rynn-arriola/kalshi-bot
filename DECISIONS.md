@@ -10,6 +10,31 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-158 — Score every rewarded market; watch the best-scoring ones
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not
+  deployed (operator: no restart yet).
+- **Decision owner:** Operator: "we should change our scanning market process
+  because we dont get all based on your findings here".
+- **Why:** ~5,100 markets have a live liquidity program; the book feeds hold at
+  most 1,024, chosen by a pool-per-contract hint plus a slow rotating tail, so
+  a better market could go unseen for a long time.
+- **What:** `FullMarketScan` runs every 30 minutes (first run 2 minutes after
+  start) on the low-priority read lane: market details 50 per request
+  (`/markets?tickers=`), order books 100 per request (authenticated
+  `/markets/orderbooks`, repeated `tickers`), ~100 requests per pass. It scores
+  every live, unpaid program with the bot's own `RankingBoard` in a worker
+  thread (never on the trading loop) and publishes estimated $/hour per market.
+  Discovery ranks fresh scores ahead of the pool hint and gives half the free
+  watch slots to the best-scoring markets; owned markets stay first; scores
+  older than 45 minutes fall back to the old order. Each pass's top 200 goes
+  to research (`candidates`, key `scan@…`).
+- **Book conversion:** REST order books return NO bids at NO prices; the scan
+  stores each as a YES ask at 1 − p. (Verified that live quotes already match
+  1 − best NO bid, so the book-feed path is correct.)
+- **Boundary:** chooses what to watch only; every entry still passes all live
+  checks (downside cap, family memory, sweep filter, loss limits).
+
 ### D-157 — Report money from the ledger; show both reward estimates
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27
