@@ -112,7 +112,8 @@ class PollTests(unittest.IsolatedAsyncioTestCase):
         swept = NOW-timedelta(seconds=20)
         self.reads(lambda a, b: [trade('A', swept, 'no', 400)] if a <= S(swept) <= b else [])
         await self.run_once()
-        self.assertEqual(self.calls[0], (S(NOW)-60, S(NOW)))
+        self.assertEqual((self.calls[0][0], self.calls[5][1]), (S(NOW)-60, S(NOW)))
+        self.assertTrue(all(b-a == 10 for a, b in self.calls[:6]))  # Six 10-second windows.
         self.assertFalse(self.m.sweep_allows('A'))
         self.assertTrue(self.m.sweep_allows('B'))
         saved = json.loads(self.r.sweep_state_path.read_text(encoding='utf-8'))
@@ -133,26 +134,39 @@ class PollTests(unittest.IsolatedAsyncioTestCase):
             self.r.research = None
             store.close()
 
-    async def test_a_restart_reloads_the_list_and_catches_up_the_gap(self):
+    async def test_a_restart_reloads_the_list_and_catches_up_a_short_gap(self):
         self.r.sweep_state_path.write_text(json.dumps(dict(
-            polled_s=S(NOW)-200, sweeps={'OLD': S(NOW)-1800})), encoding='utf-8')
+            polled_s=S(NOW)-50, sweeps={'OLD': S(NOW)-1800})), encoding='utf-8')
         self.reads(lambda a, b: [])
         await self.run_once()
-        self.assertEqual(self.calls[:4], [(S(NOW)-205, S(NOW)-145), (S(NOW)-145, S(NOW)-85),
-                                          (S(NOW)-85, S(NOW)-25), (S(NOW)-25, S(NOW))])
+        # 55 s since the last poll (minus 5 s overlap), in 10-second windows.
+        self.assertEqual(self.calls[:6], [(S(NOW)-55, S(NOW)-45), (S(NOW)-45, S(NOW)-35),
+                                          (S(NOW)-35, S(NOW)-25), (S(NOW)-25, S(NOW)-15),
+                                          (S(NOW)-15, S(NOW)-5), (S(NOW)-5, S(NOW))])
         self.assertFalse(self.m.sweep_allows('OLD'))  # Still inside its hour after the restart.
 
-    async def test_catch_up_is_bounded_to_ten_minutes(self):
+    async def test_catch_up_is_bounded_to_two_minutes(self):
+        """Finding 219: a long catch-up kept entries blocked for 10+ minutes."""
         self.r.sweep_state_path.write_text(json.dumps(dict(polled_s=S(NOW)-7200, sweeps={})),
                                            encoding='utf-8')
         self.reads(lambda a, b: [])
         await self.run_once()
-        self.assertEqual(self.calls[0][0], S(NOW)-600)
+        self.assertEqual(self.calls[0][0], S(NOW)-120)
+        self.assertEqual(len([c for c in self.calls if c[1] <= S(NOW)]) >= 12, True)
+        self.assertTrue(self.m.sweep_allows('A'))  # Loaded after one bounded pass.
+
+    async def test_high_volume_fits_one_read_per_window(self):
+        """20,000 trades a minute: a 10-second window holds ~3,300, under the 10,000 cap."""
+        busy = lambda a, b: [trade('A', NOW-timedelta(seconds=30), 'yes', 1)]*((b-a)*333)
+        self.reads(busy, too_big=lambda a, b: (b-a)*333 > 10000)
+        await self.run_once()
+        self.assertEqual(self.m.sweep_failures, 0)
+        self.assertTrue(all(b-a <= 10 for a, b in self.calls))
 
     async def test_a_window_too_big_for_one_read_is_split(self):
         swept = NOW-timedelta(seconds=40)
         self.reads(lambda a, b: [trade('A', swept, 'yes', 300)] if a <= S(swept) <= b else [],
-                   too_big=lambda a, b: b-a > 15)
+                   too_big=lambda a, b: b-a > 6)
         await self.run_once()
         self.assertEqual(self.m.sweep_failures, 0)  # Split, not failed.
         self.assertFalse(self.m.sweep_allows('A'))

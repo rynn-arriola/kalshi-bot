@@ -1,5 +1,20 @@
 # Findings — kalshi-bot
 
+## 219. Sweep filter blocked all entries after a Sunday-evening restart — 2026-09-27
+
+**MEASURED.** After the 20:22 UTC restart (build `20af7e6`) the full scan's
+first pass succeeded (5,139 markets, 4,393 scoring) but resting entries stayed
+at 0 for 11+ minutes: the D-155 sweep filter had not completed its first poll,
+and it fails closed. Kalshi-wide volume was ~20,000 trades per minute (NFL
+Sunday; ~6,000 in the morning), so every 60-second window exceeded the
+10,000-row read cap and was re-read in halves, and the first poll also had to
+catch up everything since the last saved poll before loading. No position or
+money at risk; lost quoting time only.
+
+**Repair (on the branch):** 10-second windows (fit up to ~60k trades/min in
+one read), catch-up bounded to 120 s, and a fresh start looks back 60 s; the
+saved sweep list from before a restart still reloads. Tests cover all three.
+
 ## 218. An outside burst of public requests stopped entries for 75 minutes — 2026-09-27
 
 **MEASURED (events log, status).** About 17:52–18:01 UTC a read-only public

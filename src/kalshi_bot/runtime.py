@@ -1068,9 +1068,12 @@ class RecoveryRuntime(AccountProofMixin):
                 pass
 
     SWEEP_POLL_SECONDS = 30  # D-155
-    SWEEP_CHUNK_SECONDS = 60
+    # Finding 219: Kalshi-wide volume reached ~20k trades/min (NFL Sunday), so
+    # 60-s windows overflowed the 10k-row read and were re-read in halves.
+    SWEEP_CHUNK_SECONDS = 10
     SWEEP_MIN_CHUNK_SECONDS = 5
-    SWEEP_CATCH_UP_SECONDS = 600
+    SWEEP_CATCH_UP_SECONDS = 120  # never block entries on a long catch-up
+    SWEEP_FIRST_SECONDS = 60      # a fresh start looks back one minute
     sweep_state_path = None
 
     async def _sweep_trades(self, start, end):
@@ -1122,7 +1125,7 @@ class RecoveryRuntime(AccountProofMixin):
         while not self.stop_requested.is_set():
             try:
                 now_s = int(utc(self.now()).timestamp())
-                start = (now_s-self.SWEEP_CHUNK_SECONDS if since is None
+                start = (now_s-self.SWEEP_FIRST_SECONDS if since is None
                          else max(since-5, now_s-self.SWEEP_CATCH_UP_SECONDS))
                 from .quote_maintenance import latest_sweeps
                 orders = {}
