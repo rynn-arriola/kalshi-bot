@@ -51,6 +51,21 @@ cause clears; (2) health does not flag "entries allowed but none resting" for
 a long time; (3) public tools on the bot's machine share its rate limit. The
 public scan script now paces at ~5 requests/s (its second run caused no 429).
 
+**Root cause (VERIFIED, events log + code, found while fixing):** at 18:00
+the reward-program catalog refresh failed 3 times in ~7 s on 429s and was
+marked exhausted (`incentives_exhausted`). Nothing ever cleared that flag, so
+the catalog was never read again; it expired 5 minutes later and every
+market lost its reward programs, hence `selection_evidence_unavailable` on
+all 1,024 until the restart. The 11 exhausted market-metadata rows had the
+same never-retry behavior.
+
+**Repair (on the branch):** the catalog retries 2 minutes after exhaustion
+(`incentives_resumed`, `cooldown_retries` in status); an exhausted market's
+metadata retries after 5 minutes; and when entries are allowed but none rest
+for 15 minutes the bot logs `entries_idle` (every 15 minutes while it lasts,
+with whether the catalog is exhausted) and status shows
+`entries_idle_seconds`.
+
 **Also after the restart:** the first D-158 full-scan pass failed on one
 `QuotaUnavailable: quota_revision_changed` (a batch overlapping a read-quota
 refresh) and, as built, would wait 30 minutes; fixed on the branch (batch

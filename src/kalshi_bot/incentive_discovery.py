@@ -61,6 +61,11 @@ def _market_digests(observations, excluded):
 
 
 class IncentiveDiscovery:
+    # Finding 218: exhaustion is a pause, not a permanent stop. Without the
+    # catalog every market loses selection evidence, so a burst of 429s must
+    # not end entries until a restart.
+    EXHAUSTED_COOLDOWN_SECONDS = 120
+
     def __init__(self, runtime, *, offline_fixture=False, interval=300, attempts=3):
         from .runtime import RecoveryRuntime
         if (not isinstance(runtime, RecoveryRuntime)
@@ -79,6 +84,8 @@ class IncentiveDiscovery:
         self.wake = asyncio.Event()
         self.used = self.running = self.stopping = self.failed = False
         self.exhausted = False
+        self.exhausted_until = 0.
+        self.cooldown_retries = 0
         self.generation = self.failures = self.completed = self.started = 0
         self.next_at = self.not_before = 0.
         self.last_clock = None
@@ -231,6 +238,8 @@ class IncentiveDiscovery:
                 self.failures += 1
                 self.not_before = mono+min(30, 2**(self.failures-1))
                 self.exhausted = self.failures >= self.attempt_limit
+                if self.exhausted:
+                    self.exhausted_until = mono+self.EXHAUSTED_COOLDOWN_SECONDS
                 self.runtime.diagnostics.emit('incentives_exhausted' if self.exhausted
                     else 'incentives_retry', attempt=self.failures, error=exc)
             # Unexpected bugs escape to the runtime's fail-closed supervisor.
@@ -242,6 +251,11 @@ class IncentiveDiscovery:
                 self.completed += 1
                 self.next_at = value.deadline_mono
                 self._changed()
+        if self.exhausted and not self.stopping and mono >= self.exhausted_until:
+            self.exhausted = False
+            self.failures = 0
+            self.cooldown_retries += 1
+            self.runtime.diagnostics.emit('incentives_resumed', attempt=self.cooldown_retries)
         r = self.runtime
         deferred = bool(r.engine.private or r.account._processing or r.recovery_state == 'recovering')
         if (not self.stopping and self.active is None and not self.exhausted and quota_ready
@@ -308,6 +322,7 @@ class IncentiveDiscovery:
         value = self.current()
         return dict(running=self.running, stopping=self.stopping, failed=self.failed,
             active=self.active is not None, exhausted=self.exhausted, failures=self.failures,
+            cooldown_retries=self.cooldown_retries,
             started=self.started, completed=self.completed,
             current_markets=len(value.observations) if value else 0,
             excluded_markets=len(value.excluded) if value else 0,

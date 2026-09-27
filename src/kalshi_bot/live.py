@@ -198,6 +198,7 @@ async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None):
         incentive_rows=prepared.incentive_rows, market_rows=prepared.market_rows,
         milestone_rows=prepared.milestone_rows, excluded=dict(prepared.excluded),
         scan_observed_at=saved[0].isoformat() if saved else None,
+        scan_age_minutes=int((now-saved[0]).total_seconds()//60) if saved else None,
         scan_markets=prepared.scanned, trading_started=False)
 
 

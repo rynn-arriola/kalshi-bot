@@ -84,6 +84,7 @@ EVENTS = {
     'candidate_scope_prepared': ('INFO', 'selection'),
     'incentives_retry': ('WARNING', 'selection'),
     'incentives_exhausted': ('ERROR', 'selection'),
+    'incentives_resumed': ('WARNING', 'selection'), 'entries_idle': ('WARNING', 'selection'),
     'incentives_failed': ('ERROR', 'selection'),
     'cli_failed': ('ERROR', 'cli'), 'preflight_blocked': ('WARNING', 'cli'),
     'exit_inputs_published': ('INFO','metadata'), 'exit_inputs_failed': ('ERROR','metadata'),
@@ -106,6 +107,8 @@ NUMBERS = frozenset(('mismatch_count', 'mismatch_age_min_ms', 'mismatch_age_max_
                      'reward_cents', 'risk_cents', 'volume_24h_contracts', 'attempt', 'generation', 'revision', 'backlog', 'http_status', 'blocker_count', 'elapsed_ms',
                      'reviewed_markets', 'initial_websocket_markets', 'incentive_rows',
                      'market_rows', 'milestone_rows', 'exit_code', 'count',
+                     'idle_seconds', 'incentives_exhausted', 'catalog_markets',  # Finding 218
+                     'scan_markets', 'scan_age_minutes',  # D-159 launch scope
                      'recovery_requests', 'recovery_attempts', 'repair_passes',
                      'routine_completed', 'routine_escalations', 'steady_completed',
                      'resting_orders', 'positions', 'entry_allowed', 'dispatch_queued',

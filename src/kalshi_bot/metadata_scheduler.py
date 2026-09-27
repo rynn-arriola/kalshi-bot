@@ -12,6 +12,9 @@ from .quota import QuotaUnavailable
 
 class MetadataScheduler:
     REBIND_HOLD = 5
+    # Finding 218: an exhausted market retries after a cooldown instead of
+    # staying unselectable until a restart.
+    EXHAUSTED_COOLDOWN_SECONDS = 300
 
     def __init__(self, service, *, defer=lambda: False, priority=lambda ticker: False,
                  concurrency=2, attempts=3, timeout=30, minimum_interval=.05,
@@ -31,6 +34,8 @@ class MetadataScheduler:
         self.heap, self.due, self.ready, self.active = [], {}, OrderedDict(), {}
         self.dirty, self.exhausted = set(), set()
         self.failures, self.not_before = {}, {}
+        self.exhausted_at = {}
+        self.cooldown_retries = 0
         self.serial = self.completed = self.started = self.high_water = 0
         self.wake = asyncio.Event()
         self.running = self.used = self.stopping = False
@@ -95,7 +100,7 @@ class MetadataScheduler:
             if ticker in self.failures or ticker in self.exhausted:
                 self.retired[ticker] = (self.failures.get(ticker,0),ticker in self.exhausted,
                                         self.not_before.get(ticker,0))
-            for mapping in (self.due,self.ready,self.failures,self.not_before): mapping.pop(ticker,None)
+            for mapping in (self.due,self.ready,self.failures,self.not_before,self.exhausted_at): mapping.pop(ticker,None)
             self.dirty.discard(ticker)
             self.exhausted.discard(ticker)
         self.heap = [(at,serial,t) for at,serial,t in self.heap if t in self.service.tickers]
@@ -149,6 +154,7 @@ class MetadataScheduler:
             return False
         if retry:
             self.exhausted.discard(ticker)
+            self.exhausted_at.pop(ticker, None)
             self.failures.pop(ticker, None)
             # Explicit retry is not permission to bypass an existing cooldown.
         if ticker in self.exhausted or not self.service.connected:
@@ -199,6 +205,7 @@ class MetadataScheduler:
                 self.not_before[ticker] = self.service.clock()+min(30, 2**(failures-1))
                 if failures >= self.attempt_limit:
                     self.exhausted.add(ticker)
+                    self.exhausted_at[ticker] = self.service.clock()
                     self.diagnostics.emit('metadata_exhausted', market=ticker, attempt=failures, error=exc)
                 else:
                     self.diagnostics.emit('metadata_retry', market=ticker, attempt=failures, error=exc)
@@ -230,6 +237,11 @@ class MetadataScheduler:
         self._expire_rebind()
         self._finished()
         now = self.service.clock()
+        if not self.stopping and self.service.connected:
+            for ticker in sorted(self.exhausted):
+                if now-self.exhausted_at.setdefault(ticker, now) >= self.EXHAUSTED_COOLDOWN_SECONDS:
+                    self.cooldown_retries += 1
+                    self.request(ticker, retry=True)
         while self.heap and self.heap[0][0] <= now:
             deadline, serial, ticker = heapq.heappop(self.heap)
             if self.due.get(ticker) != (deadline, serial):
@@ -305,6 +317,7 @@ class MetadataScheduler:
     def status(self):
         return dict(running=self.running, pending=len(self.due)+len(self.ready),
             active=len(self.active), heap=len(self.heap), exhausted=len(self.exhausted),
+            cooldown_retries=self.cooldown_retries,
             priority_ready=sum(bool(self._priority_rank(ticker)) for ticker in self.ready),
             priority_active=sum(bool(self._priority_rank(ticker)) for ticker in self.active),
             started=self.started, completed=self.completed, high_water=self.high_water,

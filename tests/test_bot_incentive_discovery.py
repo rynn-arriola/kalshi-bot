@@ -214,6 +214,40 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         await self.refresh()
         self.assertIsNotNone(self.d.current())
 
+    async def test_exhaustion_heals_after_the_cooldown(self):
+        """Finding 218: a burst of failures pauses the catalog; it never ends
+        entries until a restart."""
+        self.pages[0]['incentive_programs'] = [row(id=None)]
+        for _ in range(3):
+            await self.refresh()
+            self.advance(2)
+        self.assertTrue(self.d.exhausted)
+        self.pages[0]['incentive_programs'] = [row()]
+        self.advance(self.d.EXHAUSTED_COOLDOWN_SECONDS-10)
+        self.d.step()
+        self.assertTrue(self.d.exhausted)
+        self.assertIsNone(self.d.active)
+        self.advance(10)
+        await self.refresh()
+        self.assertFalse(self.d.exhausted)
+        self.assertIsNotNone(self.d.current())
+        self.assertEqual(self.d.status()['cooldown_retries'], 1)
+
+    async def test_a_second_exhaustion_waits_another_full_cooldown(self):
+        self.pages[0]['incentive_programs'] = [row(id=None)]
+        for _ in range(3):
+            await self.refresh()
+            self.advance(2)
+        self.advance(self.d.EXHAUSTED_COOLDOWN_SECONDS)
+        for _ in range(3):
+            await self.refresh()
+            self.advance(2)
+        self.assertTrue(self.d.exhausted)
+        self.advance(self.d.EXHAUSTED_COOLDOWN_SECONDS-10)
+        self.d.step()
+        self.assertTrue(self.d.exhausted)
+        self.assertEqual(self.d.cooldown_retries, 1)
+
     async def test_quota_hold_does_not_spend_retry_budget(self):
         from kalshi_bot.quota import QuotaUnavailable
         with patch.object(self.reads,'collect',side_effect=QuotaUnavailable('fixture')):

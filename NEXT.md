@@ -14,11 +14,10 @@
   rescope of the non-held watch list from fresh scores, so the watch list
   follows the scan without a restart.
 
-- **Finding 218 fixes (next build):** (1) exhausted market metadata retries
-  on a bounded cooldown once 429s stop, so selection evidence self-heals;
-  (2) health warns (and the watchlist flags) when entries are allowed but none
-  have rested for 15+ minutes; (3) never run parallel public scans on the bot
-  machine — use `scripts/market_scan.py` (paced) or the in-bot scan.
+- **Finding 218 fixes built; deploy with D-159.** Catalog and market
+  metadata now retry after exhaustion; `entries_idle` warns after 15 minutes
+  at 0 resting. Never run parallel public scans on the bot machine — use
+  `scripts/market_scan.py` (paced) or the in-bot scan.
 
 - **D-156/D-158 live since 2026-09-27 (build `669e1a2`).** Watch `full_scan`
   (a pass every 30 min, fresh, ~4,300+ scoring) and WATCHLIST 18–19.

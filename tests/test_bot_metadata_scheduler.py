@@ -269,6 +269,29 @@ class SchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.started, started+1) # B only
         self.assertIn('A', self.scheduler.exhausted)
 
+    async def test_an_exhausted_market_retries_after_the_cooldown(self):
+        """Finding 218: exhaustion is a pause, not unselectable until restart."""
+        price_ranges = self.reads.markets['A'].pop('price_ranges')
+        self.advance(1000)  # the cooldown counts from exhaustion, not from clock zero
+        self.connect()
+        await self.drain()
+        for step in (1, 2):
+            self.advance(step)
+            await self.drain()
+        self.assertIn('A', self.scheduler.exhausted)
+        self.reads.markets['A']['price_ranges'] = price_ranges
+        self.advance(self.scheduler.EXHAUSTED_COOLDOWN_SECONDS-10)
+        await self.drain()
+        self.assertIn('A', self.scheduler.exhausted)
+        self.assertNotIn('A', self.published)
+        self.advance(10)
+        await self.drain()
+        self.advance(1)
+        await self.drain()
+        self.assertNotIn('A', self.scheduler.exhausted)
+        self.assertIn('A', self.published)
+        self.assertEqual(self.scheduler.status()['cooldown_retries'], 1)
+
     async def test_superseded_publication_retries_without_spending_failure_budget(self):
         events=[]
         class Log:

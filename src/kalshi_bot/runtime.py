@@ -2431,8 +2431,36 @@ class RecoveryRuntime(AccountProofMixin):
             # Logging failure cannot leave an idle runtime silently unobserved.
             await asyncio.sleep(.25)
 
+    ENTRIES_IDLE_WARN_SECONDS = 900  # Finding 218: 0 resting for 15 min is an outage
+
+    def _check_entries_idle(self):
+        """Finding 218: entries allowed yet none resting for a long time means
+        selection is stuck; health must say so rather than read healthy."""
+        rows = self.current_entry_orders() if self.entry_allowed else None
+        now = self.clock()
+        if rows is None or rows:
+            self._entries_idle_since = self._entries_idle_warned = None
+            return
+        since = self.__dict__.setdefault('_entries_idle_since', None)
+        if since is None:
+            self._entries_idle_since = since = now
+        idle = now-since
+        warned = self.__dict__.get('_entries_idle_warned')
+        if idle >= self.ENTRIES_IDLE_WARN_SECONDS and (
+                warned is None or now-warned >= self.ENTRIES_IDLE_WARN_SECONDS):
+            self._entries_idle_warned = now
+            incentives = self.incentives.status() if self.incentives is not None else {}
+            self.diagnostics.emit('entries_idle', idle_seconds=round(idle),
+                incentives_exhausted=int(bool(incentives.get('exhausted'))),
+                catalog_markets=incentives.get('current_markets', 0))
+
+    def entries_idle_seconds(self):
+        since = self.__dict__.get('_entries_idle_since')
+        return None if since is None else round(self.clock()-since, 1)
+
     def _diagnostic_summary(self):
         """Bounded in-memory counters, once per minute; never account I/O."""
+        self._check_entries_idle()
         report = self.account.current_report(self.now())
         owner = self.dispatch_supervisor
         dispatch = owner.dispatcher.status() if owner is not None else None
@@ -2458,6 +2486,7 @@ class RecoveryRuntime(AccountProofMixin):
 
     def status(self):
         return dict(live_ready=self.entry_allowed, entry_allowed=self.entry_allowed, running=self.running,
+            entries_idle_seconds=self.entries_idle_seconds(),
             discovery_mode='broad_reviewed' if self.broad_discovery else 'bounded_admission',
             recovery=self.recovery_state, recovery_attempts=self.recovery_attempts,
             recovery_trigger=self._recovery_reason,

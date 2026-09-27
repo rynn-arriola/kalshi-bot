@@ -5,8 +5,11 @@
 Built and tested on the branch, not deployed. Each full-scan pass saves its
 scores; a restart then builds 7/8 of the 1,024-market watch list from the
 latest scan (most reward left first) instead of the pool hint (Finding 220,
-option A). Needs one restart to deploy and a second, after a pass has been
-saved, for the scan to choose the list. Live build unchanged (`669e1a2`).
+option A). Live build unchanged (`669e1a2`).
+
+Also built: Finding 218 fixes (the reward-program catalog and market details
+retry after giving up, instead of never; `entries_idle` warns after 15 minutes
+at 0 resting). Both deploy at the next approved restart.
 
 ## Sweep-filter fix and full-scan retry deployed — 2026-09-27
 

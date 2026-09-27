@@ -458,6 +458,61 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
                          {'snapshot_freshness': 2, 'mutation_persisted': 1, 'unknown': 1})
         self.assertNotIn(SECRET, json.dumps(data))
 
+    async def test_entries_allowed_with_none_resting_warns_after_15_minutes(self):
+        """Finding 218: 75 minutes at 0 resting read healthy; now it warns."""
+        from unittest.mock import PropertyMock
+        runtime = self.runtime()
+        mono, rows = [0.], []
+        runtime.clock = lambda: mono[0]
+        runtime.current_entry_orders = lambda: rows
+        with patch.object(RecoveryRuntime, 'entry_allowed', new_callable=PropertyMock,
+                          return_value=True):
+            for at in (0, 899, 900, 1000, 1799, 1800):
+                mono[0] = at
+                runtime._diagnostic_summary()
+            self.assertEqual(runtime.status()['entries_idle_seconds'], 1800)
+            rows.append('order')
+            runtime._diagnostic_summary()
+            self.assertIsNone(runtime.status()['entries_idle_seconds'])
+            rows.clear()
+            mono[0] = 2000
+            runtime._diagnostic_summary()
+            mono[0] = 2899
+            runtime._diagnostic_summary()
+        data = await self.data()
+        idle = [r['context']['idle_seconds'] for r in data if r['event'] == 'entries_idle']
+        self.assertEqual(idle, [900, 1800])
+        self.assertEqual(next(r for r in data if r['event'] == 'entries_idle')['context']
+                         ['incentives_exhausted'], 0)
+
+    async def test_launch_scope_scan_fields_reach_the_log(self):
+        """D-159: the restart check reads scan_markets from candidate_scope_prepared."""
+        self.log.emit('candidate_scope_prepared', reviewed_markets=1024, scan_markets=896,
+                      scan_age_minutes=12, scan_observed_at='2026-09-27T22:00:00+00:00')
+        data = await self.data()
+        context = next(r for r in data if r['event'] == 'candidate_scope_prepared')['context']
+        self.assertEqual((context['scan_markets'], context['scan_age_minutes']), (896, 12))
+
+    async def test_entries_closed_or_unknown_orders_never_count_as_idle(self):
+        from unittest.mock import PropertyMock
+        runtime = self.runtime()
+        mono, allowed = [0.], PropertyMock(return_value=False)
+        runtime.clock = lambda: mono[0]
+        runtime.current_entry_orders = lambda: []
+        with patch.object(RecoveryRuntime, 'entry_allowed', new=allowed):
+            for at in (0, 1000, 2000):
+                mono[0] = at
+                runtime._diagnostic_summary()
+            self.assertIsNone(runtime.status()['entries_idle_seconds'])
+            allowed.return_value = True
+            runtime.current_entry_orders = lambda: None
+            runtime._diagnostic_summary()
+            mono[0] = 3000
+            runtime._diagnostic_summary()
+            self.assertIsNone(runtime.status()['entries_idle_seconds'])
+        data = await self.data()
+        self.assertFalse([r for r in data if r['event'] == 'entries_idle'])
+
     async def test_recovery_failure_retains_stage_and_readable_trigger(self):
         runtime = self.runtime()
         runtime.account_subscribed = True
