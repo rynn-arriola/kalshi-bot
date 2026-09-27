@@ -11,6 +11,23 @@ Accepted requirements belong in [DECISIONS.md](DECISIONS.md); active work in
 - Complete compact root indexes and a documentation audit while preserving
   historical evidence and links. See [layout](docs/DOCUMENTATION_STRUCTURE.md).
 
+## Business decisions pending — what we measure for each
+
+Agreed plan (2026-09-27): measure → learn from payouts → concentrate on the
+$1 finish line → balance pulls → scale only when net positive. Numbers come
+from the calibration report (`scripts/calibration_report.py`, live data) and
+the ledger. Each decision is the operator's; this table says what evidence
+decides it and when. Baselines 2026-09-27 23:30 UTC.
+
+| # | Decision | Measure (report section) | Baseline | Decide when | Rule of thumb |
+|---|---|---|---|---|---|
+| B1 | **Keep running or pause** (stop rule) | Trading $ after the loss filters ("Fill losses", after row) + rewards paid ("Business summary") | Net −$40 since 09-23; after filters 0 fills in 0.5 day | 2026-09-30, or earlier if hit | Pause and rethink if trading loses more than $20 after the filters by 09-30 and rewards are not clearly above estimates |
+| B2 | **Which reward estimate to trust** (sets phase 3 numbers) | "Reward truth": paid ÷ strict and paid ÷ resting-based per payout day | One payout: $1.22 = 3.9× strict (09-27) | After the 09-28 and 09-29 payouts (149 programs end 09-29) | Use the estimate closest to what Kalshi paid; if neither is within ~2×, fix the estimate before phase 3 |
+| B3 | **Are the loss filters working** (keep, tighten, loosen) | "Fill losses": fills per day and $ per fill, before vs after 09-27 11:42 UTC | Before: 12 fills/day, −$0.86/fill, −$10.26/day | 2026-09-30 (3 days after) | Keep if $/day loss falls by more than half; tighten if big losses repeat; loosen only if fills near 0 and rewards starve |
+| B4 | **Build phase 3: $1 finish-line selection** | "$1 finish line": verdict counts, earnings not on track, median resting share | 0 cleared, 54 on track, 126 need more resting, 7 cannot; $6.00 not on track; share 12% | After B2 | Go if payouts confirm estimates and many programs end under $1; design in NEXT.md |
+| B5 | **Pull trigger balance** (phase 4) | Pull precision ("Protective pulls"), resting share, $ per fill | ~64% of legs pulled after ~3.6 min; share 12% | ≥ 3 days after phase 3 is live | More patience only where a lot is at stake (near $1 or big pools), and only if $ per fill stays down |
+| B6 | **Add capital / more slots** | Net $ per day ("Business summary") | −$8/day | Only after a full week net positive | No new capital while net per day is negative |
+
 ## Operator checks — say “check watchlist”
 
 Standing checks on the running bot. Each check is a read-only look at logs,

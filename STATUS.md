@@ -1,5 +1,15 @@
 # Current status
 
+## Business plan and measurement added — 2026-09-27
+
+Agreed plan: measure, learn from payouts, concentrate on the $1 finish line,
+balance pulls, scale only when net positive. The calibration report (on the
+branch; not a bot change) now shows fill losses before/after the loss filters
+(before: 12 fills/day, −$10.26/day; after: 0 fills in the first 12 hours) and
+each live program's path to Kalshi's $1 minimum (0 cleared, 54 on track, 126
+need more resting, 7 cannot reach; resting share 12%). Pending business
+decisions and their measures: WATCHLIST B1–B6.
+
 ## D-159 and Finding 218 fixes deployed — 2026-09-27
 
 **Running** build `cec3b26` since 22:55 UTC (operator-approved restart as part

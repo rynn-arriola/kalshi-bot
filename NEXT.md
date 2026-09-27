@@ -4,6 +4,33 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Business plan (agreed 2026-09-27; decisions B1–B6 in WATCHLIST):**
+  1. Measure — done: calibration report has "Fill losses before and after
+     the loss filters" and "$1 finish line". Run it from the dev copy with
+     `--db/--rewards/--ledger` pointing at `data/trader` until deployed.
+  2. Learn — 09-28 and 09-29 payouts (B2); loss filters (B3) and stop rule
+     (B1) on 09-30.
+  3. Concentrate — build phase 3 after B2 (design below).
+  4. Pull balance — phase 4, ≥ 3 days after phase 3.
+  5. Scale — only after a full week net positive (B6).
+- **Phase 3 design (PROPOSED, not built; operator decides at B4): $1
+  finish-line selection.** Kalshi pays nothing for a program that ends under
+  $1, so rank by expected *payout*, not reward rate:
+  - Per program the bot keeps: earned so far (tracker estimate × the B2
+    calibration), hours left, reward rate, and our measured resting share in
+    that market (fallback: the global median, 12% on 2026-09-27).
+  - Expected total = earned + rate × hours left × share. Enter or keep only if
+    it clears $1 with margin (e.g. $1.25); its value is then that total, else
+    zero (skip, and never re-enter a program that cannot reach $1).
+  - Priority: (a) programs we have started that are on track, by $ unlocked
+    per hour resting; (b) programs near $1 with little time left; (c) new
+    programs by expected payout. The existing continuation credit in the
+    entry gate is reused.
+  - The full scan and launch scope (D-158/D-159) score markets the same way.
+  - Unchanged: every loss check (downside cap, family memory, sweep filter,
+    loss limits). Needs an in-process resting-share counter per market
+    (research is write-only).
+
 - **D-159 live since 2026-09-27 22:55 UTC (build `cec3b26`).** The deploy
   launch used a seeded top-200 scan (`scan_markets` 103). At the next restart
   check `candidate_scope_prepared`: `scan_markets` in the hundreds (up to
