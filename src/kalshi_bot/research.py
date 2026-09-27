@@ -19,10 +19,12 @@ from threading import Event, Lock, Thread
 
 TABLES = frozenset((
     'entries', 'entry_ends', 'fills', 'fill_marks', 'withdrawals', 'withdrawal_marks',
-    'trades', 'health_hourly', 'reward_estimates', 'reward_credits'))
+    'trades', 'health_hourly', 'reward_estimates', 'reward_credits',
+    'candidates', 'sweep_counts'))  # D-156: ranker backtest inputs
 # Rows whose key is a venue identity are stored once (re-delivery is ignored).
 UNIQUE_KEY_TABLES = frozenset(('entry_ends', 'fills', 'trades', 'reward_credits',
-                               'reward_estimates', 'health_hourly'))
+                               'reward_estimates', 'health_hourly', 'candidates',
+                               'sweep_counts'))
 RETENTION_DAYS = 120
 BATCH = 256
 

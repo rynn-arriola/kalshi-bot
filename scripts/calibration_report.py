@@ -228,27 +228,105 @@ def sweeps_section(data):
         table(['market', 'sweeps', 'median', 'largest', '≥150'], rows[:30])])
 
 
-def rewards_section(data):
-    latest, ends = {}, {}
-    for _, _, row in data['reward_estimates']:
-        latest[row['program_id']] = row
-    for _, _, entry in data['entries']:
-        if entry.get('program_end'):
-            ends[entry['program_id']] = datetime.fromisoformat(entry['program_end'])
+WEEK_WEIGHTS = (0.50, 0.25, 0.25)  # as Polymarket's ranker: newest week 50%, then 25%, 25%
+try:
+    from zoneinfo import ZoneInfo
+    EASTERN = ZoneInfo('America/New_York')
+except Exception:  # No tz database: Kalshi's season here is on EDT.
+    EASTERN = timezone(timedelta(hours=-4))
+SETTLE_BY = timedelta(hours=36)  # after the ET day ends: its credit had time to arrive
+
+
+def load_tracker(path):
+    """The reward tracker's checkpoint: every program's full-period estimate (read-only)."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    programs = []
+    for record in raw.get('records', ()):
+        program = record.get('program') or {}
+        try:
+            programs.append(dict(program_id=program['program_id'], ticker=program.get('ticker'),
+                end=datetime.fromisoformat(str(program['end']).replace('Z', '+00:00')),
+                estimate=Decimal(str(record['estimate'])),
+                hours=Decimal(str(record['qualifying_seconds']))/3600))
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            continue
+    return programs
+
+
+def payout_days(programs, credits):
+    """Programs grouped by the ET day they end; Kalshi pays that day the next ET morning."""
+    days = {}
+    for p in programs:
+        day = p['end'].astimezone(EASTERN).date()
+        g = days.setdefault(day, dict(programs=0, hours=Decimal(0), estimate=Decimal(0),
+                                      paid=Decimal(0), credited=False))
+        g['programs'] += 1
+        g['hours'] += p['hours']
+        g['estimate'] += p['estimate']
+    unmatched = Decimal(0)
+    for at, amount in credits:
+        day = at.astimezone(EASTERN).date()-timedelta(days=1)
+        if day in days:
+            days[day]['paid'] += amount
+            days[day]['credited'] = True
+        else:
+            unmatched += amount
+    return days, unmatched
+
+
+def day_settled(day, g, now):
+    closes = datetime.combine(day+timedelta(days=1), datetime.min.time(), EASTERN)
+    return g['credited'] or now >= closes+SETTLE_BY-timedelta(hours=24)
+
+
+def weighted_factor(days, now):
+    """Paid ÷ estimated over settled payout days, three weeks weighted 50/25/25."""
+    estimate = paid = Decimal(0)
+    for day, g in days.items():
+        if not day_settled(day, g, now):
+            continue
+        ended = datetime.combine(day, datetime.max.time(), EASTERN)
+        for k, weight in enumerate(WEEK_WEIGHTS):
+            if now-timedelta(days=7*(k+1)) <= ended < now-timedelta(days=7*k):
+                estimate += Decimal(str(weight))*g['estimate']
+                paid += Decimal(str(weight))*g['paid']
+    return None if not estimate else paid/estimate
+
+
+def rewards_section(data, tracker, now):
     credits = [(datetime.fromisoformat(at), dec(row['amount']))
                for at, _, row in data['reward_credits'] if row.get('kind') == 'unattributed_credit']
-    rows = []
-    for program_id, end in sorted(ends.items(), key=lambda item: item[1]):
-        estimate = dec((latest.get(program_id) or {}).get('sampled_gross_usd'))
-        paid = sum((amount for at, amount in credits if end <= at <= end+PAYOUT_WINDOW), Decimal(0))
-        rows.append((program_id[:8], end.date(), '–' if estimate is None else f'{estimate:.2f}',
-                     'yes' if estimate is not None and estimate >= 1 else 'no',
-                     f'{paid:.2f}' if paid else '–'))
-    return '\n'.join(['## Reward truth: estimate vs. credits',
-        'Payouts arrive ~2–4 AM ET the day after a program ends; credits in that window '
-        'are listed beside every program ending then (shared credits appear more than once).',
-        f"{len(credits)} reward-like credits totalling ${sum((a for _, a in credits), Decimal(0)):.2f}.",
-        table(['program', 'ends', 'our estimate $', 'clears $1', 'credits in window $'], rows)])
+    head = ['## Reward truth: our estimate vs. what Kalshi paid',
+            'Kalshi pays each ET morning, as one unlabelled credit, for programs that ended the '
+            'previous ET day; each credit is matched to that day.',
+            f"{len(credits)} reward-like credits totalling ${sum((a for _, a in credits), Decimal(0)):.2f}."]
+    if tracker is None:
+        return '\n'.join(head+['Reward tracker checkpoint unavailable; no per-day comparison.'])
+    days, unmatched = payout_days(tracker, credits)
+    today = now.astimezone(EASTERN).date()
+    rows, settled_est, settled_paid = [], Decimal(0), Decimal(0)
+    for day in sorted(days):
+        g = days[day]
+        if not (g['estimate'] or g['paid']) or not today-timedelta(days=21) <= day <= today+timedelta(days=7):
+            continue
+        settled = day_settled(day, g, now)
+        if settled:
+            settled_est += g['estimate']
+            settled_paid += g['paid']
+        rows.append((day, g['programs'], f"{g['hours']:.1f}", f"{g['estimate']:.2f}",
+                     f"{g['paid']:.2f}" if settled else 'pending',
+                     f"{g['paid']/g['estimate']:.1f}×" if settled and g['estimate'] else '–'))
+    factor = weighted_factor(days, now)
+    return '\n'.join(head+[table(['programs end (ET day)', 'programs', 'our qualifying hours',
+                                   'our estimate $', 'paid $', 'paid ÷ estimate'], rows), '',
+        f"Settled days: paid ${settled_paid:.2f} vs estimated ${settled_est:.2f}"
+        + (f" ({settled_paid/settled_est:.1f}×)." if settled_est else '.'),
+        'Three-week weighted factor (50/25/25), the reward calibration a ranker would use: '
+        + ('–' if factor is None else f'{factor:.2f}×')+'.',
+        f'Credits matched to no program day: ${unmatched:.2f}.'])
 
 
 def health_section(data):
@@ -266,12 +344,12 @@ def health_section(data):
                'pulls', 'fills'], rows)])
 
 
-def report(data, *, days, now):
+def report(data, *, days, now, tracker=None):
     return '\n\n'.join([f'# Calibration report — {now:%Y-%m-%d} (last {days} days)',
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
         entries_section(data), fills_section(data), withdrawals_section(data),
-        trade_evidence_section(data), sweeps_section(data), rewards_section(data), health_section(data)])+'\n'
+        trade_evidence_section(data), sweeps_section(data), rewards_section(data, tracker, now), health_section(data)])+'\n'
 
 
 def main():
@@ -279,9 +357,11 @@ def main():
     parser.add_argument('--days', type=int, default=7)
     parser.add_argument('--db', default=str(ROOT/'data'/'trader'/'research.db'))
     parser.add_argument('--out', default=str(ROOT/'data'/'trader'/'reports'))
+    parser.add_argument('--rewards', default=str(ROOT/'data'/'trader'/'account.rewards.json'))
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
-    text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now)
+    text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now,
+                  tracker=load_tracker(args.rewards))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out/f'calibration-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')

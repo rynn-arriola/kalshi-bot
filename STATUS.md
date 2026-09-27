@@ -1,5 +1,12 @@
 # Current status
 
+## D-156 ranker inputs and reward-truth report built — 2026-09-27
+
+Built and tested on the branch, not deployed (operator: no restart). Report:
+paid ÷ estimate per payout day (first: 3.9× on 2026-09-26) and the three-week
+weighted factor. Research: `candidates` and `sweep_counts` for a later ranker
+backtest (D-156). Running build stays `84399ef`.
+
 ## D-155 loss filters deployed — 2026-09-27
 
 **Running** build `84399ef` since 11:42 UTC (clean stop while flat; full suite

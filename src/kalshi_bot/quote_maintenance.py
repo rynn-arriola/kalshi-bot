@@ -69,8 +69,8 @@ class QueueAnchor:
     marks: tuple
 
 
-def sweeps_from_trades(rows, minimum):
-    """D-155: newest sweep per market; one taker order = trades sharing a time and side."""
+def taker_orders(rows):
+    """D-155/D-156: one taker order = the trades sharing a market, time and side."""
     orders = {}
     for row in rows:
         try:
@@ -78,6 +78,15 @@ def sweeps_from_trades(rows, minimum):
             orders[key] = orders.get(key, Decimal(0))+Decimal(str(row['count_fp']))
         except (KeyError, TypeError, ArithmeticError):
             continue
+    return orders
+
+
+def sweeps_from_trades(rows, minimum):
+    """D-155: newest sweep per market."""
+    return latest_sweeps(taker_orders(rows), minimum)
+
+
+def latest_sweeps(orders, minimum):
     latest = {}
     for (ticker, created, _), size in orders.items():
         if size < minimum:

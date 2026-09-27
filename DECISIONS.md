@@ -10,6 +10,30 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-156 — Record ranker inputs now; build the market ranker when data exists
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not
+  deployed (operator: no restart yet).
+- **Decision owner:** Operator: "Ok do whats best for kalshi, but i believe we
+  dont have much data on kalshi?" after reviewing the Polymarket ranker
+  (reward × paid/predicted factor, 3 weeks weighted 50/25/25, minus expected
+  fill cost; priority list for slot order only).
+- **Now:** (1) the calibration report's reward truth groups programs by the ET
+  day they end, matches each morning's unlabelled credit to the previous ET
+  day, and prints paid ÷ estimated per day plus the three-week weighted factor
+  (reads the reward tracker checkpoint; first day 2026-09-26: 3.2 qualifying
+  hours, estimate $0.32, paid $1.22, 3.9×); (2) research gains `candidates`
+  (top 100 ranked board rows every 15 min: estimated reward, prices, blockers,
+  quoted, cooling, swept) and `sweep_counts` (taker orders per tracked market
+  and hour from the D-155 poll: count, contracts, largest, ≥30, ≥150).
+- **Later (about 2026-10-18, three weeks of payouts):** build the ranker —
+  net value per hour = estimated reward × weighted paid/estimated factor −
+  expected fill cost (sweep frequency, family history, price, volume) —
+  backtest it on the recorded candidates, then run it in shadow before any
+  slot-ordering change. Kalshi credits are unlabelled, so the reward factor is
+  overall, not per family, unless per-program payouts are supplied.
+- **Boundary:** recording and reporting only; no trading change.
+
 ### D-155 — Loss filters: downside cap, family memory, big-sweep filter; lag retry
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27.

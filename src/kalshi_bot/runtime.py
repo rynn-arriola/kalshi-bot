@@ -1073,8 +1073,8 @@ class RecoveryRuntime(AccountProofMixin):
     sweep_state_path = None
 
     async def _sweep_trades(self, start, end):
-        """All Kalshi trades in [start, end], splitting windows that are too big."""
-        from .quote_maintenance import sweeps_from_trades
+        """All Kalshi taker orders in [start, end], splitting windows that are too big."""
+        from .quote_maintenance import taker_orders
         try:
             pages = await self.reads.collect('trades', reason='sweeps', max_pages=100,
                                              max_rows=10000, limit=1000, min_ts=start, max_ts=end)
@@ -1083,9 +1083,9 @@ class RecoveryRuntime(AccountProofMixin):
                 raise
             middle = (start+end)//2
             first = await self._sweep_trades(start, middle)
-            second = await self._sweep_trades(middle, end)
-            return {t: max(first.get(t, 0), second.get(t, 0)) for t in set(first) | set(second)}
-        return sweeps_from_trades(pages.rows, self.maintenance.SWEEP_MIN_CONTRACTS)
+            first.update(await self._sweep_trades(middle, end))
+            return first
+        return taker_orders(pages.rows)
 
     def _load_sweep_state(self):
         import json
@@ -1123,15 +1123,17 @@ class RecoveryRuntime(AccountProofMixin):
                 now_s = int(utc(self.now()).timestamp())
                 start = (now_s-self.SWEEP_CHUNK_SECONDS if since is None
                          else max(since-5, now_s-self.SWEEP_CATCH_UP_SECONDS))
-                latest = {}
+                from .quote_maintenance import latest_sweeps
+                orders = {}
                 chunk = start
                 while chunk < now_s:
                     end = min(now_s, chunk+self.SWEEP_CHUNK_SECONDS)
-                    found = await self._sweep_trades(chunk, end)
-                    for ticker, at in found.items():
-                        latest[ticker] = max(at, latest.get(ticker, 0))
+                    orders.update(await self._sweep_trades(chunk, end))
                     chunk = end
+                latest = latest_sweeps(orders, maintenance.SWEEP_MIN_CONTRACTS)
                 maintenance.record_sweeps(latest, mono=self.clock(), polled_s=now_s)
+                if self.research is not None:
+                    self._research_safely(self._research_sweep_counts, orders, now_s)
                 since = now_s
                 try:
                     self._save_sweep_state(now_s)
@@ -1145,6 +1147,80 @@ class RecoveryRuntime(AccountProofMixin):
                 await asyncio.wait_for(self.stop_requested.wait(), self.SWEEP_POLL_SECONDS)
             except TimeoutError:
                 pass
+
+    RESEARCH_SWEEP_SIZES = (30, 150)  # D-156: taker orders counted per market-hour
+
+    def _research_sweep_counts(self, orders, now_s):
+        """D-156: taker-order counts per candidate market and hour (ranker input).
+
+        Only markets the bot tracks are kept, so Kalshi-wide volume stays out of
+        the dataset. Poll windows overlap, so each taker order counts once.
+        """
+        state = self.__dict__.setdefault('_research_sweep_state',
+                                         dict(hour=None, seen=set(), counts={}))
+        hour = now_s-now_s % 3600
+        if state['hour'] is not None and hour != state['hour']:
+            self._research_flush_sweep_counts(state)
+            state['seen'] = {k for k in state['seen'] if k[3] >= hour-120}
+        state['hour'] = hour
+        tracked = set(self._research_board().markets) if self._research_board() is not None else set()
+        tracked.update(self.management._plans)
+        for (ticker, created, side), size in orders.items():
+            if ticker not in tracked:
+                continue
+            try:
+                at = int(datetime.fromisoformat(str(created).replace('Z', '+00:00')).timestamp())
+            except ValueError:
+                continue
+            key = (ticker, created, side, at)
+            if key in state['seen']:
+                continue
+            state['seen'].add(key)
+            row = state['counts'].setdefault((ticker, at-at % 3600), dict(
+                orders=0, contracts=Decimal(0), largest=Decimal(0),
+                **{f'at_least_{n}': 0 for n in self.RESEARCH_SWEEP_SIZES}))
+            row['orders'] += 1
+            row['contracts'] += size
+            row['largest'] = max(row['largest'], size)
+            for n in self.RESEARCH_SWEEP_SIZES:
+                row[f'at_least_{n}'] += size >= n
+        while len(state['seen']) > 200_000:
+            state['seen'].pop()
+
+    def _research_flush_sweep_counts(self, state):
+        """Write every counted market-hour; trades are never from a later hour."""
+        for (ticker, hour), row in sorted(state['counts'].items()):
+            stamp = datetime.fromtimestamp(hour, timezone.utc).isoformat()
+            self.research.record('sweep_counts', f'{ticker}@{stamp}', ticker=ticker,
+                                 hour=stamp, **row)
+        state['counts'] = {}
+
+    def _research_board(self):
+        """The live ranking board (RuntimeSelection keeps it on its selector)."""
+        selector = getattr(self.selection, 'selector', None)
+        return getattr(selector, 'board', None)
+
+    RESEARCH_CANDIDATE_SECONDS = 900  # D-156
+    RESEARCH_CANDIDATE_LIMIT = 100
+
+    def _research_candidates(self):
+        """D-156: the markets the bot could pick now, for a later ranker backtest."""
+        board = self._research_board()
+        if board is None:
+            return
+        now = utc(self.now())
+        rows = board.ranked(now=now, by='selection')[:self.RESEARCH_CANDIDATE_LIMIT]
+        quoted = {t for t, plan in self.management._plans.items() if plan.inventory.orders}
+        m = self.maintenance
+        stamp = now.replace(second=0, microsecond=0).isoformat()
+        self.research.record('candidates', stamp, rows=[dict(
+            rank=i+1, ticker=r.ticker, program_id=r.program_id, hourly=r.gross_hourly_usd,
+            remaining=r.gross_remaining_usd, capital=r.capital_usd, share=r.snapshot_share,
+            bid=r.bid_reference, ask=r.ask_reference, program_end=r.program_end,
+            blockers=list(r.blockers), quoted=r.ticker in quoted,
+            cooling=None if m is None else not m.fill_cooldown_allows(r.ticker),
+            swept=None if m is None else not m.sweep_allows(r.ticker))
+            for i, r in enumerate(rows)])
 
     def _research_ledger_fills(self, rows, now_us):
         """D-154: record fills the stream hook missed (duplicates are ignored)."""
@@ -1184,7 +1260,7 @@ class RecoveryRuntime(AccountProofMixin):
 
     async def _research_loop(self):
         """D-151: periodic research records; never touches trading state."""
-        last_hour = last_trades = None
+        last_hour = last_trades = last_candidates = None
         while not self.stop_requested.is_set():
             hour = utc(self.now()).replace(minute=0, second=0, microsecond=0)
             if hour != last_hour:
@@ -1194,6 +1270,9 @@ class RecoveryRuntime(AccountProofMixin):
                 self._research_safely(self._research_reward_estimates, hour)
             self._research_safely(self._research_sample_health)
             mono = self.clock()
+            if last_candidates is None or mono-last_candidates >= self.RESEARCH_CANDIDATE_SECONDS:
+                last_candidates = mono
+                self._research_safely(self._research_candidates)
             if last_trades is None or mono-last_trades >= self.RESEARCH_TRADE_SECONDS:
                 last_trades = mono
                 try:

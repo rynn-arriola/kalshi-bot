@@ -1,5 +1,6 @@
 """D-151 calibration report over a synthetic research dataset."""
 from datetime import datetime, timedelta, timezone
+import json
 from decimal import Decimal as D
 import importlib.util
 from pathlib import Path
@@ -88,10 +89,48 @@ class ReportTests(unittest.TestCase):
     def test_sweeps_group_one_taker_order(self):
         self.assertEqual(self.line('| KXBROSFT | 2'), '| KXBROSFT | 2 | 246 | 488 | 1 |')
 
-    def test_credits_match_programs_that_ended_the_day_before(self):
-        self.assertIn('1 reward-like credits totalling $2.31.', self.text)
-        self.assertIn('| prog-one | 2026-10-08 | 2.40 | yes | 2.31 |', self.text)
-        self.assertIn('| prog-two | 2026-10-13 | – | no | – |', self.text)
+    def tracker(self, programs):
+        path = Path(self.temp.name)/'account.rewards.json'
+        path.write_text(json.dumps(dict(schema=1, scope='primary-account', records=[
+            dict(program=dict(program_id=pid, ticker=t, end=end.isoformat()), estimate=est,
+                 qualifying_seconds=str(hours*3600), observed_seconds='0')
+            for pid, t, end, est, hours in programs])), encoding='utf-8')
+        return calibration_report.load_tracker(path)
+
+    def test_credits_are_matched_to_the_et_day_their_programs_ended(self):
+        # Programs ending 23:59 ET on 10-07 (03:59 UTC 10-08) are paid the next ET morning.
+        day1 = datetime(2026, 10, 8, 3, 59, tzinfo=timezone.utc)
+        tracker = self.tracker([('p1', 'A', day1, '0.25', 2), ('p2', 'B', day1, '0.15', 1),
+                                ('p3', 'C', day1+timedelta(days=5), '0.40', 3)])
+        text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
+                                         days=7, now=NOW, tracker=tracker)
+        self.assertIn('1 reward-like credits totalling $2.31.', text)
+        self.assertIn('| 2026-10-07 | 2 | 3.0 | 0.40 | 2.31 | 5.8× |', text)  # Settled.
+        self.assertIn('| 2026-10-12 | 1 | 3.0 | 0.40 | pending | – |', text)
+        self.assertIn('Settled days: paid $2.31 vs estimated $0.40 (5.8×).', text)
+        self.assertIn('the reward calibration a ranker would use: 5.78×.', text)
+        self.assertIn('Credits matched to no program day: $0.00.', text)
+
+    def test_a_past_day_with_no_credit_counts_as_paid_nothing(self):
+        gone = datetime(2026, 10, 1, 3, 59, tzinfo=timezone.utc)
+        text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
+                                         days=7, now=NOW, tracker=self.tracker([('px', 'Z', gone, '0.50', 4)]))
+        self.assertIn('| 2026-09-30 | 1 | 4.0 | 0.50 | 0.00 | 0.0× |', text)
+
+    def test_without_the_tracker_the_section_says_so(self):
+        text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
+                                         days=7, now=NOW)
+        self.assertIn('Reward tracker checkpoint unavailable', text)
+
+    def test_weighting_favours_the_newest_week(self):
+        now = datetime(2026, 10, 30, 12, tzinfo=timezone.utc)
+        E = calibration_report.EASTERN
+        days = {(now-timedelta(days=2)).astimezone(E).date(): dict(estimate=D(1), paid=D(4), credited=True),
+                (now-timedelta(days=9)).astimezone(E).date(): dict(estimate=D(1), paid=D(1), credited=True),
+                (now-timedelta(days=16)).astimezone(E).date(): dict(estimate=D(1), paid=D(1), credited=True),
+                (now-timedelta(days=30)).astimezone(E).date(): dict(estimate=D(1), paid=D(9), credited=True)}
+        # (0.5*4 + 0.25*1 + 0.25*1) / (0.5+0.25+0.25); the 30-day-old day is outside 3 weeks.
+        self.assertEqual(calibration_report.weighted_factor(days, now), D('2.5'))
 
     def test_script_runs_end_to_end_on_a_windows_console(self):
         import os, subprocess, sys

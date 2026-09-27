@@ -118,6 +118,21 @@ class PollTests(unittest.IsolatedAsyncioTestCase):
         saved = json.loads(self.r.sweep_state_path.read_text(encoding='utf-8'))
         self.assertEqual((saved['polled_s'], saved['sweeps']), (S(NOW), {'A': S(swept)}))
 
+    async def test_each_poll_also_feeds_the_research_sweep_counts(self):
+        from kalshi_bot.research import ResearchStore
+        store = ResearchStore(Path(self.temp.name)/'research.db').start()
+        self.r.research = store
+        try:
+            tracked = next(iter(self.r.management._plans))
+            swept = NOW-timedelta(seconds=20)
+            self.reads(lambda a, b: [trade(tracked, swept, 'no', 400)] if a <= S(swept) <= b else [])
+            await self.run_once()
+            counts = self.r._research_sweep_state['counts']
+            self.assertEqual([row['at_least_150'] for (t, _), row in counts.items() if t == tracked], [1])
+        finally:
+            self.r.research = None
+            store.close()
+
     async def test_a_restart_reloads_the_list_and_catches_up_the_gap(self):
         self.r.sweep_state_path.write_text(json.dumps(dict(
             polled_s=S(NOW)-200, sweeps={'OLD': S(NOW)-1800})), encoding='utf-8')

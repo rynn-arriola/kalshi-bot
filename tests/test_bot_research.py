@@ -308,7 +308,8 @@ class RewardTruthTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
         stub = SimpleNamespace(rewards=self.rewards(), research=self.store, research_failures=0,
             stop_requested=asyncio.Event(), now=self.r.now, RESEARCH_TICK_SECONDS=.01,
-            RESEARCH_TRADE_SECONDS=0, clock=__import__('time').monotonic)
+            RESEARCH_TRADE_SECONDS=0, RESEARCH_CANDIDATE_SECONDS=999,
+            _research_candidates=lambda: None, clock=__import__('time').monotonic)
         stub.samples, stub.health = [], []
         stub._research_sample_health = lambda: stub.samples.append(1)
         stub._research_health = lambda hour: stub.health.append(hour)
@@ -630,7 +631,8 @@ class HealthSummaryTests(unittest.IsolatedAsyncioTestCase):
         clock = [datetime(2026, 9, 26, 17, 59, 59, tzinfo=timezone.utc)]
         stub = SimpleNamespace(research=self.store, research_failures=0, rewards=None,
             stop_requested=asyncio.Event(), now=lambda: clock[0], clock=__import__('time').monotonic,
-            RESEARCH_TICK_SECONDS=.01, RESEARCH_TRADE_SECONDS=999)
+            RESEARCH_TICK_SECONDS=.01, RESEARCH_TRADE_SECONDS=999, RESEARCH_CANDIDATE_SECONDS=999,
+            _research_candidates=lambda: None)
         closed = []
         stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
         stub._research_reward_estimates = lambda hour: None
@@ -646,6 +648,83 @@ class HealthSummaryTests(unittest.IsolatedAsyncioTestCase):
         stub.stop_requested.set()
         await asyncio.wait_for(task, 2)
         self.assertEqual(closed, [datetime(2026, 9, 26, 17, tzinfo=timezone.utc)])
+
+
+class RankerInputTests(unittest.IsolatedAsyncioTestCase):
+    """D-156: what a later ranker backtest needs, recorded now."""
+    async def asyncSetUp(self):
+        self.f = entry_fixture.EntrySourceTests('test_ranked_market_becomes_exact_source_bound_pair')
+        await self.f.asyncSetUp()
+        self.temp = TemporaryDirectory()
+        self.path = Path(self.temp.name)/'research.db'
+        self.store = ResearchStore(self.path).start()
+        self.r = self.f.runtime
+        self.r.research = self.store
+
+    async def asyncTearDown(self):
+        self.store.close()
+        await self.f.asyncTearDown()
+        self.temp.cleanup()
+
+    async def test_candidate_snapshot_lists_ranked_markets_with_reward_and_blockers(self):
+        r = self.r
+        expected = r.selection.selector.board.ranked(now=r.now(), by='selection')
+        self.assertTrue(expected)
+        r._research_candidates()
+        self.store.close()
+        [(key, snap)] = rows(self.path, 'candidates')
+        self.assertEqual(len(snap['rows']), min(len(expected), r.RESEARCH_CANDIDATE_LIMIT))
+        first = snap['rows'][0]
+        self.assertEqual((first['rank'], first['ticker'], first['program_id']),
+                         (1, expected[0].ticker, expected[0].program_id))
+        self.assertEqual(first['blockers'], list(expected[0].blockers))
+        self.assertIn('hourly', first)
+        self.assertIsNone(first['cooling'] if r.maintenance is None else None)
+
+    async def test_sweep_counts_count_each_taker_order_once_per_tracked_market_hour(self):
+        from datetime import datetime, timezone
+        r = self.r
+        tracked = next(iter(r.selection.selector.board.markets))
+        h = int(datetime(2026, 9, 27, 12, tzinfo=timezone.utc).timestamp())
+        iso = lambda s: datetime.fromtimestamp(s, timezone.utc).isoformat().replace('+00:00', 'Z')
+        orders = {(tracked, iso(h+60), 'no'): D(200), (tracked, iso(h+90), 'yes'): D(40),
+                  (tracked, iso(h+95), 'yes'): D(5), ('NOT-TRACKED', iso(h+60), 'no'): D(900)}
+        r._research_sweep_counts(orders, h+100)
+        r._research_sweep_counts(orders, h+130)  # Overlapping poll window: no double count.
+        r._research_sweep_counts({}, h+3600+10)  # Next hour flushes the finished one.
+        self.store.close()
+        [(key, row)] = rows(self.path, 'sweep_counts')
+        self.assertEqual(key, f"{tracked}@{datetime.fromtimestamp(h, timezone.utc).isoformat()}")
+        self.assertEqual((row['orders'], row['contracts'], row['largest'], row['at_least_30'],
+                          row['at_least_150']), (3, '245', '200', 2, 1))
+
+    async def test_candidate_snapshot_respects_its_limit(self):
+        self.r.RESEARCH_CANDIDATE_LIMIT = 0
+        self.r._research_candidates()
+        self.store.close()
+        [(_, snap)] = rows(self.path, 'candidates')
+        self.assertEqual(snap['rows'], [])
+
+    async def test_research_loop_takes_a_candidate_snapshot(self):
+        import asyncio
+        from kalshi_bot.runtime import RecoveryRuntime
+        calls = []
+        stub = SimpleNamespace(research=self.store, research_failures=0, rewards=None,
+            stop_requested=asyncio.Event(), now=self.r.now, clock=__import__('time').monotonic,
+            RESEARCH_TICK_SECONDS=.01, RESEARCH_TRADE_SECONDS=999, RESEARCH_CANDIDATE_SECONDS=999,
+            _research_candidates=lambda: calls.append(1))
+        stub._research_safely = lambda fn, *a: RecoveryRuntime._research_safely(stub, fn, *a)
+        stub._research_reward_estimates = lambda hour: None
+        stub._research_sample_health = lambda: None
+        stub._research_health = lambda hour: None
+        async def trades():
+            pass
+        stub._research_trades = trades
+        task = asyncio.create_task(RecoveryRuntime._research_loop(stub))
+        await asyncio.sleep(.05)
+        stub.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertEqual(calls, [1])  # First tick, then every RESEARCH_CANDIDATE_SECONDS.
 
 
 if __name__ == '__main__':

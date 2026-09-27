@@ -4,6 +4,15 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Deploy D-156 at the next approved restart** (recording only; operator
+  asked not to restart on 2026-09-27). Then check `candidates` every 15 min and
+  `sweep_counts` hourly in research.db.
+- **~2026-10-18 — market ranker (D-156).** With three weeks of payouts, build
+  the ranker (reward × weighted paid/estimated − expected fill cost), backtest
+  on recorded `candidates`/`sweep_counts`/fills, then shadow before any
+  slot-order change. Until then, watch "paid ÷ estimate" in the report after
+  each payout morning (next: 09-27, 09-28, then 10-04 with 70 programs).
+
 - **D-155 follow-up (weekly with the calibration report):** blocks by the
   downside cap, family memory and sweep filter vs fills avoided and reward
   given up; pull trigger re-evaluated as more sweeps accumulate (Finding 216
