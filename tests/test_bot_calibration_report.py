@@ -105,8 +105,8 @@ class ReportTests(unittest.TestCase):
         text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
                                          days=7, now=NOW, tracker=tracker)
         self.assertIn('1 reward-like credits totalling $2.31.', text)
-        self.assertIn('| 2026-10-07 | 2 | 3.0 | 0.40 | 2.31 | 5.8× |', text)  # Settled.
-        self.assertIn('| 2026-10-12 | 1 | 3.0 | 0.40 | pending | – |', text)
+        self.assertIn('| 2026-10-07 | 2 | 3.0 | 0.40 | 0.0 | 0.00 | 2.31 | 5.8× | – |', text)  # Settled.
+        self.assertIn('| 2026-10-12 | 1 | 3.0 | 0.40 | 0.0 | 0.00 | pending | – | – |', text)
         self.assertIn('Settled days: paid $2.31 vs estimated $0.40 (5.8×).', text)
         self.assertIn('the reward calibration a ranker would use: 5.78×.', text)
         self.assertIn('Credits matched to no program day: $0.00.', text)
@@ -115,7 +115,70 @@ class ReportTests(unittest.TestCase):
         gone = datetime(2026, 10, 1, 3, 59, tzinfo=timezone.utc)
         text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
                                          days=7, now=NOW, tracker=self.tracker([('px', 'Z', gone, '0.50', 4)]))
-        self.assertIn('| 2026-09-30 | 1 | 4.0 | 0.50 | 0.00 | 0.0× |', text)
+        self.assertIn('| 2026-09-30 | 1 | 4.0 | 0.50 | 0.0 | 0.00 | 0.00 | 0.0× | – |', text)
+
+    def ledger(self, realized=(), cash=(), lots=0, fee_reservations=()):
+        import sqlite3
+        from contextlib import closing
+        path = Path(self.temp.name)/'account.db'
+        with closing(sqlite3.connect(path)) as conn:
+            conn.executescript("""CREATE TABLE realized_events (fill_id TEXT, gross_pnl TEXT, fee TEXT,
+                pnl TEXT, received_at TEXT); CREATE TABLE cash_adjustments (source_key TEXT,
+                exchange_index INTEGER, amount TEXT, kind TEXT, event_digest TEXT, at TEXT);
+                CREATE TABLE lots (ticker TEXT, direction INTEGER, quantity TEXT);
+                CREATE TABLE accounting_fees (client_id TEXT, fee TEXT);""")
+            conn.executemany('INSERT INTO realized_events VALUES (?,?,?,?,?)',
+                [(f'f{i}', '0', fee, pnl, at.isoformat()) for i, (at, pnl, fee) in enumerate(realized)])
+            conn.executemany('INSERT INTO cash_adjustments VALUES (?,?,?,?,?,?)',
+                [(f'c{i}', 0, amount, kind, 'd', at.isoformat()) for i, (at, kind, amount) in enumerate(cash)])
+            conn.executemany('INSERT INTO lots VALUES (?,?,?)', [('A', 1, '30')]*lots)
+            conn.executemany('INSERT INTO accounting_fees VALUES (?,?)', fee_reservations)
+            conn.commit()
+        return calibration_report.load_ledger(path)
+
+    def test_business_summary_counts_only_measured_money(self):
+        old, recent = NOW-timedelta(days=20), NOW-timedelta(days=2)
+        ledger = self.ledger(realized=[(old, '-18.36', '0.36'), (recent, '-5.88', '0.48'), (recent, '0', '0')],
+                             cash=[(recent, 'unattributed_credit', '1.22'), (old, 'deposit', '300')],
+                             lots=1, fee_reservations=[('x', '44.40')])  # Reservations, not charges.
+        text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
+                                         days=7, now=NOW, ledger=ledger)
+        self.assertIn('| last 7 days | 2 | -5.88 | 0.48 | 1.22 | -4.66 |', text)
+        self.assertIn(f'| since the first fill ({old:%Y-%m-%d}) | 3 | -24.24 | 0.84 | 1.22 | -23.02 |', text)
+        self.assertIn('Deposits (not income): $300.00. Open positions now: 1', text)
+        self.assertIn(f'Coverage: ledger money since {old:%Y-%m-%d %H:%M} UTC; research sections since', text)
+        self.assertNotIn('44.40', text)
+
+    def test_resting_estimate_uses_each_legs_own_end(self):
+        data = dict(entries=[('2026-10-09T10:00:00+00:00', 'b', dict(program_id='P', program_end=
+                              '2026-10-20T03:59:00+00:00', hourly_reward_usd='0.40', order_ids=['o1', 'o2']))],
+                    entry_ends=[('2026-10-09T11:00:00+00:00', 'o1', {})])
+        now = datetime(2026, 10, 9, 13, tzinfo=timezone.utc)
+        [(program, row)] = calibration_report.resting_estimates(data, now).items()
+        # o1 rested 1 h, o2 is still resting (3 h): (1+3) h x 0.40/2.
+        self.assertEqual((program, row['hours'], row['estimate']), ('P', D(4), D('0.8')))
+
+    def test_summary_and_payout_days_agree_on_unpaid_resting_estimate(self):
+        later = datetime(2026, 10, 12, 3, 59, tzinfo=timezone.utc)
+        data = calibration_report.load(self.db, NOW-timedelta(days=7))
+        data['entries'] = [(NOW.isoformat(), 'b', dict(program_id='p9', program_end=later.isoformat(),
+                                                        hourly_reward_usd='0.60', order_ids=['z1'])),
+                           # Already ended (and paid or not): never "not yet paid".
+                           ((NOW-timedelta(days=2)).isoformat(), 'c', dict(program_id='p0',
+                            program_end=(NOW-timedelta(days=1)).isoformat(), hourly_reward_usd='5',
+                            order_ids=['z0']))]
+        data['entry_ends'] = [((NOW-timedelta(days=1, hours=12)).isoformat(), 'z0', dict(filled='0'))]
+        tracker = self.tracker([('p9', 'Z', later, '0.10', 1)])
+        text = calibration_report.report(data, days=7, now=NOW+timedelta(hours=2), tracker=tracker,
+                                         ledger=self.ledger())
+        self.assertIn('resting-based (resting time × estimated rate; leans high): $0.60', text)
+        self.assertIn('| 2026-10-11 | 1 | 1.0 | 0.10 | 2.0 | 0.60 | pending | – | – |', text)
+
+    def test_unreadable_ledger_is_said_not_guessed(self):
+        self.assertIsNone(calibration_report.load_ledger(Path(self.temp.name)/'missing.db'))
+        text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),
+                                         days=7, now=NOW)
+        self.assertIn('Ledger unavailable: no measured money in this report.', text)
 
     def test_without_the_tracker_the_section_says_so(self):
         text = calibration_report.report(calibration_report.load(self.db, NOW-timedelta(days=7)),

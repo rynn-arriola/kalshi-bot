@@ -4,6 +4,11 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Each payout morning (09-28, 09-29, 10-05, 10-07):** run the calibration
+  report; compare "paid ÷ strict" and "paid ÷ resting-based" (D-157). Base
+  reward decisions on whichever tracks payouts; if both are far off, fix the
+  tracker before the ranker (D-156) uses its numbers.
+
 - **Deploy D-156 at the next approved restart** (recording only; operator
   asked not to restart on 2026-09-27). Then check `candidates` every 15 min and
   `sweep_counts` hourly in research.db.

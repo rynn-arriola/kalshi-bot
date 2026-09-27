@@ -43,6 +43,87 @@ def dec(value):
     return None if value is None else Decimal(str(value))
 
 
+def load_ledger(path):
+    """Authoritative money from the bot's ledger (read-only): realized P&L per
+    fill, cash credits and deposits, and open positions. None if unreadable."""
+    try:
+        uri = Path(path).resolve().as_uri()+'?mode=ro'
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            realized = [(datetime.fromisoformat(at), Decimal(pnl), Decimal(fee)) for pnl, fee, at in
+                        conn.execute('SELECT pnl, fee, received_at FROM realized_events')]
+            cash = [(datetime.fromisoformat(at), kind, Decimal(amount)) for kind, amount, at in
+                    conn.execute('SELECT kind, amount, at FROM cash_adjustments')]
+            open_lots = conn.execute('SELECT COUNT(*) FROM lots').fetchone()[0]
+    except (sqlite3.Error, OSError, ValueError, ArithmeticError):
+        return None
+    return dict(realized=realized, cash=cash, open_lots=open_lots)
+
+
+def resting_estimates(data, now):
+    """Resting-based reward estimate per program: every entry leg's resting time
+    (placement to its recorded end, or now if still open) times half the pair's
+    estimated reward per hour at placement. Our share can shrink after placing
+    and quotes can drift out of range, so this leans high; the strict tracker
+    only counts verified time and leans low. Payouts show which is closer."""
+    ends = {key: datetime.fromisoformat(at) for at, key, _ in data['entry_ends']}
+    per = {}
+    for at, _, entry in data['entries']:
+        placed = datetime.fromisoformat(at)
+        rate = dec(entry.get('hourly_reward_usd')) or Decimal(0)
+        row = per.setdefault(entry.get('program_id'), dict(hours=Decimal(0), estimate=Decimal(0),
+            end=entry.get('program_end')))
+        for order_id in entry.get('order_ids', ()):
+            stop = min(ends.get(order_id, now), now)
+            hours = Decimal(str(max(0.0, (stop-placed).total_seconds())))/3600
+            row['hours'] += hours
+            row['estimate'] += rate*hours/2
+    return per
+
+
+def business_section(ledger, tracker, data, *, days, now):
+    """The money: measured from the ledger, estimates labelled separately."""
+    out = ['## Business summary',
+           'Money rows are measured from the bot ledger; estimate rows are not money.']
+    if ledger is None:
+        return '\n'.join(out+['Ledger unavailable: no measured money in this report.'])
+    since = now-timedelta(days=days)
+    first = min((at for at, _, _ in ledger['realized']), default=None)
+    def money(start):
+        realized = sum((p for at, p, _ in ledger['realized'] if at >= start), Decimal(0))
+        fees = sum((f for at, _, f in ledger['realized'] if at >= start), Decimal(0))
+        rewards = sum((a for at, k, a in ledger['cash'] if at >= start and k == 'unattributed_credit'),
+                      Decimal(0))
+        fills = sum(1 for at, _, _ in ledger['realized'] if at >= start)
+        return realized, fees, rewards, fills
+    rows = []
+    for label, start in ((f'last {days} days', since),
+                         ('since the first fill' + ('' if first is None else f' ({first:%Y-%m-%d})'),
+                          first or since)):
+        realized, fees, rewards, fills = money(start)
+        rows.append((label, fills, f'{realized:+.2f}', f'{fees:.2f}', f'{rewards:.2f}',
+                     f'{realized+rewards:+.2f}'))
+    out.append(table(['period', 'fill events', 'realized trading $ (after fees)', 'fees paid $',
+                      'rewards paid $', 'net $'], rows))
+    deposits = sum((a for _, k, a in ledger['cash'] if k == 'deposit'), Decimal(0))
+    out.append(f"Deposits (not income): ${deposits:.2f}. Open positions now: {ledger['open_lots']} "
+               '(unrealized P&L not included).')
+    strict = None if tracker is None else sum((p['estimate'] for p in tracker if p['end'] > now), Decimal(0))
+    resting = resting_estimates(data, now)
+    covered = min((datetime.fromisoformat(at) for at, _, _ in data['entries']), default=None)
+    unpaid = sum((r['estimate'] for r in resting.values()
+                  if r['end'] and datetime.fromisoformat(r['end']) > now), Decimal(0))
+    out.append('Coverage: ledger money since ' + ('–' if first is None else f'{first:%Y-%m-%d %H:%M} UTC')
+               + '; research sections since ' + ('–' if covered is None else f'{covered:%Y-%m-%d %H:%M} UTC')
+               + f' (report window: last {days} days).')
+    out += ['', '**Estimates, not money:**',
+            '- Rewards not yet paid, strict tracker (verified time only; a floor): '
+            + ('–' if strict is None else f'${strict:.2f}')+'.',
+            '- Rewards not yet paid, resting-based (resting time × estimated rate; leans high): '
+            f'${unpaid:.2f}' + ('' if covered is None else f' (from research since {covered:%Y-%m-%d %H:%M} UTC only)')+'.',
+            '- See "Reward truth" for which estimate Kalshi\'s payouts are closer to.']
+    return '\n'.join(out)
+
+
 def pct(n, d):
     return '–' if not d else f'{100*n/d:.0f}%'
 
@@ -69,7 +150,7 @@ def entries_section(data):
             end = ends.get(order_id)
             if end is None:
                 continue
-            filled = dec(end.get('filled')) > 0
+            filled = (dec(end.get('filled')) or Decimal(0)) > 0
             stats['orders'] += 1
             stats['filled'] += filled
             stats['withdrawn'] += bool(end.get('withdrawn'))
@@ -256,16 +337,21 @@ def load_tracker(path):
     return programs
 
 
-def payout_days(programs, credits):
+def payout_days(programs, credits, resting=None):
     """Programs grouped by the ET day they end; Kalshi pays that day the next ET morning."""
     days = {}
     for p in programs:
         day = p['end'].astimezone(EASTERN).date()
         g = days.setdefault(day, dict(programs=0, hours=Decimal(0), estimate=Decimal(0),
-                                      paid=Decimal(0), credited=False))
+                                      paid=Decimal(0), credited=False, resting=Decimal(0),
+                                      resting_hours=Decimal(0)))
         g['programs'] += 1
         g['hours'] += p['hours']
         g['estimate'] += p['estimate']
+        r = (resting or {}).get(p['program_id'])
+        if r is not None:
+            g['resting'] += r['estimate']
+            g['resting_hours'] += r['hours']
     unmatched = Decimal(0)
     for at, amount in credits:
         day = at.astimezone(EASTERN).date()-timedelta(days=1)
@@ -305,23 +391,29 @@ def rewards_section(data, tracker, now):
             f"{len(credits)} reward-like credits totalling ${sum((a for _, a in credits), Decimal(0)):.2f}."]
     if tracker is None:
         return '\n'.join(head+['Reward tracker checkpoint unavailable; no per-day comparison.'])
-    days, unmatched = payout_days(tracker, credits)
+    days, unmatched = payout_days(tracker, credits, resting_estimates(data, now))
     today = now.astimezone(EASTERN).date()
     rows, settled_est, settled_paid = [], Decimal(0), Decimal(0)
     for day in sorted(days):
         g = days[day]
-        if not (g['estimate'] or g['paid']) or not today-timedelta(days=21) <= day <= today+timedelta(days=7):
+        if not (g['estimate'] or g['paid'] or g['resting']) or day < today-timedelta(days=21):
             continue
         settled = day_settled(day, g, now)
         if settled:
             settled_est += g['estimate']
             settled_paid += g['paid']
         rows.append((day, g['programs'], f"{g['hours']:.1f}", f"{g['estimate']:.2f}",
+                     f"{g['resting_hours']:.1f}", f"{g['resting']:.2f}",
                      f"{g['paid']:.2f}" if settled else 'pending',
-                     f"{g['paid']/g['estimate']:.1f}×" if settled and g['estimate'] else '–'))
+                     f"{g['paid']/g['estimate']:.1f}×" if settled and g['estimate'] else '–',
+                     f"{g['paid']/g['resting']:.1f}×" if settled and g['resting'] else '–'))
     factor = weighted_factor(days, now)
-    return '\n'.join(head+[table(['programs end (ET day)', 'programs', 'our qualifying hours',
-                                   'our estimate $', 'paid $', 'paid ÷ estimate'], rows), '',
+    return '\n'.join(head+[table(['programs end (ET day)', 'programs', 'verified hours (strict)',
+                                   'strict estimate $', 'leg-hours rested (research)',
+                                   'resting-based $', 'paid $', 'paid ÷ strict',
+                                   'paid ÷ resting-based'], rows),
+        'Resting-based figures cover only time since research began (2026-09-26 19:15 UTC); '
+        'days before that are understated.', '',
         f"Settled days: paid ${settled_paid:.2f} vs estimated ${settled_est:.2f}"
         + (f" ({settled_paid/settled_est:.1f}×)." if settled_est else '.'),
         'Three-week weighted factor (50/25/25), the reward calibration a ranker would use: '
@@ -344,10 +436,11 @@ def health_section(data):
                'pulls', 'fills'], rows)])
 
 
-def report(data, *, days, now, tracker=None):
+def report(data, *, days, now, tracker=None, ledger=None):
     return '\n\n'.join([f'# Calibration report — {now:%Y-%m-%d} (last {days} days)',
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
+        business_section(ledger, tracker, data, days=days, now=now),
         entries_section(data), fills_section(data), withdrawals_section(data),
         trade_evidence_section(data), sweeps_section(data), rewards_section(data, tracker, now), health_section(data)])+'\n'
 
@@ -358,10 +451,11 @@ def main():
     parser.add_argument('--db', default=str(ROOT/'data'/'trader'/'research.db'))
     parser.add_argument('--out', default=str(ROOT/'data'/'trader'/'reports'))
     parser.add_argument('--rewards', default=str(ROOT/'data'/'trader'/'account.rewards.json'))
+    parser.add_argument('--ledger', default=str(ROOT/'data'/'trader'/'account.db'))
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now,
-                  tracker=load_tracker(args.rewards))
+                  tracker=load_tracker(args.rewards), ledger=load_ledger(args.ledger))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out/f'calibration-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')

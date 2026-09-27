@@ -1,5 +1,27 @@
 # Findings — kalshi-bot
 
+## 217. Reporting audit: which numbers are money, which are estimates — 2026-09-27
+
+**VERIFIED (ledger, tracker checkpoint, research.db).**
+- **Money (authoritative, ledger):** realized trading −$41.14 since
+  2026-09-23 11:29 UTC from `realized_events` (48 fill events, $3.26 fees
+  actually charged; an earlier hand reconstruction said −$41.12, a rounding
+  difference). Rewards paid $1.22 (`cash_adjustments`, `unattributed_credit`).
+  Net −$39.92. The $300 deposit is not income.
+- **Not money:** `accounting_fees` (1,609 rows, $44.41) are per-order
+  worst-case fee *reservations* for cash proof, not charges; counting them
+  would have overstated costs by $44.
+- **Strict reward estimate undercounts heavily.** The tracker credits only
+  verified time: 178 qualifying program-hours since 2026-09-23 against
+  21,762 "unknown" program-hours, while research shows ~24 markets resting at
+  all times (~500 market-hours per 21 hours). Its $4.51 "not yet paid" is a
+  floor, consistent with Kalshi paying 3.9× the strict estimate on 2026-09-26.
+- **Resting-based estimate** (each leg's resting time × half the pair's
+  estimated hourly reward at placement; 6,186 of 6,236 legs have a recorded
+  end, 50 still resting) gives $14.14 not yet paid since research began. It
+  leans high (share and price drift after placement). Payouts will show which
+  estimate to trust; the report now prints both beside what Kalshi paid.
+
 ## 216. Calibration report, 16 hours: pulls rarely right at 60 s, but staying out helped; first payout — 2026-09-27
 
 **MEASURED (research.db 2026-09-26 19:15 → 2026-09-27 11:00 UTC, Kalshi trades).**

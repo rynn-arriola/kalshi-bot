@@ -10,6 +10,23 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-157 — Report money from the ledger; show both reward estimates
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-27
+  (report script only; no bot change, no restart).
+- **Decision owner:** Operator: "We need to make sure our reporting is correct
+  because we base our business changes from data we get".
+- **Rules:** the calibration report opens with a business summary whose money
+  rows come only from the ledger (realized P&L after fees from
+  `realized_events`, fees actually charged, rewards paid from
+  `cash_adjustments`, deposits shown as not income, open positions noted),
+  with a coverage line. Estimates are listed separately and labelled: the
+  strict tracker (a floor) and the resting-based estimate (leans high).
+  Reward truth shows both beside what Kalshi paid per payout day and covers
+  every upcoming day so the totals reconcile. Fee reservations are never
+  treated as costs. If the ledger cannot be read, the report says so instead
+  of guessing.
+
 ### D-156 — Record ranker inputs now; build the market ranker when data exists
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; not
