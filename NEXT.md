@@ -4,6 +4,13 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Finding 220 — make the scan choose the watch list (operator decision):**
+  (A) launch scope from the latest saved scan (low risk; still fixed between
+  restarts) and/or (B) a periodic, shard-by-shard rescope of the non-held part
+  of the watch list from fresh scores (full effect; touches book
+  subscriptions, needs careful design and tests). D-158 until then only
+  records.
+
 - **Finding 218 fixes (next build):** (1) exhausted market metadata retries
   on a bounded cooldown once 429s stop, so selection evidence self-heals;
   (2) health warns (and the watchlist flags) when entries are allowed but none

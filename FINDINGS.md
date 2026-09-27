@@ -1,5 +1,19 @@
 # Findings — kalshi-bot
 
+## 220. The full-market scan does not change the live watch list — 2026-09-27
+
+**VERIFIED (code + live status).** `selection.discovery_candidates()` (where
+D-158 puts fresh scan scores) is called only by admission, and live trading
+runs in broad mode with admission not attached (`admission: None`). The engine's
+watched scope changes only through `replace_scope` via admission, so in live
+mode the 1,024 watched markets are fixed at launch by `prepare_candidates`
+(pool/time/target density) until the next restart. Evidence: the scan's top
+two (Alaska diesel 6.40 and 6.90, ~$25–26 left each, never swept, no fills)
+have never been entered and never appear on the bot's candidate board, while
+their sister 6.50 (in scope) is quoted repeatedly. The scan itself works (5,080
+markets, 4,355 scoring, recorded to research). D-158's tests exercised the
+discovery ranking, not the live wiring; that gap let this through.
+
 ## 219. Sweep filter blocked all entries after a Sunday-evening restart — 2026-09-27
 
 **MEASURED.** After the 20:22 UTC restart (build `20af7e6`) the full scan's
