@@ -1,6 +1,13 @@
 # Current status
 
-## Stopped after two sweeps in one market; D-154 cooldown built — 2026-09-27
+## D-154 cooldown and D-153 diagnostic deployed — 2026-09-27
+
+**Running** build `bdd183f` since 03:04 UTC (ordinary restart while flat; full
+suite 2,068 OK; one native-supervisor test flaked once on timing and passed
+4 reruns). Cooldown loaded within seconds: KXTXOIL blocked 23.4 h, KXBROSFT
+3.5 h; entries refilling; loss ratchet at 41 until the 04:00 UTC window.
+
+Earlier:
 
 Operator-approved stop at 02:39 UTC while flat (0 orders, 0 positions) after
 KXTXOIL filled us twice in 27 minutes (Finding 214; window realized −$6.89,
