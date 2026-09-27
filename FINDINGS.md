@@ -1,5 +1,37 @@
 # Findings — kalshi-bot
 
+## 215. Loss review: 19 round trips, −$41.12; about a third was predictable — 2026-09-27
+
+**MEASURED (ledger fills 2026-09-23 11:29 → 2026-09-27 05:36 UTC, Kalshi public
+trades).** 19 entry fills, each closed ~15 min later by the exit rule; 18 lost,
+one made $0.10. Net −$41.12: −$13.56 over 15 trips at 10 contracts, −$27.56 over
+4 trips at 30 (KXBROSFT alone −$18.36, a 0.82 bid swept to ~0.2). Every fill was
+one taker sweep of 58–819 contracts.
+
+- **Predictable from recent trades (6 fills, −$12.46):** a same-side sweep of
+  ≥150 contracts had hit that market 1–49 minutes before our fill (KXTRUEV,
+  KXTXOIL ×3, KXZYNPOS, KXKSWHEAT).
+- **Repeat series (5 fills, −$9.68):** a second or later fill in a series that
+  had already filled us (KXTOKENUSE, KXCTMFPERMITS, KXWYCOAL, KXTXOIL ×2). The
+  24-hour market cooldown (D-154) covers only the two same-market repeats within
+  a day (−$6.23); KXTXOIL came back after 3.2 days.
+- **Large downside per contract:** KXBROSFT's 0.82 bid could lose up to 0.82 per
+  contract and lost 0.60; 45% of all losses.
+- **Not predictable (the rest):** quiet markets (no trades in the prior hour),
+  then one sweep.
+
+Union of the first two filters: 9 fills, −$15.24 (37%); adding a downside cap
+around 0.6/contract adds KXBROSFT and two small ones (≈ 84% in total). This is
+fitted in hindsight on 19 fills and every filter also removes reward-earning
+markets, so it is a HYPOTHESIS until the calibration report weighs the excluded
+markets' reward.
+
+**Rewards side.** Estimated ~$0.58/h gross at the current rate (~$14/day), but
+only 25 of 395 tracked programs are on course for Kalshi's $1 minimum and none
+has reached it; 369 show `source_lost` (no longer tracked, e.g. after restarts).
+No payout has arrived yet. Profitability is unproven: recent losses run about
+$9/day at 30 contracts excluding KXBROSFT.
+
 ## 214. Swept twice in one market 27 minutes apart; the bot walked back in — 2026-09-27
 
 **MEASURED (ledger + Kalshi public trades).** KXTXOIL-27MAR31-T5.8 (Texas crude

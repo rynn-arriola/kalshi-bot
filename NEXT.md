@@ -4,6 +4,21 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Loss filters (Finding 215), decide at the 2026-09-27 review with the
+  calibration report:** (1) series memory: extend the D-154 cooldown from the
+  market to its series (ticker prefix) for about 7 days after a fill; (2) the
+  swept-market screen: no entry for ~60 min after a same-side sweep ≥ 150
+  contracts (needs trades for candidates, not just quoted markets); (3) a
+  downside cap per contract (e.g. no bids above ~0.60 or asks below ~0.40), or
+  make the D-150 reward-vs-risk screen real; (4) size 30 → 15–20 until payouts
+  prove the reward side. Each costs reward; weigh with the report first.
+- **Renewal settle-retry is now justified (D-153 data).** All 37
+  `owned_order_terms_mismatch` in 7.7 h were `terminal_but_resting` with our
+  evidence 1.5–2.1 s old (Kalshi snapshot lag). Give them the same bounded
+  retry as `order_not_visible` instead of a full recovery.
+- **Reward tracker `source_lost`:** 369 of 395 programs; check whether that is
+  only programs we stopped quoting (expected) or lost tracking of live ones.
+
 - **Swept-market screen (Finding 214).** Stay out of a market for a while
   after a large one-sided sweep (e.g. ≥ 5× our size) on the side we quote; the
   research `trades` table has the data. Size the rule from the calibration
