@@ -1,5 +1,24 @@
 # Findings — kalshi-bot
 
+## 222. The exit loss limit was set for size 10 and never scaled to 30 — 2026-09-28
+
+**VERIFIED (code + ledger + public book).** The exit rule (D-exit, DECISIONS
+"Exit reference") works a passive reducer, and after 900 s crosses with a
+price-capped IOC only if the projected loss is no worse than $8
+(`exits.py`: `pnl < -8` → `passive_deferred`), else it keeps waiting until the
+event/close deadline. The $8 was explicitly the "size-10" allowance ($0.80 per
+contract: nearly always cross). Since D-142 the bot trades 30 contracts, and the
+constant was not scaled, so it now defers at a 27-cent adverse move.
+Live example: KXUALCC-26OCT07-T105 short 30 at 0.30 since 17:55 UTC; asks
+0.56–0.57, crossing ≈ −$8.10 + fees → held; buy-back bid resting at 0.30;
+market closes 2026-10-07 02:29 UTC (forced exit before then). Resolution
+exposure meanwhile: +$9 if No, −$21 if Yes.
+
+**Decision needed (WATCHLIST B8):** scale the limit per contract (keep the
+original $0.80/contract → $24 at 30, i.e. almost always close after 15 min,
+realizing losses near the low as in Finding 221) or keep holding (waits for
+recovery, carries resolution risk). Not changed; operator decides.
+
 ## 221. First surprise sweeps in quiet markets get past every loss filter — 2026-09-28
 
 **MEASURED (ledger, research trades/fills/marks).** Since the D-154/D-155
