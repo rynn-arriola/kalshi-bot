@@ -62,6 +62,38 @@ class ProtocolAndJournalTests(unittest.TestCase):
         self.assertFalse(protocol.accept(message(MessageKind.PULSE, revision=2),
             now_ns=time.monotonic_ns(), current_revision=4))
 
+    def test_a_late_pulse_is_ignored_but_late_control_is_fatal(self):
+        """2026-09-28: a recovery-only child busy for > 4 s crashed on its pulse
+        backlog. Late pulses grant nothing; late ADMIT/FENCE_ACK/STOP stay fatal."""
+        protocol = self.protocol()
+        protocol.accept(message(), now_ns=time.monotonic_ns(), current_revision=3)
+        late = replace(message(MessageKind.PULSE, seq=5), sent_monotonic_ns=time.monotonic_ns()-5*10**9)
+        self.assertFalse(protocol.accept(late, now_ns=time.monotonic_ns(), current_revision=3))
+        self.assertEqual(protocol.tracker.coalesced, 0)          # lane not advanced
+        self.assertTrue(protocol.accept(message(MessageKind.PULSE, seq=2),
+                                        now_ns=time.monotonic_ns(), current_revision=3))
+        for kind in (MessageKind.FENCE_ACK, MessageKind.STOP_HINT):
+            with self.subTest(kind=kind):
+                old = replace(message(kind, seq=2), sent_monotonic_ns=time.monotonic_ns()-5*10**9)
+                with self.assertRaisesRegex(InvalidData, 'stale'):
+                    protocol.accept(old, now_ns=time.monotonic_ns(), current_revision=3)
+        fresh = self.protocol()
+        with self.assertRaisesRegex(InvalidData, 'stale'):
+            fresh.accept(replace(message(), sent_monotonic_ns=time.monotonic_ns()-5*10**9),
+                         now_ns=time.monotonic_ns(), current_revision=3)
+        # Identity is still checked first, and a pulse from the future is still fatal.
+        with self.assertRaisesRegex(InvalidData, 'identity'):
+            protocol.accept(replace(late, child_id='wrong'), now_ns=time.monotonic_ns(), current_revision=3)
+        with self.assertRaisesRegex(InvalidData, 'stale'):
+            protocol.accept(replace(message(MessageKind.PULSE, seq=3),
+                                    sent_monotonic_ns=time.monotonic_ns()+10**10),
+                            now_ns=time.monotonic_ns(), current_revision=3)
+        # After a stop hint, even a late pulse is a protocol fault.
+        protocol.accept(message(MessageKind.STOP_HINT, seq=2), now_ns=time.monotonic_ns(), current_revision=3)
+        with self.assertRaisesRegex(InvalidData, 'after stop'):
+            protocol.accept(replace(message(MessageKind.PULSE, seq=9), sent_monotonic_ns=time.monotonic_ns()-5*10**9),
+                            now_ns=time.monotonic_ns(), current_revision=3)
+
     def test_coalesced_pulse_older_than_fence_ack_is_ignored(self):
         protocol = self.protocol()
         protocol.accept(message(), now_ns=time.monotonic_ns(), current_revision=3)

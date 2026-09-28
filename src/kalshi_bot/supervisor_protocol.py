@@ -278,14 +278,19 @@ class SequenceTracker:
 
 
 def validate_peer(envelope, *, scope_digest, parent_session, child_id,
-                  child_generation, allowed, tracker, now_ns):
-    """Shared same-boot identity/age gate; invalid frames cannot advance lanes."""
+                  child_generation, allowed, tracker, now_ns, late_ok=frozenset()):
+    """Shared same-boot identity/age gate; invalid frames cannot advance lanes.
+
+    Kinds in ``late_ok`` that arrive too old return None instead of raising:
+    the caller grants them nothing and they do not advance the lane."""
     if ((envelope.scope_digest, envelope.parent_session, envelope.child_id,
          envelope.child_generation) !=
             (scope_digest, parent_session, child_id, child_generation)
             or envelope.kind not in allowed):
         raise InvalidData("supervisor peer envelope identity or direction mismatch")
     age = now_ns-envelope.sent_monotonic_ns
+    if age > 4_000_000_000 and envelope.kind in late_ok:
+        return None
     if not 0 <= age <= 4_000_000_000:
         raise InvalidData("stale supervisor peer envelope")
     tracker.accept(envelope)
@@ -303,9 +308,17 @@ class ParentProtocol:
         self.fence_revision = 0
 
     def accept(self, message, *, now_ns, current_revision=None):
-        validate_peer(message, **self.identity, allowed={MessageKind.ADMIT,
+        age = validate_peer(message, **self.identity, allowed={MessageKind.ADMIT,
             MessageKind.PULSE, MessageKind.STOP_HINT, MessageKind.FENCE_ACK},
-            tracker=self.tracker, now_ns=now_ns)
+            tracker=self.tracker, now_ns=now_ns, late_ok={MessageKind.PULSE})
+        if age is None:
+            # 2026-09-28: a recovery-only child that could not read for > 4 s
+            # crashed on its backlog of pulses and looped. A late pulse grants
+            # no freshness (the 6 s pulse watchdog still stops the child) and
+            # is not a fault; late control messages remain fatal.
+            if self.stopped:
+                raise InvalidData("supervisor control after stop")
+            return False
         if self.stopped and message.kind != MessageKind.FENCE_ACK:
             raise InvalidData("supervisor control after stop")
         if message.kind == MessageKind.STOP_HINT:
