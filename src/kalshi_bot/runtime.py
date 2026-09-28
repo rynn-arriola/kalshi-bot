@@ -2422,11 +2422,24 @@ class RecoveryRuntime(AccountProofMixin):
             if cancelled_during_cleanup:
                 raise asyncio.CancelledError
 
+    def resting_entry_legs(self):
+        """Phase 3 measurement: our working entry orders from the live private
+        order stream. Not the stricter snapshot join order decisions use: that
+        is unverified for a few seconds after every order change (~43% of
+        samples live), which would blank the measurement exactly when markets
+        flip. None while the account stream is disconnected."""
+        account = self.account
+        if not account.connected:
+            return None
+        return tuple(r.order for r in account.order_states.values()
+                     if r.owned and not r.reducing and not r.order.terminal
+                     and r.order.remaining > 0)
+
     def _sample_resting_share(self):
-        """Phase 3: one resting-share sample from the verified entry-order view;
-        saved beside the ledger every few minutes so restarts keep history."""
+        """Phase 3: one resting-share sample; saved beside the ledger every few
+        minutes so restarts keep history."""
         share, mono = self.resting_share, self.clock()
-        share.sample(mono, self.current_entry_orders())
+        share.sample(mono, self.resting_entry_legs())
         if mono >= self.__dict__.get('_resting_share_saved', mono):
             self._resting_share_saved = mono+share.SAVE_SECONDS
             try:

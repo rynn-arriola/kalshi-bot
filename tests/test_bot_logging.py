@@ -492,7 +492,7 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
         runtime = self.runtime()
         mono, rows = [0.], [NS(ticker='A'), NS(ticker='A')]
         runtime.clock = lambda: mono[0]
-        runtime.current_entry_orders = lambda: rows
+        runtime.resting_entry_legs = lambda: rows
         runtime.resting_share = RestingShare(self.path/'resting_share.json')
         runtime._sample_resting_share()
         self.assertTrue((self.path/'resting_share.json').exists())  # first save at once
@@ -505,14 +505,27 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue((self.path/'resting_share.json').exists())
         self.assertEqual(runtime.status()['resting_share']['samples'], 31)
         self.assertEqual(runtime.resting_share.markets['A'][0], 300)
-        runtime.current_entry_orders = lambda: None
+        runtime.resting_entry_legs = lambda: None
         runtime._sample_resting_share()
         self.assertEqual(runtime.resting_share.unknown, 1)
+
+    async def test_resting_legs_come_from_the_live_order_stream(self):
+        from types import SimpleNamespace as NS
+        runtime = self.runtime()
+        def receipt(ticker, owned=True, reducing=False, terminal=False, remaining=30):
+            return NS(owned=owned, reducing=reducing,
+                      order=NS(ticker=ticker, terminal=terminal, remaining=remaining))
+        runtime.account.order_states = dict(a=receipt('A'), b=receipt('B', owned=False),
+            c=receipt('C', reducing=True), d=receipt('D', terminal=True), e=receipt('E', remaining=0))
+        runtime.account.connected = False
+        self.assertIsNone(runtime.resting_entry_legs())
+        runtime.account.connected = True
+        self.assertEqual([o.ticker for o in runtime.resting_entry_legs()], ['A'])
 
     async def test_a_failed_resting_share_save_is_counted_not_fatal(self):
         from kalshi_bot.resting_share import RestingShare
         runtime = self.runtime()
-        runtime.current_entry_orders = lambda: ()
+        runtime.resting_entry_legs = lambda: ()
         runtime.resting_share = RestingShare(self.path/'missing'/'resting_share.json')
         runtime._sample_resting_share()
         self.assertEqual(runtime.resting_share.save_failures, 1)
@@ -520,7 +533,7 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_loop_drives_the_resting_share_sampler(self):
         from kalshi_bot.resting_share import RestingShare
         runtime = self.runtime()
-        runtime.current_entry_orders = lambda: ()
+        runtime.resting_entry_legs = lambda: ()
         runtime.resting_share = RestingShare()
         runtime.resting_share.SAMPLE_SECONDS = 0
         task = asyncio.create_task(runtime._diagnostic_health())
