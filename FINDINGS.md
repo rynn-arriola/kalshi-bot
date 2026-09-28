@@ -1,5 +1,30 @@
 # Findings — kalshi-bot
 
+## 221. First surprise sweeps in quiet markets get past every loss filter — 2026-09-28
+
+**MEASURED (ledger, research trades/fills/marks).** Since the D-154/D-155
+filters (2026-09-27 11:42 UTC) trading lost $19.63 in three episodes, the
+same shape each time: a market with zero trades in the prior 2 hours, then
+one second of large taker selling (Gemini app T70 03:32: 200 + 465; Chevron
+T106.5 05:26: 200 + 500 and more; Alaska diesel 6.70 11:43: 197 and more)
+that took every resting bid including ours (bought 0.48 / 0.36 / 0.28);
+best bid a minute later 0.17 / 0.14 / 0.08. The bot sold within 15-80 min
+near the low (−$7.00, −$6.47, −$6.15). Gemini recovered to a 0.39 bid 30 min
+after our 0.26 exit; the others did not.
+
+**Why no filter fired:** the sweep filter reacts to sweeps already seen (this
+was the first in each market); family memory reacts to our own past fills;
+prices were under the 0.80 downside cap; the fill-risk pull watches trade
+flow and saw none (in diesel the pull was already in progress). The filters
+did not cause the losses; they cannot prevent a first surprise sweep.
+
+**Open questions (B1/B3, phase 3):** (1) do high-reward markets (the scan's
+top, e.g. diesel before its data release) attract informed sweeps; (2) would
+a known-event blackout (data releases, results) or a thin-ladder check
+(how far price falls if all bids below ours are taken) have avoided these;
+(3) does the quick exit near the low cost more than holding briefly. Loss
+window cap ratcheted 50 → 41. Operator: do not pause (B1 threshold ~reached).
+
 ## 220. The full-market scan does not change the live watch list — 2026-09-27
 
 **VERIFIED (code + live status).** `selection.discovery_candidates()` (where
