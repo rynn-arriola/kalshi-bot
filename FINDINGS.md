@@ -25,6 +25,19 @@ a known-event blackout (data releases, results) or a thin-ladder check
 (3) does the quick exit near the low cost more than holding briefly. Loss
 window cap ratcheted 50 → 41. Operator: do not pause (B1 threshold ~reached).
 
+**Thin-book check (MEASURED, 2026-09-28 ~13:30 UTC):** from the trade tape,
+all three books were thin below us (next bid after the sweep 26, 15 and
+20 cents lower). A rule "skip if selling 1,000 contracts moves price 10+
+cents past our quote" would have blocked all three, but on the 51 markets
+entered in the prior hour (102 quotes, public books) it blocks 62% of quotes
+and 64% of reward rate (15-cent version: 46% / 48%; 500-contract/10-cent: 29% /
+30%, catches only diesel). Thin books are the norm, so thinness sizes the
+damage but does not predict the sweep. No scheduled release explains the
+03:32, 05:26 and 11:43 UTC sweeps. Only 4 fills in research have full data.
+Operator: give it more time (no rule, no shadow field yet). Options kept:
+record the thin-book number at entry (shadow), smaller size only in the
+thinnest books, revisit with more fills and the 09-29 payout.
+
 ## 220. The full-market scan does not change the live watch list — 2026-09-27
 
 **VERIFIED (code + live status).** `selection.discovery_candidates()` (where
