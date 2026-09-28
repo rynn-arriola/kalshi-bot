@@ -4,6 +4,11 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Finding 223 follow-ups:** explain why the recovery-only child could not
+  read its pipe for > 4 s; decide whether an operator stop with a held
+  position beyond the D-160 limit should time out to Command 1 instead of
+  waiting indefinitely.
+
 - **Business plan (agreed 2026-09-27; decisions B1–B6 in WATCHLIST):**
   1. Measure — done: calibration report has "Fill losses before and after
      the loss filters" and "$1 finish line". Run it from the dev copy with

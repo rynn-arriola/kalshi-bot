@@ -1,5 +1,32 @@
 # Findings — kalshi-bot
 
+## 223. A drain with a held position cannot finish; recovery crashed on late pulses — 2026-09-28
+
+**MEASURED (status, child/parent logs, ledger, venue read-only).** The
+approved D-160 restart at 22:32 UTC drained entries but its stop waits for
+flat, and the old build's flat $8 exit rule would not close KXUALCC short 30
+(close ≈ −$8.10 + fees), so the stop could not finish. The operator closed
+the position manually on Kalshi (a bid for 30 at .56 filled 1 then was
+canceled; a bid for 29 at .57 filled): −$8.09 gross, $0.5149 fees,
+−$8.6049 net; venue flat, cash 725.6136. The child then held
+`venue_inventory_mismatch` / `pending_fills` in a safety pause. Under D-112
+the exact child (generation 214, stop latched, disarmed) was terminated at
+~22:52; the close was adopted with `data/reconcile_D160_close.py` (new
+`record_operator_close_orders`: several operator orders, canceled partial
+allowed; backup `account.before-D160-close-20260928T231655Z.db`).
+
+The following recovery-only start crashed three times (exit 27): it could not
+read its supervisor pipe for more than 4 s, then treated the backlog of
+liveness pulses as fatal ("stale supervisor peer envelope"). Fixed (`d764db2`):
+a late pulse grants no freshness and is ignored; late control messages stay
+fatal; the 6 s pulse watchdog is unchanged. Deployed; recovery passed and the
+bot resumed at 23:49 UTC with D-160 live. Entries were down ~1 h 20 min.
+
+**Follow-ups:** (1) an ordinary stop with a held position waits indefinitely
+under the ordinary exit rule; with D-160 this now closes within the 80¢
+per contract limit, but a deeper loss still needs Command 1 or a manual close;
+(2) why the recovery-only child blocked > 4 s is not yet explained.
+
 ## 222. The exit loss limit was set for size 10 and never scaled to 30 — 2026-09-28
 
 **VERIFIED (code + ledger + public book).** The exit rule (D-exit, DECISIONS

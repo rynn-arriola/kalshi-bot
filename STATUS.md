@@ -1,5 +1,12 @@
 # Current status
 
+## D-160 live after a manual close and a recovery fix — 2026-09-28
+
+**Running** build `d764db2` since 23:49 UTC. D-160 (exit after 15 min unless
+worse than $0.80/contract) is live. The operator's manual close of KXUALCC
+(−$8.60) is reconciled into the ledger; the late-pulse recovery crash is
+fixed (Finding 223). Entries refilling under the loss window cap (41).
+
 ## D-160 exit rule built — 2026-09-28
 
 Built and tested on the branch, not deployed: after 15 minutes a position is
