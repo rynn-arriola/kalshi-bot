@@ -37,8 +37,8 @@
     23:43 UTC (`3412bfd`) sampling the strict snapshot join, which was
     unverified in ~43% of samples; fixed on the branch to read the live
     private order stream (`resting_entry_legs`), unknown only while
-    disconnected. Deploy the fix at the next approved restart; until then
-    the counter covers about half the time.
+    disconnected. Fix live since 2026-09-28 00:05 UTC (`a11a944`): 1 unknown
+    in the first 35 samples (the startup one); history kept across restart.
 
 - **D-159 live since 2026-09-27 22:55 UTC (build `cec3b26`).** The deploy
   launch used a seeded top-200 scan (`scan_markets` 103). At the next restart

@@ -1,5 +1,13 @@
 # Current status
 
+## Resting-share counter live — 2026-09-28
+
+**Running** build `a11a944` since 00:05 UTC (operator-approved restarts at
+23:43 and 00:05; flat both times). Launch watch list: 896 of 1,024 markets
+from the saved full scan (D-159 working end to end). The per-market resting
+counter reads the live order stream (1 unknown in 35 samples, was ~43%) and
+kept its history across the restart. Entries back to 50 in ~3 minutes.
+
 ## Resting-share counter built (phase 3 measurement) — 2026-09-27
 
 Built and tested on the branch, not deployed: the bot will measure, per
