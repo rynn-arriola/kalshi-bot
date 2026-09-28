@@ -17,7 +17,8 @@ exposure meanwhile: +$9 if No, −$21 if Yes.
 **Decision needed (WATCHLIST B8):** scale the limit per contract (keep the
 original $0.80/contract → $24 at 30, i.e. almost always close after 15 min,
 realizing losses near the low as in Finding 221) or keep holding (waits for
-recovery, carries resolution risk). Not changed; operator decides.
+recovery, carries resolution risk). **Operator chose the Polymarket rule:
+D-160, $0.80 per contract.**
 
 ## 221. First surprise sweeps in quiet markets get past every loss filter — 2026-09-28
 

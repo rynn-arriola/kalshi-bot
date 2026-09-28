@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-160 — Exit after 15 minutes like Polymarket: loss limit per contract
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-28; takes
+  effect at the next approved restart.
+- **Decision owner:** Operator: "at 15 minute i think we should exit flat
+  like polymarket" (Finding 222, WATCHLIST B8). Claude had recommended holding
+  plus a step-toward-mid reducer; the operator chose the Polymarket rule.
+- **What:** after 900 s an ordinary exit crosses (price-capped IOC) unless the
+  projected loss including the fee bound is worse than $0.80 per contract
+  (`exits.ORDINARY_EXIT_LOSS_PER_CONTRACT`), i.e. the Polymarket reference $8 at
+  size 10, $24 at 30, proportionally less for partial positions. Replaces the
+  flat $8 that held 30-contract positions after a 27-cent move.
+- **Unchanged:** the passive reducer first 15 minutes, 50% depth haircut
+  (thin books still defer), cancel-confirm before IOC, three IOC attempts, and
+  forced exit at the event/close deadline regardless of loss.
+- **Effect at deploy:** any position already older than 15 minutes is closed
+  at once if within the limit (KXUALCC short 30 @ 0.30: about −$8.70).
+
 ### D-159 — Launch the watch list from the latest saved full-market scan
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-27; takes

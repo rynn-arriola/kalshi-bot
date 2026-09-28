@@ -101,6 +101,22 @@ class ExitTests(unittest.TestCase):
         p=self.due(basis=D('.99'),book=book(bids=(('.1','40'),),asks=(('.11','40'),)))
         self.assertEqual(p.mode,'passive_deferred')
 
+    def test_loss_limit_scales_with_position_size(self):
+        """D-160 / Finding 222: 30 contracts short at 0.30 with asks at 0.57
+        (-$8.70 incl. fees) closes after 15 min, as the $8-at-size-10 rule does."""
+        short = dict(position=D(-30), basis=D('.30'), book=book(bids=(('.37','16'),), asks=(('.57','60'),)))
+        p = self.due(**short)
+        self.assertEqual((p.mode, p.limit_price, p.quantity), ('ioc', D('.57'), 30))
+        self.assertEqual(p.projected_pnl, D('-8.70'))
+        # Worse than 80 cents per contract still waits (non-forced).
+        p = self.due(position=D(-30), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.95','60'),)))
+        self.assertEqual(p.mode, 'passive_deferred')
+        # A partial position gets a proportionally smaller allowance.
+        p = self.due(position=D(-5), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.88','60'),)))
+        self.assertEqual((p.mode, p.projected_pnl), ('ioc', D('-4.00')))  # exactly 0.80 each
+        p = self.due(position=D(-5), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.89','60'),)))
+        self.assertEqual((p.mode, p.projected_pnl), ('passive_deferred', D('-4.05')))
+
     def test_fee_bound_participates_in_loss_limit(self):
         p=self.due(basis=D('.9'),book=book(bids=(('.11','40'),)),terms=terms(taker_fee_per_contract_bound=D('.02')))
         self.assertEqual(p.mode,'passive_deferred')

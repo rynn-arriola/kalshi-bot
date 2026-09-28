@@ -8,6 +8,12 @@ from .orders import InventoryPlan, inventory_plan
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 
 
+# D-160: after 900 s an ordinary exit crosses unless the projected loss is worse
+# than this per contract: the Polymarket reference ($8 at size 10). A flat $8
+# held 30-contract positions after a 27-cent move (Finding 222).
+ORDINARY_EXIT_LOSS_PER_CONTRACT = Decimal('0.80')
+
+
 @dataclass(frozen=True)
 class ExitTerms:
     ticker: str
@@ -193,7 +199,7 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     complete, worst, pnl = cross(book, position, basis, terms.bands, terms.taker_fee_per_contract_bound, Decimal('.5'))
     if forced and not complete:
         complete, worst, pnl = cross(book, position, basis, terms.bands, terms.taker_fee_per_contract_bound, Decimal(1))
-    if not forced and (not complete or pnl < -8):
+    if not forced and (not complete or pnl < -ORDINARY_EXIT_LOSS_PER_CONTRACT*abs(position)):
         return result("passive_deferred", "ordinary_exit_depth_or_loss", limit_price=preferred, projected_pnl=pnl,
                       next_at=min(terms.deadline, terms.valid_until))
     working = [r for r in orders if r.owned and not r.order.terminal]

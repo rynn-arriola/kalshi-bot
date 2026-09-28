@@ -1,5 +1,12 @@
 # Current status
 
+## D-160 exit rule built — 2026-09-28
+
+Built and tested on the branch, not deployed: after 15 minutes a position is
+closed unless the loss is worse than $0.80 per contract (Polymarket's $8 at
+size 10; was a flat $8, Finding 222). Needs an approved restart; the open
+KXUALCC short would then close at about −$8.70.
+
 ## Resting-share counter live — 2026-09-28
 
 **Running** build `a11a944` since 00:05 UTC (operator-approved restarts at
