@@ -278,6 +278,71 @@ def record_operator_close_fills(ledger, fills, order, *, reference, now):
     return True
 
 
+def record_operator_close_orders(ledger, closes, *, reference, now):
+    """Adopt several terminal operator orders that together exactly flatten one
+    stopped-owner position, e.g. a partly filled order the operator canceled
+    and a second order for the rest (2026-09-28). Each order keeps its own
+    exact scope row and fills, so cold cash validation checks each one alone;
+    nothing is averaged or synthesized. Caller holds account ownership and
+    fresh venue evidence."""
+    from .ledger import Fill
+    if type(closes) is not tuple or not 1 <= len(closes) <= 8:
+        raise InvalidData('one to eight operator close orders required')
+    reference, now = identity(reference), utc(now)
+    checked, keys, ids, total = [], set(), set(), ZERO
+    for close in closes:
+        if type(close) is not tuple or len(close) != 2:
+            raise InvalidData('typed operator close evidence required')
+        fills, order = close
+        if (type(fills) is not tuple or not 1 <= len(fills) <= 128
+                or any(not isinstance(fill, Fill) for fill in fills)
+                or not isinstance(order, OrderUpdate)):
+            raise InvalidData('typed operator close evidence required')
+        quantity = sum((fill.quantity for fill in fills), ZERO)
+        own = tuple(fill.key for fill in fills)
+        first = checked[0][1] if checked else order
+        # A canceled order may have filled only part of its size; the fills
+        # must still account for everything it filled and nothing may remain.
+        if (len(set(own)) != len(own) or keys & set(own) or order.order_id in ids
+                or order.subaccount != 0 or not order.terminal or order.remaining != 0
+                or order.filled != quantity
+                or (order.ticker, order.side) != (first.ticker, first.side)
+                or any(order.order_id != fill.order_id or order.ticker != fill.ticker
+                       or order.side != fill.book_side
+                       or (fill.yes_price > order.yes_price if order.side == 'bid'
+                           else fill.yes_price < order.yes_price) for fill in fills)):
+            raise InvalidData('operator close order/fill terms differ')
+        keys.update(own)
+        ids.add(order.order_id)
+        total += quantity
+        manifest = own[0] if len(own) == 1 else json.dumps(dict(version=1, fills=own), separators=(',', ':'))
+        checked.append((fills, order, manifest))
+    ticker, side = checked[0][1].ticker, checked[0][1].side
+    expected = total if side == 'ask' else -total
+    conn = ledger.connection
+    with ledger.transaction():
+        if ledger.position(ticker) != expected:
+            raise InvalidData('operator fills do not exactly flatten local position')
+        if conn.execute('SELECT COUNT(*) FROM operator_fill_scopes').fetchone()[0]+len(checked) > 128:
+            raise InvalidData('operator fill scope capacity reached')
+        for fills, order, manifest in checked:
+            if conn.execute('SELECT 1 FROM operator_fill_scopes WHERE order_id=?',
+                            (order.order_id,)).fetchone() is not None:
+                raise InvalidData('operator close was already reconciled')
+            if (conn.execute('SELECT 1 FROM order_evidence WHERE order_id=? OR client_id=?',
+                             (order.order_id, order.client_id)).fetchone()
+                    or conn.execute('SELECT 1 FROM intents WHERE client_id=?',
+                                    (order.client_id,)).fetchone()):
+                raise InvalidData('operator close conflicts with bot-owned identity')
+            conn.execute('INSERT INTO operator_fill_scopes VALUES (?,?,?,?,?)',
+                         (order.order_id, manifest, order.encode(), reference, now.isoformat()))
+        for fill in sorted((f for fills, _, _ in checked for f in fills),
+                           key=lambda f: (f.executed_us, f.key)):
+            if not ledger.record_fill(fill, now):
+                raise InvalidData('operator close fill already exists')
+    return True
+
+
 def obligations(ledger):
     from .portfolio import active_rows
     totals = {}
@@ -673,7 +738,10 @@ def validate_cash(ledger):
                                 (order.client_id,)).fetchone()):
             raise InvalidData('operator fill scope is invalid')
         parts = [json.loads(fill[0]) for fill in retained]
-        if (order.remaining != 0 or order.initial != order.filled
+        # A canceled operator order may have filled only part of its size
+        # (2026-09-28); what it filled must still equal the retained fills
+        # (OrderUpdate itself guarantees filled + remaining <= initial).
+        if (order.remaining != 0
                 or sum((decimal(part[2]) for part in parts), ZERO) != order.filled
                 or any(part[0] != order.ticker or part[1] != order.side
                     or (decimal(part[3]) > order.yes_price if order.side == 'bid'

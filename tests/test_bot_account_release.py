@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from kalshi_bot.account import AccountCoordinator, normalize_snapshot
 from kalshi_bot.account_release import (cash_limit, record_operator_close, record_operator_close_fills,
+    record_operator_close_orders,
                                         validate_cash)
 from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.config import BotConfig
@@ -411,6 +412,67 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(InvalidData, 'already reconciled'):
                 record_operator_close(ledger, close, external,
                     reference='test-incident', now=NOW+timedelta(seconds=2))
+        with closing(Ledger(self.path)) as restarted:
+            self.assertEqual(restarted.position('A'), 0)
+            validate_cash(restarted)
+
+    async def test_operator_close_over_two_orders_with_a_canceled_partial(self):
+        """2026-09-28: short 30 closed by a bid for 30 that filled 1 then was
+        canceled, and a second bid for 29 that filled."""
+        await self.writer.close()
+        with closing(Ledger(self.path)) as ledger:
+            opening = OrderUpdate('two-open', 'two-client', 'A', 'ask',
+                D('.30'), D(30), D(30), D(0), 'executed', 0, 1, 1)
+            with ledger.transaction():
+                ledger.connection.execute('INSERT INTO order_evidence VALUES (?,?,?,?)',
+                    (opening.order_id, opening.client_id, opening.encode(), NOW.isoformat()))
+            ledger.record_fill(Fill('open', opening.order_id, 'A', 'ask',
+                D(30), D('.30'), D(0), int(NOW.timestamp()*1_000_000)), NOW)
+            self.assertEqual(ledger.position('A'), -30)
+            at = int(NOW.timestamp()*1_000_000)
+            first = OrderUpdate('close-a', '', 'A', 'bid', D('.56'), D(30), D(1), D(0), 'canceled', 0, 1, 2)
+            second = OrderUpdate('close-b', '', 'A', 'bid', D('.57'), D(29), D(29), D(0), 'executed', 0, 1, 3)
+            fa = (Fill('ta', 'close-a', 'A', 'bid', D(1), D('.56'), D('.0173'), at+1),)
+            fb = (Fill('tb', 'close-b', 'A', 'bid', D(29), D('.57'), D('.4976'), at+2),)
+            before = D(ledger.connection.execute('SELECT cash FROM accounting_cash WHERE exchange_index=1').fetchone()[0])
+            invalid_sets = (
+                ((fa, first),),                                    # does not flatten
+                ((fa, first), (fa, first)),                        # same order twice
+                ((fa, replace(first, remaining=D(29), status='resting')), (fb, second)),
+                ((fa, replace(first, filled=D(2))), (fb, second)),
+                ((fa, first), (fb, replace(second, ticker='B'))),
+                ((fa, first), ((replace(fb[0], yes_price=D('.58')),), second)),
+                ((fa, first), (fb, replace(second, side='ask'))),
+                ((fa, replace(first, remaining=D(29))), (fb, second)),  # canceled yet open size
+                ((fa, first), ((replace(fb[0], ticker='B'),), replace(second, ticker='B'))),
+                ((fa, first), ((replace(fb[0], book_side='ask', yes_price=D('.57')),),
+                               replace(second, side='ask'))),
+                ((fa, first), ((replace(fb[0], order_id='close-a'),),
+                               replace(second, order_id='close-a'))))
+            for invalid in invalid_sets:
+                with self.assertRaises(InvalidData):
+                    record_operator_close_orders(ledger, invalid, reference='two', now=NOW)
+                self.assertEqual(ledger.position('A'), -30)
+                self.assertIsNone(ledger.connection.execute('SELECT 1 FROM operator_fill_scopes').fetchone())
+            record_operator_close_orders(ledger, ((fa, first), (fb, second)), reference='two', now=NOW)
+            self.assertEqual(ledger.position('A'), 0)
+            after = D(ledger.connection.execute('SELECT cash FROM accounting_cash WHERE exchange_index=1').fetchone()[0])
+            self.assertEqual(after-before, D('12.3951'))   # $30 collateral back - 17.09 - fees
+            self.assertEqual(ledger.connection.execute('SELECT COUNT(*) FROM operator_fill_scopes').fetchone()[0], 2)
+            self.assertEqual(sum(D(r[0]) for r in ledger.connection.execute(
+                'SELECT pnl FROM realized_events')), D('-8.6049'))
+            validate_cash(ledger)
+            with self.assertRaises(InvalidData):
+                record_operator_close_orders(ledger, ((fa, first), (fb, second)), reference='two', now=NOW)
+            # Cold validation still refuses a scope whose order has open size.
+            with ledger.transaction():
+                ledger.connection.execute('UPDATE operator_fill_scopes SET order_payload=? WHERE order_id=?',
+                    (replace(first, remaining=D(29)).encode(), 'close-a'))
+            with self.assertRaisesRegex(InvalidData, 'manifest economics changed'):
+                validate_cash(ledger)
+            with ledger.transaction():
+                ledger.connection.execute('UPDATE operator_fill_scopes SET order_payload=? WHERE order_id=?',
+                    (first.encode(), 'close-a'))
         with closing(Ledger(self.path)) as restarted:
             self.assertEqual(restarted.position('A'), 0)
             validate_cash(restarted)
