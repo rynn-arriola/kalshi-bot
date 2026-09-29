@@ -1,5 +1,13 @@
 # Current status
 
+## D-161 step 1: LIP meter built — 2026-09-29
+
+Built and tested on the branch, not deployed: a per-contract reward meter that
+samples every contract with our orders resting every 5 s in its live book and
+adds up earnings against Kalshi's $1-per-contract floor. The old tracker
+covered 0.7% of the time (it sampled only when a book changed). Needs an
+approved restart; validation against payouts follows (WATCHLIST B9).
+
 ## D-160 live after a manual close and a recovery fix — 2026-09-28
 
 **Running** build `d764db2` since 23:49 UTC. D-160 (exit after 15 min unless

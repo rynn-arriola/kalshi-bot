@@ -10,6 +10,8 @@ from tempfile import TemporaryDirectory
 from threading import Event, Thread
 import time
 import unittest
+from decimal import Decimal as D
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from kalshi_bot.cli import main
@@ -508,6 +510,92 @@ class LoggingIntegrationTests(unittest.IsolatedAsyncioTestCase):
         runtime.resting_entry_legs = lambda: None
         runtime._sample_resting_share()
         self.assertEqual(runtime.resting_share.unknown, 1)
+
+    def lip_runtime(self):
+        from dataclasses import replace
+        from types import SimpleNamespace as NS
+        from test_bot_engine import BANDS, program, NOW as ENGINE_NOW
+        runtime = self.runtime()
+        runtime.now = lambda: ENGINE_NOW
+        live = program(program_id='live', ticker='A')
+        catalog = NS(observations={'A': NS(programs=(live, replace(live, program_id='paid', paid_out=True),
+            replace(live, program_id='ended', end=ENGINE_NOW), replace(live, program_id='capped',
+            max_reward_centicents=100)))})
+        runtime.incentives = NS(current=lambda: catalog)
+        runtime.management = NS(terms={'A': NS(bands=BANDS)})
+        runtime._lip_book = lambda ticker: 'book-'+ticker
+        def receipt(ticker, side='bid', price='0.50', remaining=30, owned=True, terminal=False, reducing=False):
+            return NS(owned=owned, reducing=reducing, order=NS(ticker=ticker, side=side,
+                yes_price=D(price), remaining=D(remaining), terminal=terminal))
+        runtime.account.order_states = dict(a=receipt('A'), b=receipt('A', 'ask', '0.60', reducing=True),
+            c=receipt('A', owned=False), d=receipt('A', terminal=True), e=receipt('A', remaining=0),
+            f=receipt('B', price='0.30'))
+        runtime.account.connected = True
+        return runtime, live
+
+    async def test_lip_meter_scores_every_contract_with_our_orders_resting(self):
+        """D-161: entries and exits count; programs must be live, unpaid, uncapped."""
+        runtime, live = self.lip_runtime()
+        markets = runtime.lip_markets()
+        self.assertEqual([m[0] for m in markets], ['A', 'B'])
+        ticker, book, bands, programs, quotes = markets[0]
+        self.assertEqual((book, programs), ('book-A', (live,)))
+        self.assertEqual(sorted((q.side, str(q.yes_price), str(q.quantity)) for q in quotes),
+                         [('ask', '0.60', '30'), ('bid', '0.50', '30')])
+        self.assertIsNotNone(bands)
+        self.assertEqual((markets[1][2], markets[1][3]), (None, ()))   # no terms, no program
+        runtime.account.connected = False
+        self.assertIsNone(runtime.lip_markets())
+        runtime.account.connected = True
+        runtime.incentives = SimpleNamespace(current=lambda: None)
+        self.assertIsNone(runtime.lip_markets())
+        runtime.incentives = None
+        self.assertIsNone(runtime.lip_markets())
+
+    async def test_lip_meter_samples_on_the_health_loop_and_saves(self):
+        from kalshi_bot.lip_meter import LipMeter
+        runtime = self.runtime()
+        mono = [0.]
+        runtime.clock = lambda: mono[0]
+        runtime.lip_markets = lambda: []
+        runtime.lip_meter = LipMeter(self.path/'lip_meter.json')
+        runtime._sample_lip_meter()
+        self.assertTrue((self.path/'lip_meter.json').exists())
+        (self.path/'lip_meter.json').unlink()
+        mono[0] = 299
+        runtime._sample_lip_meter()
+        self.assertFalse((self.path/'lip_meter.json').exists())
+        mono[0] = 300
+        runtime._sample_lip_meter()
+        self.assertTrue((self.path/'lip_meter.json').exists())
+        self.assertEqual(runtime.status()['lip_meter']['samples'], 3)
+        runtime.lip_meter = LipMeter(self.path/'missing'/'lip_meter.json')
+        runtime._lip_meter_saved = 0
+        runtime._sample_lip_meter()
+        self.assertEqual(runtime.lip_meter.save_failures, 1)
+        runtime.lip_meter = LipMeter()
+        runtime.lip_meter.SAMPLE_SECONDS = 0
+        runtime.clock = __import__('time').monotonic
+        task = asyncio.create_task(runtime._diagnostic_health())
+        await asyncio.sleep(.6)
+        runtime.stop_requested.set()
+        await asyncio.wait_for(task, 2)
+        self.assertGreaterEqual(runtime.lip_meter.samples, 2)
+
+    async def test_lip_book_reads_the_live_book_without_side_effects(self):
+        from types import SimpleNamespace as NS
+        runtime = self.runtime()
+        good = NS(valid=True)
+        runtime.engine = NS(market_shard={'A': 's', 'B': 's'}, stopped=False, failed=False,
+                            shards={'s': NS(failed=False, books={'A': good, 'B': NS(valid=False)})})
+        self.assertIs(runtime._lip_book('A'), good)
+        self.assertIsNone(runtime._lip_book('B'))
+        self.assertIsNone(runtime._lip_book('C'))
+        runtime.engine.shards['s'].failed = True
+        self.assertIsNone(runtime._lip_book('A'))
+        runtime.engine.shards['s'].failed = False
+        runtime.engine.stopped = True
+        self.assertIsNone(runtime._lip_book('A'))
 
     async def test_resting_legs_come_from_the_live_order_stream(self):
         from types import SimpleNamespace as NS

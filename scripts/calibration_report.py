@@ -535,12 +535,71 @@ def health_section(data):
                'pulls', 'fills'], rows)])
 
 
-def report(data, *, days, now, tracker=None, ledger=None):
+def load_meter(path):
+    """D-161 LIP meter totals per program (read-only); None if unreadable."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding='utf-8'))['programs']
+        return [dict(program_id=pid, ticker=row['ticker'],
+                     end=datetime.fromisoformat(row['end']), first_at=datetime.fromisoformat(row['first_at']),
+                     earned=Decimal(row['earned']), seconds=Decimal(row['seconds']))
+                for pid, row in raw.items()]
+    except (OSError, ValueError, KeyError, TypeError, ArithmeticError):
+        return None
+
+
+def meter_section(meter, data, now):
+    """D-161: the meter per contract, and per payout day what Kalshi should pay
+    after its $1-per-contract floor versus what it paid (WATCHLIST B9)."""
+    out = ['## LIP meter per contract (D-161; validating, WATCHLIST B9)',
+           "Kalshi pays a program only if it earns $1 or more on that contract. "
+           "'Meter payable' applies that floor to the meter's earnings; 'paid ÷ meter' "
+           "is the accuracy check (target: within a few percent)."]
+    if meter is None:
+        return '\n'.join(out+['Meter file unavailable (the meter starts with the D-161 build).'])
+    credits = [(datetime.fromisoformat(at), dec(row['amount']))
+               for at, _, row in data['reward_credits'] if row.get('kind') == 'unattributed_credit']
+    paid = {}
+    for at, amount in credits:
+        day = at.astimezone(EASTERN).date()-timedelta(days=1)
+        paid[day] = paid.get(day, Decimal(0))+amount
+    days = {}
+    for p in meter:
+        g = days.setdefault(p['end'].astimezone(EASTERN).date(),
+                            dict(programs=0, earned=Decimal(0), payable=Decimal(0), cleared=0, partial=0))
+        g['programs'] += 1
+        g['earned'] += p['earned']
+        if p['earned'] >= MINIMUM_PAYOUT:
+            g['payable'] += p['earned']
+            g['cleared'] += 1
+    rows = []
+    for day in sorted(days):
+        g = days[day]
+        settled = day_settled(day, dict(credited=day in paid), now)
+        got = paid.get(day, Decimal(0))
+        rows.append((day, g['programs'], g['cleared'], f"{g['earned']:.2f}", f"{g['payable']:.2f}",
+                     f'{got:.2f}' if settled else 'pending',
+                     (f"{got/g['payable']:.2f}×" if g['payable'] else ('–' if not got else 'paid, meter 0'))
+                     if settled else '–'))
+    out.append(table(['programs end (ET day)', 'contracts metered', 'cleared $1', 'meter earned $',
+                      'meter payable $ (after $1 floor)', 'paid $', 'paid ÷ meter'], rows))
+    start = min((p['first_at'] for p in meter), default=None)
+    out.append('Meter coverage starts ' + ('–' if start is None else f'{start:%Y-%m-%d %H:%M} UTC')
+               + '; days whose programs began earlier are understated.')
+    live = sorted((p for p in meter if p['end'] > now), key=lambda p: -p['earned'])
+    out.append(table(['contract', 'ends in (h)', 'meter earned $', 'to $1', 'hours metered'],
+        [(p['ticker'], f"{(p['end']-now).total_seconds()/3600:.1f}", f"{p['earned']:.2f}",
+          'cleared' if p['earned'] >= MINIMUM_PAYOUT else f"{MINIMUM_PAYOUT-p['earned']:.2f}",
+          f"{p['seconds']/3600:.1f}") for p in live[:30]]))
+    return '\n'.join(out)
+
+
+def report(data, *, days, now, tracker=None, ledger=None, meter=None):
     return '\n\n'.join([f'# Calibration report — {now:%Y-%m-%d} (last {days} days)',
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
         business_section(ledger, tracker, data, days=days, now=now),
-        loss_filter_section(ledger, now), finish_line_section(data, tracker, now),
+        loss_filter_section(ledger, now), meter_section(meter, data, now),
+        finish_line_section(data, tracker, now),
         entries_section(data), fills_section(data), withdrawals_section(data),
         trade_evidence_section(data), sweeps_section(data), rewards_section(data, tracker, now), health_section(data)])+'\n'
 
@@ -552,10 +611,12 @@ def main():
     parser.add_argument('--out', default=str(ROOT/'data'/'trader'/'reports'))
     parser.add_argument('--rewards', default=str(ROOT/'data'/'trader'/'account.rewards.json'))
     parser.add_argument('--ledger', default=str(ROOT/'data'/'trader'/'account.db'))
+    parser.add_argument('--meter', default=str(ROOT/'data'/'trader'/'lip_meter.json'))
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now,
-                  tracker=load_tracker(args.rewards), ledger=load_ledger(args.ledger))
+                  tracker=load_tracker(args.rewards), ledger=load_ledger(args.ledger),
+                  meter=load_meter(args.meter))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out/f'calibration-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')

@@ -75,6 +75,7 @@ class ReportTests(unittest.TestCase):
     def test_report_includes_the_business_decision_sections(self):
         self.assertIn('## Fill losses before and after the loss filters', self.text)
         self.assertIn('## $1 finish line', self.text)
+        self.assertIn('## LIP meter per contract', self.text)
 
     def test_entry_outcomes_by_verdict_volume_and_depth(self):
         self.assertEqual(self.line('| reward_risk'), '| reward_risk | 1 | 2 | 1 | 50% | 0% |')
@@ -305,6 +306,44 @@ class LossFilterTests(unittest.TestCase):
         self.assertIn('| before | 2.0 | 2 | -4.00 | -2.00 | 1.0 | -2.00 |', text)
         self.assertIn('| after | 1.0 | 1 | -0.50 | -0.50 | 1.0 | -0.50 |', text)
         self.assertIn('No ledger fills', calibration_report.loss_filter_section(None, live))
+
+
+class MeterReportTests(unittest.TestCase):
+    """D-161: payout check applies Kalshi's $1-per-contract floor to the meter."""
+    def meter(self):
+        end = datetime(2026, 10, 8, 3, 59, tzinfo=timezone.utc)   # 2026-10-07 ET
+        row = lambda pid, t, e, when=end: dict(program_id=pid, ticker=t, end=when,
+            first_at=end-timedelta(days=1), earned=D(e), seconds=D(3600))
+        return [row('a', 'A', '1.50'), row('b', 'B', '0.90'), row('c', 'C', '1.00'),
+                row('d', 'D', '0.40', NOW+timedelta(hours=5))]
+
+    def data(self, credit='2.60'):
+        at = datetime(2026, 10, 8, 10, tzinfo=timezone.utc).isoformat()
+        return dict(reward_credits=[(at, 'c1', dict(kind='unattributed_credit', amount=credit))])
+
+    def test_payable_applies_the_floor_per_contract_and_compares_to_paid(self):
+        text = calibration_report.meter_section(self.meter(), self.data(), NOW)
+        self.assertIn('| 2026-10-07 | 3 | 2 | 3.40 | 2.50 | 2.60 | 1.04× |', text)
+        self.assertIn('| D | 5.0 | 0.40 | 0.60 | 1.0 |', text)
+        self.assertNotIn('| A |', text)       # ended programs are not listed as live
+
+    def test_missing_meter_and_a_payout_the_meter_did_not_expect(self):
+        self.assertIn('unavailable', calibration_report.meter_section(None, self.data(), NOW))
+        low = [dict(m, earned=D('0.5')) for m in self.meter()]
+        text = calibration_report.meter_section(low, self.data(), NOW)
+        self.assertIn('| 2.60 | paid, meter 0 |', text)
+        self.assertIn('| 0.00 | – |', calibration_report.meter_section(low, self.data('0'), NOW))
+
+    def test_load_meter_reads_the_bot_file_and_rejects_corrupt_ones(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'lip_meter.json'
+            self.assertIsNone(calibration_report.load_meter(path))
+            path.write_text(json.dumps(dict(programs={'P': dict(ticker='A', end=NOW.isoformat(),
+                first_at=NOW.isoformat(), earned='1.2', seconds='60')})), encoding='utf-8')
+            [row] = calibration_report.load_meter(path)
+            self.assertEqual((row['ticker'], row['earned'], row['end']), ('A', D('1.2'), NOW))
+            path.write_text('{"programs": {"P": {"ticker": "A"}}}', encoding='utf-8')
+            self.assertIsNone(calibration_report.load_meter(path))
 
 
 if __name__ == '__main__':

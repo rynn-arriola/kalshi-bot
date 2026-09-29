@@ -10,7 +10,9 @@
   waiting indefinitely.
 
 - **D-161 order of work (operator, 2026-09-29) — do not reorder:** (1) real-time
-  LIP meter per contract, validated against payouts to within a few percent;
+  LIP meter per contract, validated against payouts to within a few percent
+  (BUILT; deploy at the next approved restart, then check "LIP meter per
+  contract" in the calibration report after each payout morning);
   (2) L2 order book recording for watched markets (size first); (3) phase 3
   ($1 finish line per contract) on top of the meter. The $1 floor is per
   contract, not per event.

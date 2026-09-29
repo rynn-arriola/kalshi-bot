@@ -80,6 +80,7 @@ class RecoveryRuntime(AccountProofMixin):
     research = None  # D-151 research dataset; opt-in, never authority.
     full_scan = None  # D-158 full-market scan; opt-in, never authority.
     resting_share = None  # Phase 3 measurement: per-market resting share; never authority.
+    lip_meter = None  # D-161 real-time LIP meter per contract; never authority.
     research_failures = 0
     research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
     research_last_failure = None
@@ -2435,6 +2436,62 @@ class RecoveryRuntime(AccountProofMixin):
                      if r.owned and not r.reducing and not r.order.terminal
                      and r.order.remaining > 0)
 
+    def _lip_book(self, ticker):
+        """The live WebSocket book for one contract, if its shard is healthy.
+        Read-only (no catch-up of queued frames, which belongs to order
+        decisions); queued frames are milliseconds old. Unlike order decisions,
+        a quiet book still counts: LIP accrues exactly while nothing changes."""
+        engine = self.engine
+        name = engine.market_shard.get(ticker)
+        if name is None or engine.stopped or engine.failed:
+            return None
+        shard = engine.shards[name]
+        book = shard.books.get(ticker)
+        if shard.failed or book is None or not book.valid:
+            return None
+        return book
+
+    def lip_markets(self):
+        """D-161: every contract with our orders resting (entries and exits),
+        with its live book, tick bands, live programs and our orders as quotes.
+        None while the account stream or the program catalog is unknown."""
+        from .quoting import Quote
+        account = self.account
+        catalog = self.incentives.current() if self.incentives is not None else None
+        if not account.connected or catalog is None:
+            return None
+        now = utc(self.now())
+        orders = {}
+        for receipt in account.order_states.values():
+            order = receipt.order
+            if receipt.owned and not order.terminal and order.remaining > 0:
+                try:
+                    orders.setdefault(order.ticker, []).append(
+                        Quote(order.side, order.yes_price, order.remaining))
+                except InvalidData:
+                    continue
+        markets = []
+        for ticker, quotes in sorted(orders.items()):
+            observation = catalog.observations.get(ticker)
+            programs = tuple(p for p in (observation.programs if observation is not None else ())
+                             if p.start <= now < p.end and not p.paid_out
+                             and p.max_reward_centicents is None)[:16]
+            terms = self.management.terms.get(ticker) if self.management is not None else None
+            markets.append((ticker, self._lip_book(ticker),
+                            terms.bands if terms is not None else None,
+                            programs, tuple(quotes)[:30]))
+        return markets
+
+    def _sample_lip_meter(self):
+        meter, mono = self.lip_meter, self.clock()
+        meter.sample(mono, self.now(), self.lip_markets())
+        if mono >= self.__dict__.get('_lip_meter_saved', mono):
+            self._lip_meter_saved = mono+meter.SAVE_SECONDS
+            try:
+                meter.save(self.now())
+            except OSError:
+                meter.save_failures += 1
+
     def _sample_resting_share(self):
         """Phase 3: one resting-share sample; saved beside the ledger every few
         minutes so restarts keep history."""
@@ -2449,9 +2506,12 @@ class RecoveryRuntime(AccountProofMixin):
 
     async def _diagnostic_health(self):
         next_summary = self.clock()+60
-        next_share = self.clock()
+        next_share = next_lip = self.clock()
         while not self.stop_requested.is_set():
             self.diagnostics.ensure_healthy()
+            if self.lip_meter is not None and self.clock() >= next_lip:
+                next_lip = self.clock()+self.lip_meter.SAMPLE_SECONDS
+                self._sample_lip_meter()
             if self.resting_share is not None and self.clock() >= next_share:
                 next_share = self.clock()+self.resting_share.SAMPLE_SECONDS
                 self._sample_resting_share()
@@ -2584,6 +2644,7 @@ class RecoveryRuntime(AccountProofMixin):
                       if self.research is not None else None),
             full_scan=self.full_scan.status() if self.full_scan is not None else None,
             resting_share=self.resting_share.status() if self.resting_share is not None else None,
+            lip_meter=self.lip_meter.status(self.now()) if self.lip_meter is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

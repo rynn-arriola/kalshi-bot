@@ -12,7 +12,17 @@ and explicitly withdraws the proposed fixed 60-market pool.
 
 ### D-161 — Measure reward per contract in real time before concentrating
 
-- **Status:** ACCEPTED plan, 2026-09-29; not built yet.
+- **Status:** ACCEPTED plan, 2026-09-29. Step 1 (meter) implemented and verified
+  offline 2026-09-29 (`lip_meter.py`); takes effect at the next approved restart.
+- **Step 1 as built:** every 5 s, each contract with our orders resting (entries
+  and exits, from the live private order stream) is scored in its live book
+  (read-only; quiet books count) with the bot's Kalshi scoring
+  (`quoting.program_plans`); each program's rate is integrated per interval
+  (rate at the interval's start; gaps over 15 s or unknown views are not
+  credited). Saved to `data/trader/lip_meter.json` every 5 min; status
+  `runtime.lip_meter`; calibration report section "LIP meter per contract"
+  compares Kalshi's payout with the meter after the $1-per-contract floor.
+  Cost measured ~19 ms per sample of 50 contracts.
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market
