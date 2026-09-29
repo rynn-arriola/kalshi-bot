@@ -1,5 +1,14 @@
 # Current status
 
+## LIP meter live — 2026-09-29
+
+**Running** build `f327638` since ~15:33 UTC (operator "Restart"; flat). The
+D-161 meter samples every 5 s: first 9 minutes 102 samples, 25 contracts, 0
+errors, about $0.04 earned in total (~1¢/hour per contract, i.e. ~100 hours of
+resting per contract to reach $1). About 1–2 contracts per sample are
+"unscored" (no book or tick bands found); to diagnose. Entry cap 25 from the
+loss window (−$19.54 in 10:00–16:00 UTC).
+
 ## D-161 step 1: LIP meter built — 2026-09-29
 
 Built and tested on the branch, not deployed: a per-contract reward meter that
