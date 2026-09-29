@@ -9,6 +9,11 @@
   position beyond the D-160 limit should time out to Command 1 instead of
   waiting indefinitely.
 
+- **D-161 order of work (operator, 2026-09-29) — do not reorder:** (1) real-time
+  LIP meter per contract, validated against payouts to within a few percent;
+  (2) L2 order book recording for watched markets (size first); (3) phase 3
+  ($1 finish line per contract) on top of the meter. The $1 floor is per
+  contract, not per event.
 - **Business plan (agreed 2026-09-27; decisions B1–B6 in WATCHLIST):**
   1. Measure — done: calibration report has "Fill losses before and after
      the loss filters" and "$1 finish line". Run it from the dev copy with

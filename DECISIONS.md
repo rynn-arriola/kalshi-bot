@@ -10,6 +10,35 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-161 — Measure reward per contract in real time before concentrating
+
+- **Status:** ACCEPTED plan, 2026-09-29; not built yet.
+- **Decision owner:** Operator, adopting outside advice from an experienced
+  Kalshi LIP trader: "Are we making sure we do it this way".
+- **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market
+  ticker), not per event**: ten contracts at 10¢ each pay nothing; one contract
+  at $1 pays. A script can compute cumulative LIP earned so far to within a few
+  percent. Recording L2 (order book) data makes backtesting reward and risk
+  possible.
+- **Why:** our two estimates are far off (Kalshi paid 3.9× the strict tracker,
+  which marks most time "unknown"; the resting-based estimate is untested), and
+  we store no books (Finding 221 could test a thin-book rule on only 4 fills).
+  09-28: 150 programs, ~$0.80 estimated in total, paid $0.
+- **Order of work (do not reorder without the operator):**
+  1. **Real-time LIP meter per contract:** replicate Kalshi's snapshot scoring
+     (our qualifying size vs everyone's, weighted by distance from the best
+     price, within the target size) continuously for every contract we rest
+     on; cumulative earned vs $1 per contract; validated against payouts
+     (target: within a few percent). Replaces the strict and resting-based
+     estimates in the calibration report.
+  2. **L2 recording** of watched markets (compact snapshots), sized against the
+     disk and storage guard first; used to backtest the meter, fill risk and
+     exits.
+  3. **Phase 3 ($1 finish line)** built on the meter: fewer contracts, each
+     driven past $1 before it ends.
+- **Boundary:** measurement first; no trading change until the meter is
+  validated against at least one payout.
+
 ### D-160 — Exit after 15 minutes like Polymarket: loss limit per contract
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-28; takes
