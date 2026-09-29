@@ -586,7 +586,8 @@ class RuntimeSelection:
             account_known=report.positions_match and not report.audit.blockers,
             now=r.now(), protected=protected, current=self.current,
             continuations=r.maintenance.continuation() if r.maintenance is not None else None,
-            entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True)
+            entry_allowed=r.maintenance.entry_allowed if r.maintenance is not None else lambda t,p: True,
+            finish=getattr(r, 'finish_line', None))
         if not initial_ready:
             config = active_config()
             priority = sum(row.gross_remaining_usd is not None

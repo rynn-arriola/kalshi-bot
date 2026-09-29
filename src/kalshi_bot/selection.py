@@ -105,7 +105,8 @@ class MarketSelector:
         self.board.markets[book.ticker] = tuple(rows)
 
     def propose(self, *, view, window, free_cash, account_known, now, protected=(),
-                current=lambda ticker: False, continuations=None, entry_allowed=lambda t,p: True):
+                current=lambda ticker: False, continuations=None, entry_allowed=lambda t,p: True,
+                finish=None):
         """Greedy two-slot additions, not reservations; source check defaults closed.
 
         Existing exposure/positions and explicit unresolved owners stay managed.
@@ -158,11 +159,24 @@ class MarketSelector:
         ranked = self.board.ranked_programs(now=now, by='selection')
         # Stable tiers preserve the existing reward-rate/capital ordering within
         # each tier while reserving available slots for projected $2+ programs.
-        ranked = tuple(sorted(ranked, key=lambda row: (
-            bool(row.blockers),
-            row.gross_remaining_usd is None
-            or row.gross_remaining_usd < config.priority_projected_reward_usd,
-        )))
+        plans = {}
+        def finish_plan(row):
+            key = (row.ticker, row.program_id)
+            if key not in plans:
+                plans[key] = finish.plan(row, now)
+            return plans[key]
+        if finish is not None:
+            # D-161 phase 3: finish started contracts past Kalshi's $1 floor
+            # first, then new ones fastest to $1, then ones already past $1.
+            ranked = tuple(sorted(ranked, key=lambda row: (
+                (True,) if row.blockers else
+                (False, 3, 0) if finish_plan(row) is None else (False,)+finish_plan(row))))
+        else:
+            ranked = tuple(sorted(ranked, key=lambda row: (
+                bool(row.blockers),
+                row.gross_remaining_usd is None
+                or row.gross_remaining_usd < config.priority_projected_reward_usd,
+            )))
         source_current = {}
         def entry_blockers(row):
             blocked = row.blockers
@@ -193,6 +207,8 @@ class MarketSelector:
                           and continuations[row.ticker][0] == row.program_id else Decimal(0))
                       < config.minimum_projected_reward_usd):
                     blocked += ('projected_reward_below_minimum',)
+                elif finish is not None and finish_plan(row) is None:
+                    blocked += ('cannot_reach_payout_minimum',)
             return blocked
 
         # Qualify every overlapping program before retaining exactly one market

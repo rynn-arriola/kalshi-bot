@@ -15,7 +15,10 @@
   calibration report after each payout morning; diagnose the ~1–2
   "unscored" contracts per sample: add the ticker and reason to status);
   (2) L2 order book recording for watched markets (size first); (3) phase 3
-  ($1 finish line per contract) on top of the meter. The $1 floor is per
+  ($1 finish line per contract) on top of the meter — BUILT 2026-09-29
+  (`finish_line.py`), not deployed; operator decides when (plan: after the
+  meter matches a payout). After deploy watch: contracts cleared $1 per day
+  (meter `cleared_live`), `cannot_reach_payout_minimum` exclusions, fills. The $1 floor is per
   contract, not per event.
 - **Business plan (agreed 2026-09-27; decisions B1–B6 in WATCHLIST):**
   1. Measure — done: calibration report has "Fill losses before and after

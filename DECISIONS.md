@@ -23,6 +23,15 @@ and explicitly withdraws the proposed fixed 60-market pool.
   `runtime.lip_meter`; calibration report section "LIP meter per contract"
   compares Kalshi's payout with the meter after the $1-per-contract floor.
   Cost measured ~19 ms per sample of 50 contracts.
+- **Step 3 (phase 3) as built, 2026-09-29 (operator: "Ok build it"):**
+  `finish_line.FinishLine`, fed by the meter, orders new entries: contracts we
+  have started and not yet past $1 first (fewest resting hours to $1.25 first),
+  then new contracts fastest to $1.25, then contracts already past $1 (by rate);
+  it blocks new entries (`cannot_reach_payout_minimum`) in contracts that would
+  need more than half their remaining earning time to reach $1.25. Ordering and
+  eligibility only; all loss checks unchanged; never cancels resting orders.
+  Deploy only with the operator's go (the plan said after the meter matches a
+  payout).
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market

@@ -81,6 +81,7 @@ class RecoveryRuntime(AccountProofMixin):
     full_scan = None  # D-158 full-market scan; opt-in, never authority.
     resting_share = None  # Phase 3 measurement: per-market resting share; never authority.
     lip_meter = None  # D-161 real-time LIP meter per contract; never authority.
+    finish_line = None  # D-161 phase 3: $1-per-contract entry priority (ordering only).
     research_failures = 0
     research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
     research_last_failure = None
@@ -2645,6 +2646,7 @@ class RecoveryRuntime(AccountProofMixin):
             full_scan=self.full_scan.status() if self.full_scan is not None else None,
             resting_share=self.resting_share.status() if self.resting_share is not None else None,
             lip_meter=self.lip_meter.status(self.now()) if self.lip_meter is not None else None,
+            finish_line=self.finish_line.status(self.now()) if self.finish_line is not None else None,
             admission=self.admission.status() if self.admission is not None else None,
             metadata=self.metadata_scheduler.status() if self.metadata_scheduler is not None else None)
 

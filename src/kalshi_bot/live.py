@@ -281,6 +281,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         # D-161: real-time LIP meter per contract, kept across restarts.
         from .lip_meter import LipMeter
         runtime.lip_meter = LipMeter(Path(writer.path).with_name('lip_meter.json')).load()
+        # D-161 phase 3: new entries finish contracts past the $1 floor first.
+        from .finish_line import FinishLine
+        runtime.finish_line = FinishLine(runtime.lip_meter)
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

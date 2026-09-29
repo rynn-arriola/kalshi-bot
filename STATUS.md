@@ -1,5 +1,13 @@
 # Current status
 
+## Phase 3 ($1 finish line) built — 2026-09-29
+
+Built and tested on the branch, not deployed. New entries now go first to
+contracts we have started until they pass $1, then to new contracts that
+reach $1 fastest; contracts that cannot reach $1 in time are skipped. Every
+loss check is unchanged. Deploy is the operator's call (the D-161 plan waits
+for the meter to match a payout first).
+
 ## LIP meter live — 2026-09-29
 
 **Running** build `f327638` since ~15:33 UTC (operator "Restart"; flat). The
