@@ -888,7 +888,12 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
 
     async def run_graph(self, *, discover=False, unsupported=False):
         import test_bot_market_inputs as metadata
-        from test_bot_incentive_discovery import row as reward_row
+        from test_bot_incentive_discovery import row as base_row
+        def reward_row(*args, **changes):
+            # D-161 phase 3 skips contracts that cannot reach $1.25 in half
+            # their remaining earning time (here the market's ~1 h close):
+            # a doubled pool reaches it in ~15 minutes.
+            return base_row(*args, **({'period_reward': 10000000} | changes))
         from test_bot_opening_account import balance
         from test_bot_quota import LIMITS, COSTS, Signer
         base, start = metadata.NOW, time.monotonic()

@@ -137,7 +137,9 @@ class RefillLoadTests(unittest.IsolatedAsyncioTestCase):
             '/events':{'events':[{**md.event, 'markets':list(markets.values())}],
                        'milestones':[md.milestone], 'cursor':''},
         }
-        rewards = [reward_row(t, 'reward-'+t, period_reward=5000000 if i<32 else 20000)
+        # D-161 phase 3 skips contracts that cannot reach $1.25 in half their
+        # remaining earning time: rich programs get a doubled pool.
+        rewards = [reward_row(t, 'reward-'+t, period_reward=10000000 if i<32 else 20000)
                    for i,t in enumerate(tickers)]
         def wire(url, *_):
             parsed = urlparse(url)
