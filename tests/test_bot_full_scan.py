@@ -360,6 +360,7 @@ class LaunchWiringTests(unittest.IsolatedAsyncioTestCase):
             review_reference='synthetic-direct', valid_until='2099-01-01T00:00:00Z'))),
             encoding='utf-8')
         self.scan_path = Path(self.temp.name)/'market_scan.json'
+        self.projects_path = Path(self.temp.name)/'projects.json'
 
     async def prepared_with(self, now):
         from kalshi_bot import live
@@ -371,7 +372,9 @@ class LaunchWiringTests(unittest.IsolatedAsyncioTestCase):
             raise Stop
         with patch.object(live, 'prepare_candidates', prepare):
             with self.assertRaises(Stop):
-                await live.refresh_candidate_inputs(self.inputs, now, None, scan_path=self.scan_path)
+                await live.refresh_candidate_inputs(self.inputs, now, None, scan_path=self.scan_path,
+                                                    projects_path=self.projects_path)
+        self.seen = seen
         return seen['scan_scores']
 
     async def test_launch_passes_a_fresh_saved_scan_and_falls_back_without_one(self):
@@ -379,6 +382,17 @@ class LaunchWiringTests(unittest.IsolatedAsyncioTestCase):
         save_scan(self.scan_path, NOW, {'A': D(3)})
         self.assertEqual(await self.prepared_with(NOW+timedelta(minutes=40)), {'A': D(3)})
         self.assertIsNone(await self.prepared_with(NOW+timedelta(hours=4)))
+
+    async def test_launch_keeps_saved_project_contracts_in_scope(self):
+        """D-161: the saved project list is pinned into the launch scope."""
+        await self.prepared_with(NOW)
+        self.assertEqual(self.seen['pinned'], ())
+        self.projects_path.write_text(json.dumps(dict(projects={
+            'p1': dict(ticker='KXB', until=NOW.isoformat(), added_at=NOW.isoformat()),
+            'p2': dict(ticker='KXA', until=NOW.isoformat(), added_at=NOW.isoformat())}, closed=[])),
+            encoding='utf-8')
+        await self.prepared_with(NOW)
+        self.assertEqual(self.seen['pinned'], ('KXA', 'KXB'))
 
     def test_live_saves_the_scan_beside_the_ledger(self):
         source = (ROOT/'src'/'kalshi_bot'/'live.py').read_text(encoding='utf-8')

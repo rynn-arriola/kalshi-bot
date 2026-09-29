@@ -314,6 +314,37 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.r.current_entry_orders()), 1)
         self.assertFalse(self.r.entry_overflow_ids())
 
+    async def test_a_contract_that_cannot_reach_a_dollar_is_withdrawn(self):
+        """D-161 stop the waste: hopeless contracts are pure fill risk."""
+        calls, dropped = [], []
+        def hopeless(program_id, rate, until, now):
+            calls.append((program_id, rate, until, now))
+            return True
+        self.r.finish_line = SimpleNamespace(hopeless=hopeless, drop=lambda pid, now: dropped.append(pid))
+        await self.sample()
+        self.assertEqual(self.m.cycle.reason, 'cannot_reach_payout_minimum')
+        self.assertFalse(self.m.cycle.reenter)
+        self.assertEqual(dropped, [self.p.program_id])
+        pid, rate, until, now = calls[-1]
+        self.assertEqual((pid, now), (self.p.program_id, self.f.now))
+        self.assertLessEqual(until, self.p.end)
+        self.assertIsNotNone(rate)
+
+    async def test_without_a_live_reward_estimate_nothing_is_withdrawn_as_hopeless(self):
+        calls = []
+        self.r.finish_line = SimpleNamespace(hopeless=lambda *a: calls.append(a) or True,
+                                             drop=lambda *a: self.fail('dropped'))
+        await self.sample(shallow=True)          # lost depth: no current reward estimate
+        self.assertEqual(calls, [])
+        self.assertTrue(self.m.cycle is None or self.m.cycle.reason != 'cannot_reach_payout_minimum')
+
+    async def test_a_contract_that_can_still_reach_a_dollar_is_kept(self):
+        self.r.finish_line = SimpleNamespace(hopeless=lambda *a: False,
+                                             drop=lambda *a: self.fail('dropped'))
+        for _ in range(3):
+            await self.sample()
+        self.assertIsNone(self.m.cycle)
+
     async def test_unknown_reward_terms_never_mean_persistently_unprofitable(self):
         self.r.management.set_terms(replace(self.r.management.terms['A'],
             taker_fee_per_contract_bound=None))

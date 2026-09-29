@@ -201,6 +201,26 @@ class SavedScanLaunchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tuple(r.ticker for r in result.reviews), ('B',))
         self.assertEqual(result.scanned, 0)
 
+    async def test_project_contracts_stay_in_scope_and_are_seeded_first(self):
+        """D-161: projects survive restarts even when the scan or hint ranks
+        them low; the rest of the scope is chosen as before."""
+        tickers = 'ABCDEFGHI'
+        pools = {t: 1000000*(i+1) for i, t in enumerate(tickers)}   # A has the worst hint
+        scan = {t: D(100-i) for i, t in enumerate(tickers)}         # A scores best, B second
+        result = await prepare_candidates(self.reads(tickers, pools), now=NOW, max_reviews=4,
+                                          seed_capacity=2, scan_scores=scan, pinned=('I', 'H', 'Z'))
+        self.assertEqual(tuple(r.ticker for r in result.reviews)[:2], ('I', 'H'))   # usual order
+        self.assertEqual(result.initial_tickers, ('I', 'H'))
+        self.assertEqual((result.pinned, len(result.reviews)), (2, 4))
+        self.assertEqual(tuple(r.ticker for r in result.reviews)[2:], ('A', 'B'))
+        plain = await prepare_candidates(self.reads(tickers, pools), now=NOW, max_reviews=2,
+                                         pinned=('I', 'H', 'G'))
+        self.assertEqual((tuple(r.ticker for r in plain.reviews), plain.pinned), (('I', 'H'), 2))
+        hint = await prepare_candidates(self.reads(tickers, pools), now=NOW, max_reviews=3,
+                                        pinned=('A',))
+        self.assertEqual(tuple(r.ticker for r in hint.reviews)[0], 'A')
+        self.assertEqual(len(hint.reviews), 3)
+
     async def test_without_scan_scores_the_scope_is_unchanged(self):
         pools = dict(A=1000000, B=2000000, C=3000000)
         plain = await prepare_candidates(self.reads('ABC', pools), now=NOW, max_reviews=2)

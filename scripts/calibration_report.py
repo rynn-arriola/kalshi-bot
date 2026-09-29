@@ -593,12 +593,63 @@ def meter_section(meter, data, now):
     return '\n'.join(out)
 
 
-def report(data, *, days, now, tracker=None, ledger=None, meter=None):
+def load_projects(path):
+    """D-161 project list (read-only); None if unreadable."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding='utf-8'))
+        when = lambda value: datetime.fromisoformat(value)
+        return dict(active={pid: dict(ticker=p['ticker'], until=when(p['until']), added_at=when(p['added_at']))
+                            for pid, p in raw['projects'].items()},
+                    closed=[dict(program_id=c['program_id'], ticker=c['ticker'], reason=c['reason'],
+                                 closed_at=when(c['closed_at']), earned=Decimal(c['earned']))
+                            for c in raw['closed']])
+    except (OSError, ValueError, KeyError, TypeError, ArithmeticError):
+        return None
+
+
+def projects_section(projects, meter, now, *, days=7):
+    """D-161: the project list, and the waste the $1 floor makes worthless."""
+    out = ['## Projects: contracts we are finishing past $1 (D-161)']
+    earned = {p['program_id']: p for p in meter or ()}
+    if projects is None:
+        out.append('Project list unavailable (starts with the D-161 project build).')
+    else:
+        since = now-timedelta(days=days)
+        recent = [c for c in projects['closed'] if c['closed_at'] >= since]
+        out.append(f"Active {len(projects['active'])}; last {days} days: "
+                   f"{sum(c['reason'] == 'cleared' for c in recent)} cleared $1, "
+                   f"{sum(c['reason'] != 'cleared' for c in recent)} dropped under $1.")
+        rows = sorted(projects['active'].items(), key=lambda item: -(
+            earned[item[0]]['earned'] if item[0] in earned else Decimal(0)))
+        out.append(table(['project', 'earned $', 'to $1', 'hours left', 'hours rested'],
+            [(p['ticker'], f"{earned[pid]['earned']:.2f}" if pid in earned else '0.00',
+              f"{max(Decimal(0), MINIMUM_PAYOUT-(earned[pid]['earned'] if pid in earned else Decimal(0))):.2f}",
+              f"{(p['until']-now).total_seconds()/3600:.1f}",
+              f"{earned[pid]['seconds']/3600:.1f}" if pid in earned else '0.0') for pid, p in rows]))
+    out.append('')
+    out.append('## Waste: contracts that ended under $1 (paid nothing)')
+    if meter is None:
+        return '\n'.join(out+['Meter file unavailable.'])
+    since = now-timedelta(days=days)
+    wasted = [p for p in meter if since <= p['end'] <= now and Decimal(0) < p['earned'] < MINIMUM_PAYOUT]
+    cleared = [p for p in meter if since <= p['end'] <= now and p['earned'] >= MINIMUM_PAYOUT]
+    hours = sum((p['seconds'] for p in wasted), Decimal(0))/3600
+    out.append(f"Last {days} days: {len(wasted)} contracts ended under $1 after {hours:.1f} resting hours "
+               f"(${sum((p['earned'] for p in wasted), Decimal(0)):.2f} earned, paid $0); "
+               f"{len(cleared)} ended past $1. Should trend to zero.")
+    out.append(table(['contract', 'ended', 'earned $', 'hours rested'],
+        [(p['ticker'], f"{p['end']:%m-%d %H:%M}", f"{p['earned']:.2f}", f"{p['seconds']/3600:.1f}")
+         for p in sorted(wasted, key=lambda p: -p['seconds'])[:20]]))
+    return '\n'.join(out)
+
+
+def report(data, *, days, now, tracker=None, ledger=None, meter=None, projects=None):
     return '\n\n'.join([f'# Calibration report — {now:%Y-%m-%d} (last {days} days)',
         'Goal: improve the bot. Evidence for tuning entry gates, fill protection '
         'and reward estimates; every change remains an operator decision.',
         business_section(ledger, tracker, data, days=days, now=now),
         loss_filter_section(ledger, now), meter_section(meter, data, now),
+        projects_section(projects, meter, now),
         finish_line_section(data, tracker, now),
         entries_section(data), fills_section(data), withdrawals_section(data),
         trade_evidence_section(data), sweeps_section(data), rewards_section(data, tracker, now), health_section(data)])+'\n'
@@ -612,11 +663,12 @@ def main():
     parser.add_argument('--rewards', default=str(ROOT/'data'/'trader'/'account.rewards.json'))
     parser.add_argument('--ledger', default=str(ROOT/'data'/'trader'/'account.db'))
     parser.add_argument('--meter', default=str(ROOT/'data'/'trader'/'lip_meter.json'))
+    parser.add_argument('--projects', default=str(ROOT/'data'/'trader'/'projects.json'))
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     text = report(load(args.db, now-timedelta(days=args.days)), days=args.days, now=now,
                   tracker=load_tracker(args.rewards), ledger=load_ledger(args.ledger),
-                  meter=load_meter(args.meter))
+                  meter=load_meter(args.meter), projects=load_projects(args.projects))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out/f'calibration-{now:%Y%m%d}.md').write_text(text, encoding='utf-8')

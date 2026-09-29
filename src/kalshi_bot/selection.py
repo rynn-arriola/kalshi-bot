@@ -166,11 +166,12 @@ class MarketSelector:
                 plans[key] = finish.plan(row, now)
             return plans[key]
         if finish is not None:
-            # D-161 phase 3: finish started contracts past Kalshi's $1 floor
-            # first, then new ones fastest to $1, then ones already past $1.
+            # D-161 phase 3: projects first (closest to $1), then new projects
+            # while the list has room, then contracts already past $1.
+            finish.review(now)
             ranked = tuple(sorted(ranked, key=lambda row: (
                 (True,) if row.blockers else
-                (False, 3, 0) if finish_plan(row) is None else (False,)+finish_plan(row))))
+                (False, 9, 0) if isinstance(finish_plan(row), str) else (False,)+finish_plan(row))))
         else:
             ranked = tuple(sorted(ranked, key=lambda row: (
                 bool(row.blockers),
@@ -207,8 +208,8 @@ class MarketSelector:
                           and continuations[row.ticker][0] == row.program_id else Decimal(0))
                       < config.minimum_projected_reward_usd):
                     blocked += ('projected_reward_below_minimum',)
-                elif finish is not None and finish_plan(row) is None:
-                    blocked += ('cannot_reach_payout_minimum',)
+                elif finish is not None and isinstance(finish_plan(row), str):
+                    blocked += (finish_plan(row),)
             return blocked
 
         # Qualify every overlapping program before retaining exactly one market
@@ -235,6 +236,8 @@ class MarketSelector:
                         current_position=positions.get(row.ticker, Decimal(0)),
                         resting_entries=entries+1, candidate_loss=cost, exposure=exposure,
                         free_capital=cash-spent, account_known=True, now=now)
+                if not blocked and finish is not None and not finish.claim(row, now):
+                    blocked = ('project_list_full',)
                 if blocked:
                     exclusions.append((row.ticker, tuple(dict.fromkeys(blocked))))
                     continue

@@ -32,6 +32,21 @@ and explicitly withdraws the proposed fixed 60-market pool.
   eligibility only; all loss checks unchanged; never cancels resting orders.
   Deploy only with the operator's go (the plan said after the meter matches a
   payout).
+- **Project list (operator: "Build it", 2026-09-29):** measured after phase 3
+  went live, 3.1 h spread over 131 contracts (median 0.27 resting hours each;
+  $1 needs 22-36), because every contract with any earnings counted as
+  "started". Now new entries go only to a saved list of at most 30 projects
+  (`data/trader/projects.json`; 25 pairs plus 5 so a temporarily blocked
+  project never leaves an entry slot idle): a contract joins only while the list has
+  room and it can reach $1.25 needing at most half its remaining earning
+  time (fastest first); it stays until the meter shows $1 (cleared) or $1
+  becomes unreachable even resting all remaining time (dropped). Contracts
+  already past $1 may use idle entry slots (every further cent is paid);
+  other contracts are blocked (`project_list_full`). Stop the waste: resting
+  orders in a contract that cannot reach $1 are withdrawn
+  (`cannot_reach_payout_minimum`, only with a live reward estimate). Launch
+  pins projects into the watched scope. Calibration report: "Projects" and
+  "Waste: contracts that ended under $1".
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market

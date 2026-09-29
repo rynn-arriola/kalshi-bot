@@ -109,6 +109,7 @@ NUMBERS = frozenset(('mismatch_count', 'mismatch_age_min_ms', 'mismatch_age_max_
                      'market_rows', 'milestone_rows', 'exit_code', 'count',
                      'idle_seconds', 'incentives_exhausted', 'catalog_markets',  # Finding 218
                      'scan_markets', 'scan_age_minutes',  # D-159 launch scope
+                     'pinned_markets',  # D-161 project contracts kept in scope
                      'recovery_requests', 'recovery_attempts', 'repair_passes',
                      'routine_completed', 'routine_escalations', 'steady_completed',
                      'resting_orders', 'positions', 'entry_allowed', 'dispatch_queued',
@@ -142,7 +143,7 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
          'cause': RECOVERY_CAUSES,
          'maintenance_reason': frozenset(('fill_risk_withdrawal', 'restore_reference_pair',
              'incomplete_pair_below_minimum', 'persistently_unscoring',
-             'earning_window_ended')),
+             'earning_window_ended', 'cannot_reach_payout_minimum')),
          'phase': RECOVERY_PHASES,
          'cash_kind': frozenset(('deposit', 'withdrawal', 'unattributed_credit')),
          'outcome': frozenset(('quota_wait', 'superseded', 'source_changed', 'invalid_data',

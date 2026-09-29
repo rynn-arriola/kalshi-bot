@@ -1006,6 +1006,16 @@ class QuoteMaintenance:
         if set(actual.blockers+target.blockers)-known_failures:
             self.samples[ticker]['state'] = 'UNKNOWN'
             return
+        # D-161 stop the waste: a contract that cannot reach Kalshi's $1 floor
+        # even resting all of its remaining earning time pays nothing, so our
+        # orders there are pure fill risk. Needs a live reward estimate.
+        finish = getattr(r, 'finish_line', None)
+        if (finish is not None and actual.gross_hourly_usd is not None
+                and finish.hopeless(program.program_id, actual.gross_hourly_usd,
+                                    actual.earning_until or actual.program_end, now)):
+            finish.drop(program.program_id, now)
+            self._start(plan, program, 'cannot_reach_payout_minimum', False)
+            return
         # A qualifying incumbent is never displaced by the global rank or by
         # reaching $1. Only lost price weight/qualification or an incomplete
         # pair requests maintenance. Better-than-reference full-weight stays.

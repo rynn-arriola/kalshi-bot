@@ -36,6 +36,7 @@ class PreparedCandidates:
     milestone_rows: int
     excluded: tuple[tuple[str, int], ...]
     scanned: int = 0   # D-159: reviews chosen from the saved full-market scan
+    pinned: int = 0    # D-161: project contracts kept in scope first
 
 
 def _chunks(tickers, maximum=1800):
@@ -119,7 +120,7 @@ def _select_scanned(rows, limit, scan_scores):
 
 
 async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128,
-                             scan_scores=None):
+                             scan_scores=None, pinned=()):
     """Resolve current programs to exact market rules and primary milestones.
 
     Cheap pool/time/target density is only a discovery ordering. The returned
@@ -254,10 +255,19 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128,
             continue
         eligible.append((-scores[ticker], ticker, market, review))
     eligible.sort(key=lambda row:(row[0], row[1]))
-    if scan_scores:
-        selected, scanned = _select_scanned(eligible, min(max_reviews, len(eligible)), scan_scores)
+    # D-161: project contracts (committed to finish past $1) stay watched and
+    # seeded first across restarts; the rest of the scope is chosen as before.
+    pinned = frozenset(pinned)
+    head = [row for row in eligible if row[1] in pinned][:max_reviews]
+    rest = [row for row in eligible if row[1] not in pinned]
+    limit = min(max_reviews, len(eligible))-len(head)
+    if limit <= 0:
+        selected, scanned = [], 0
+    elif scan_scores:
+        selected, scanned = _select_scanned(rest, limit, scan_scores)
     else:
-        selected, scanned = _select(eligible, min(max_reviews, len(eligible))), 0
+        selected, scanned = _select(rest, limit), 0
+    selected = head+list(selected)
     if not selected:
         raise InvalidData('no current reward market has one future primary milestone')
     reviews = tuple(row[3] for row in selected)
@@ -265,4 +275,4 @@ async def prepare_candidates(reads, *, now, max_reviews=1024, seed_capacity=128,
     exchanges = tuple(sorted({0, *(row[2].exchange for row in selected)}))
     return PreparedCandidates(reviews, seeds, exchanges, len(incentives.rows),
                               len(markets), len(milestones.rows),
-                              tuple(sorted(excluded.items())), scanned)
+                              tuple(sorted(excluded.items())), scanned, len(head))

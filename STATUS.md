@@ -1,5 +1,13 @@
 # Current status
 
+## Project list built — 2026-09-29
+
+Built and tested on the branch, not deployed: new entries go only to a saved
+list of up to 30 "projects" that stay until each passes $1 (or becomes
+impossible); projects stay watched across restarts; resting orders in
+contracts that can no longer reach $1 are withdrawn; the morning report shows
+projects and waste. Needs an approved restart.
+
 ## Phase 3 ($1 finish line) live — 2026-09-29
 
 **Running** build `af06975` since ~18:11 UTC (operator "Deploy restart";

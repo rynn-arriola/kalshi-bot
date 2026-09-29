@@ -149,7 +149,7 @@ def _input_document(inputs):
         initial_tickers=list(inputs.initial_tickers))
 
 
-async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None):
+async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None, projects_path=None):
     """Replace only the ignored candidate scope; preserve reviewed member fees."""
     if path.stat().st_size > 1048576:
         raise InvalidData('launch inputs exceed size limit')
@@ -169,9 +169,14 @@ async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None):
     # watch list when fresh; missing, stale or corrupt falls back to the hint.
     from .full_scan import load_scan
     saved = load_scan(DATA/'market_scan.json' if scan_path is None else scan_path, now)
+    # D-161: saved project contracts always stay in the watched scope.
+    from .finish_line import FinishLine
+    projects = FinishLine(None, DATA/'projects.json' if projects_path is None
+                          else projects_path).load().tickers()
     try:
         prepared = await prepare_candidates(reads, now=now,
-                                            scan_scores=saved[1] if saved else None)
+                                            scan_scores=saved[1] if saved else None,
+                                            pinned=projects)
     finally:
         await reads.close()
     inputs = LaunchInputs(prepared.reviews, profile,
@@ -199,7 +204,7 @@ async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None):
         milestone_rows=prepared.milestone_rows, excluded=dict(prepared.excluded),
         scan_observed_at=saved[0].isoformat() if saved else None,
         scan_age_minutes=int((now-saved[0]).total_seconds()//60) if saved else None,
-        scan_markets=prepared.scanned, trading_started=False)
+        scan_markets=prepared.scanned, pinned_markets=prepared.pinned, trading_started=False)
 
 
 async def recovery_launch_inputs(path, ledger_path, now, diagnostics):
@@ -283,7 +288,8 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         runtime.lip_meter = LipMeter(Path(writer.path).with_name('lip_meter.json')).load()
         # D-161 phase 3: new entries finish contracts past the $1 floor first.
         from .finish_line import FinishLine
-        runtime.finish_line = FinishLine(runtime.lip_meter)
+        runtime.finish_line = FinishLine(runtime.lip_meter,
+                                         Path(writer.path).with_name('projects.json')).load()
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)

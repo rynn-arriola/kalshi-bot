@@ -76,6 +76,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn('## Fill losses before and after the loss filters', self.text)
         self.assertIn('## $1 finish line', self.text)
         self.assertIn('## LIP meter per contract', self.text)
+        self.assertIn('## Projects: contracts we are finishing past $1', self.text)
 
     def test_entry_outcomes_by_verdict_volume_and_depth(self):
         self.assertEqual(self.line('| reward_risk'), '| reward_risk | 1 | 2 | 1 | 50% | 0% |')
@@ -344,6 +345,51 @@ class MeterReportTests(unittest.TestCase):
             self.assertEqual((row['ticker'], row['earned'], row['end']), ('A', D('1.2'), NOW))
             path.write_text('{"programs": {"P": {"ticker": "A"}}}', encoding='utf-8')
             self.assertIsNone(calibration_report.load_meter(path))
+
+
+class ProjectReportTests(unittest.TestCase):
+    """D-161: the project list and the waste the $1 floor makes worthless."""
+    def meter(self):
+        m = lambda pid, t, e, s, end: dict(program_id=pid, ticker=t, end=end, first_at=NOW-timedelta(days=2),
+                                           earned=D(e), seconds=D(s))
+        return [m('a', 'A', '0.40', 7200, NOW+timedelta(hours=10)),      # active project
+                m('w', 'W', '0.30', 36000, NOW-timedelta(hours=5)),      # ended under $1
+                m('x', 'X', '0.10', 3600, NOW-timedelta(days=9)),       # outside the window
+                m('c', 'C', '1.40', 9000, NOW-timedelta(hours=2))]       # ended past $1
+
+    def projects(self):
+        return dict(active={'a': dict(ticker='A', until=NOW+timedelta(hours=10), added_at=NOW),
+                            'n': dict(ticker='N', until=NOW+timedelta(hours=5), added_at=NOW)},
+                    closed=[dict(program_id='c', ticker='C', reason='cleared', closed_at=NOW-timedelta(hours=2), earned=D('1.4')),
+                            dict(program_id='w', ticker='W', reason='ended_under_minimum', closed_at=NOW-timedelta(hours=5), earned=D('0.3')),
+                            dict(program_id='o', ticker='O', reason='cleared', closed_at=NOW-timedelta(days=8), earned=D(1))])
+
+    def test_projects_and_waste(self):
+        text = calibration_report.projects_section(self.projects(), self.meter(), NOW)
+        self.assertIn('Active 2; last 7 days: 1 cleared $1, 1 dropped under $1.', text)
+        self.assertIn('| A | 0.40 | 0.60 | 10.0 | 2.0 |', text)
+        self.assertIn('| N | 0.00 | 1.00 | 5.0 | 0.0 |', text)
+        self.assertLess(text.index('| A |'), text.index('| N |'))
+        self.assertIn('1 contracts ended under $1 after 10.0 resting hours ($0.30 earned, paid $0); 1 ended past $1.', text)
+        self.assertIn('| W |', text)
+        self.assertNotIn('| X |', text)
+
+    def test_missing_files_are_said_not_guessed(self):
+        text = calibration_report.projects_section(None, None, NOW)
+        self.assertIn('Project list unavailable', text)
+        self.assertIn('Meter file unavailable', text)
+
+    def test_load_projects_reads_the_bot_file(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'projects.json'
+            self.assertIsNone(calibration_report.load_projects(path))
+            path.write_text(json.dumps(dict(projects={'a': dict(ticker='A', until=NOW.isoformat(),
+                added_at=NOW.isoformat())}, closed=[dict(program_id='c', ticker='C', reason='cleared',
+                closed_at=NOW.isoformat(), earned='1.2')])), encoding='utf-8')
+            loaded = calibration_report.load_projects(path)
+            self.assertEqual((loaded['active']['a']['ticker'], loaded['closed'][0]['earned']), ('A', D('1.2')))
+            path.write_text('{"projects": {}}', encoding='utf-8')
+            self.assertIsNone(calibration_report.load_projects(path))
 
 
 if __name__ == '__main__':
