@@ -1,5 +1,13 @@
 # Current status
 
+## Phase 3 ($1 finish line) live — 2026-09-29
+
+**Running** build `af06975` since ~18:11 UTC (operator "Deploy restart";
+flat). New entries now finish started contracts past $1 first; in the first
+two minutes about half of contract evaluations were skipped as unable to reach
+$1.25 in time (planned 1,379 / blocked 1,230). Entries refilled to 30+ in about
+two minutes; LIP meter tracking 127 live contracts, none past $1 yet.
+
 ## Phase 3 ($1 finish line) built — 2026-09-29
 
 Built and tested on the branch, not deployed. New entries now go first to
