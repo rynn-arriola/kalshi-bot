@@ -1,5 +1,13 @@
 # Current status
 
+## Project list live — 2026-09-29
+
+**Running** build `f79c316` since ~22:10 UTC (operator "Ok restart"; flat).
+The list filled to 30 projects within ~2 minutes (fastest to $1.25 first);
+entries refilled to 40+ in ~3 minutes; other contracts blocked
+(`project_list_full` / `cannot_reach_payout_minimum`). First launch pinned 0
+(the list did not exist yet); later restarts pin the saved projects.
+
 ## Project list built — 2026-09-29
 
 Built and tested on the branch, not deployed: new entries go only to a saved
