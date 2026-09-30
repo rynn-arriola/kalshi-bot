@@ -1,5 +1,22 @@
 # Findings — kalshi-bot
 
+## 225. A tripped $25 loss window is never released; starts exit at once — 2026-09-30
+
+**VERIFIED (ledger `risk_windows`, status, logs, code).** The 2026-09-29
+22:00 → 09-30 04:00 UTC window lost −$28.72 and tripped the six-hour $25 stop
+(cap 0, `tripped=1`, `released=0`). `WindowRisk.observe` then reports every
+later window as held (cap 0) while any tripped window is unreleased, and
+`WindowRisk.release_previous` (fresh flat proof in the next window) exists
+and is tested but is never called by production code. So the launches at
+13:31 and 14:13 UTC recovered cleanly, found nothing they may do, and exited
+0; the supervisor disarmed. No orders, no fills, account flat. First full trip
+since D-016/D-017; earlier windows only ratcheted (41, 25).
+
+**Operator: "Close the bot"** — stopped, disarmed, not auto-starting.
+**Decision needed before trading again:** release once (script: venue flat
+proof, then `release_previous`) and/or wire the automatic next-window release
+on verified flat proof (the D-016 design).
+
 ## 224. Our bad fills come from a few sweep-prone market types — 2026-09-30
 
 **MEASURED (research fills/marks/trades/sweep_counts, 2026-09-27 → 09-30;

@@ -4,6 +4,10 @@
 
 **Dated follow-ups — do not drop:**
 
+- **Finding 225 (blocks trading):** a tripped $25 loss window is never released.
+  Operator to choose: one-time release on venue flat proof and/or automatic
+  next-window release on verified flat proof (D-016 design).
+
 - **Finding 223 follow-ups:** explain why the recovery-only child could not
   read its pipe for > 4 s; decide whether an operator stop with a held
   position beyond the D-160 limit should time out to Command 1 instead of

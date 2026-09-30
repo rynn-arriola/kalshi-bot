@@ -1,5 +1,11 @@
 # Current status
 
+## Bot closed; loss-stop release gap found — 2026-09-30
+
+**Stopped** (operator "Close the bot"), disarmed, flat, no auto-start. Two
+starts today exited at once because the tripped $25 window from last night is
+never released (Finding 225). Build `6481b48` is deployed and ready.
+
 ## Bot stopped; sweep-prone market types excluded (built) — 2026-09-30
 
 **Stopped** by the operator at 03:54 UTC ("Stop kalshi bot"), flat, after
