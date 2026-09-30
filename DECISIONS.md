@@ -47,6 +47,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (`cannot_reach_payout_minimum`, only with a live reward estimate). Launch
   pins projects into the watched scope. Calibration report: "Projects" and
   "Waste: contracts that ended under $1".
+- **Avoided market types (Finding 224, operator "Do recommended", 2026-09-30):**
+  app rank, card spend, port TEU, diesel and mortgage contracts are never
+  entered or kept as projects (`sweep_prone_market_type`); existing projects of
+  those types are dropped on the next review.
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market

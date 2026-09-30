@@ -22,6 +22,7 @@ the watched scope.
 """
 import json
 import os
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, localcontext
 
@@ -40,6 +41,20 @@ CLOSED_KEPT = 200                 # recently finished or dropped projects, for r
 PROJECT, NEW, CLEARED = 0, 1, 2   # priority tiers, best first
 FULL = 'project_list_full'
 CANNOT = 'cannot_reach_payout_minimum'
+AVOID = 'sweep_prone_market_type'
+
+# Finding 224 (2026-09-30): market types behind ~8 of 9 bad fills. Their
+# prices jump on scheduled data (app-store ranks ~03:00 UTC, card-spend and
+# fuel/rate/port data), when one order sweeps the whole book with no warning.
+# Matched on the series (ticker before the first '-').
+AVOID_TYPES = (('app_rank', re.compile(r'APP$')), ('card_spend', re.compile(r'CC$')),
+               ('port_teu', re.compile(r'PORT.*TEU|TEU$')), ('diesel', re.compile(r'DIESEL')),
+               ('mortgage', re.compile(r'MORT')))
+
+
+def avoided_type(ticker):
+    series = ticker.split('-')[0]
+    return next((name for name, pattern in AVOID_TYPES if pattern.search(series)), None)
 
 
 class FinishLine:
@@ -85,7 +100,10 @@ class FinishLine:
         now, changed = utc(now), False
         for pid, project in list(self.projects.items()):
             earned = self.earned(pid)
-            if earned >= MINIMUM_PAYOUT or project['until'] <= now:
+            if avoided_type(project['ticker']) and earned < MINIMUM_PAYOUT:
+                self._close(pid, AVOID, now)
+                changed = True
+            elif earned >= MINIMUM_PAYOUT or project['until'] <= now:
                 self._close(pid, 'cleared' if earned >= MINIMUM_PAYOUT else 'ended_under_minimum', now)
                 changed = True
         if changed:
@@ -102,6 +120,12 @@ class FinishLine:
         blocker code when the row must not be entered."""
         pid, earned, rate = row.program_id, self.earned(row.program_id), row.gross_hourly_usd
         until = row.earning_until or row.program_end
+        if avoided_type(row.ticker):
+            if pid in self.projects:
+                self._close(pid, AVOID, now)
+                self.save()
+            self.blocked += 1
+            return AVOID
         if pid in self.projects:
             # A committed project continues while $1 is reachable at all.
             if self.hopeless(pid, rate, until, now):
@@ -130,6 +154,8 @@ class FinishLine:
         """At the moment an entry is chosen: projects and cleared contracts
         pass; a new contract becomes a project if the list still has room."""
         pid = row.program_id
+        if avoided_type(row.ticker):
+            return False
         if pid in self.projects or self.earned(pid) >= MINIMUM_PAYOUT:
             return True
         if len(self.projects) >= MAX_PROJECTS:

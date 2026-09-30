@@ -1,5 +1,34 @@
 # Findings — kalshi-bot
 
+## 224. Our bad fills come from a few sweep-prone market types — 2026-09-30
+
+**MEASURED (research fills/marks/trades/sweep_counts, 2026-09-27 → 09-30;
+read-only, bot stopped by the operator at 03:54 UTC after −$28.72 since the
+09-29 22:09 restart).** 20 real entry fills (14 rows at 09-27 11:43 were a
+backfill artifact). 9 moved −$3 or worse within 60 s: app rank ×4 (all 03:26–
+03:38 UTC; average −$7.65), card spend ×3 (average −$6.77 over 6 fills),
+diesel, port TEU. The three overnight sweeps were single taker orders of 476,
+691 and 1,296 contracts at one instant (DoorDash had zero trades in the prior
+30 min): no reactive cancel can beat them (cancel ~1 s; 374 protective pulls
+since the restart worked on gradual flow).
+
+Big taker orders (≥150) per 100 market-hours we quoted: port TEU 75, diesel
+59, mortgage 54, foot traffic 51, app rank 41, card spend 28, ad spend 24,
+stock/pos 21. By UTC hour: highest 13:00 (98), 08:00 (63), 03:00 (52);
+calmest 09:00 (11), 00:00 (19), 23:00 (20), 18:00 (21), 07:00 (21). Of 70
+recorded sweeps, 56% hit only the top price level, 76% stayed within 1¢;
+queue ahead of our orders median 383 contracts vs sweep median 325, p90 912.
+Every live program uses discount 5000 bps: one tick behind the best price
+halves an order's reward.
+
+**Action (operator: "Do recommended"):** projects exclude app rank, card
+spend, port TEU, diesel and mortgage (`finish_line.AVOID_TYPES`, blocker
+`sweep_prone_market_type`); 4,414 of 5,107 scored markets remain (239 with $5+
+left; none of the top 50 excluded). Not built: an app-rank nightly pull window
+(moot while excluded), resting a tick back (halves reward; revisit if losses
+stay high), a 13:00 UTC caution (measure more first). Sample is small (20
+fills in 3 days): the type pattern is clearer than the hour pattern.
+
 ## 223. A drain with a held position cannot finish; recovery crashed on late pulses — 2026-09-28
 
 **MEASURED (status, child/parent logs, ledger, venue read-only).** The

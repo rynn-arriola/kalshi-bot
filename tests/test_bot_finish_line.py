@@ -128,6 +128,36 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(f.save_failures, 1)
 
 
+class AvoidedTypeTests(unittest.TestCase):
+    """Finding 224: sweep-prone market types are not entered or kept as projects."""
+    def test_types_are_matched_on_the_series(self):
+        for ticker, kind in (('KXCARTAPP-26OCT08-T128', 'app_rank'), ('KXAMZNCC-26OCT07-T108', 'card_spend'),
+                             ('KXNYNJPORTTEU-27FEB28-T8.8', 'port_teu'), ('KXSCPORTTEU-27JAN31-T2.4', 'port_teu'),
+                             ('KXSAVTEU-27JAN31-T1', 'port_teu'), ('KXDIESELMONAK-26SEP30-T6.7', 'diesel'),
+                             ('KX30YMORTW-26OCT01-T7.16', 'mortgage'), ('KXMONSTERPOS-26OCT03-T104', None),
+                             ('KXKYBOURBONBARRELS-26DEC31-T17.0', None), ('KXAPPLE-26-T1', None),
+                             ('KXCCSOMETHING-26-T1', None)):
+            self.assertEqual(fl.avoided_type(ticker), kind, ticker)
+
+    def test_avoided_contracts_are_blocked_and_dropped(self):
+        f = FinishLine(meter(P='0.2', C='1.5'))
+        self.assertEqual(f.plan(row('N', ticker='KXCARTAPP-X'), NOW), fl.AVOID)
+        self.assertFalse(f.claim(row('N', ticker='KXCARTAPP-X'), NOW))
+        self.assertEqual(f.plan(row('C', ticker='KXAMZNCC-X'), NOW), fl.AVOID)   # even past $1
+        f.projects['P'] = dict(ticker='KXDIESELW-X', until=NOW+timedelta(hours=40), added_at=NOW)
+        self.assertEqual(f.plan(row('P', ticker='KXDIESELW-X'), NOW), fl.AVOID)
+        self.assertEqual((f.projects, f.closed[-1]['reason']), ({}, fl.AVOID))
+
+    def test_review_drops_avoided_projects_left_from_before(self):
+        f = FinishLine(meter(A='0.4', B='1.2'))
+        f.projects = {'A': dict(ticker='KXDASHAPP-X', until=NOW+timedelta(hours=40), added_at=NOW),
+                      'B': dict(ticker='KXUALCC-X', until=NOW+timedelta(hours=40), added_at=NOW),
+                      'K': dict(ticker='KXKEEP-X', until=NOW+timedelta(hours=40), added_at=NOW)}
+        f.review(NOW)
+        self.assertEqual(set(f.projects), {'K'})
+        self.assertEqual({c['program_id']: c['reason'] for c in f.closed}, {'A': fl.AVOID, 'B': 'cleared'})
+
+
 class SelectorTests(unittest.TestCase):
     """The real selector with the project list; without it nothing changes."""
     def setUp(self):
