@@ -7,7 +7,7 @@ ephemeral policy; the existing supervisor drains durable orders first.
 import asyncio
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .selection import MarketSelector
@@ -187,6 +187,36 @@ class QuoteMaintenance:
         """D-155: the series part of a ticker (KXTXOIL-27MAR31-T5.8 -> KXTXOIL)."""
         return ticker.split('-', 1)[0]
     FILL_COOLDOWN_STALE_SECONDS = 300
+    # D-161 results filter: a family is kept out for the full 7 days only if
+    # its fills lost at least $1 more than its LIP earned; harmless fills stop
+    # blocking an hour after the last one (the event has passed, exits settled).
+    RESULTS_MIN_LOSS_USD = Decimal(1)
+    RESULTS_SETTLE_SECONDS = 3600
+    series_results = None     # family -> net realized trading $ over 7 days
+
+    def set_series_results(self, rows):
+        net = {}
+        for ticker, pnl, _ in rows:
+            family = self.market_family(ticker)
+            net[family] = net.get(family, Decimal(0))+Decimal(str(pnl))
+        self.series_results = net
+
+    def series_reward(self, family):
+        """LIP the meter credited to this family's programs in the last 7 days."""
+        meter = getattr(self.runtime, 'lip_meter', None)
+        if meter is None:
+            return Decimal(0)
+        since = utc(self.runtime.now())-timedelta(seconds=self.FILL_COOLDOWN_SECONDS)
+        return sum((row['earned'] for row in meter.programs.values()
+                    if row['end'] >= since and self.market_family(row['ticker']) == family),
+                   Decimal(0))
+
+    def family_results_bad(self, family):
+        """Unknown results keep the family blocked (fails closed)."""
+        if self.series_results is None:
+            return True
+        loss = -min(Decimal(0), self.series_results.get(family, Decimal(0)))
+        return loss >= self.RESULTS_MIN_LOSS_USD and loss > self.series_reward(family)
 
     def set_fill_history(self, rows, mono):
         """D-154/D-155: newest own fill per market family, from the ledger."""
@@ -210,11 +240,16 @@ class QuoteMaintenance:
         if (self.fill_cooldown is None or loaded is None
                 or self.runtime.clock()-loaded > self.FILL_COOLDOWN_STALE_SECONDS):
             return False
-        last = self.fill_cooldown.get(self.market_family(ticker))
+        family = self.market_family(ticker)
+        last = self.fill_cooldown.get(family)
         if last is None:
             return True
         now_us = int(utc(self.runtime.now()).timestamp()*1_000_000)
-        return now_us-last >= self.FILL_COOLDOWN_SECONDS*1_000_000
+        if now_us-last >= self.FILL_COOLDOWN_SECONDS*1_000_000:
+            return True
+        # D-161: harmless fills stop blocking once the hour after them passed.
+        return (now_us-last >= self.RESULTS_SETTLE_SECONDS*1_000_000
+                and not self.family_results_bad(family))
 
     def fill_cooldown_status(self):
         if not self.fill_cooldown_required:
@@ -222,12 +257,17 @@ class QuoteMaintenance:
         now_us = int(utc(self.runtime.now()).timestamp()*1_000_000)
         horizon = self.FILL_COOLDOWN_SECONDS*1_000_000
         cooling = {t: round((last+horizon-now_us)/3.6e9, 2)
-                   for t, last in (self.fill_cooldown or {}).items() if now_us-last < horizon}
+                   for t, last in (self.fill_cooldown or {}).items() if now_us-last < horizon
+                   and (now_us-last < self.RESULTS_SETTLE_SECONDS*1_000_000
+                        or self.family_results_bad(t))}
         age = (None if self.fill_cooldown_loaded_mono is None
                else round(self.runtime.clock()-self.fill_cooldown_loaded_mono, 1))
         return dict(required=True, loaded=self.fill_cooldown is not None, load_age_seconds=age,
                     failures=self.fill_cooldown_failures, blocks=self.fill_cooldown_blocks,
-                    hours_left=dict(sorted(cooling.items())[:30]), markets=len(cooling))
+                    hours_left=dict(sorted(cooling.items())[:30]), markets=len(cooling),
+                    results_loaded=self.series_results is not None,
+                    losing_families={f: str(round(v, 2)) for f, v in sorted(
+                        (self.series_results or {}).items()) if v <= -self.RESULTS_MIN_LOSS_USD})
 
     SWEEP_MIN_CONTRACTS = Decimal(150)  # D-155 / Finding 215
     SWEEP_BLOCK_SECONDS = 3600

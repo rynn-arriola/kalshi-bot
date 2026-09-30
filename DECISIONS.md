@@ -51,6 +51,12 @@ and explicitly withdraws the proposed fixed 60-market pool.
   app rank, card spend, port TEU, diesel and mortgage contracts are never
   entered or kept as projects (`sweep_prone_market_type`); existing projects of
   those types are dropped on the next review.
+- **Results filter on the family memory (2026-09-30):** a family (series)
+  that filled us stays blocked for 7 days only if its realized trading result
+  in those 7 days lost at least $1 more than the LIP the meter credited it;
+  harmless fills stop blocking one hour after the last fill; results unknown
+  keep it blocked. Writer read `recent_results`; status `fill_cooldown`
+  shows `losing_families`.
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market

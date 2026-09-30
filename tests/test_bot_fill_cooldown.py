@@ -32,6 +32,21 @@ class LedgerQueryTests(unittest.IsolatedAsyncioTestCase):
         await self.writer.close()
         self.temp.cleanup()
 
+    async def test_recent_results_join_each_fill_to_its_realized_result(self):
+        """D-161: (ticker, pnl, executed) per realized close, read-only."""
+        await self.writer.fill(fill('open', 'A', NOW-timedelta(hours=3)), NOW)
+        await self.writer.fill(Fill('t-close', 'o-close', 'A', 'ask', D(30), D('.40'), D('.10'),
+                               executed_us=US(NOW-timedelta(hours=2)), execution_precision_us=1), NOW)
+        await self.writer.fill(fill('old', 'B', NOW-timedelta(hours=40)), NOW)
+        revision = self.writer.revision
+        rows = await self.writer.recent_results(US(NOW-timedelta(hours=24)))
+        self.assertEqual(self.writer.revision, revision)
+        # The opening fill realizes $0; the close realizes the loss. B is too old.
+        self.assertEqual([(t, e) for t, _, e in rows], [('A', US(NOW-timedelta(hours=3))),
+                                                         ('A', US(NOW-timedelta(hours=2)))])
+        self.assertEqual(D(rows[0][1]), 0)
+        self.assertLess(D(rows[1][1]), -3)   # 30 x (0.40 - 0.53) minus fees
+
     async def test_recent_fills_are_read_only_and_bounded_by_time(self):
         await self.writer.fill(fill('old', 'OLD', NOW-timedelta(hours=30)), NOW)
         await self.writer.fill(fill('new', 'NEW', NOW-timedelta(hours=1)), NOW)
@@ -104,6 +119,48 @@ class CooldownTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.m.fill_cooldown_allows('KXTXGAS-27MAR31-T5.8'))
         self.assertEqual(list(self.m.fill_cooldown_status()['hours_left']), ['KXTXOIL'])
 
+    def results(self, **net):
+        self.m.set_series_results(tuple((family+'-X', str(v), 0) for family, v in net.items()))
+
+    def test_harmless_fills_stop_blocking_after_the_settle_hour(self):
+        """D-161: only families whose fills lost $1+ more than their LIP stay out."""
+        self.m.fill_cooldown_required = True
+        self.load(A=NOW-timedelta(minutes=59), B=NOW-timedelta(hours=2), C=NOW-timedelta(hours=2),
+                  D=NOW-timedelta(hours=2), E=NOW-timedelta(hours=2))
+        self.assertFalse(self.m.fill_cooldown_allows('B'))      # results unknown: fail closed
+        self.results(A=0, B=0, C='-0.99', D='-1.00', E='-3')
+        self.assertFalse(self.m.fill_cooldown_allows('A'))      # still inside the settle hour
+        self.assertTrue(self.m.fill_cooldown_allows('B'))       # no loss
+        self.assertTrue(self.m.fill_cooldown_allows('C'))       # under $1
+        self.assertFalse(self.m.fill_cooldown_allows('D'))      # $1 loss, no LIP
+        self.assertFalse(self.m.fill_cooldown_allows('E'))
+        status = self.m.fill_cooldown_status()
+        self.assertEqual(set(status['hours_left']), {'A', 'D', 'E'})
+        self.assertEqual(status['losing_families'], {'D': '-1.00', 'E': '-3.00'})
+
+    def test_a_familys_results_are_summed_across_its_fills(self):
+        self.m.fill_cooldown_required = True
+        self.load(E=NOW-timedelta(hours=2))
+        self.m.set_series_results((('E-1', '2.50', 0), ('E-2', '-3', 1)))   # net -0.50
+        self.assertTrue(self.m.fill_cooldown_allows('E'))
+
+    def test_lip_earned_in_the_family_can_cover_its_losses(self):
+        self.m.fill_cooldown_required = True
+        self.load(E=NOW-timedelta(hours=2))
+        self.results(E='-3')
+        meter = NS(programs={
+            'p1': dict(ticker='E-26OCT-T1', end=NOW+timedelta(days=1), earned=D('2.00')),
+            'p2': dict(ticker='E-26OCT-T2', end=NOW-timedelta(days=6), earned=D('0.50')),
+            'p3': dict(ticker='E-25JAN-T1', end=NOW-timedelta(days=8), earned=D('9')),    # too old
+            'p4': dict(ticker='F-26OCT-T1', end=NOW+timedelta(days=1), earned=D('9'))})   # other family
+        self.r.lip_meter = meter
+        self.assertEqual(self.m.series_reward('E'), D('2.50'))
+        self.assertFalse(self.m.fill_cooldown_allows('E'))      # 3 lost > 2.50 earned
+        meter.programs['p1']['earned'] = D('2.60')
+        self.assertTrue(self.m.fill_cooldown_allows('E'))       # 3 lost < 3.10 earned
+        self.r.lip_meter = None
+        self.assertEqual(self.m.series_reward('E'), 0)
+
     def test_stale_ledger_read_fails_closed(self):
         self.m.fill_cooldown_required = True
         self.load()
@@ -147,8 +204,13 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             return rows
         self.r.RESEARCH_MARK_SECONDS = (60,)
         await self.run_once(reader)
-        self.assertFalse(self.m.fill_cooldown_allows('A'))
-        self.assertFalse(self.m.fill_cooldown_allows('B'))
+        self.assertFalse(self.m.fill_cooldown_allows('A'))      # within the settle hour
+        self.assertTrue(self.m.fill_cooldown_allows('B'))       # D-161: harmless, an hour ago
+        async def losses(since):
+            return (('B', '-2.50', now_us-3_600_000_000),)
+        self.r.writer.recent_results = losses
+        await self.run_once(reader)
+        self.assertFalse(self.m.fill_cooldown_allows('B'))      # a losing family stays out
         self.assertEqual(self.r._research_marks_pending, 1)  # Only the fresh fill gets a mark.
         self.store.close()
         with closing(sqlite3.connect(self.path)) as conn:

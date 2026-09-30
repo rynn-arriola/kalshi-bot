@@ -433,6 +433,11 @@ class LedgerWriter:
         """Read-only (D-154): own fills executed at or after ``since_us``, oldest first."""
         return await self._wait(self._submit('recent_fills', integer(since_us, 0, 2**63-1)))
 
+    async def recent_results(self, since_us):
+        """Read-only (D-161): realized trading result of each own fill executed at
+        or after ``since_us``, as (ticker, pnl, executed_us), oldest first."""
+        return await self._wait(self._submit('recent_results', integer(since_us, 0, 2**63-1)))
+
     async def reaudit(self, snapshot):
         """Read-only local audit of an unchanged venue snapshot (D-130).
 
@@ -754,6 +759,14 @@ class LedgerWriter:
                     snapshot.subaccount, now))
                 return audit_snapshot(ledger, snapshot, epoch=self.epoch, revision=self._revision,
                                       capacity=self.market_capacity)
+        if command == 'recent_results':
+            rows = ledger.connection.execute(
+                "SELECT f.payload, r.pnl, f.executed_us FROM realized_events r "
+                "JOIN fills f ON f.id = r.fill_id WHERE f.executed_us >= ? "
+                "ORDER BY f.executed_us LIMIT 4097", (args[0],)).fetchall()
+            if len(rows) > 4096:
+                raise InvalidData('recent results exceed bound')
+            return tuple((json.loads(payload)[0], pnl, executed) for payload, pnl, executed in rows)
         if command == 'recent_fills':
             rows = ledger.connection.execute(
                 "SELECT id,payload,executed_us FROM fills WHERE executed_us >= ? "
@@ -1080,7 +1093,8 @@ class LedgerWriter:
                                  "private_epoch_gaps", "private_epoch_inspect", 'cancel_evidence',
                                  'next_entry_cancel_evidence', 'reduction_evidence',
                                  'command_capacity', 'accounting_status', 'reaudit',
-                                 'refined_fills', 'unknown_creates', 'recent_fills'}
+                                 'refined_fills', 'unknown_creates', 'recent_fills',
+                                 'recent_results'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

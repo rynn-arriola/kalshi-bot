@@ -6,7 +6,10 @@
 −$28.72 since the 09-29 22:09 restart (four sweep fills). Read-only analysis
 (Finding 224): most bad fills come from app rank, card spend, port TEU, diesel
 and mortgage markets. Built and tested on the branch: projects exclude those
-types. The bot stays stopped until the operator says start.
+types. Also built: a results filter on the family memory (7 harmless
+families reopen, 21 losing ones stay blocked); per-series quiet hours were
+measured and not built (no edge on 4 days of data). The bot stays stopped
+until the operator says start.
 
 ## Project list live — 2026-09-29
 

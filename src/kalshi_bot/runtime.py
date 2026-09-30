@@ -1056,8 +1056,10 @@ class RecoveryRuntime(AccountProofMixin):
         while not self.stop_requested.is_set():
             try:
                 now_us = int(utc(self.now()).timestamp()*1_000_000)
-                rows = await self.writer.recent_fills(
-                    max(0, now_us-maintenance.FILL_COOLDOWN_SECONDS*1_000_000))
+                since_us = max(0, now_us-maintenance.FILL_COOLDOWN_SECONDS*1_000_000)
+                rows = await self.writer.recent_fills(since_us)
+                # D-161: results first, so a fresh history never relaxes on stale results.
+                maintenance.set_series_results(await self.writer.recent_results(since_us))
                 maintenance.set_fill_history(rows, self.clock())
                 if self.research is not None:
                     self._research_safely(self._research_ledger_fills, rows, now_us)

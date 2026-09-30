@@ -29,6 +29,17 @@ left; none of the top 50 excluded). Not built: an app-rank nightly pull window
 stay high), a 13:00 UTC caution (measure more first). Sample is small (20
 fills in 3 days): the type pattern is clearer than the hour pattern.
 
+**Follow-up (operator: "avoid getting filled without losing on rewards"):**
+per-series "quiet hours" (block a series in an hour when it was swept at that
+hour on 2+ days) would, on the 4 days of data, have covered only 11% of big
+sweeps while blocking 10% of market-hours: no edge, not built. Built instead:
+a results filter on the family memory. Before, any fill blocked its whole
+series for 7 days; now a series stays blocked only if its fills lost $1+ more
+than the LIP the meter credited it in 7 days (unknown results keep it
+blocked; harmless fills stop blocking after one hour). On the 7-day ledger:
+28 families blocked before, 21 still blocked (real losses: Instacart −$15.47,
+diesel −$10.62, United −$8.60...), 7 reopen (net losses under $1).
+
 ## 223. A drain with a held position cannot finish; recovery crashed on late pulses — 2026-09-28
 
 **MEASURED (status, child/parent logs, ledger, venue read-only).** The
