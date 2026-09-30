@@ -13,6 +13,8 @@ and is tested but is never called by production code. So the launches at
 since D-016/D-017; earlier windows only ratcheted (41, 25).
 
 **Operator: "Close the bot"** — stopped, disarmed, not auto-starting.
+**Resolved by D-162:** the six-hour windows and their latched trip are gone;
+the rolling 24-hour $60 limit needs no release.
 **Decision needed before trading again:** release once (script: venue flat
 proof, then `release_previous`) and/or wire the automatic next-window release
 on verified flat proof (the D-016 design).

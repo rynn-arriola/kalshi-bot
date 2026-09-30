@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import kalshi_bot.finish_line as fl
-from kalshi_bot.finish_line import CANNOT, CLEARED, FULL, NEW, PROJECT, TARGET_USD, FinishLine
+from kalshi_bot.finish_line import CANNOT, FULL, JUICY, PROJECT, RANKED, TARGET_USD, FinishLine
 from kalshi_bot.lip_meter import LipMeter
 from kalshi_bot.selection import MarketSelector
 from test_bot_engine import NOW, book, program
@@ -36,7 +36,7 @@ def project(pid, ticker):
 class PlanTests(unittest.TestCase):
     def test_new_contracts_become_projects_while_the_list_has_room(self):
         f = FinishLine(meter())
-        self.assertEqual(f.plan(row('A'), NOW), (NEW, TARGET_USD/D('0.10')))
+        self.assertEqual(f.plan(row('A'), NOW), (RANKED, 0))
         self.assertTrue(f.claim(row('A'), NOW))
         self.assertEqual(f.tickers(), ('TA',))
         self.assertEqual(f.plan(row('A'), NOW), (PROJECT, TARGET_USD/D('0.10')))
@@ -48,9 +48,10 @@ class PlanTests(unittest.TestCase):
 
     def test_contracts_that_cannot_reach_the_target_in_half_their_time_do_not_start(self):
         f = FinishLine(meter(P='0.30'))
-        self.assertEqual(FinishLine(meter()).plan(row(hours=24.9), NOW), CANNOT)   # needs 12.5 h
-        self.assertEqual(FinishLine(meter()).plan(row(hours=25), NOW)[0], NEW)
-        self.assertEqual(f.plan(row(hours=19), NOW)[0], NEW)         # earnings shorten it
+        self.assertEqual(FinishLine(meter()).plan(row(hours=29.9), NOW), CANNOT)   # needs 15 h for $1.50
+        self.assertEqual(FinishLine(meter()).plan(row(hours=30), NOW)[0], RANKED)
+        self.assertEqual(f.plan(row(hours=23.9), NOW), CANNOT)       # 12 h still needed
+        self.assertEqual(f.plan(row(hours=24), NOW)[0], RANKED)      # earnings shorten it
         self.assertEqual(f.plan(row(hours=100, until=NOW+timedelta(hours=10)), NOW), CANNOT)
         for bad in (row(rate=None), row(rate='0')):
             self.assertEqual(FinishLine(meter()).plan(bad, NOW), CANNOT)
@@ -58,8 +59,9 @@ class PlanTests(unittest.TestCase):
     def test_a_project_continues_while_a_dollar_is_reachable_at_all(self):
         f = FinishLine(meter(P='0.30'))
         f.claim(row(), NOW)
-        # Needs 9.5 h for $1.25, has 12 h: more than half, still a project.
-        self.assertEqual(f.plan(row(hours=12), NOW), (PROJECT, D('9.5')))
+        # Needs 12 h for $1.50 with 12 h left: more than half, but $1 is still
+        # reachable (0.30 + 1.20), so it stays a project.
+        self.assertEqual(f.plan(row(hours=12), NOW), (PROJECT, D('12')))
         # $1 needs 7 h at 0.10/h: with 6 h left it is hopeless and dropped.
         self.assertEqual(f.plan(row(hours=6), NOW), CANNOT)
         self.assertEqual(f.projects, {})
@@ -67,25 +69,33 @@ class PlanTests(unittest.TestCase):
 
     def test_contracts_past_a_dollar_pass_without_taking_a_project_slot(self):
         f = FinishLine(meter(C='1.00'))
-        self.assertEqual(f.plan(row('C', rate='0.30'), NOW), (CLEARED, D('-0.30')))
+        self.assertEqual(f.plan(row('C', rate='0.30'), NOW), (JUICY, D('-0.30')))
+        self.assertEqual(f.plan(row('C', rate='0.05'), NOW), (JUICY, D('-0.05')))
+        self.assertEqual(f.plan(row('C', rate='0.049'), NOW), (RANKED, 0))
+        self.assertEqual(f.plan(row('C', rate=None), NOW), (RANKED, 0))
+        self.assertLess(PROJECT, JUICY)
+        self.assertLess(JUICY, RANKED)
         with patch.object(fl, 'MAX_PROJECTS', 0):
             self.assertTrue(f.claim(row('C'), NOW))
         self.assertEqual(f.projects, {})
 
-    def test_review_closes_cleared_and_expired_projects(self):
-        m = meter(A='0.5', B='0.2')
+    def test_review_closes_projects_at_the_target_or_their_end(self):
+        m = meter(A='0.5', B='0.2', C='0.4')
         f = FinishLine(m)
         f.claim(row('A'), NOW)
         f.claim(row('B', until=NOW+timedelta(hours=1)), NOW)
+        f.claim(row('C', until=NOW+timedelta(hours=1)), NOW)
+        m.programs['A']['earned'] = D('1.49')                 # past $1, short of the $1.50 target
+        m.programs['C']['earned'] = D('1.2')                  # will end past $1
         f.review(NOW)
-        self.assertEqual(set(f.projects), {'A', 'B'})
-        m.programs['A']['earned'] = D('1.01')
+        self.assertEqual(set(f.projects), {'A', 'B', 'C'})
+        m.programs['A']['earned'] = D('1.50')
         f.review(NOW+timedelta(hours=2))
         self.assertEqual(f.projects, {})
         self.assertEqual({c['program_id']: c['reason'] for c in f.closed},
-                         {'A': 'cleared', 'B': 'ended_under_minimum'})
+                         {'A': 'cleared', 'B': 'ended_under_minimum', 'C': 'ended_paid'})
         s = f.status(NOW)
-        self.assertEqual((s['cleared_total'], s['dropped_total'], s['active']), (1, 1, 0))
+        self.assertEqual((s['cleared_total'], s['dropped_total'], s['active']), (2, 1, 0))
 
     def test_hopeless_uses_the_better_of_current_and_measured_rate(self):
         m = meter(P='0.5')
@@ -113,7 +123,8 @@ class PlanTests(unittest.TestCase):
             self.assertEqual([(c['program_id'], c['reason']) for c in back.closed], [('B', CANNOT)])
             s = back.status(NOW)
             self.assertEqual(s['projects'][0]['ticker'], 'TA')
-            self.assertEqual((s['projects'][0]['to_dollar'], s['projects'][0]['hours_left']), ('0.6000', 48.0))
+            self.assertEqual((s['projects'][0]['to_dollar'], s['projects'][0]['to_target'],
+                              s['projects'][0]['hours_left']), ('0.6000', '1.1000', 48.0))
             for bad in ('{', '[]', '{"projects": {"A": {"ticker": 1}}, "closed": []}',
                         json.dumps(dict(projects={str(i): dict(ticker='T', until=NOW.isoformat(),
                             added_at=NOW.isoformat()) for i in range(31)}, closed=[]))):
@@ -155,7 +166,7 @@ class AvoidedTypeTests(unittest.TestCase):
                       'K': dict(ticker='KXKEEP-X', until=NOW+timedelta(hours=40), added_at=NOW)}
         f.review(NOW)
         self.assertEqual(set(f.projects), {'K'})
-        self.assertEqual({c['program_id']: c['reason'] for c in f.closed}, {'A': fl.AVOID, 'B': 'cleared'})
+        self.assertEqual({c['program_id']: c['reason'] for c in f.closed}, {'A': fl.AVOID, 'B': fl.AVOID})
 
 
 class SelectorTests(unittest.TestCase):
@@ -178,12 +189,17 @@ class SelectorTests(unittest.TestCase):
         args.update(kwargs)
         return self.s.propose(**args)
 
-    def test_projects_first_then_new_projects_then_cleared(self):
+    def test_projects_first_then_juicy_past_a_dollar_then_ranking(self):
         self.assertEqual([r.ticker for r in self.choose().additions], ['A', 'B', 'C'])  # rate order
-        f = FinishLine(meter(PA='1.40'))                     # A already past $1
-        f.claim(project('PC', 'C'), NOW)
-        self.assertEqual([r.ticker for r in self.choose(finish=f).additions], ['C', 'B', 'A'])
-        self.assertEqual(set(f.projects), {'PC', 'PB'})       # B joined the list; A did not
+        f = FinishLine(meter(PC='1.40'))                     # C already past $1
+        f.claim(project('PB', 'B'), NOW)
+        self.assertEqual([r.ticker for r in self.choose(finish=f).additions], ['B', 'C', 'A'])
+        self.assertEqual(set(f.projects), {'PB', 'PA'})       # A joined the list; C did not
+        # Not juicy: C past $1 falls back to its place in the normal ranking.
+        f = FinishLine(meter(PC='1.40'))
+        f.claim(project('PB', 'B'), NOW)
+        with patch.object(fl, 'JUICY_RATE_USD', D(1000)):
+            self.assertEqual([r.ticker for r in self.choose(finish=f).additions], ['B', 'A', 'C'])
 
     def test_a_full_list_blocks_other_new_contracts(self):
         f = FinishLine(meter())
@@ -218,7 +234,7 @@ class SelectorTests(unittest.TestCase):
         m = meter(PC='0.2')
         f = FinishLine(m)
         f.claim(project('PC', 'C'), NOW)
-        m.programs['PC']['earned'] = D('1.5')
+        m.programs['PC']['earned'] = D('2.5')
         self.choose(finish=f)
         self.assertEqual(f.closed[-1]['reason'], 'cleared')
 

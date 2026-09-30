@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .orders import InventoryPlan, inventory_plan
-from .exits import ExitTerms, ExitPlan, plan_exit
+from .exits import EXIT_CROSS_SECONDS, EXIT_MIDDLE_SECONDS, ExitTerms, ExitPlan, plan_exit
 from .values import InvalidData, utc
 
 
@@ -252,11 +252,14 @@ class InventoryManager:
                 blockers.append("inventory_age_unknown")
             elif now < first:
                 blockers.append("inventory_clock_regressed")
-            elif now-first >= timedelta(seconds=900):
+            elif now-first >= timedelta(seconds=EXIT_CROSS_SECONDS):
                 if terms is None: blockers.append("exit_terms_missing")
                 # One notification, not an immediate-deadline busy loop.
             else:
-                due = runtime.clock()+900-(now-first).total_seconds()
+                # Wake at the next patient-exit boundary (middle price, then cross).
+                age = (now-first).total_seconds()
+                boundary = EXIT_MIDDLE_SECONDS if age < EXIT_MIDDLE_SECONDS else EXIT_CROSS_SECONDS
+                due = runtime.clock()+boundary-age
                 existing = runtime.engine.deadlines.due_for(ticker)
                 if existing is None or due < existing:
                     # Never postpone another component's earlier safety deadline.

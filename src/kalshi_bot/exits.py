@@ -8,7 +8,14 @@ from .orders import InventoryPlan, inventory_plan
 from .values import InvalidData, count, decimal, identity, integer, price, utc
 
 
-# D-160: after 900 s an ordinary exit crosses unless the projected loss is worse
+# Patient exit (operator, 2026-09-30; replaces D-160's 15-minute cross). On our
+# 11 fully marked losing fills, crossing at 30 minutes lost $31.20 against
+# $42.70 at 15 minutes: right after a sweep the thin book is empty and the gap
+# widest, and it refills. So the exit rests at our best price for 15 minutes,
+# then at the middle of the book, and only crosses from 30 minutes on.
+EXIT_MIDDLE_SECONDS = 900
+EXIT_CROSS_SECONDS = 1800
+# D-160: after the cross age an ordinary exit crosses unless the projected loss is worse
 # than this per contract: the Polymarket reference ($8 at size 10). A flat $8
 # held 30-contract positions after a 27-cent move (Finding 222).
 ORDINARY_EXIT_LOSS_PER_CONTRACT = Decimal('0.80')
@@ -119,6 +126,25 @@ def passive_price(book, position, basis, bands):
     return touch
 
 
+def middle_price(book, position, bands):
+    """Patient exit: the valid tick nearest the middle of the book on our side
+    (never past the middle against us) that does not cross. None unless both
+    sides of the book are present."""
+    side = "ask" if position > 0 else "bid"
+    bid, ask = book.bids.best(bid=True), book.asks.best(bid=False)
+    if bid is None or ask is None:
+        return None
+    mid = (bid+ask)/2
+    p = validate_tick(ask if side == "ask" else bid, bands)
+    while True:
+        step = adjacent_tick(p, side, bands)   # one tick toward the other side
+        # The middle lies strictly between the best bid and ask, so stopping at
+        # the middle also never crosses.
+        if step is None or (step < mid if side == "ask" else step > mid):
+            return p
+        p = step
+
+
 def cross(book, position, basis, bands, fee_bound, haircut, *, excluded=()):
     """Walk at most the existing bounded ladder; no sort/copy of full universe."""
     qty = abs(position)
@@ -173,7 +199,8 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     if first_seen_at is None or basis is None: return result("blocked", "inventory_basis_or_clock_unknown")
     first_seen_at, basis = utc(first_seen_at), price(basis)
     if first_seen_at > now: return result("blocked", "inventory_clock_regressed")
-    age_at = first_seen_at+timedelta(seconds=900)
+    middle_at = first_seen_at+timedelta(seconds=EXIT_MIDDLE_SECONDS)
+    age_at = first_seen_at+timedelta(seconds=EXIT_CROSS_SECONDS)
     if terms is None: return result("blocked", "exit_terms_missing", next_at=age_at if age_at > now else None)
     if terms.ticker != ticker: raise InvalidData("exit terms scope mismatch")
     if not terms.observed_at <= now < terms.valid_until: return result("blocked", "exit_terms_stale")
@@ -182,11 +209,16 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     if journal is None: return result("blocked", "exit_journal_unknown")
     integer(journal.attempts, 0, 4096)
     preferred = passive_price(book, position, basis, terms.bands)
-    # Preserve the existing exact touch reducer before considering improvement.
-    if passive.keep_id is None:
+    if now >= middle_at:
+        # Patient exit: from 15 minutes rest at the middle of the book.
+        preferred = middle_price(book, position, terms.bands) or preferred
+        passive = inventory_plan(position, orders, ticker=ticker, touch=preferred, complete_scope=complete_scope)
+    elif passive.keep_id is None:
+        # Preserve the existing exact touch reducer before considering improvement.
         passive = inventory_plan(position, orders, ticker=ticker, touch=preferred, complete_scope=complete_scope)
     due = now >= age_at or now >= terms.deadline
-    next_at = min(age_at, terms.deadline, terms.valid_until)
+    next_at = min(t for t in (middle_at if middle_at > now else None, age_at,
+                              terms.deadline, terms.valid_until) if t is not None)
     if not due: return result("passive", limit_price=preferred, next_at=next_at)
     if terms.event_risk_at is None and terms.flatten_at is None:
         return result("blocked", "event_risk_time_unknown", limit_price=preferred)

@@ -91,7 +91,8 @@ class AccountingTests(unittest.TestCase):
         self.db.record_fill(fill("1", fee="0.10"), NOW)
         self.db.record_fill(fill("2", "ask", "4", "0.4", "0.04"), BOUNDARY)
         self.assertEqual(self.db.realized(NOW, BOUNDARY), D("-0.10"))
-        self.assertEqual(WindowRisk(self.db).observe(BOUNDARY).realized_pnl, D("-0.44"))
+        # D-162: the loss limit looks back 24 hours, so both receipts count.
+        self.assertEqual(WindowRisk(self.db).observe(BOUNDARY).realized_pnl, D("-0.54"))
         self.assertEqual(self.db.position("A"), 6)
 
     def test_late_fill_counts_now_once_not_execution_window(self):
@@ -243,29 +244,30 @@ class WriterAccountingTests(unittest.IsolatedAsyncioTestCase):
         await self.writer.close()
         self.temp.cleanup()
 
-    async def test_open_fee_ratchets_atomically_profit_and_restart_cannot_widen(self):
+    async def test_open_fees_count_atomically_toward_the_24_hour_limit(self):
         # Large synthetic fee tests the boundary, not a venue-fee estimate.
         ack = await self.writer.fill(fill("1", fee="5"), NOW)
-        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-5), 41))
+        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-5), 50))
         ack = await self.writer.fill(fill("2", "ask", price="0.9"), NOW)
-        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-1), 41))
+        self.assertEqual((ack.window.realized_pnl, ack.window.cap), (D(-1), 50))
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
-        self.assertEqual((await self.writer.observe(NOW)).cap, 41)
+        self.assertEqual((await self.writer.observe(NOW)).realized_pnl, D(-1))
 
-    async def test_fee_triggered_hold_survives_restart_and_next_window(self):
-        ack = await self.writer.fill(fill("1", fee="25"), NOW)
+    async def test_fee_triggered_hold_survives_restart_for_24_hours(self):
+        ack = await self.writer.fill(fill("1", fee="60"), NOW)
         self.assertTrue(ack.window.held)
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
         self.assertEqual((await self.writer.observe(BOUNDARY)).cap, 0)
+        self.assertEqual((await self.writer.observe(NOW+timedelta(hours=24, seconds=1))).cap, 50)
 
     async def test_duplicate_next_window_does_not_repeat_fee(self):
         f = fill("1", fee="0.1")
         await self.writer.fill(f, NOW)
         ack = await self.writer.fill(f, BOUNDARY)
         self.assertFalse(ack.inserted)
-        self.assertEqual(ack.window.realized_pnl, 0)
+        self.assertEqual(ack.window.realized_pnl, D("-0.1"))   # counted once, not twice
 
     async def test_risk_failure_rolls_back_entire_fee_journal(self):
         with patch("kalshi_bot.writer.WindowRisk.observe", side_effect=RuntimeError("fault")):

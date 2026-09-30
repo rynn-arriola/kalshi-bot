@@ -214,7 +214,7 @@ class RiskTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loss_hold_survives_restart_and_blocks_other_market(self):
         order = await self.order(filled="10", remaining="0", status="executed")
-        await self.fill(order, fee="25")
+        await self.fill(order, fee="60")   # D-162: the $60 24-hour limit
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
         self.assertIn("entry_cap", (await self.reserve(request(ticker="B"))).blockers)
@@ -384,11 +384,16 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
     async def test_inventory_age_timer_fires_without_market_updates(self):
         await self.position()
         await self.runtime.management.refresh("A")
-        self.assertEqual(self.runtime.engine.deadlines.due_for("A"), 1000)
+        self.assertEqual(self.runtime.engine.deadlines.due_for("A"), 1000)   # middle-price phase
         self.now += timedelta(seconds=900)
         self.monotonic += 900
         await self.runtime.engine.step()
         self.assertIn("A", self.deadlines)
+        self.assertNotIn("exit_terms_missing", self.runtime.management.current("A").blockers)
+        self.assertEqual(self.runtime.engine.deadlines.due_for("A"), 1900)   # patient cross age
+        self.now += timedelta(seconds=900)
+        self.monotonic += 900
+        await self.runtime.engine.step()
         self.assertIn("exit_terms_missing", self.runtime.management.current("A").blockers)
         self.assertIsNone(self.runtime.engine.deadlines.due_for("A"))
 

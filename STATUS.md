@@ -1,5 +1,26 @@
 # Current status
 
+## Patient exit and new entry order (built) — 2026-09-30
+
+Built and tested on the branch, not deployed (D-163): exits wait 15 minutes at
+our best price, then 15 at the middle, and cross only from 30 minutes. Entry
+order is now projects → finished markets with a good reward (≥ 5¢/hour) →
+everything else by normal ranking. Bot closed until the operator says start.
+
+## Loss limit: $60 per rolling 24 hours (built) — 2026-09-30
+
+Built and tested on the branch, not deployed: the six-hour $25 windows are
+replaced by one limit, a $60 net realized loss over the last 24 hours, with
+automatic resume (D-162; resolves Finding 225). Also built: the $1.50 per
+market target. Bot closed until the operator says start.
+
+## Target raised to $1.50 per market (built) — 2026-09-30
+
+Built and tested on the branch: projects now stay until each market has
+earned $1.50 (was $1.25). The 2026-09-30 $4.22 credit traced to two Alaska
+diesel contracts (estimate $4.30). Bot still closed (Finding 225 decision
+pending).
+
 ## Bot closed; loss-stop release gap found — 2026-09-30
 
 **Stopped** (operator "Close the bot"), disarmed, flat, no auto-start. Two

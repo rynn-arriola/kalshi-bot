@@ -366,7 +366,7 @@ class ProjectReportTests(unittest.TestCase):
 
     def test_projects_and_waste(self):
         text = calibration_report.projects_section(self.projects(), self.meter(), NOW)
-        self.assertIn('Active 2; last 7 days: 1 cleared $1, 1 dropped under $1.', text)
+        self.assertIn('Active 2; last 7 days: 1 reached the target or ended past $1, 1 dropped under $1.', text)
         self.assertIn('| A | 0.40 | 0.60 | 10.0 | 2.0 |', text)
         self.assertIn('| N | 0.00 | 1.00 | 5.0 | 0.0 |', text)
         self.assertLess(text.index('| A |'), text.index('| N |'))

@@ -13,7 +13,7 @@ from kalshi_bot.command_types import CommandDenied
 from kalshi_bot.config import BotConfig
 from kalshi_bot.dispatch import SAFETY_CANCEL, DUE_IOC, PASSIVE_REDUCER
 from kalshi_bot.dispatch_sources import InventoryDispatchSource
-from kalshi_bot.exits import ExitTerms
+from kalshi_bot.exits import EXIT_CROSS_SECONDS, ExitTerms
 from kalshi_bot.ledger import Fill
 from kalshi_bot.market_inputs import ExitInputService, FeeProfile
 from kalshi_bot.metadata_scheduler import MetadataScheduler
@@ -143,8 +143,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         return await self.dispatcher.run_one()
 
     async def due(self):
-        self.now += timedelta(seconds=900)
-        self.mono += 900
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report()
 
@@ -276,8 +276,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_deferred_early_exit_still_places_exact_passive_reducer(self):
         await self.ready(filled='4')
-        self.now += timedelta(seconds=900)
-        self.mono += 900
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('4')
         # Stress has too little depth, but a real passive touch is available.
@@ -293,8 +293,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_deferred_early_exit_still_cancels_building_partial_fill(self):
         order = await self.ready(filled='4', remaining='6')
-        self.now += timedelta(seconds=900)
-        self.mono += 900
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('4', (order,))
         _, book = self.runtime.management._book('A')
@@ -344,8 +344,8 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         receipt = await self.writer.order(reducer, self.now)
         self.assertTrue(receipt.reducing)
         self.runtime.account._store_order(receipt)
-        self.now += timedelta(seconds=900)
-        self.mono += 900
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('10', (reducer,))
         self.runtime.live_session = type('Paused', (), {'entries_paused': True})()
@@ -398,7 +398,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_due_missing_fee_cannot_fall_back_to_old_passive_subplan(self):
         await self.ready(filled='4', remaining='6')
-        self.now += timedelta(seconds=900)
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
         await self.books()
         await self.report('4', ((await self.writer.orders())[0].order,))
         self.terms(taker_fee_per_contract_bound=None)
@@ -407,7 +407,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_due_working_order_cancels_before_ioc(self):
         order = await self.ready(filled='4', remaining='6')
-        self.now += timedelta(seconds=900)
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
         await self.books()
         await self.report('4', (order,))
         self.assertIsNone(await self.source.refresh('A', DUE_IOC))

@@ -184,38 +184,37 @@ class RiskTests(unittest.TestCase):
         self.ledger.record_fill(fill(key+"x",side="ask",qty=str(loss*2),p="0.25"),now)
 
     def test_exact_thresholds(self):
-        # D-138: 50-entry cap; same $5 steps and $25 stop at 6/6..2/6 of it.
-        for loss, expected in (("0",50),("4.99",50),("5",41),("9.99",41),("10",33),
-                               ("15",25),("20",16),("24.99",16),("25",0),("30",0),("-5",50)):
+        # D-162: full cap below a $60 net loss over 24 hours, none at or above.
+        for loss, expected in (("0",50),("25",50),("59.99",50),("60",0),("100",0),("-5",50)):
             self.assertEqual(entry_cap(D(loss)),expected)
 
-    def test_restart_and_recovery_cannot_widen_cap(self):
-        self.closed_loss(10)
-        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,33)
-        self.ledger.record_fill(fill("profit",qty="30",p="0.25"),NOW)
-        self.ledger.record_fill(fill("profit-close",side="ask",qty="30",p="0.75"),NOW)
+    def test_a_60_dollar_day_stops_entries_and_they_resume_as_it_ages_out(self):
+        self.closed_loss(60)
+        risk=WindowRisk(self.ledger)
+        state=risk.observe(NOW)
+        self.assertEqual((state.cap,state.held,state.realized_pnl),(0,True,D(-60)))
+        self.assertTrue(risk.observe(NOW+timedelta(hours=12)).held)
         self.ledger.close()
-        self.ledger=Ledger(self.path)
-        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,33)
+        self.ledger=Ledger(self.path)                       # a restart remembers it
+        self.assertTrue(WindowRisk(self.ledger).observe(NOW+timedelta(hours=23,minutes=59)).held)
+        later=WindowRisk(self.ledger).observe(NOW+timedelta(hours=24,seconds=1))
+        self.assertEqual((later.cap,later.held,later.realized_pnl),(50,False,D(0)))
 
-    def test_hard_hold_survives_next_window_until_proof(self):
+    def test_losses_below_the_limit_never_reduce_the_cap(self):
         self.closed_loss(25)
-        risk=WindowRisk(self.ledger)
-        self.assertTrue(risk.observe(NOW).held)
-        next_window=NOW+timedelta(hours=6)
-        self.assertEqual(risk.observe(next_window).cap,0)
-        with self.assertRaises(InvalidData):
-            risk.release_previous(next_window,account_observed_at=next_window,
-                                  orders=1,positions=0,unknowns=0,complete=True)
-        self.assertEqual(risk.release_previous(next_window,account_observed_at=next_window,
-                                               orders=0,positions=0,unknowns=0,complete=True).cap,50)
+        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,50)
+        self.closed_loss(34,key="b")
+        self.assertEqual(WindowRisk(self.ledger).observe(NOW).cap,50)   # 59 in total
 
-    def test_current_window_hard_cannot_release(self):
-        self.closed_loss(25)
-        risk=WindowRisk(self.ledger)
-        risk.observe(NOW)
-        self.assertEqual(risk.release_previous(NOW,account_observed_at=NOW,
-                          orders=0,positions=0,unknowns=0,complete=True).cap,0)
+    def test_the_limit_is_net_of_gains_over_the_last_24_hours(self):
+        self.closed_loss(20,key="b",now=NOW-timedelta(hours=25))       # outside the 24 hours
+        self.closed_loss(50)
+        self.assertFalse(WindowRisk(self.ledger).observe(NOW).held)
+        self.closed_loss(15,key="c")
+        self.assertTrue(WindowRisk(self.ledger).observe(NOW).held)      # 65 lost
+        self.ledger.record_fill(fill("profit",qty="20",p="0.25"),NOW)
+        self.ledger.record_fill(fill("profit-close",side="ask",qty="20",p="0.75"),NOW)
+        self.assertFalse(WindowRisk(self.ledger).observe(NOW).held)     # 65 lost, 10 gained
 
     def test_dst_civil_windows(self):
         for month,day,expected in ((3,8,5),(11,1,7)):

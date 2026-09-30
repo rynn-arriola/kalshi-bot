@@ -27,6 +27,7 @@ from .rest import ReadFailure, ReadTransportUnavailable
 from .observability import NO_LOG, RECOVERY_CAUSES
 from .transport import WebSocketReaders, topology
 from .values import InvalidData, integer, utc
+from .exits import EXIT_CROSS_SECONDS
 
 
 def readonly_reader_factory(signer, *, connector=None):
@@ -410,7 +411,7 @@ class RecoveryRuntime(AccountProofMixin):
                 and ticker not in self._safety_recovery_retries):
             now = utc(self.now())
             age_due = (plan.inventory.first_seen_at is not None
-                       and now-plan.inventory.first_seen_at >= timedelta(seconds=900))
+                       and now-plan.inventory.first_seen_at >= timedelta(seconds=EXIT_CROSS_SECONDS))
             deadline_due = plan.terms is not None and now >= plan.terms.deadline
             if age_due or deadline_due:
                 # One inventory-episode retry at the existing safety boundary.

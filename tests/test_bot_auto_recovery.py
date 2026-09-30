@@ -114,7 +114,8 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.owner.connect_generation()
         result = await self.recover(Reads([history()]), now=lambda: NOW+timedelta(seconds=2))
         self.assertEqual((result.imported, result.already_recorded), (0, 1))
-        self.assertEqual((await self.writer.observe(NOW+timedelta(seconds=2))).realized_pnl, 0)
+        # D-162: the 24-hour look-back still counts the original receipt, once.
+        self.assertEqual((await self.writer.observe(NOW+timedelta(seconds=2))).realized_pnl, D("-0.01"))
         db = Ledger(self.path)
         try:
             self.assertEqual(db.connection.execute("SELECT received_at FROM fills").fetchone()[0], NOW.isoformat())
@@ -127,7 +128,8 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         reads = Reads([history(fee="5")])
         reads.hook = lambda n: clock.__setitem__(0, NOW+timedelta(seconds=2)) if n == 2 else None
         await self.recover(reads, now=lambda: clock[0])
-        self.assertEqual((await self.writer.observe(clock[0])).cap, 41)
+        state = await self.writer.observe(clock[0])
+        self.assertEqual((state.cap, state.held), (50, False))   # D-162: $5 is far from $60
         db = Ledger(self.path)
         try:
             self.assertEqual(db.realized(EXEC, NOW+timedelta(seconds=1)), 0)
@@ -193,7 +195,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
 
-    async def test_each_fill_ratchets_even_if_later_profit_recovers_in_same_batch(self):
+    async def test_a_batch_is_counted_net_toward_the_24_hour_limit(self):
         await self.bind("open", price="0.1")
         await self.bind("close", side="ask", price="0.9")
         rows = [history("close", side="ask", price="0.9", fee="0", when=EXEC+timedelta(seconds=1)),
@@ -201,7 +203,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         report = await self.recover(Reads(rows))  # Newest-first endpoint; deterministic replay sorts it.
         self.assertEqual(report.imported, 2)
         state = await self.writer.observe(NOW)
-        self.assertEqual((state.realized_pnl, state.cap), (D(3), 41))
+        self.assertEqual((state.realized_pnl, state.cap), (D(3), 50))
 
     async def test_invalid_later_fill_rolls_back_whole_32_fill_chunk(self):
         await self.bind()

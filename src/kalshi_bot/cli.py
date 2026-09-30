@@ -47,8 +47,8 @@ def inspect(args, diagnostics):
                           exposure_reference_slots=config.managed_market_slots,
                           portfolio_exposure_usd=(str(config.portfolio_exposure_usd)
                                                   if config.portfolio_exposure_usd is not None else None),
-                          windows="00-06/06-12/12-18/18-00 America/New_York",
-                          realized_loss_entry_caps={str(loss): entry_cap(loss) for loss in (0,5,10,15,20,25)},
+                          loss_limit="entries stop at a $60 net realized loss over the last 24 hours (D-162)",
+                          realized_loss_entry_caps={str(loss): entry_cap(loss) for loss in (0,30,59,60)},
                           live_enabled=False)
         return result, 0
     blockers = config.live_blockers()

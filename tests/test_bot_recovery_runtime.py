@@ -309,7 +309,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.reads.orders = {"o": await self.reserve()}
         await self.connected()
         await self.ingest()
-        await self.writer.fill(Fill("old", "old-order", "B", "bid", D(1), D(".5"), D(25)), EXEC)
+        await self.writer.fill(Fill("old", "old-order", "B", "bid", D(1), D(".5"), D(60)), EXEC)   # D-162 limit
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
         self.runtime = self.make_runtime()

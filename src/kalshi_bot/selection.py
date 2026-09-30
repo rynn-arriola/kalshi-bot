@@ -166,8 +166,8 @@ class MarketSelector:
                 plans[key] = finish.plan(row, now)
             return plans[key]
         if finish is not None:
-            # D-161 phase 3: projects first (closest to $1), then new projects
-            # while the list has room, then contracts already past $1.
+            # D-161 phase 3: projects first (closest to the target), then
+            # juicy contracts already past $1, then the rest in ranking order.
             finish.review(now)
             ranked = tuple(sorted(ranked, key=lambda row: (
                 (True,) if row.blockers else

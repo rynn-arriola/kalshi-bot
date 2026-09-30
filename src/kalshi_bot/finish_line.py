@@ -10,10 +10,10 @@ committed to finish past $1.
   can no longer reach the target in time (dropped); it is never displaced by
   a better-looking contract.
 - A new contract becomes a project only while the list has room and only if
-  it can reach $1.25 needing at most half its remaining earning time; the
-  fastest to $1.25 are taken first.
-- Contracts already past $1 are paid for every further cent, so they may use
-  entry slots projects cannot use right now (lowest priority).
+  it can reach the target needing at most half its remaining earning time.
+- Order (operator 2026-09-30): projects first; then contracts already past $1
+  whose reward is juicy (payment is guaranteed and every further cent is
+  paid); then everything else in the normal reward ranking.
 - Everything else is blocked (``project_list_full``), so effort is not spread.
 
 Ordering and entry eligibility only: every loss check still applies. The list
@@ -30,7 +30,9 @@ from .lip_meter import MINIMUM_PAYOUT
 from .ranking import seconds
 from .values import InvalidData, utc
 
-TARGET_USD = Decimal('1.25')      # $1 plus a margin for estimate error
+# Operator 2026-09-30: aim for $1.50 per market so estimate error cannot leave
+# a contract under Kalshi's $1 floor; earnings above $1 are paid in full.
+TARGET_USD = Decimal('1.50')
 COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time left
 # The entry cap holds 25 buy/sell pairs; 5 more let a project that is
 # temporarily blocked (pull cooldown, sweep filter) keep its place without
@@ -38,7 +40,12 @@ COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time 
 MAX_PROJECTS = 30
 CLOSED_KEPT = 200                 # recently finished or dropped projects, for reports
 
-PROJECT, NEW, CLEARED = 0, 1, 2   # priority tiers, best first
+# Priority tiers, best first (operator 2026-09-30): projects still working
+# toward the target; then markets already past $1 whose reward is juicy; then
+# new projects and other markets past $1 together, kept in the board's normal
+# reward ranking (the selection sort is stable and their key is equal).
+PROJECT, JUICY, RANKED = 0, 1, 2
+JUICY_RATE_USD = Decimal('0.05')  # $/hour for our pair: about our top 10%
 FULL = 'project_list_full'
 CANNOT = 'cannot_reach_payout_minimum'
 AVOID = 'sweep_prone_market_type'
@@ -100,11 +107,13 @@ class FinishLine:
         now, changed = utc(now), False
         for pid, project in list(self.projects.items()):
             earned = self.earned(pid)
-            if avoided_type(project['ticker']) and earned < MINIMUM_PAYOUT:
+            if avoided_type(project['ticker']):
                 self._close(pid, AVOID, now)
                 changed = True
-            elif earned >= MINIMUM_PAYOUT or project['until'] <= now:
-                self._close(pid, 'cleared' if earned >= MINIMUM_PAYOUT else 'ended_under_minimum', now)
+            elif earned >= TARGET_USD:
+                self._close(pid, 'cleared', now)
+            elif project['until'] <= now:
+                self._close(pid, 'ended_paid' if earned >= MINIMUM_PAYOUT else 'ended_under_minimum', now)
                 changed = True
         if changed:
             self.save()
@@ -139,7 +148,9 @@ class FinishLine:
                                  else Decimal(10**9))
         if earned >= MINIMUM_PAYOUT:
             self.planned += 1
-            return CLEARED, -(rate or Decimal(0))
+            if rate is not None and rate >= JUICY_RATE_USD:
+                return JUICY, -rate
+            return RANKED, 0
         needed = self._needed(earned, rate, until, now)
         if needed is None:
             self.blocked += 1
@@ -148,7 +159,7 @@ class FinishLine:
             self.blocked += 1
             return FULL
         self.planned += 1
-        return NEW, needed
+        return RANKED, 0
 
     def claim(self, row, now):
         """At the moment an entry is chosen: projects and cleared contracts
@@ -215,10 +226,11 @@ class FinishLine:
         return dict(target_usd=str(TARGET_USD), max_projects=MAX_PROJECTS,
             active=len(self.projects), planned=self.planned, blocked=self.blocked,
             save_failures=self.save_failures,
-            cleared_total=sum(1 for c in self.closed if c['reason'] == 'cleared'),
-            dropped_total=sum(1 for c in self.closed if c['reason'] != 'cleared'),
+            cleared_total=sum(1 for c in self.closed if c['reason'] in ('cleared', 'ended_paid')),
+            dropped_total=sum(1 for c in self.closed if c['reason'] not in ('cleared', 'ended_paid')),
             projects=[dict(ticker=p['ticker'], earned_usd=str(round(self.earned(pid), 4)),
                            to_dollar=str(round(max(Decimal(0), MINIMUM_PAYOUT-self.earned(pid)), 4)),
+                           to_target=str(round(max(Decimal(0), TARGET_USD-self.earned(pid)), 4)),
                            hours_left=round(float(seconds(p['until']-now))/3600, 1))
                       for pid, p in rows],
             authorized=False)

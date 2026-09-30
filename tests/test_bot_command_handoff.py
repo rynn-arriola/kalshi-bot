@@ -15,7 +15,7 @@ from kalshi_bot.adapters import PriceBand
 from kalshi_bot.books import Book, BookConnection, Ladder
 from kalshi_bot.engine import EventEngine
 from kalshi_bot.config import BotConfig
-from kalshi_bot.exits import ExitTerms, plan_exit
+from kalshi_bot.exits import EXIT_CROSS_SECONDS, ExitTerms, plan_exit
 from kalshi_bot.execution import InjectedExecutor
 from kalshi_bot.ledger import Fill
 from kalshi_bot.management import InventoryManager, ManagedPlan
@@ -76,7 +76,7 @@ class CommandHandoffTests(unittest.IsolatedAsyncioTestCase):
             exchange_index=exchange_index)
 
     async def reduction_proof(self, request, *, now=None):
-        decision_now = now or (NOW+timedelta(seconds=900)
+        decision_now = now or (NOW+timedelta(seconds=EXIT_CROSS_SECONDS)
                                if request['time_in_force'] == 'immediate_or_cancel'
                                else NOW)
         inventory = await self.writer.market_inventory('A', subaccount=0)

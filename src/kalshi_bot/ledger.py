@@ -381,42 +381,19 @@ class Ledger:
             ctx.prec = 40
             return sum((Decimal(row[0]) for row in rows), Decimal(0))
 
-    def realized_incremental(self, start: datetime, end: datetime) -> Decimal:
-        """Transactional derived total for the append-only receipt journal.
-
-        Cold windows use the time index once; warm windows read only new rowids.
-        The cursor and Decimal total commit/roll back with fills and risk caps.
-        Never delete, rewrite or prune journal rows without invalidating these
-        totals in the same transaction. Corrections require a separate design.
-        """
+    def realized_since(self, start: datetime, end: datetime) -> Decimal:
+        """D-162: realized trading result received in [start, end] (rolling
+        window; no cached total, so a moving start adds no rows)."""
         first, last = utc(start).isoformat(), utc(end).isoformat()
-        if first >= last:
+        if first > last:
             raise InvalidData("invalid realized window")
-        with self.transaction(), localcontext() as ctx:
+        with localcontext() as ctx:
             ctx.prec = 40
-            cached = self.connection.execute(
-                "SELECT through_rowid,pnl FROM realized_totals WHERE start=? AND end=?",
-                (first, last)).fetchone()
-            through = self.connection.execute(
-                "SELECT COALESCE(MAX(rowid),0) FROM realized_events").fetchone()[0]
-            if cached is None:
-                total = Decimal(0)
-                rows = self.connection.execute(
-                    "SELECT pnl FROM realized_events WHERE received_at>=? AND received_at<? "
-                    "ORDER BY received_at,rowid", (first, last))
-            else:
-                if cached[0] > through:
-                    raise InvalidData("receipt journal shrank; derived totals invalid")
-                total = Decimal(cached[1])
-                rows = self.connection.execute(
-                    "SELECT pnl FROM realized_events WHERE rowid>? AND rowid<=? "
-                    "AND received_at>=? AND received_at<? ORDER BY rowid",
-                    (cached[0], through, first, last))
-            for row in rows:
+            total = Decimal(0)
+            for row in self.connection.execute(
+                    "SELECT pnl FROM realized_events WHERE received_at>=? AND received_at<=?",
+                    (first, last)):
                 total += Decimal(row[0])
-            self.connection.execute(
-                "INSERT OR REPLACE INTO realized_totals VALUES (?,?,?,?)",
-                (first, last, through, str(total)))
             return total
 
     def reserve_intent(self, client_id: str, payload: dict, now: datetime):

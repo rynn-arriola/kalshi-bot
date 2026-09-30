@@ -617,8 +617,8 @@ def projects_section(projects, meter, now, *, days=7):
         since = now-timedelta(days=days)
         recent = [c for c in projects['closed'] if c['closed_at'] >= since]
         out.append(f"Active {len(projects['active'])}; last {days} days: "
-                   f"{sum(c['reason'] == 'cleared' for c in recent)} cleared $1, "
-                   f"{sum(c['reason'] != 'cleared' for c in recent)} dropped under $1.")
+                   f"{sum(c['reason'] in ('cleared', 'ended_paid') for c in recent)} reached the target or ended past $1, "
+                   f"{sum(c['reason'] not in ('cleared', 'ended_paid') for c in recent)} dropped under $1.")
         rows = sorted(projects['active'].items(), key=lambda item: -(
             earned[item[0]]['earned'] if item[0] in earned else Decimal(0)))
         out.append(table(['project', 'earned $', 'to $1', 'hours left', 'hours rested'],

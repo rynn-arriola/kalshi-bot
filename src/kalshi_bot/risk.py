@@ -15,17 +15,20 @@ def window_bounds(now: datetime) -> tuple[datetime, datetime]:
     return utc(start), utc(start + timedelta(hours=6))
 
 
-# D-138: resting entry-order cap (was 30). The six-hour loss ratchet keeps its
-# $5 steps and $25 stop, scaled to the same fractions of the cap (6/6 .. 2/6, 0).
+# D-138: resting entry-order cap (was 30).
 MAX_RESTING_ENTRIES = 50
+# D-162 (operator, 2026-09-30): "no time frame stop loss ... just a 24 hr stop
+# loss of 60 max". Replaces the six-hour $25 window with $5 step-downs, whose
+# tripped windows were never released (Finding 225). Entries stop while the
+# realized trading loss of the last 24 hours is $60 or more and resume by
+# themselves once older losses age out; exits and protection never stop.
+DAILY_LOSS_LIMIT = Decimal(60)
+LOSS_LOOKBACK = timedelta(hours=24)
 
 
 def entry_cap(loss: Decimal) -> int:
-    loss = max(Decimal(0), decimal(loss))
-    for threshold, sixths in ((25, 0), (20, 2), (15, 3), (10, 4), (5, 5)):
-        if loss >= threshold:
-            return MAX_RESTING_ENTRIES*sixths//6
-    return MAX_RESTING_ENTRIES
+    """Full cap below the rolling 24-hour limit, none at or above it."""
+    return 0 if decimal(loss) >= DAILY_LOSS_LIMIT else MAX_RESTING_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -53,35 +56,12 @@ class WindowRisk:
             last_fill = conn.execute("SELECT value FROM meta WHERE key='fill_clock'").fetchone()
             if last_fill and last_fill[0] > now.isoformat():
                 raise InvalidData("future fill observation; risk state is not coherent")
-            pnl = self.ledger.realized_incremental(start, end)
-            conn.execute("INSERT OR IGNORE INTO risk_windows(start,end,entry_cap) VALUES (?,?,?)",
-                         (start.isoformat(), end.isoformat(), MAX_RESTING_ENTRIES))
-            row = conn.execute("SELECT * FROM risk_windows WHERE start=?", (start.isoformat(),)).fetchone()
-            cap = min(row["entry_cap"], entry_cap(-pnl))
-            conn.execute("UPDATE risk_windows SET entry_cap=?,tripped=? WHERE start=?",
-                         (cap, int(bool(row["tripped"]) or cap == 0), start.isoformat()))
+            # D-162: rolling 24-hour realized result; the six-hour bounds remain
+            # only as the proof/refresh lifetime other owners already use.
+            pnl = self.ledger.realized_since(now-LOSS_LOOKBACK, now)
+            cap = entry_cap(-pnl)
             conn.execute("INSERT OR REPLACE INTO meta VALUES ('risk_clock',?)", (now.isoformat(),))
-            held = conn.execute("SELECT 1 FROM risk_windows WHERE tripped=1 AND released=0 LIMIT 1").fetchone() is not None
-        return WindowState(start, end, pnl, 0 if held else cap, held, now)
-
-    def release_previous(self, now: datetime, *, account_observed_at: datetime,
-                         orders: int, positions: int, unknowns: int, complete: bool) -> WindowState:
-        now, observed = utc(now), utc(account_observed_at)
-        start, _ = window_bounds(now)
-        for value in (orders, positions, unknowns):
-            integer(value, 0, 1000000)
-        # A strict candidate five-second freshness gate; not a live-approved SLA.
-        if complete is not True or any((orders, positions, unknowns)) or not start <= observed <= now:
-            raise InvalidData("fresh complete next-window flat proof required")
-        if now - observed > timedelta(seconds=5) or self.ledger.unresolved_intents():
-            raise InvalidData("proof stale or durable ownership unresolved")
-        if self.ledger.connection.execute("SELECT 1 FROM lots LIMIT 1").fetchone():
-            raise InvalidData("ledger inventory conflicts with flat proof")
-        self.observe(now)
-        with self.ledger.connection:
-            self.ledger.connection.execute(
-                "UPDATE risk_windows SET released=1 WHERE tripped=1 AND end<=?", (start.isoformat(),))
-        return self.observe(now)
+        return WindowState(start, end, pnl, cap, cap == 0, now)
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import json
 import math
 import os
+from .risk import DAILY_LOSS_LIMIT, LOSS_LOOKBACK
 from pathlib import Path
 import shutil
 import time
@@ -334,7 +335,11 @@ async def local_status(runtime):
         exposure_usd=str(view.total), risk_blockers=list(view.blockers),
         account_current=report is not None,
         accounting_blockers=list(release.blockers) if release is not None else ['accounting_not_released'],
-        loss_window=asdict(window) if window is not None else None,
+        # D-162: the rolling 24-hour loss limit (no six-hour windows to track).
+        loss_window=(dict(lookback_hours=24, since=(window.observed_at-LOSS_LOOKBACK).isoformat(),
+                          realized_pnl=str(window.realized_pnl), limit_usd=str(DAILY_LOSS_LIMIT),
+                          cap=window.cap, held=window.held, observed_at=window.observed_at.isoformat())
+                     if window is not None else None),
         recovery_restrictions=restrictions, runtime=runtime.status())
 
 

@@ -4,9 +4,11 @@
 
 **Dated follow-ups — do not drop:**
 
-- **Finding 225 (blocks trading):** a tripped $25 loss window is never released.
-  Operator to choose: one-time release on venue flat proof and/or automatic
-  next-window release on verified flat proof (D-016 design).
+- **D-162 + D-163 deploy at the next start:** rolling 24-hour $60 loss limit
+  replaces the six-hour windows (Finding 225 resolved); patient exit (15 min
+  best price, 15 min middle, then cross); entry order projects → juicy past $1
+  → ranking; $1.50 per-market target. Last 24 h loss at 09-30 ~16:00
+  UTC is well under $60, so entries resume at start.
 
 - **Finding 223 follow-ups:** explain why the recovery-only child could not
   read its pipe for > 4 s; decide whether an operator stop with a held

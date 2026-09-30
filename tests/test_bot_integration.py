@@ -86,15 +86,15 @@ class WriterTests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
 
-    async def test_every_fill_ratchets_before_profit_can_hide_loss(self):
+    async def test_fills_count_net_toward_the_24_hour_limit_across_restart(self):
         for f in (fill(), fill("2", "ask", "0.3"), fill("3", "bid", "0.1"),
                   fill("4", "ask", "0.9")):
             ack = await self.writer.fill(f, NOW)
         self.assertEqual(ack.window.realized_pnl, 2)
-        self.assertEqual(ack.window.cap, 41)
+        self.assertEqual(ack.window.cap, 50)       # D-162: net result, $60 limit
         await self.writer.close()
         self.writer = await LedgerWriter(self.path).start()
-        self.assertEqual((await self.writer.observe(NOW)).cap, 41)
+        self.assertEqual((await self.writer.observe(NOW)).realized_pnl, 2)
 
     async def test_risk_failure_rolls_back_close_and_poisons_writer(self):
         await self.writer.fill(fill(), NOW)

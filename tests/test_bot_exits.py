@@ -40,7 +40,7 @@ class ExitTests(unittest.TestCase):
             orders=(),book=book(),terms=terms(),journal=ExitJournal(),now=NOW,complete_scope=True)
         return plan_exit(**(defaults|kw))
 
-    def due(self,**kw): return self.plan(**({'first_seen_at':NOW-timedelta(seconds=900)}|kw))
+    def due(self,**kw): return self.plan(**({'first_seen_at':NOW-timedelta(seconds=1800)}|kw))
 
     def test_profitable_long_steps_one_tick(self):
         p=self.plan(); self.assertEqual((p.mode,p.limit_price,p.passive.reduce_quantity),('passive',D('.59'),10))
@@ -86,16 +86,55 @@ class ExitTests(unittest.TestCase):
         self.assertEqual(adjacent_tick(D('.5'),'ask',bands),D('.49'))
         self.assertEqual(adjacent_tick(D('.5'),'bid',bands),D('.505'))
 
-    def test_no_early_ioc_before_900(self):
-        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=899)).mode,'passive')
+    def test_no_ioc_before_the_patient_cross_age(self):
+        # Patient exit: crossing starts at 30 minutes (was 15, D-160).
+        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=1799)).mode,'passive')
+        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=1800)).mode,'ioc')
+
+    def test_first_15_minutes_rest_at_our_best_price_then_at_the_middle(self):
+        wide=book(bids=(('.2','40'),),asks=(('.6','40'),))
+        early=self.plan(basis=D('.5'),book=wide,first_seen_at=NOW-timedelta(seconds=899))
+        self.assertEqual((early.mode,early.limit_price),('passive',D('.59')))     # our best price
+        self.assertEqual(early.next_at,NOW+timedelta(seconds=1))               # wakes at the switch
+        mid=self.plan(basis=D('.5'),book=wide,first_seen_at=NOW-timedelta(seconds=900))
+        self.assertEqual((mid.mode,mid.limit_price),('passive',D('.4')))          # middle of .2/.6
+        self.assertEqual(mid.next_at,NOW+timedelta(seconds=900))               # then the cross age
+        short=self.plan(position=D(-10),basis=D('.5'),book=wide,first_seen_at=NOW-timedelta(seconds=900))
+        self.assertEqual(short.limit_price,D('.4'))
+        odd=book(bids=(('.2','40'),),asks=(('.61','40'),))                     # middle .405
+        self.assertEqual(self.plan(book=odd,first_seen_at=NOW-timedelta(seconds=900)).limit_price,D('.41'))
+        self.assertEqual(self.plan(position=D(-10),book=odd,
+                                   first_seen_at=NOW-timedelta(seconds=900)).limit_price,D('.4'))
+
+    def test_middle_price_never_crosses_and_needs_both_sides(self):
+        from kalshi_bot.exits import middle_price
+        tight=book(bids=(('.5','40'),),asks=(('.51','40'),))
+        self.assertEqual(middle_price(tight,D(10),BANDS),D('.51'))
+        self.assertEqual(middle_price(tight,D(-10),BANDS),D('.5'))
+        self.assertIsNone(middle_price(book(bids=()),D(10),BANDS))
+        self.assertIsNone(middle_price(book(asks=()),D(-10),BANDS))
+        one_sided=book(bids=())
+        p=self.plan(book=one_sided,first_seen_at=NOW-timedelta(seconds=900))
+        self.assertEqual((p.mode,p.limit_price),('passive',D('.6')))           # falls back to the touch
+
+    def test_the_middle_phase_replaces_a_reducer_resting_at_the_touch(self):
+        wide=book(bids=(('.2','40'),),asks=(('.6','40'),))
+        resting=(receipt(p='.6'),)
+        early=self.plan(book=wide,orders=resting,first_seen_at=NOW-timedelta(seconds=899))
+        self.assertEqual(early.passive.keep_id,'r')
+        later=self.plan(book=wide,orders=resting,first_seen_at=NOW-timedelta(seconds=900))
+        self.assertNotEqual(later.passive.keep_id,'r')
 
     def test_ordinary_exact_quantity_capped_ioc(self):
         p=self.due(); self.assertEqual((p.mode,p.limit_price,p.quantity),('ioc',D('.4'),10))
         self.assertEqual(p.projected_pnl,D('-1.2')); self.assertFalse(p.authorized)
 
-    def test_ordinary_depth_haircut_defers_preserving_reducer(self):
+    def test_ordinary_depth_haircut_defers_to_a_reducer_at_the_middle(self):
+        # Patient exit: a deferred cross keeps working a reducer, now at the
+        # middle of the book (.4/.6 -> .5) instead of the far touch.
         p=self.due(book=book(bids=(('.4','10'),)),orders=(receipt(),))
-        self.assertEqual(p.mode,'passive_deferred'); self.assertEqual(p.passive.keep_id,'r')
+        self.assertEqual((p.mode,p.limit_price),('passive_deferred',D('.5')))
+        self.assertTrue(p.passive_allowed)
 
     def test_ordinary_loss_limit_defers_at_worse_than_eight(self):
         p=self.due(basis=D('.99'),book=book(bids=(('.1','40'),),asks=(('.11','40'),)))

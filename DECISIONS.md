@@ -10,6 +10,47 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-163 — Patient exit, and entry order: projects, juicy finished, ranking
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-30.
+- **Decision owner:** Operator: "Ok lets do patient exit"; "project list
+  priority then the one we already completed because its guaranteed we will
+  get paid but only if reward is good, then next is based on ranking".
+- **Patient exit (replaces D-160's 15-minute cross; the $0.80/contract loss
+  cap stays):** after a fill the exit rests at our best price (one-tick
+  improvement) for 15 minutes, then at the tick nearest the middle of the book
+  (never crossing), and may cross only from 30 minutes (`EXIT_MIDDLE_SECONDS`,
+  `EXIT_CROSS_SECONDS`). The event/close deadline still forces the exit.
+  Evidence: replaying our 11 fully marked losing fills, crossing at 30 minutes
+  lost $31.20 against $42.70 at 15 minutes and $48.90 at 1 minute; right after
+  a sweep the thin book is empty and refills.
+- **Entry order:** (1) project-list contracts still working toward $1.50,
+  closest first; (2) contracts already past $1 whose reward rate is at least
+  5¢/hour for our pair (`JUICY_RATE_USD`, about our top 10%): payment is
+  guaranteed and every further cent is paid; (3) everything else — new
+  projects and other contracts past $1 — in the board's normal reward ranking.
+  Contracts past $1 never take a project slot. Every loss check still applies.
+- **Watch:** exit cost per losing fill (WATCHLIST B8) and whether juicy
+  finished contracts attract fills.
+
+### D-162 — One loss limit: $60 net over the last 24 hours
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-09-30.
+- **Decision owner:** Operator: "I think we should not have time frame stop
+  loss and just have a 24 hr stop loss of 60 max ... We dont need to track 6
+  hours anymore".
+- **What:** new entries stop while the net realized trading result (fills and
+  fees, gains offset losses) of the last 24 hours is −$60 or worse
+  (`risk.DAILY_LOSS_LIMIT`, `LOSS_LOOKBACK`); they resume by themselves as
+  older losses age out. Below the limit the full 50-entry cap applies (no
+  step-downs). Exits, pulls and protection never stop.
+- **Supersedes:** the six-hour America/New_York windows with the $25 stop and
+  $5 step-downs (D-016/D-017/D-138) and their latched trip, which was never
+  released (Finding 225). `release_previous` and the cached window totals
+  (`realized_incremental`) are removed; the old tables stay unused.
+- **Unchanged internally:** the six-hour clock still bounds account-proof
+  lifetimes (not a loss rule). Status `loss_window` shows the 24-hour view.
+
 ### D-161 — Measure reward per contract in real time before concentrating
 
 - **Status:** ACCEPTED plan, 2026-09-29. Step 1 (meter) implemented and verified
@@ -57,6 +98,15 @@ and explicitly withdraws the proposed fixed 60-market pool.
   harmless fills stop blocking one hour after the last fill; results unknown
   keep it blocked. Writer read `recent_results`; status `fill_cooldown`
   shows `losing_families`.
+- **$1.50 target per market (operator, 2026-09-30):** "we should not target a
+  dollar ... this is per individual market not pool ... Maybe 1.50 usd Not 2
+  usd". A contract joins the project list only if it can reach $1.50 needing at
+  most half its remaining earning time, and stays until the meter shows $1.50 in
+  that one market's program (earnings above $1 are paid in full, so the extra
+  time is not wasted); it is still dropped only if even $1 becomes
+  unreachable. Never summed across an event, series or pool. Evidence: the
+  $4.22 credit of 2026-09-30 matched two Alaska diesel contracts (6.60 $2.32,
+  6.70 $1.98 resting-based; 98% of the estimate), ~6-7 pair-hours each.
 - **Decision owner:** Operator, adopting outside advice from an experienced
   Kalshi LIP trader: "Are we making sure we do it this way".
 - **Facts adopted:** Kalshi's $1 payout floor applies **per contract (market
