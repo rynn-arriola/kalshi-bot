@@ -10,6 +10,26 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-167 — 50 contracts per order after the $490 deposit; project list 35
+
+- **Status:** ACCEPTED, 2026-10-01. Operator: "i added 490 how much we
+  increase size" → "Contract size max 100 maybe" → "Dont change stop loss" →
+  "Which is better increase contract number or increase order number" → "Go
+  50 then".
+- **What:** approved money set ($1,090 capital, 50 contracts); `config/bot.json`
+  capital 1090, entry_contracts 50, managed_market_slots 11 (portfolio
+  exposure cap 50 × 21 = $1,050; per-market cap $450). Order cap stays 50;
+  the 24-hour stop stays $60 (D-162). Project list (`MAX_LIST`) 50 → 35: at
+  50 contracts cash covers about 25 working pairs plus 10 places for blocked
+  projects; 50 spread resting time too thin (50 projects, 21 working).
+- **Why size, not more orders:** total reward is cash-limited either way;
+  bigger orders concentrate it so markets reach the $1 floor sooner (none of
+  183 metered markets had reached $1 after two days; best $0.39). Rejected
+  100: one typical bad fill (−$23–60) could trip the unchanged $60 stop.
+- **Watch:** reward rate per market vs size (in thin books we may already
+  hold most of the qualifying size), fill losses per event (typical
+  −$12–30 now), stop trips.
+
 ### D-166 — Only projects with working orders count toward the project limit
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.

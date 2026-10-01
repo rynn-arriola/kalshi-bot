@@ -40,9 +40,11 @@ COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time 
 # projects with working orders count toward it (operator 2026-10-01): blocked
 # projects (pull cooldown, entry filters) keep their place and first priority
 # but no longer hold entry slots idle (12 of 30 did, leaving 18 of 25 pairs
-# used). MAX_LIST bounds the whole list so effort is not spread.
+# used). MAX_LIST bounds the whole list so effort is not spread: at 50
+# contracts cash covers about 25 working pairs, plus 10 places for blocked
+# projects (operator 2026-10-01: 50 spread resting time too thin).
 MAX_PROJECTS = 30
-MAX_LIST = 50
+MAX_LIST = 35
 CLOSED_KEPT = 200                 # recently finished or dropped projects, for reports
 
 # Priority tiers, best first (operator 2026-09-30): projects still working

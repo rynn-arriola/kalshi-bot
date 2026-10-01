@@ -73,8 +73,8 @@ class PolyExposureTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(main(['policy','--config',str(root/'config/bot.json')]),0)
         result=json.loads(output.getvalue())
-        self.assertEqual(result['exposure_reference_slots'],10)  # D-164
-        self.assertEqual(result['portfolio_exposure_usd'],'600')
+        self.assertEqual(result['exposure_reference_slots'],11)  # D-167
+        self.assertEqual(result['portfolio_exposure_usd'],'1050')
         self.assertFalse(result['live_enabled'])
 
 

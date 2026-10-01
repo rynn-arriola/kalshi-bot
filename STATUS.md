@@ -1,5 +1,10 @@
 # Current status
 
+## 50 contracts per order, project list 35 (built) — 2026-10-01
+
+D-167 after the operator's $490 deposit (account $1,090.25). Needs the full
+test run and an operator "restart" to deploy.
+
 ## Project limit counts only working projects (built) — 2026-10-01
 
 D-166: blocked projects no longer hold entry slots idle (18 of 25 pairs were

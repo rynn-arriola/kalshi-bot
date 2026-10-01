@@ -14,6 +14,9 @@ APPROVED_MONEY = frozenset((
     # D-164 (operator 2026-09-30): about $600 in the account; 50 orders of 30
     # average $567. window_stop_usd is no longer used (D-162: $60 per 24 h).
     (Decimal("600"), Decimal("30"), Decimal("25")),
+    # D-167 (operator 2026-10-01): $490 deposit, account about $1,090; 50
+    # contracts per order (50 orders about $950). Stop unchanged (D-162 $60).
+    (Decimal("1090"), Decimal("50"), Decimal("25")),
 ))
 _ACTIVE = None
 _REFERENCE = None  # Immutable reference profile, built once (review #5).
