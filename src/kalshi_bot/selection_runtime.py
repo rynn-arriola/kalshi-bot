@@ -47,6 +47,12 @@ class PriorityCandidateHint:
 class RuntimeSelection:
     def __init__(self, runtime, *, offline_fixture=False, initial_timeout=120):
         self._committed_projects = frozenset()   # D-168, set per selection
+        # D-169 diagnostics: why each project did or did not get orders, per
+        # proposal (cumulative counts and the latest reasons), and how often a
+        # whole batch of additions was discarded because one source changed.
+        self.project_reasons, self.project_last = {}, {}
+        self.discarded_batches = self.discarded_additions = 0
+        self.discarded_samples = ()
         from .runtime import RecoveryRuntime
         if (not isinstance(runtime, RecoveryRuntime)
                 or not (offline_fixture is True or runtime.observation_only
@@ -262,11 +268,16 @@ class RuntimeSelection:
                   and view.entry_count+2 <= window.cap)
         return replace(candidates, refill=refill)
 
-    def _record_proposal(self, result):
+    def _record_proposal(self, result, *, discarded=()):
         counts = {}
         for _, reasons in result.exclusions:
             for reason in set(reasons):
                 counts[reason] = counts.get(reason, 0)+1
+        if discarded:
+            self.discarded_batches += 1
+            self.discarded_additions += len(discarded)
+            self.discarded_samples = tuple(sorted({row.ticker for row in discarded}))[:8]
+        self._record_project_reasons(result, discarded)
         self.last_proposal = dict(observed_at=utc(self.runtime.now()).isoformat(),
             additions=len(result.additions), blockers=list(result.blockers),
             priority_additions=sum(row.gross_remaining_usd is not None
@@ -284,6 +295,36 @@ class RuntimeSelection:
             exclusion_counts=counts, exclusion_samples=list(result.exclusions[:8]),
             historical_only=True)
         return result
+
+    def _record_project_reasons(self, result, discarded):
+        """Diagnostics only (D-169): never changes a selection."""
+        finish = getattr(self.runtime, 'finish_line', None)
+        if finish is None:
+            return
+        excluded = {}
+        for ticker, reasons in result.exclusions:
+            excluded.setdefault(ticker, set()).update(reasons)
+        added = {row.ticker for row in result.additions}
+        stale = {row.ticker for row in discarded}
+        tickers = set(finish.tickers())
+        for ticker in tickers:
+            if ticker in added:
+                reasons = ('added',)
+            elif ticker in stale:
+                reasons = ('batch_discarded_sources_changed',)
+            elif ticker in excluded:
+                reasons = tuple(sorted(excluded[ticker]))
+            elif result.blockers:
+                reasons = tuple(result.blockers)
+            else:
+                reasons = ('not_evaluated',)
+            tally = self.project_reasons.setdefault(ticker, {})
+            for reason in reasons:
+                tally[reason] = tally.get(reason, 0)+1
+            self.project_last[ticker] = reasons
+        for ticker in [t for t in self.project_reasons if t not in tickers]:
+            self.project_reasons.pop(ticker, None)
+            self.project_last.pop(ticker, None)
 
     def _available(self):
         r = self.runtime
@@ -625,7 +666,8 @@ class RuntimeSelection:
                 result = replace(result, blockers=tuple(dict.fromkeys(
                     result.blockers+('priority_revalidation_pending',))))
         if any(not self.current(row.ticker) or utc(r.now()) >= row.valid_until for row in result.additions):
-            return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)))
+            return self._record_proposal(SelectionReport((), result.retained, (), ('selection_sources_changed',)),
+                                         discarded=result.additions)
         accounted = {row.ticker for row in result.additions} | {t for t, _ in result.exclusions}
         missing = tuple((t, self._rejected.get(t, ('selection_evidence_unavailable',)))
                         for t in sorted(r.engine.market_shard) if t not in accounted)
@@ -650,6 +692,12 @@ class RuntimeSelection:
                     dispatch_selection_evidence=list(
                         self._dispatch_selection_evidence.values()),
                     last_proposal=self.last_proposal,
+                    project_reasons={t: dict(last=list(self.project_last.get(t, ())),
+                                             counts=dict(sorted(c.items(), key=lambda kv: -kv[1])[:6]))
+                                     for t, c in sorted(self.project_reasons.items())},
+                    discarded_batches=self.discarded_batches,
+                    discarded_additions=self.discarded_additions,
+                    discarded_samples=list(self.discarded_samples),
                     initial_ranking=(self.initial_ranking.status()
                                      if self.initial_ranking is not None else None),
                     venue_requests=0, automatic_repricing=self.runtime.maintenance is not None,

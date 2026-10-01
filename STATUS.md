@@ -1,5 +1,10 @@
 # Current status
 
+## Project list 50 + per-project idle reasons (built) — 2026-10-01
+
+D-169: list back to 50 (35 left ~10 markets working); status now shows why
+each project has no orders. Restart authorized by the operator after tests.
+
 ## Project progress kept; projects pass the $2 gate (built) — 2026-10-01
 
 D-168 fixes the project list reset from the D-167 restart and lets committed

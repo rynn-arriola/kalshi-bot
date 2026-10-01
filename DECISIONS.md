@@ -10,6 +10,26 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-169 — Project list back to 50; log why each project idles
+
+- **Status:** ACCEPTED, 2026-10-01. Operator: "Check what is really happening
+  then recommend me" → "Do all recommendation they review it then restart".
+- **Evidence:** orders averaged 41–44/h at 11–14 UTC (list 50) and 20–22/h
+  after the D-167 list cut to 35. Live books: 153 of 158 top markets and all
+  35 projects pass the 70% exit check at 50 contracts (size is not the
+  cause); fill-risk pulls and short-queue triggers were unchanged. Of 35
+  projects at 17:30: 10 had orders, 3 had a known block (two coal markets
+  after a losing fill, one at 19¢), 22 had no externally visible reason.
+  `selection_sources_changed` rose from 6–19 to 44–90 per proposal.
+- **What:** MAX_LIST 35 → 50 (stopgap); status `selection.project_reasons`
+  (per project: latest reasons and counts per proposal: added, retained,
+  each exclusion, `batch_discarded_sources_changed`, `not_evaluated`) and
+  `discarded_batches` / `discarded_additions` / `discarded_samples`
+  (a whole batch dropped because one market's source changed). Diagnostics
+  only; selection is unchanged. 50 contracts kept.
+- **Next:** after about an hour of data, fix the dominant idle reason (if it
+  is the whole-batch discard, drop only the stale market).
+
 ### D-168 — Keep project progress; committed projects pass the $2 gate
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.

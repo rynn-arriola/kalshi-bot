@@ -44,7 +44,10 @@ COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time 
 # contracts cash covers about 25 working pairs, plus 10 places for blocked
 # projects (operator 2026-10-01: 50 spread resting time too thin).
 MAX_PROJECTS = 30
-MAX_LIST = 35
+# D-169 (2026-10-01): 35 was too small: only ~40% of projects can rest at a
+# time, so 35 filled with idle projects and turned new markets away (10-15
+# working). 50 kept ~21 working; back to 50 until the idle cause is fixed.
+MAX_LIST = 50
 CLOSED_KEPT = 200                 # recently finished or dropped projects, for reports
 # D-168 (2026-10-01): metered progress is never orphaned. At launch a market
 # with at least this much earned but under the target rejoins the list (a

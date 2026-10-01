@@ -296,6 +296,41 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         result = await self.proposal()
         self.assertEqual([row.ticker for row in result.additions],['A'])   # committed project
 
+    async def test_project_reasons_and_discarded_batches_are_recorded(self):
+        # D-169 diagnostics: 22 of 35 projects had no visible reason to idle.
+        from kalshi_bot.finish_line import FinishLine
+        from kalshi_bot.lip_meter import LipMeter
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        rows = {row.ticker: row for row in (await self.proposal()).additions}
+        f = self.r.finish_line = FinishLine(LipMeter())
+        f.projects[rows['A'].program_id] = dict(ticker='A', until=rows['A'].program_end, added_at=self.now)
+        f.projects['other'] = dict(ticker='Z', until=rows['A'].program_end, added_at=self.now)
+        await self.proposal()
+        await self.proposal()
+        status = self.s.status()['project_reasons']
+        self.assertEqual(status['A']['last'], ['added'])
+        self.assertEqual(status['Z']['last'], ['not_evaluated'])
+        self.assertEqual(status['A']['counts'], {'added': 2})
+        # A source that changes between selection and the final check discards
+        # the whole batch; it is counted and named.
+        calls = {}
+        original = self.s.current
+        def flaky(ticker):
+            calls[ticker] = calls.get(ticker, 0)+1
+            return original(ticker) and calls[ticker] == 1
+        self.s.current = flaky
+        result = await self.proposal()
+        self.assertFalse(result.additions)
+        status = self.s.status()
+        self.assertEqual(status['discarded_batches'], 1)
+        self.assertGreaterEqual(status['discarded_additions'], 1)
+        self.assertIn('A', status['discarded_samples'])
+        self.assertEqual(status['project_reasons']['A']['last'], ['batch_discarded_sources_changed'])
+        del f.projects['other']
+        await self.proposal()
+        self.assertNotIn('Z', self.s.status()['project_reasons'])     # pruned with the list
+
     async def test_a_new_project_deferred_by_the_priority_gate_is_unclaimed(self):
         from unittest.mock import patch
         import kalshi_bot.finish_line as fl
