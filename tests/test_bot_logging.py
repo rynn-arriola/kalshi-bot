@@ -65,6 +65,17 @@ class LoggingTests(unittest.TestCase):
         self.assertEqual(status['backups'], 7)
         self.assertEqual(status['retention_bytes'], 96*1024*1024)
 
+    def test_recovery_incomplete_names_its_reason(self):
+        # D-165: a silent incomplete recovery cost a start; the reason is logged.
+        log = self.start()
+        log.emit('recovery_incomplete', attempt=1, phase='tail_snapshot',
+                 recovery_reason='audit_inconsistent')
+        log.emit('recovery_incomplete', attempt=2, recovery_reason='made-up reason')
+        log.close()
+        events = [r for r in rows(self.directory) if r['event'] == 'recovery_incomplete']
+        self.assertEqual(events[0]['context']['recovery_reason'], 'audit_inconsistent')
+        self.assertNotIn('recovery_reason', events[1]['context'])
+
     def test_json_schema_order_correlation_and_drain(self):
         log = self.start()
         for _ in range(3):

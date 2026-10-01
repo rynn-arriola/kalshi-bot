@@ -141,6 +141,17 @@ ENUMS = {'stream': frozenset(('account', 'lifecycle', 'book-0', 'book-1', 'book-
                                  # D-145 anchored protection
                                  'short_queue', 'blind', 'anchor_missing', 'anchor_invalid')),
          'cause': RECOVERY_CAUSES,
+         # Why a recovery pass returned incomplete (runtime._recovery_fail).
+         'recovery_reason': frozenset((
+             'account_not_ready', 'account_changed_before_snapshot', 'first_snapshot_incomplete',
+             'history_incomplete', 'account_changed_during_fills', 'order_lookup_budget',
+             'account_changed_during_orders', 'final_snapshot_incomplete', 'final_report_superseded',
+             'management_changed_report', 'tail_history_or_snapshot_incomplete',
+             'reaudit_needs_fresh_read', 'tail_report_superseded', 'snapshot_changed_during_tail',
+             'pending_fills_remaining', 'history_fills_missing', 'history_enumeration_missing',
+             'history_rows_omitted', 'report_not_current', 'audit_inconsistent',
+             'private_epoch_ambiguous', 'private_event_during_recovery', 'history_scope_changed',
+             'accounting_not_released')),
          'maintenance_reason': frozenset(('fill_risk_withdrawal', 'restore_reference_pair',
              'incomplete_pair_below_minimum', 'persistently_unscoring',
              'earning_window_ended', 'cannot_reach_payout_minimum')),

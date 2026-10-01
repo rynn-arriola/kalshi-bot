@@ -192,6 +192,7 @@ class RecoveryRuntime(AccountProofMixin):
         self.recovery_attempt_counts = {}
         self.recovery_phase = 'idle'
         self.recovery_last_phase = 'idle'
+        self.recovery_last_reason = None
         self.recovery_elapsed_ms = 0
         self.recovery_phase_ms = {}
         self.recovery_final_reaudits = 0
@@ -1808,6 +1809,7 @@ class RecoveryRuntime(AccountProofMixin):
         async with self.recovery_lock:
             started = self.clock()
             self.recovery_phase = 'history'
+            self.recovery_last_reason = None
             self._chained_pass = False
             repaired = False
             try:
@@ -1826,14 +1828,18 @@ class RecoveryRuntime(AccountProofMixin):
                 self.recovery_elapsed_ms = max(0, int((self.clock()-started)*1000))
                 self.recovery_phase = 'idle'
 
+    def _recovery_fail(self, reason):
+        self.recovery_last_reason = reason
+        return False
+
     async def _repair(self):
         if not self.account_subscribed or not self.account.connected or self.writer.failed:
-            return False
+            return self._recovery_fail('account_not_ready')
         generation = self.account.generation
         reads = RecoveryReads(self.reads)
         await self.engine.private_idle.wait()
         if generation != self.account.generation or not self.account.connected:
-            return False
+            return self._recovery_fail('account_changed_before_snapshot')
         self.recovery_phase = 'first_snapshot'
         # D-134: download history concurrently with the first snapshot. Its
         # import still runs after the snapshot under the ordinary token; any
@@ -1860,7 +1866,7 @@ class RecoveryRuntime(AccountProofMixin):
             raise
         if first is None:
             await self.account.discard_prefetch(prefetched)
-            return False
+            return self._recovery_fail('first_snapshot_incomplete')
         first_mark, lookups = self.account.report_mark(first), reads.order_lookups
         history_ingress = self.ingress_revision
         self.recovery_phase = 'history'
@@ -1868,7 +1874,7 @@ class RecoveryRuntime(AccountProofMixin):
                                                     end=history_end, now=self.now,
                                                     prefetched=prefetched)
         if history is None:
-            return False
+            return self._recovery_fail('history_incomplete')
         self._observe_history_scope(history, self.clock()-history_started)
         history_reports = [history]
         release_receipt_ids = chained_ids+(history.enumeration.receipt_id,)
@@ -1877,7 +1883,7 @@ class RecoveryRuntime(AccountProofMixin):
         attempted = set()
         for item in pending:
             if generation != self.account.generation or not self.account.connected:
-                return False
+                return self._recovery_fail('account_changed_during_fills')
             known = await self.writer.order_evidence(item.fill.order_id)
             if known is None and item.fill.order_id not in attempted and len(attempted) < 32:
                 attempted.add(item.fill.order_id)
@@ -1892,10 +1898,10 @@ class RecoveryRuntime(AccountProofMixin):
         for receipt in await self.writer.orders():
             if receipt.awaiting_fills or (not receipt.order.terminal and receipt.order.order_id not in visible):
                 if reads.order_lookups >= 32:
-                    return False
+                    return self._recovery_fail('order_lookup_budget')
                 await self.account.recover_order(reads, receipt.order.order_id, now=self.now)
             if generation != self.account.generation or not self.account.connected:
-                return False
+                return self._recovery_fail('account_changed_during_orders')
         # D-143: old UNKNOWN creates are bound or resolved from complete venue
         # order lists; any change forces the ordinary final venue read.
         unknown_changed = await self._resolve_unknown_creates(reads)
@@ -1913,11 +1919,11 @@ class RecoveryRuntime(AccountProofMixin):
         if final is None:
             final = await self.account.reconcile(reads, now=self.now)
         if final is None or generation != self.account.generation:
-            return False
+            return self._recovery_fail('final_snapshot_incomplete')
         remaining = await self.writer.pending_fills(self.account.subaccount)
         if (self.account.report is not final or not self.account.connected
                 or self.engine.private or self.account._processing):
-            return False
+            return self._recovery_fail('final_report_superseded')
         self.last_reports = (history, final)
         self.history_ingress_revision = history_ingress
         active = {p.ticker for p in final.snapshot.positions if p.quantity}
@@ -1927,7 +1933,7 @@ class RecoveryRuntime(AccountProofMixin):
             await self.management.refresh(ticker)
             self._request_inventory_dispatch(ticker)
         if self.account.report is not final or generation != self.account.generation:
-            return False
+            return self._recovery_fail('management_changed_report')
         prepared_accounting = None
         if self.accounting_boundary is not None:
             # Inventory/order refresh can consume the five-second evidence
@@ -1953,23 +1959,37 @@ class RecoveryRuntime(AccountProofMixin):
                     if isinstance(value, BaseException):
                         raise value
                 if history is None or reconciled is None:
-                    return False
+                    return self._recovery_fail('tail_history_or_snapshot_incomplete')
                 final, prepared_accounting = reconciled
                 history_reports.append(history)
                 release_receipt_ids += (history.enumeration.receipt_id,)
             elif reaudited:
-                return False  # A re-audited snapshot never releases without a fresh read.
+                return self._recovery_fail('reaudit_needs_fresh_read')  # A re-audited snapshot never releases without a fresh read.
             if (final is None or generation != self.account.generation
                     or self.account.report is not final or not self.account.connected
                     or self.engine.private or self.account._processing):
-                return False
+                return self._recovery_fail('tail_report_superseded')
             remaining = await self.writer.pending_fills(self.account.subaccount)
             self.last_reports = (history, final)
             self.history_ingress_revision = history_ingress
             if self._snapshot_signature(final) != prior_signature:
                 self._refresh_continuity()
-                return False
+                return self._recovery_fail('snapshot_changed_during_tail')
         # Exact local agreement is necessary, never complete venue/history proof.
+        # Name the first failed condition: a silent False cost a start (D-165).
+        checks = (('pending_fills_remaining', not remaining),
+                  ('history_fills_missing', all(not item.missing_fill_keys for item in history_reports)),
+                  ('history_enumeration_missing', all(item.enumeration is not None
+                                                      for item in history_reports)),
+                  ('history_rows_omitted', all(item.enumeration is None or not item.enumeration.omitted_rows
+                                               for item in history_reports)),
+                  ('report_not_current', self.account.current_report(self.now()) is final),
+                  ('audit_inconsistent', final.audit.consistent),
+                  ('private_epoch_ambiguous', not self._epoch_ambiguous),
+                  ('private_event_during_recovery', history_ingress == self.ingress_revision),
+                  ('history_scope_changed', (history.generation, history.subaccount) ==
+                      (self.account.generation, self.account.subaccount)))
+        self.recovery_last_reason = next((name for name, ok in checks if not ok), None)
         repaired = (not remaining
                 and all(not item.missing_fill_keys and item.enumeration is not None
                         and not item.enumeration.omitted_rows for item in history_reports)
@@ -2013,6 +2033,8 @@ class RecoveryRuntime(AccountProofMixin):
                     reads, proposed_boundary=self.accounting_boundary,
                     continuity=release_continuity, now=self.now, release=True)
             repaired = self.accounting_result.released
+            if not repaired:
+                self.recovery_last_reason = 'accounting_not_released'
             if repaired:
                 self._record_routine_proof(release_receipt_ids, history)
         if repaired:
@@ -2159,7 +2181,8 @@ class RecoveryRuntime(AccountProofMixin):
                     break
                 self.diagnostics.emit('recovery_incomplete', attempt=attempt+1,
                     generation=self.account.generation, cause=cause,
-                    phase=self.recovery_last_phase, elapsed_ms=self.recovery_elapsed_ms)
+                    phase=self.recovery_last_phase, elapsed_ms=self.recovery_elapsed_ms,
+                    recovery_reason=self.recovery_last_reason)
                 if attempt+1 == self.attempt_limit:
                     if transient_failure:
                         self.recovery_retry_rounds += 1
@@ -2596,6 +2619,7 @@ class RecoveryRuntime(AccountProofMixin):
             recovery_request_counts=dict(self.recovery_request_counts),
             recovery_attempt_counts=dict(self.recovery_attempt_counts),
             recovery_phase=self.recovery_phase, recovery_last_phase=self.recovery_last_phase,
+            recovery_last_reason=self.recovery_last_reason,
             recovery_elapsed_ms=self.recovery_elapsed_ms,
             recovery_phase_ms=dict(self.recovery_phase_ms),
             recovery_final_reaudits=self.recovery_final_reaudits,
