@@ -112,6 +112,7 @@ class FinishLine:
                 changed = True
             elif earned >= TARGET_USD:
                 self._close(pid, 'cleared', now)
+                changed = True
             elif project['until'] <= now:
                 self._close(pid, 'ended_paid' if earned >= MINIMUM_PAYOUT else 'ended_under_minimum', now)
                 changed = True

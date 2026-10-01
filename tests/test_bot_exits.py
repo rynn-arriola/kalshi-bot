@@ -125,6 +125,29 @@ class ExitTests(unittest.TestCase):
         later=self.plan(book=wide,orders=resting,first_seen_at=NOW-timedelta(seconds=900))
         self.assertNotEqual(later.passive.keep_id,'r')
 
+    def test_the_middle_leaves_our_own_orders_out_and_does_not_chase_itself(self):
+        late=NOW-timedelta(seconds=900)
+        # Our reducer moved to the middle .4 and is now the best ask: the
+        # middle of other traders' quotes is still .4, so it is kept.
+        ours=(receipt(p='.4'),)
+        held=self.plan(book=book(bids=(('.2','40'),),asks=(('.4','10'),('.6','30'))),orders=ours,first_seen_at=late)
+        self.assertEqual((held.limit_price,held.passive.keep_id),(D('.4'),'r'))
+        # Other traders also quote at our price: their size still counts.
+        shared=self.plan(book=book(bids=(('.2','40'),),asks=(('.4','15'),)),orders=ours,first_seen_at=late)
+        self.assertEqual((shared.limit_price,shared.passive.keep_id),(D('.3'),None))
+        # Nobody else quotes our side: keep the reducer where it is.
+        alone=self.plan(book=book(bids=(('.2','40'),),asks=(('.4','10'),)),orders=ours,first_seen_at=late)
+        self.assertEqual(alone.passive.keep_id,'r')
+        # Our own order on the other side is left out too; terminal ones are not ours.
+        from kalshi_bot.exits import middle_price
+        b=book(bids=(('.3','5'),('.2','40')),asks=(('.6','40'),))
+        self.assertEqual(middle_price(b,D(10),BANDS,(receipt('e',side='bid',p='.3',qty='5'),)),D('.4'))
+        # A canceled order can still report its unfilled count; it is not working.
+        gone=OrderReceipt(OrderUpdate('e','e','A','bid',D('.3'),D(5),D(0),D(5),'canceled',0,0,1),
+                          True,True,False,'TERMINAL',False)
+        self.assertEqual(middle_price(b,D(10),BANDS,(gone,)),D('.45'))
+        self.assertEqual(middle_price(b,D(10),BANDS,(receipt('e',side='bid',p='.3',qty='5',owned=False),)),D('.45'))
+
     def test_ordinary_exact_quantity_capped_ioc(self):
         p=self.due(); self.assertEqual((p.mode,p.limit_price,p.quantity),('ioc',D('.4'),10))
         self.assertEqual(p.projected_pnl,D('-1.2')); self.assertFalse(p.authorized)

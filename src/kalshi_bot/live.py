@@ -10,12 +10,12 @@ from datetime import datetime, timezone
 import json
 import math
 import os
-from .risk import DAILY_LOSS_LIMIT, LOSS_LOOKBACK
 from pathlib import Path
 import shutil
 import time
 from uuid import uuid4
 
+from .risk import DAILY_LOSS_LIMIT, LOSS_LOOKBACK
 from .config import BotConfig, active as active_config, activate as activate_config
 from .candidate_inputs import CandidateInputs
 from .candidate_preparation import prepare_candidates
@@ -336,7 +336,7 @@ async def local_status(runtime):
         account_current=report is not None,
         accounting_blockers=list(release.blockers) if release is not None else ['accounting_not_released'],
         # D-162: the rolling 24-hour loss limit (no six-hour windows to track).
-        loss_window=(dict(lookback_hours=24, since=(window.observed_at-LOSS_LOOKBACK).isoformat(),
+        loss_window=(dict(lookback_hours=int(LOSS_LOOKBACK.total_seconds()//3600), since=(window.observed_at-LOSS_LOOKBACK).isoformat(),
                           realized_pnl=str(window.realized_pnl), limit_usd=str(DAILY_LOSS_LIMIT),
                           cap=window.cap, held=window.held, observed_at=window.observed_at.isoformat())
                      if window is not None else None),
@@ -390,7 +390,10 @@ async def supervise(runtime, *, stop, publish, interval=1, flatten=None):
             result['emergency_flatten'] = runtime.management.flatten_at is not None
             result['emergency_flatten_supported'] = True
             await asyncio.to_thread(publish, result)
-            if (runtime.entry_pause_active and result['account_current']
+            # D-162: a loss hold drains entries but keeps running (it lifts
+            # by itself); only an operator or recovery pause ends a flat run.
+            if (runtime.entry_pause_active and not runtime.loss_hold_only
+                    and result['account_current']
                     and not result['positions'] and not result['resting_entries']
                     and not result['risk_blockers'] and runtime.last_reports is not None):
                 if await verified_flat(runtime):

@@ -48,13 +48,13 @@ class ValueConfigTests(unittest.TestCase):
         # original reference profile used by offline fixtures.
         config = BotConfig.load(ROOT / "config/bot.json")
         self.assertEqual((config.capital_usd, config.entry_contracts, config.window_stop_usd),
-                         (D(780), D(30), D(25)))
-        self.assertEqual(config.managed_market_slots, 16)
+                         (D(600), D(30), D(25)))   # D-164
+        self.assertEqual(config.managed_market_slots, 10)
         self.assertEqual(config.minimum_entry_retained_value, D('.70'))
         self.assertEqual(config.maximum_entry_downside, D('.80'))  # D-155
         self.assertEqual(config.minimum_projected_reward_usd, D(1))
         self.assertEqual(config.priority_projected_reward_usd, D(2))
-        self.assertEqual(config.portfolio_exposure_usd, 780)
+        self.assertEqual(config.portfolio_exposure_usd, 600)
         self.assertLessEqual(config.portfolio_exposure_usd, config.capital_usd)
         self.assertEqual(config.market_exposure_usd, 270)
         self.assertEqual(BotConfig().portfolio_exposure_usd, 300)  # reference

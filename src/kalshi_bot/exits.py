@@ -126,12 +126,24 @@ def passive_price(book, position, basis, bands):
     return touch
 
 
-def middle_price(book, position, bands):
+def middle_price(book, position, bands, orders=()):
     """Patient exit: the valid tick nearest the middle of the book on our side
-    (never past the middle against us) that does not cross. None unless both
-    sides of the book are present."""
+    (never past the middle against us) that does not cross. Our own working
+    orders are left out of the book: counted in, each reprice would move the
+    middle and walk our exit to one tick from the other side within a minute.
+    None unless other traders quote both sides."""
     side = "ask" if position > 0 else "bid"
-    bid, ask = book.bids.best(bid=True), book.asks.best(bid=False)
+    ours = {}
+    for r in orders:
+        if r.owned and not r.order.terminal:
+            key = (r.order.side, r.order.yes_price)
+            ours[key] = ours.get(key, Decimal(0))+r.order.remaining
+
+    def others_best(ladder, name):
+        prices = ladder.prices if name == "ask" else reversed(ladder.prices)
+        return next((p for p in prices if ladder.levels[p] > ours.get((name, p), 0)), None)
+
+    bid, ask = others_best(book.bids, "bid"), others_best(book.asks, "ask")
     if bid is None or ask is None:
         return None
     mid = (bid+ask)/2
@@ -209,9 +221,11 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     if journal is None: return result("blocked", "exit_journal_unknown")
     integer(journal.attempts, 0, 4096)
     preferred = passive_price(book, position, basis, terms.bands)
-    if now >= middle_at:
-        # Patient exit: from 15 minutes rest at the middle of the book.
-        preferred = middle_price(book, position, terms.bands) or preferred
+    middle = middle_price(book, position, terms.bands, orders) if now >= middle_at else None
+    if middle is not None:
+        # Patient exit: from 15 minutes rest at the middle of other traders'
+        # quotes (an exact reducer already there is kept).
+        preferred = middle
         passive = inventory_plan(position, orders, ticker=ticker, touch=preferred, complete_scope=complete_scope)
     elif passive.keep_id is None:
         # Preserve the existing exact touch reducer before considering improvement.

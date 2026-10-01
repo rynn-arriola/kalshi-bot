@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "capital_usd": "780",
+  "capital_usd": "600",
   "entry_contracts": "30",
   "max_resting_entries": 50,
   "window_stop_usd": "25",
@@ -8,7 +8,7 @@
   "maximum_entry_downside": "0.80",
   "minimum_projected_reward_usd": "1",
   "priority_projected_reward_usd": "2",
-  "managed_market_slots": 16,
+  "managed_market_slots": 10,
   "live_enabled": false,
   "book_connections": 4,
   "event_queue_capacity": 8192,

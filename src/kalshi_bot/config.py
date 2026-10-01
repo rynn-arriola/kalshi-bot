@@ -11,6 +11,9 @@ from .values import InvalidData, decimal, integer
 APPROVED_MONEY = frozenset((
     (Decimal("500"), Decimal("10"), Decimal("25")),  # original reference profile
     (Decimal("780"), Decimal("30"), Decimal("25")),  # D-142 after the $300 deposit
+    # D-164 (operator 2026-09-30): about $600 in the account; 50 orders of 30
+    # average $567. window_stop_usd is no longer used (D-162: $60 per 24 h).
+    (Decimal("600"), Decimal("30"), Decimal("25")),
 ))
 _ACTIVE = None
 _REFERENCE = None  # Immutable reference profile, built once (review #5).

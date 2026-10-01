@@ -4,7 +4,7 @@
 
 **Dated follow-ups — do not drop:**
 
-- **D-162 + D-163 deploy at the next start:** rolling 24-hour $60 loss limit
+- **D-162 + D-163 + D-164 + Finding 226 fixes deploy at the next start:** rolling 24-hour $60 loss limit
   replaces the six-hour windows (Finding 225 resolved); patient exit (15 min
   best price, 15 min middle, then cross); entry order projects → juicy past $1
   → ranking; $1.50 per-market target. Last 24 h loss at 09-30 ~16:00

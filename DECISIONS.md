@@ -10,6 +10,19 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-164 — Capital setting $600 (account about $600)
+
+- **Status:** ACCEPTED, 2026-09-30. Operator: "Can we still support 50 orders
+  only have 600 usd" → "Ok do recommendation and restart".
+- **What:** approved money set ($600 capital, 30 contracts) in
+  `config/bot.json`, with `managed_market_slots` 10 so the portfolio exposure
+  cap (30 × (10+10) = $600) does not exceed capital. The 50-entry cap and size
+  30 are unchanged.
+- **Evidence:** 307 entry orders since 09-27 tied up $11.35 each on average
+  (p90 $19.80); 50 orders ≈ $567. Free cash and the $600 exposure cap simply
+  place fewer orders when cash runs short (no error, no overspend).
+- `window_stop_usd` stays in the approved tuple but is unused since D-162.
+
 ### D-163 — Patient exit, and entry order: projects, juicy finished, ranking
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-09-30.

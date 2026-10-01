@@ -1,5 +1,17 @@
 # Current status
 
+## Capital setting $600 (built) — 2026-09-30
+
+Config now matches the ~$600 account (D-164): 50 orders of 30 need about
+$567; cash and the exposure cap limit the count automatically.
+
+## Code review fixes (built) — 2026-09-30
+
+Review of the D-162/D-163 commit found and fixed three bugs before deploy
+(Finding 226): the middle exit chased its own order down to one tick from the
+other side; a $60 loss hold would have stopped the bot instead of pausing it;
+a project reaching $1.50 was not saved at once. Bot closed until start.
+
 ## Patient exit and new entry order (built) — 2026-09-30
 
 Built and tested on the branch, not deployed (D-163): exits wait 15 minutes at

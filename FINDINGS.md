@@ -1,5 +1,29 @@
 # Findings — kalshi-bot
 
+## 226. Code review before deploy: the middle exit chased itself; a $60 hold would stop the bot — 2026-09-30
+
+**VERIFIED (review of 6a82fa8; fixed and tested before any deploy).**
+1. **Middle exit chased itself:** the 15-minute middle price was computed
+   from the venue book, which includes our own exit order. Each reprice made
+   our order the new best price, the middle moved, and with the 5-second
+   reprice settle the exit walked to one tick from the other side within about
+   a minute (bid .30 / ask .60: planned .45, ended .31). Tests missed it
+   because their books never held our order. Fix: `middle_price` leaves our
+   own working orders out; if nobody else quotes our side, the existing
+   reducer is kept.
+2. **D-162 hold would end the run:** the loss hold counts as an entry pause,
+   and the live loop ends a flat paused run (`STOPPED_FLAT`), after which the
+   supervisor disarms, so a $60 day needed a manual start, contrary to D-162.
+   Fix: `RecoveryRuntime.loss_hold_only`; a flat run held only by the loss
+   limit keeps running (entries drained, none placed) and resumes by itself.
+   Operator stops and recovery pauses are unchanged.
+3. **Cleared project not saved at once:** `FinishLine.review` closed a
+   project at $1.50 without saving; a restart before the next save lost the
+   record. Fix: saved at once.
+
+New tests put our own order in the book, run the live loop held and flat,
+and reload the list; mutation checks kill every reverted fix.
+
 ## 225. A tripped $25 loss window is never released; starts exit at once — 2026-09-30
 
 **VERIFIED (ledger `risk_windows`, status, logs, code).** The 2026-09-29

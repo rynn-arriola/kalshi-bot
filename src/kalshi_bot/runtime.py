@@ -618,6 +618,15 @@ class RecoveryRuntime(AccountProofMixin):
             account_known=False, offline_fixture=False)
 
     @property
+    def loss_hold_only(self):
+        """D-162: the only pause is the rolling 24-hour loss hold, which lifts
+        by itself as older losses age out; flat is then no reason to stop."""
+        window = getattr(self.accounting_result, 'window', None)
+        return bool(window is not None and window.held
+                    and not (self.live_session is not None and self.live_session.entries_paused)
+                    and not self._recovery_safety_pause)
+
+    @property
     def entry_pause_active(self):
         """Operator/recovery pause or durable hard loss hold; never a cap reset."""
         window = getattr(self.accounting_result, 'window', None)

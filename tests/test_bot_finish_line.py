@@ -132,6 +132,17 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(FinishLine(meter(), path).load().projects, {}, bad[:40])
             self.assertEqual(FinishLine(meter()).load().projects, {})
 
+    def test_a_project_reaching_the_target_is_saved_at_once(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'projects.json'
+            m = meter(A='0.4')
+            f = FinishLine(m, path)
+            f.claim(row('A'), NOW)
+            m.programs['A']['earned'] = D('1.50')
+            f.review(NOW)
+            back = FinishLine(m, path).load()
+            self.assertEqual((back.projects, [c['reason'] for c in back.closed]), ({}, ['cleared']))
+
     def test_a_failed_save_is_counted_not_fatal(self):
         with TemporaryDirectory() as temp:
             f = FinishLine(meter(), Path(temp)/'missing'/'projects.json')

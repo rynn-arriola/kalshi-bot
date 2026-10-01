@@ -587,6 +587,37 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.calls)
 
 
+class LossHoldSuperviseTests(unittest.IsolatedAsyncioTestCase):
+    """D-162: a flat loss hold keeps the run alive; an operator stop ends it."""
+    async def test_flat_loss_hold_keeps_running_until_an_operator_stop(self):
+        from kalshi_bot import live
+        done = asyncio.Event()
+        session = SimpleNamespace(entries_paused=False)
+        runtime = SimpleNamespace(run=done.wait, stop=done.set, live_session=session,
+            entry_pause_active=True, loss_hold_only=True, last_reports=object(),
+            request_entry_drain=lambda: None,
+            engine=SimpleNamespace(market_shard=(), dirty=SimpleNamespace(mark=lambda t: None),
+                                   wake=SimpleNamespace(set=lambda: None)),
+            management=SimpleNamespace(flatten_at=None), now=lambda: datetime.now(timezone.utc))
+        states, stops = [], []
+        def stop():
+            stops.append(1)
+            return len(stops) > 3
+        def publish(result):
+            states.append(result['state'])
+            if session.entries_paused:
+                runtime.loss_hold_only = False   # the operator stop is a real pause
+        flat = dict(account_current=True, positions=[], resting_entries=0, risk_blockers=[])
+        with patch.object(live, 'local_status', new=AsyncMock(side_effect=lambda r: dict(flat))), \
+             patch.object(live, 'verified_flat', new=AsyncMock(return_value=True)):
+            result = await asyncio.wait_for(live.supervise(runtime, stop=stop, publish=publish,
+                                                           interval=0.01), 5)
+        self.assertEqual(result['state'], 'STOPPED_FLAT')
+        self.assertEqual(states[:3], ['DRAINING']*3)        # held and flat, still running
+        self.assertTrue(session.entries_paused)
+        self.assertTrue(done.is_set())
+
+
 class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.f = exit_fixture.DispatchSourceTests()
@@ -705,6 +736,20 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.f.dispatcher.status().queued, ((SAFETY_CANCEL, 'A'),))
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertEqual(self.f.calls[0][0], 'cancel')
+
+    async def test_loss_hold_alone_is_not_an_operator_or_recovery_pause(self):
+        runtime = self.f.runtime
+        held = WindowState(*window_bounds(self.f.now), D(-60), 0, True, self.f.now)
+        runtime.accounting_result = SimpleNamespace(released=True, window=held)
+        self.assertTrue(runtime.entry_pause_active and runtime.loss_hold_only)
+        runtime.live_session = SimpleNamespace(entries_paused=True)
+        self.assertFalse(runtime.loss_hold_only)
+        runtime.live_session = SimpleNamespace(entries_paused=False)
+        runtime._recovery_safety_pause = True
+        self.assertFalse(runtime.loss_hold_only)
+        runtime._recovery_safety_pause = False
+        runtime.accounting_result = SimpleNamespace(released=True, window=replace(held, held=False, cap=50))
+        self.assertFalse(runtime.loss_hold_only)
 
     async def test_paused_entry_cancel_does_not_require_recent_book_price(self):
         await self.f.ready(filled='0', remaining='10')
