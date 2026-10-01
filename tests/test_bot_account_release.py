@@ -123,8 +123,9 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             now=self.now, free_cash=D(999999), account_known=False, offline_fixture=fixture,
             fee_per_contract_bound=fee)
 
-    async def seed_exact_closed_settlement(self):
-        """Install two retained owned fills matching one zero-revenue settlement."""
+    async def seed_exact_closed_settlement(self, close_limit=None):
+        """Install two retained owned fills matching one zero-revenue settlement.
+        ``close_limit`` sets the closing order's limit apart from its fill price."""
         await self.writer.close()
         opened_at, closed_at = NOW-timedelta(minutes=30), NOW-timedelta(minutes=20)
         with closing(Ledger(self.path)) as ledger:
@@ -139,7 +140,8 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
                 ledger.transition_intent(client, 'SENDING')
                 ledger.transition_intent(client, 'ACKNOWLEDGED')
                 ledger.transition_intent(client, 'TERMINAL')
-                order = OrderUpdate(order_id, client, 'SETTLED', side, price,
+                limit = close_limit if close_limit is not None and side == 'ask' else price
+                order = OrderUpdate(order_id, client, 'SETTLED', side, limit,
                     D(10), D(10), D(0), 'executed', 0, 0,
                     int(at.timestamp()*1_000_000))
                 with ledger.transaction():
@@ -298,6 +300,20 @@ class AccountReleaseTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(payload['settlements'][0]['ticker'], 'SETTLED')
             self.assertEqual(payload['settlements'][0]['fill_count'], 2)
         self.writer = await LedgerWriter(self.path).start()
+
+    async def test_closed_settlement_accepts_a_better_fill_never_a_worse_one(self):
+        # 2026-09-30: an exit ask with limit .17 filled 2 at .18 (better).
+        row = await self.seed_exact_closed_settlement(close_limit=D('.01'))
+        reads = Reads(self.cash, settlements=(row,), deposits=(self.deposit,),
+                      intra_transfers=(self.transfer,))
+        result = await self.release(reads=reads)
+        self.assertTrue(result.released, result.blockers)
+
+    async def test_closed_settlement_worse_fill_than_limit_remains_blocked(self):
+        row = await self.seed_exact_closed_settlement(close_limit=D('.03'))
+        result = await self.release(reads=Reads(self.cash, settlements=(row,),
+            deposits=(self.deposit,), intra_transfers=(self.transfer,)))
+        self.assertIn('settlement_reconciliation_required', result.blockers)
 
     async def test_closed_settlement_economics_mismatch_remains_blocked(self):
         row = await self.seed_exact_closed_settlement()

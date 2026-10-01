@@ -505,8 +505,9 @@ def _closed_settlement_proof(ledger, settlements, snapshot, opening):
             if (row['external'] is not None and row['id'] not in operator_fill_ids(row['external_fill_id'])
                     or order.order_id != order_id or order.ticker != ticker
                     or order.side != side
-                    or (order.yes_price != yes_price if row['owned'] is not None else
-                        (yes_price > order.yes_price if side == 'bid' else yes_price < order.yes_price))
+                    # A crossing order may fill at a better price than its limit
+                    # (2026-09-30: an exit ask at .17 filled 2 at .18); never worse.
+                    or (yes_price > order.yes_price if side == 'bid' else yes_price < order.yes_price)
                     or order.subaccount != 0 or order.exchange_index != settlement.exchange_index
                     or not order.terminal or row['executed_us'] < boundary_us
                     or row['executed_us'] > timestamp_us(settlement.settled_at.isoformat())):

@@ -1,5 +1,16 @@
 # Findings — kalshi-bot
 
+## 227. Starts after the operator's combo: four blockers, found one start at a time — 2026-10-01
+
+**VERIFIED (logs, ledger copy, venue reads).** After D-165 recorded the combo,
+starts still stopped flat: (1) `recover_history` replayed the combo fill as
+unbound every pass (fixed: `refined_fills` returns recorded operator fills);
+(2) recovery returned incomplete with no logged cause (fixed: every return
+names `recovery_reason`); (3) the settlement proof required a bot fill to equal
+its order's limit exactly, but the 09-30 KXKSWHEAT exit ask (limit .17) filled
+2 at .18, a better price (fixed: at the limit or better, never worse, as for
+operator fills). Verified offline on a ledger copy: all six settlements prove.
+
 ## 226. Code review before deploy: the middle exit chased itself; a $60 hold would stop the bot — 2026-09-30
 
 **VERIFIED (review of 6a82fa8; fixed and tested before any deploy).**
