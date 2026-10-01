@@ -1,5 +1,17 @@
 # Current status
 
+## Bot running on 1f2a352 — 2026-10-01 02:13 UTC
+
+Recovery repaired and entries resumed (10 resting, $124.50 exposure at 02:15;
+24-hour realized −$21.17 of the $60 limit). Path there: D-165 combo record,
+then Finding 227 fixes. **Process slip:** the 01:40 start never exited (flat,
+stuck retrying recovery on old code) and canonical was fast-forwarded under it;
+no harm (no orders, the new launch was blocked). Its stop then timed out
+(`shutdown_timeout`); on the operator's "Restart" the exact child (PID 39456,
+generation 234, verified) was terminated under D-112 and the fixed build
+launched. Lesson: check `supervised_live status` shows no parent/child before
+every canonical fast-forward, not just after a stop.
+
 ## Start blocked by the operator's combo trade; record step built — 2026-10-01
 
 Two starts at 00:30 and 00:35 UTC failed recovery and stopped flat: the
