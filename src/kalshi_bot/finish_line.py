@@ -15,6 +15,8 @@ committed to finish past $1.
   whose reward is juicy (payment is guaranteed and every further cent is
   paid); then everything else in the normal reward ranking.
 - Everything else is blocked (``project_list_full``), so effort is not spread.
+  Only projects with working orders count toward the list limit; blocked
+  projects keep their place without holding entry slots idle.
 
 Ordering and entry eligibility only: every loss check still applies. The list
 is saved beside the ledger so restarts keep it, and launch keeps projects in
@@ -34,10 +36,13 @@ from .values import InvalidData, utc
 # a contract under Kalshi's $1 floor; earnings above $1 are paid in full.
 TARGET_USD = Decimal('1.50')
 COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time left
-# The entry cap holds 25 buy/sell pairs; 5 more let a project that is
-# temporarily blocked (pull cooldown, sweep filter) keep its place without
-# leaving an entry slot idle.
+# The entry cap holds 25 buy/sell pairs; 5 more give a little room. Only
+# projects with working orders count toward it (operator 2026-10-01): blocked
+# projects (pull cooldown, entry filters) keep their place and first priority
+# but no longer hold entry slots idle (12 of 30 did, leaving 18 of 25 pairs
+# used). MAX_LIST bounds the whole list so effort is not spread.
 MAX_PROJECTS = 30
+MAX_LIST = 50
 CLOSED_KEPT = 200                 # recently finished or dropped projects, for reports
 
 # Priority tiers, best first (operator 2026-09-30): projects still working
@@ -68,6 +73,7 @@ class FinishLine:
     def __init__(self, meter, path=None):
         self.meter, self.path = meter, path
         self.projects = {}      # program_id -> dict(ticker, until, added_at)
+        self.working = frozenset()   # tickers with our working orders (observe_working)
         self.closed = []        # dict(program_id, ticker, until, added_at, closed_at, reason, earned)
         self.planned = self.blocked = self.save_failures = 0
 
@@ -156,7 +162,7 @@ class FinishLine:
         if needed is None:
             self.blocked += 1
             return CANNOT
-        if len(self.projects) >= MAX_PROJECTS:
+        if not self.room():
             self.blocked += 1
             return FULL
         self.planned += 1
@@ -170,12 +176,25 @@ class FinishLine:
             return False
         if pid in self.projects or self.earned(pid) >= MINIMUM_PAYOUT:
             return True
-        if len(self.projects) >= MAX_PROJECTS:
+        if not self.room():
             return False
         self.projects[pid] = dict(ticker=row.ticker, until=row.earning_until or row.program_end,
                                   added_at=utc(now))
+        self.working = self.working | {row.ticker}   # its orders are about to be placed
         self.save()
         return True
+
+    def observe_working(self, tickers):
+        """The markets where we have working orders now (from the portfolio view)."""
+        self.working = frozenset(tickers)
+
+    def working_projects(self):
+        return sum(1 for p in self.projects.values() if p['ticker'] in self.working)
+
+    def room(self):
+        """A new project may join while fewer than MAX_PROJECTS projects have
+        working orders and the whole list is under MAX_LIST."""
+        return len(self.projects) < MAX_LIST and self.working_projects() < MAX_PROJECTS
 
     def drop(self, program_id, now):
         """Stop the waste: a project that can no longer reach $1 leaves the list."""
@@ -212,7 +231,7 @@ class FinishLine:
             closed = [dict(program_id=c['program_id'], ticker=c['ticker'], until=when(c['until']),
                            added_at=when(c['added_at']), closed_at=when(c['closed_at']),
                            reason=c['reason'], earned=Decimal(c['earned'])) for c in raw['closed']]
-            if (len(projects) > MAX_PROJECTS or any(not isinstance(k, str) or not isinstance(p['ticker'], str)
+            if (len(projects) > MAX_LIST or any(not isinstance(k, str) or not isinstance(p['ticker'], str)
                                                     for k, p in projects.items())):
                 raise ValueError('invalid project list')
             self.projects, self.closed = projects, closed[-CLOSED_KEPT:]
@@ -224,8 +243,9 @@ class FinishLine:
         now = utc(now)
         rows = sorted(((pid, p) for pid, p in self.projects.items()),
                       key=lambda item: -self.earned(item[0]))
-        return dict(target_usd=str(TARGET_USD), max_projects=MAX_PROJECTS,
-            active=len(self.projects), planned=self.planned, blocked=self.blocked,
+        return dict(target_usd=str(TARGET_USD), max_projects=MAX_PROJECTS, max_list=MAX_LIST,
+            active=len(self.projects), working=self.working_projects(),
+            planned=self.planned, blocked=self.blocked,
             save_failures=self.save_failures,
             cleared_total=sum(1 for c in self.closed if c['reason'] in ('cleared', 'ended_paid')),
             dropped_total=sum(1 for c in self.closed if c['reason'] not in ('cleared', 'ended_paid')),

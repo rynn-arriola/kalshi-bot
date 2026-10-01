@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-166 — Only projects with working orders count toward the project limit
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.
+- **Decision owner:** Operator: "How come orders is only 34?" → "Ok do all
+  recommendation" (option 1 of 3).
+- **Evidence:** 10:42 UTC, 8 h after start: 30 projects, only 18 with orders
+  (36 of 50 entry orders); 12 blocked projects (entry filters, unverified
+  reward reflection) kept the list "full" and 14 new markets were turned away
+  (`project_list_full`). About 7 pairs idle ≈ $5/day of reward at ~3¢/h.
+- **What:** a new project may join while fewer than 30 projects have working
+  orders (`MAX_PROJECTS`, counted from the portfolio's working exposure) and
+  the whole list is under 50 (`MAX_LIST`). Blocked projects keep their place
+  and first priority when they can rest again. Rejected: raising the list to
+  50 only (blocked projects still hold slots); dropping idle projects (loses
+  progress toward $1.50).
+
 ### D-165 — Record a settled operator trade; no more manual trades on this account
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.

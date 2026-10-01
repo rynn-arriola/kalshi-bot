@@ -127,7 +127,7 @@ class PlanTests(unittest.TestCase):
                               s['projects'][0]['hours_left']), ('0.6000', '1.1000', 48.0))
             for bad in ('{', '[]', '{"projects": {"A": {"ticker": 1}}, "closed": []}',
                         json.dumps(dict(projects={str(i): dict(ticker='T', until=NOW.isoformat(),
-                            added_at=NOW.isoformat()) for i in range(31)}, closed=[]))):
+                            added_at=NOW.isoformat()) for i in range(fl.MAX_LIST+1)}, closed=[]))):
                 path.write_text(bad, encoding='utf-8')
                 self.assertEqual(FinishLine(meter(), path).load().projects, {}, bad[:40])
             self.assertEqual(FinishLine(meter()).load().projects, {})
@@ -223,6 +223,23 @@ class SelectorTests(unittest.TestCase):
     def test_one_selection_cannot_claim_more_than_the_room_left(self):
         f = FinishLine(meter())
         with patch.object(fl, 'MAX_PROJECTS', 2):
+            f.claim(project('PX', 'X'), NOW)
+            result = self.choose(finish=f, view=view(exposure=(('X', D(5)),)))   # X has orders
+        self.assertEqual([r.ticker for r in result.additions], ['A'])
+        self.assertIn(('B', (FULL,)), result.exclusions)
+
+    def test_blocked_projects_keep_their_place_without_holding_slots(self):
+        # 2026-10-01: 12 of 30 projects could not place orders and kept 7 of
+        # 25 pairs empty. Only projects with working orders count now.
+        f = FinishLine(meter())
+        with patch.object(fl, 'MAX_PROJECTS', 2):
+            f.claim(project('PX', 'X'), NOW)                     # blocked: no orders
+            result = self.choose(finish=f, view=view(exposure=(('X', D(0)),)))
+        self.assertEqual([r.ticker for r in result.additions], ['A', 'B'])
+        self.assertEqual(set(f.projects), {'PX', 'PA', 'PB'})    # X kept its place
+        self.assertEqual(f.status(NOW)['working'], 2)
+        f = FinishLine(meter())
+        with patch.object(fl, 'MAX_LIST', 2):                     # the whole list stays bounded
             f.claim(project('PX', 'X'), NOW)
             result = self.choose(finish=f)
         self.assertEqual([r.ticker for r in result.additions], ['A'])

@@ -169,6 +169,7 @@ class MarketSelector:
             # D-161 phase 3: projects first (closest to the target), then
             # juicy contracts already past $1, then the rest in ranking order.
             finish.review(now)
+            finish.observe_working(t for t, value in view.exposure if value > 0)
             ranked = tuple(sorted(ranked, key=lambda row: (
                 (True,) if row.blockers else
                 (False, 9, 0) if isinstance(finish_plan(row), str) else (False,)+finish_plan(row))))

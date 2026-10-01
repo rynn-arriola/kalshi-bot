@@ -1,5 +1,10 @@
 # Current status
 
+## Project limit counts only working projects (built) — 2026-10-01
+
+D-166: blocked projects no longer hold entry slots idle (18 of 25 pairs were
+used). Needs the full test run and an operator "restart" to deploy.
+
 ## Bot running on 1f2a352 — 2026-10-01 02:13 UTC
 
 Recovery repaired and entries resumed (10 resting, $124.50 exposure at 02:15;
