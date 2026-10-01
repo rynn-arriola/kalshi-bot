@@ -10,6 +10,29 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-165 — Record a settled operator trade; no more manual trades on this account
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.
+- **Decision owner:** Operator: "I did combo today ... Its settled already, ok
+  build it, i wont manual".
+- **What happened:** while the bot was stopped the operator bought 294.65 YES
+  of a combo (KXMVECROSSCATEGORY-S202686A632D740B-B9E601E5DE5) at 25.8¢ (fee
+  $3.9485) on exchange shard 1; Kalshi moved $79.98 from shard 0 to fund it;
+  it settled NO (revenue 0). Both starts on 10-01 then failed recovery
+  (`missing_fills_not_yet_imported`) and stopped flat: the bot cannot explain
+  a fill, a transfer, a settlement and $79.98 of missing cash it did not cause.
+- **What:** `operator_trades.record` adopts one settled trade in a market the
+  bot never traded, once, while stopped, only if fills, settlement and funding
+  transfers agree exactly; the cash change per shard is journaled as an
+  `operator_trade` cash adjustment (cold cash audit reproduces it). Recovery,
+  the settlement proof and the cash-activity check accept only those recorded
+  digests; anything new or changed still blocks. Never bot P&L: no lots,
+  fills, realized events or loss-limit effect. Applied by
+  `data/reconcile_D165_operator_combo.py` (dry run unless `--apply`, backup
+  first).
+- **Going forward:** the operator will not trade manually on this account; a
+  separate Kalshi subaccount is the safe place for any manual trading.
+
 ### D-164 — Capital setting $600 (account about $600)
 
 - **Status:** ACCEPTED, 2026-09-30. Operator: "Can we still support 50 orders

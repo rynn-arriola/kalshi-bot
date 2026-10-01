@@ -1,5 +1,12 @@
 # Current status
 
+## Start blocked by the operator's combo trade; record step built — 2026-10-01
+
+Two starts at 00:30 and 00:35 UTC failed recovery and stopped flat: the
+operator's settled combo (−$79.98 incl. fee, shard 1) was unknown to the bot.
+D-165 records it exactly as an operator trade; then start. Balance $600.25 on
+the main shard (account $600.69).
+
 ## Capital setting $600 (built) — 2026-09-30
 
 Config now matches the ~$600 account (D-164): 50 orders of 30 need about

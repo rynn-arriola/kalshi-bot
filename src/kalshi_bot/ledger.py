@@ -220,6 +220,9 @@ CREATE TABLE IF NOT EXISTS operator_fill_scopes (
   order_id TEXT PRIMARY KEY, fill_id TEXT NOT NULL UNIQUE,
   order_payload TEXT NOT NULL, reference TEXT NOT NULL,
   observed_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS operator_trades (
+  ticker TEXT PRIMARY KEY, payload TEXT NOT NULL, reference TEXT NOT NULL,
+  recorded_at TEXT NOT NULL);
 """
 
 

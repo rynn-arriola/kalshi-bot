@@ -35,7 +35,7 @@ class CashAdjustment:
     source_key: str
     exchange_index: int
     amount: Decimal
-    kind: str  # deposit | withdrawal | unattributed_credit
+    kind: str  # deposit | withdrawal | unattributed_credit | operator_trade (D-165)
 
 
 @dataclass(frozen=True)
@@ -78,8 +78,11 @@ def plan(conn, evidence, *, local, venue, held, allow_credit):
     adjustments, upper_slack, lower_slack = [], {}, {}
     # Transfers between shards/subaccounts stay operator-attributed: only the
     # exact records approved with the baseline are explained.
+    from .operator_trades import activity_digests
+    operator = activity_digests(conn)   # D-165: recorded operator-trade transfers
     activity_explained = all(fingerprint in approved_digests
-        for kind, _, _, fingerprint in _cash_activity_rows(evidence) if kind != 'funding')
+        or operator.get((kind, key)) == fingerprint
+        for kind, key, _, fingerprint in _cash_activity_rows(evidence) if kind != 'funding')
     with localcontext() as ctx:
         ctx.prec = 40
         for row in evidence.funding:
@@ -137,7 +140,7 @@ def totals(conn):
     """Per-shard sum of journaled adjustments for the cold cash audit."""
     result = {}
     for row in conn.execute('SELECT exchange_index,amount,kind,event_digest FROM cash_adjustments'):
-        if row[2] not in {'deposit', 'withdrawal', 'unattributed_credit'}:
+        if row[2] not in {'deposit', 'withdrawal', 'unattributed_credit', 'operator_trade'}:
             raise InvalidData('unknown cash adjustment kind')
         journaled = (conn.execute("SELECT 1 FROM accounting_events WHERE digest=? "
                                   "AND kind='cash_adjustment'", (row[3],)).fetchone()

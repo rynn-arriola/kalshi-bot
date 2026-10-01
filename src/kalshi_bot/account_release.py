@@ -393,9 +393,24 @@ def _closed_settlement_proof(ledger, settlements, snapshot, opening):
     if (opening is None or not settlements or len(settlements) > 2048
             or snapshot.subaccount != 0):
         return None
-    by_ticker = {}
+    from .operator_trades import settlements as operator_settlements
+    operator = operator_settlements(ledger.connection)
+    by_ticker, operator_proof = {}, []
     expected_payloads = set()
     for settlement in settlements:
+        recorded = operator.get(settlement.ticker)
+        if recorded is not None:
+            # D-165: an operator-only trade, adopted with this exact settlement.
+            event_key, payload = encode([0, *settlement.key]), encode(settlement)
+            if (recorded != (event_key, digest(payload))
+                    or ledger.connection.execute(
+                        "SELECT 1 FROM accounting_events WHERE kind='settlement' "
+                        "AND event_key=? AND payload=? LIMIT 1", (event_key, payload)).fetchone() is None):
+                return None
+            expected_payloads.add(payload)
+            operator_proof.append(dict(ticker=settlement.ticker, operator_trade=True,
+                                       settlement_digest=digest(payload)))
+            continue
         if (settlement.result not in {'yes', 'no'} or settlement.ticker in by_ticker
                 or settlement.revenue_cents != 0
                 or (settlement.value_cents is not None
@@ -414,10 +429,13 @@ def _closed_settlement_proof(ledger, settlements, snapshot, opening):
     if len(retained) != len(settlements) or {row['payload'] for row in retained} != expected_payloads:
         return None
     tickers = tuple(sorted(by_ticker))
-    if (any(position.quantity and position.ticker in by_ticker
+    closed = set(by_ticker) | {item['ticker'] for item in operator_proof}
+    if (any(position.quantity and position.ticker in closed
             for position in snapshot.positions)
-            or any(order.ticker in by_ticker for order in snapshot.orders)):
+            or any(order.ticker in closed for order in snapshot.orders)):
         return None
+    if not tickers:
+        return tuple(operator_proof)
     ticker_scope = json.dumps(tickers, separators=(',', ':'))
     scope_sql = 'SELECT value FROM json_each(?)'
     conn = ledger.connection
@@ -538,7 +556,7 @@ def _closed_settlement_proof(ledger, settlements, snapshot, opening):
             settlement_digest=digest(encode(settlement)),
             fills_digest=digest(encode(sorted(total['fills']))),
             fill_count=len(total['fills'])))
-    return tuple(proof)
+    return tuple(proof+operator_proof)
 
 
 def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now, capacity):
@@ -601,9 +619,12 @@ def release(ledger, evidence, report, continuity, fence, *, epoch, revision, now
         if (continuity.interval_gaps or not spans
                 or cursor < required_right):
             blockers.append('accounting_history_interval_gap')
-        if conn.execute('SELECT 1 FROM recovery_fills r LEFT JOIN fills f ON f.id=r.id '
-                'WHERE r.subaccount=0 AND r.executed_us>=? AND f.id IS NULL LIMIT 1',
-                (timestamp_us(opening['boundary']),)).fetchone():
+        # D-165: recorded operator-trade fills are accounted for (as cash).
+        from .operator_trades import fill_keys
+        unaccounted = conn.execute('SELECT r.id FROM recovery_fills r LEFT JOIN fills f ON f.id=r.id '
+                'WHERE r.subaccount=0 AND r.executed_us>=? AND f.id IS NULL LIMIT 65',
+                (timestamp_us(opening['boundary']),)).fetchall()
+        if {row[0] for row in unaccounted}-fill_keys(conn):
             blockers.append('accounting_unaccounted_history_fill')
     audit = audit_snapshot(ledger, report.snapshot, epoch=epoch, revision=revision, capacity=capacity)
     blockers.extend(audit.blockers)

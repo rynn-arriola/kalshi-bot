@@ -340,7 +340,11 @@ def cash_activity_matches_baseline(ledger, evidence, *, allow_new_funding=False)
     cash_rows = tuple(_cash_activity_rows(evidence))
     current = {(kind, key): (fingerprint, payload)
                for kind, key, payload, fingerprint in cash_rows}
-    extra = set(current)-set(expected)
+    # D-165: exactly recorded operator-trade transfers are explained activity.
+    from .operator_trades import activity_digests
+    operator = activity_digests(ledger.connection)
+    extra = {key for key in set(current)-set(expected)
+             if operator.get(key) != current[key][0]}
     if len(current) != len(cash_rows) or (extra and not (
             allow_new_funding and all(kind == 'funding' for kind, _ in extra))):
         return False

@@ -227,8 +227,10 @@ class RecoveryReport:
 def stage_history(ledger, evidence: HistoryEvidence, now: datetime) -> HistoryAudit:
     """Atomic evidence staging; no risk-window changes or imported zero-cost lots."""
     stamp = utc(now).isoformat()
+    from .operator_trades import fill_keys
     missing, recorded = [], 0
     with ledger.transaction():
+        operator = fill_keys(ledger.connection)   # D-165: not the bot's fills
         stored = ledger.connection.execute("SELECT COUNT(*) FROM recovery_fills").fetchone()[0]
         for record in evidence.records:
             fill = record.fill
@@ -244,7 +246,7 @@ def stage_history(ledger, evidence: HistoryEvidence, now: datetime) -> HistoryAu
                 raise InvalidData("venue fill conflicts with durable trading ledger")
             if actual is not None and actual[1] is not None and actual[1]//actual[2] != record.executed_us//actual[2]:
                 raise InvalidData("venue fill execution time conflicts with durable trading ledger")
-            if actual is None:
+            if actual is None and fill.key not in operator:
                 missing.append(fill.key)
             else:
                 recorded += 1
