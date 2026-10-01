@@ -1,5 +1,11 @@
 # Current status
 
+## Project progress kept; projects pass the $2 gate (built) — 2026-10-01
+
+D-168 fixes the project list reset from the D-167 restart and lets committed
+projects place orders during ranking refreshes (15 of 35 were working). Needs
+the full test run and an operator "restart".
+
 ## 50 contracts per order, project list 35 (built) — 2026-10-01
 
 D-167 after the operator's $490 deposit (account $1,090.25). Needs the full

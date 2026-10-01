@@ -172,8 +172,11 @@ async def refresh_candidate_inputs(path, now, diagnostics, scan_path=None, proje
     saved = load_scan(DATA/'market_scan.json' if scan_path is None else scan_path, now)
     # D-161: saved project contracts always stay in the watched scope.
     from .finish_line import FinishLine
-    projects = FinishLine(None, DATA/'projects.json' if projects_path is None
-                          else projects_path).load().tickers()
+    from .lip_meter import LipMeter
+    projects_file = DATA/'projects.json' if projects_path is None else projects_path
+    finish = FinishLine(LipMeter(projects_file.with_name('lip_meter.json')).load(), projects_file).load()
+    finish.adopt_progress(now)   # D-168: metered progress rejoins the list
+    projects = finish.tickers()
     try:
         prepared = await prepare_candidates(reads, now=now,
                                             scan_scores=saved[1] if saved else None,

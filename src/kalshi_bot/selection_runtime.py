@@ -46,6 +46,7 @@ class PriorityCandidateHint:
 
 class RuntimeSelection:
     def __init__(self, runtime, *, offline_fixture=False, initial_timeout=120):
+        self._committed_projects = frozenset()   # D-168, set per selection
         from .runtime import RecoveryRuntime
         if (not isinstance(runtime, RecoveryRuntime)
                 or not (offline_fixture is True or runtime.observation_only
@@ -519,11 +520,22 @@ class RuntimeSelection:
 
     def _priority_only(self, result, reason):
         threshold = active_config().priority_projected_reward_usd
+        # D-168: projects committed before this selection are not re-ranked by
+        # the $2 gate (it protects ranking completeness, and they are already
+        # chosen). A project claimed by this selection and then deferred is
+        # unclaimed, so it does not sit on the list without orders.
+        finish = getattr(self.runtime, 'finish_line', None)
+        committed = self._committed_projects
         priority = tuple(row for row in result.additions
-            if row.gross_remaining_usd is not None
-            and row.gross_remaining_usd >= threshold)
+            if (row.gross_remaining_usd is not None
+                and row.gross_remaining_usd >= threshold)
+            or row.program_id in committed)
         deferred = tuple((row.ticker, (reason,)) for row in result.additions
                          if row not in priority)
+        if finish is not None:
+            for row in result.additions:
+                if row not in priority and row.program_id not in committed:
+                    finish.unclaim(row.program_id)
         capital = sum((row.capital_usd+self.selector._fees[(row.ticker,row.program_id)]
                        for row in priority), decimal(0))
         return replace(result, additions=priority,
@@ -582,6 +594,8 @@ class RuntimeSelection:
                 available_pairs=available_pairs, protected=protected)
         # A caller cannot increase the independently observed cash ceiling.
         cash = min(decimal(free_cash), report.snapshot.available_balance)
+        finish = getattr(r, 'finish_line', None)
+        self._committed_projects = frozenset(finish.projects) if finish is not None else frozenset()
         result = self.selector.propose(view=view, window=window, free_cash=cash,
             account_known=report.positions_match and not report.audit.blockers,
             now=r.now(), protected=protected, current=self.current,

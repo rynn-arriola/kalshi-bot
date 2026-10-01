@@ -127,7 +127,7 @@ class PlanTests(unittest.TestCase):
                               s['projects'][0]['hours_left']), ('0.6000', '1.1000', 48.0))
             for bad in ('{', '[]', '{"projects": {"A": {"ticker": 1}}, "closed": []}',
                         json.dumps(dict(projects={str(i): dict(ticker='T', until=NOW.isoformat(),
-                            added_at=NOW.isoformat()) for i in range(fl.MAX_LIST+1)}, closed=[]))):
+                            added_at=NOW.isoformat()) for i in range(fl.SANITY_LIST+1)}, closed=[]))):
                 path.write_text(bad, encoding='utf-8')
                 self.assertEqual(FinishLine(meter(), path).load().projects, {}, bad[:40])
             self.assertEqual(FinishLine(meter()).load().projects, {})
@@ -142,6 +142,43 @@ class PlanTests(unittest.TestCase):
             f.review(NOW)
             back = FinishLine(m, path).load()
             self.assertEqual((back.projects, [c['reason'] for c in back.closed]), ({}, ['cleared']))
+
+    def test_a_lowered_limit_keeps_the_best_earning_projects(self):
+        # 2026-10-01: lowering MAX_LIST 50 -> 35 discarded the whole saved list.
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'projects.json'
+            f = FinishLine(meter(A='0.1', B='0.4', C='0.3'), path)
+            for pid in 'ABC':
+                f.claim(row(pid), NOW)
+            with patch.object(fl, 'MAX_LIST', 2):
+                back = FinishLine(meter(A='0.1', B='0.4', C='0.3'), path).load()
+            self.assertEqual(set(back.projects), {'B', 'C'})
+            self.assertEqual([(c['program_id'], c['reason']) for c in back.closed], [('A', fl.TRIMMED)])
+            self.assertEqual(set(FinishLine(meter(), path).load().projects), {'B', 'C'})   # saved
+
+    def test_metered_progress_rejoins_the_list_at_launch(self):
+        m = meter(A='0.40', B='0.24', C='1.50', D='0.30', E='0.60', H='0.50', V='0.50')
+        m.programs['E']['end'] = NOW-timedelta(minutes=1)          # ended
+        m.programs['V']['ticker'] = 'KXDASHAPP-X'                   # avoided type
+        f = FinishLine(m)
+        f.closed.append(dict(program_id='H', ticker='TH', until=NOW, added_at=NOW, closed_at=NOW,
+                             reason=CANNOT, earned=D('0.5')))       # dropped as hopeless
+        self.assertEqual(f.adopt_progress(NOW), 2)
+        self.assertEqual(set(f.projects), {'A', 'D'})               # not B (<0.25) or C (target)
+        self.assertEqual(f.projects['A']['until'], m.programs['A']['end'])
+        self.assertEqual(f.adopt_progress(NOW), 0)                  # idempotent
+        f = FinishLine(m)
+        with patch.object(fl, 'MAX_LIST', 1):
+            self.assertEqual(f.adopt_progress(NOW), 1)
+        self.assertEqual(set(f.projects), {'H'})                    # best first (no drop record here)
+        self.assertEqual(FinishLine(None).adopt_progress(NOW), 0)
+
+    def test_unclaim_removes_a_project_without_a_closed_record(self):
+        f = FinishLine(meter())
+        f.claim(row('A'), NOW)
+        f.unclaim('A')
+        f.unclaim('missing')
+        self.assertEqual((f.projects, f.closed), ({}, []))
 
     def test_a_failed_save_is_counted_not_fatal(self):
         with TemporaryDirectory() as temp:

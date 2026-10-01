@@ -278,6 +278,42 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         await self.publish('C',pool=5000000)
         self.assertEqual([row.ticker for row in (await self.proposal()).additions],['C','A'])
 
+    async def test_committed_projects_pass_the_priority_gate_new_ones_are_unclaimed(self):
+        # D-168: the $2 gate held committed projects (most earn ~4c/h) back
+        # and left deferred new claims on the list without orders.
+        from types import SimpleNamespace
+        from kalshi_bot.finish_line import FinishLine
+        from kalshi_bot.lip_meter import LipMeter
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        rows = {row.ticker: row for row in (await self.proposal()).additions}
+        self.r.finish_line = FinishLine(LipMeter())
+        self.r.finish_line.projects[rows['A'].program_id] = dict(
+            ticker='A', until=rows['A'].program_end, added_at=self.now)
+        self.s.invalidate('A')
+        self.s.invalidate('C')
+        await self.publish('A',pool=3000000)
+        result = await self.proposal()
+        self.assertEqual([row.ticker for row in result.additions],['A'])   # committed project
+
+    async def test_a_new_project_deferred_by_the_priority_gate_is_unclaimed(self):
+        from unittest.mock import patch
+        import kalshi_bot.finish_line as fl
+        from kalshi_bot.finish_line import FinishLine
+        from kalshi_bot.lip_meter import LipMeter
+        await self.publish('A',pool=3000000)
+        await self.publish('C',pool=5000000)
+        self.assertEqual([row.ticker for row in (await self.proposal()).additions],['C','A'])
+        self.r.finish_line = FinishLine(LipMeter())
+        self.s.invalidate('A')
+        self.s.invalidate('C')
+        await self.publish('A',pool=3000000)
+        with patch.object(fl, 'COMMIT_SHARE', D(10**6)):    # fixture programs are short
+            result = await self.proposal()
+        self.assertFalse(result.additions)
+        self.assertIn(('A', ('priority_revalidation_pending',)), result.exclusions)
+        self.assertEqual(self.r.finish_line.projects, {})
+
     async def test_fresh_lower_reward_retires_priority_hint_and_allows_fallback(self):
         await self.publish('A',pool=3000000)
         await self.publish('C',pool=5000000)

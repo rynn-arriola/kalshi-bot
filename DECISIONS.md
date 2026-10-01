@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-168 — Keep project progress; committed projects pass the $2 gate
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.
+- **Decision owner:** Operator: "Do recommendation" (after the 15:59 log check).
+- **Evidence:** the D-167 restart treated the 50-project saved list as
+  invalid under MAX_LIST 35 and started empty (16 closed records lost; Costco
+  97 at $0.40 left out). Then only 15 of 35 projects had orders (30 orders,
+  $618): the `priority_revalidation_pending` / initial-ranking gate admits only
+  markets projected ≥ $2 while it refreshes, and project markets earn ~4¢/h;
+  deferred new claims also stayed on the list without orders.
+- **What:** (1) a list above MAX_LIST keeps the best-earning projects and
+  closes the rest as `list_limit_trimmed`; only lists above 1,000 count as
+  corrupt. (2) At launch, metered programs with $0.25 ≤ earned < $1.50, not
+  ended, not avoided, not dropped as hopeless or avoided rejoin the list,
+  best first, while it has room. (3) Projects committed before a selection
+  pass the $2 gate (it protects ranking completeness; they are already
+  chosen); a project claimed in that selection and then deferred is
+  unclaimed. All entry, risk and loss checks are unchanged.
+
 ### D-167 — 50 contracts per order after the $490 deposit; project list 35
 
 - **Status:** ACCEPTED, 2026-10-01. Operator: "i added 490 how much we

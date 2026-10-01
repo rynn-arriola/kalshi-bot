@@ -25,7 +25,7 @@ the watched scope.
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, localcontext
 
 from .lip_meter import MINIMUM_PAYOUT
@@ -46,6 +46,12 @@ COMMIT_SHARE = Decimal('0.5')     # a project should need at most half the time 
 MAX_PROJECTS = 30
 MAX_LIST = 35
 CLOSED_KEPT = 200                 # recently finished or dropped projects, for reports
+# D-168 (2026-10-01): metered progress is never orphaned. At launch a market
+# with at least this much earned but under the target rejoins the list (a
+# shrink of MAX_LIST had discarded the saved list and dropped a $0.40 market).
+ADOPT_EARNED = Decimal('0.25')
+TRIMMED = 'list_limit_trimmed'
+SANITY_LIST = 1000                # more saved projects than this is corruption
 
 # Priority tiers, best first (operator 2026-09-30): projects still working
 # toward the target; then markets already past $1 whose reward is juicy; then
@@ -80,7 +86,7 @@ class FinishLine:
         self.planned = self.blocked = self.save_failures = 0
 
     def earned(self, program_id):
-        row = self.meter.programs.get(program_id)
+        row = self.meter.programs.get(program_id) if self.meter is not None else None
         return row['earned'] if row is not None else Decimal(0)
 
     def _needed(self, earned, rate, until, now):
@@ -233,13 +239,49 @@ class FinishLine:
             closed = [dict(program_id=c['program_id'], ticker=c['ticker'], until=when(c['until']),
                            added_at=when(c['added_at']), closed_at=when(c['closed_at']),
                            reason=c['reason'], earned=Decimal(c['earned'])) for c in raw['closed']]
-            if (len(projects) > MAX_LIST or any(not isinstance(k, str) or not isinstance(p['ticker'], str)
+            if (len(projects) > SANITY_LIST or any(not isinstance(k, str) or not isinstance(p['ticker'], str)
                                                     for k, p in projects.items())):
                 raise ValueError('invalid project list')
             self.projects, self.closed = projects, closed[-CLOSED_KEPT:]
         except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidOperation, InvalidData):
             self.projects, self.closed = {}, []
+            return self
+        if len(self.projects) > MAX_LIST:
+            # A lowered limit keeps the best-earning projects; never discard all.
+            now = datetime.now(timezone.utc)
+            keep = set(sorted(self.projects, key=lambda pid: -self.earned(pid))[:MAX_LIST])
+            for pid in [pid for pid in self.projects if pid not in keep]:
+                self._close(pid, TRIMMED, now)
+            self.save()
         return self
+
+    def adopt_progress(self, now):
+        """Launch: markets with metered progress toward the target rejoin the
+        list while it has room, best first. Not avoided types, not markets
+        dropped as hopeless or avoided, not past the target or ended."""
+        now = utc(now)
+        if self.meter is None:
+            return 0
+        refused = {c['program_id'] for c in self.closed if c['reason'] in (CANNOT, AVOID)}
+        candidates = sorted(((row['earned'], pid, row) for pid, row in self.meter.programs.items()
+                             if ADOPT_EARNED <= row['earned'] < TARGET_USD and row['end'] > now
+                             and pid not in self.projects and pid not in refused
+                             and not avoided_type(row['ticker'])), key=lambda item: -item[0])
+        added = 0
+        for _, pid, row in candidates:
+            if len(self.projects) >= MAX_LIST:
+                break
+            self.projects[pid] = dict(ticker=row['ticker'], until=row['end'], added_at=now)
+            added += 1
+        if added:
+            self.save()
+        return added
+
+    def unclaim(self, program_id):
+        """Undo a claim made in this selection whose entry was then deferred,
+        so a project that never rested does not hold a place on the list."""
+        if self.projects.pop(program_id, None) is not None:
+            self.save()
 
     def status(self, now):
         now = utc(now)
