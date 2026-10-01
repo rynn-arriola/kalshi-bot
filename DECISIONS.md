@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-170 — Project markets get priority for fresh market terms; keep 50 contracts
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.
+  Operator: "Look more into this" → "Ok do recommendation and fix it".
+- **Evidence (D-169 diagnostics, 18:10 UTC):** 39 of 50 projects showed
+  `selection_evidence_unavailable`; 0 batches were discarded (that theory is
+  ruled out). Market terms live ≤ 60 s and refresh through one scheduler
+  queue for ~1,024 markets (1,020 pending); projects ranked as discovery (0).
+  Live LIP share by size across our 25 resting markets (others hold 250–4,000
+  contracts in the scoring window): median 5% at 30, 8% at 50 (+61%), 12% at
+  80. An earlier 10-minute meter comparison (+4%) compared 50 with 50 and is
+  withdrawn. So 50 contracts stays.
+- **What:** `_metadata_priority` ranks project markets 1 (with remembered
+  priority candidates), after owned safety (2), before discovery (0). Load:
+  ~50 projects × one refresh per ≤ 60 s ≈ 1/s against ~9/s capacity.
+- **Watch:** `project_reasons` latest = `selection_evidence_unavailable`
+  should fall well below 39; orders should rise toward 50.
+
 ### D-169 — Project list back to 50; log why each project idles
 
 - **Status:** ACCEPTED, 2026-10-01. Operator: "Check what is really happening

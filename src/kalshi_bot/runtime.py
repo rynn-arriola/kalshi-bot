@@ -241,13 +241,18 @@ class RecoveryRuntime(AccountProofMixin):
             if market_inputs is not None else None)
 
     def _metadata_priority(self, ticker):
-        """Owned safety first, then remembered priority, then discovery."""
+        """Owned safety first, then project markets and remembered priority,
+        then discovery."""
         plan = self.management._plans.get(ticker)
         if ((plan is not None and (plan.inventory.position or plan.inventory.orders))
                 or (self.maintenance is not None and ticker in self.maintenance.bindings)):
             return 2
         if (self.selection is not None
                 and self.selection.priority_refresh_pending(ticker)):
+            return 1
+        # D-170: 39 of 50 projects waited behind ~1,000 discovery markets for
+        # fresh terms ("selection_evidence_unavailable") and could not rest.
+        if self.finish_line is not None and self.finish_line.has_ticker(ticker):
             return 1
         return 0
 

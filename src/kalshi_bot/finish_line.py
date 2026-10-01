@@ -216,6 +216,10 @@ class FinishLine:
     def tickers(self):
         return tuple(sorted({p['ticker'] for p in self.projects.values()}))
 
+    def has_ticker(self, ticker):
+        """Cheap membership for schedulers (at most MAX_LIST projects)."""
+        return any(p['ticker'] == ticker for p in self.projects.values())
+
     def save(self):
         if self.path is None:
             return

@@ -1,5 +1,10 @@
 # Current status
 
+## Project markets refresh first (built) — 2026-10-01
+
+D-170: 39 of 50 projects lacked fresh market terms; they now refresh ahead of
+discovery markets. 50 contracts kept (live share math: +61% vs 30).
+
 ## Project list 50 + per-project idle reasons (built) — 2026-10-01
 
 D-169: list back to 50 (35 left ~10 markets working); status now shows why

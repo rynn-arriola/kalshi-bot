@@ -296,6 +296,17 @@ class CombinedRankingTests(unittest.IsolatedAsyncioTestCase):
         result = await self.proposal()
         self.assertEqual([row.ticker for row in result.additions],['A'])   # committed project
 
+    async def test_project_markets_get_metadata_priority(self):
+        # D-170: projects waited behind ~1,000 discovery markets for terms.
+        from kalshi_bot.finish_line import FinishLine
+        from kalshi_bot.lip_meter import LipMeter
+        self.assertEqual(self.r._metadata_priority('A'), 0)
+        self.r.finish_line = FinishLine(LipMeter())
+        self.r.finish_line.projects['PA'] = dict(ticker='A', until=self.now, added_at=self.now)
+        self.assertEqual(self.r._metadata_priority('A'), 1)
+        self.assertEqual(self.r._metadata_priority('C'), 0)
+        self.assertFalse(self.r.finish_line.has_ticker('C'))
+
     async def test_project_reasons_and_discarded_batches_are_recorded(self):
         # D-169 diagnostics: 22 of 35 projects had no visible reason to idle.
         from kalshi_bot.finish_line import FinishLine
