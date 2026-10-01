@@ -423,7 +423,9 @@ class LedgerWriter:
                                              identity(evidence_digest), utc(now)))
 
     async def refined_fills(self, keys):
-        """Read-only: durable fills already stored with exact microsecond time."""
+        """Read-only: fills with nothing left to import: durable fills already
+        stored with exact microsecond time, and recorded operator-trade fills
+        (D-165: accounted as cash, never bound to a bot order)."""
         if type(keys) is not tuple or len(keys) > 10000 or any(
                 not isinstance(key, str) or len(key) > 1024 for key in keys):
             raise InvalidData('bounded fill identities required')
@@ -776,8 +778,9 @@ class LedgerWriter:
             return tuple((tuple(json.loads(key)), tuple(json.loads(payload)), executed)
                          for key, payload, executed in rows)
         if command == 'refined_fills':
-            found = set()
+            from .operator_trades import fill_keys
             keys = args[0]
+            found = set(keys) & fill_keys(ledger.connection)
             for offset in range(0, len(keys), 512):
                 chunk = keys[offset:offset+512]
                 found.update(row[0] for row in ledger.connection.execute(

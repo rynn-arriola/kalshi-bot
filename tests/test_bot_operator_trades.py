@@ -107,6 +107,9 @@ class OperatorTradeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted((k, D(a)) for k, a in self.rows(
             "SELECT kind,amount FROM cash_adjustments")),
             [('operator_trade', D('-79.98')), ('operator_trade', D('.0118'))])
+        # History import treats it as done, so it is never retried as unbound.
+        key = combo_fill().fill.key
+        self.assertEqual(await self.writer.refined_fills((key, '["other","x"]')), {key})
         self.assertEqual(self.rows("SELECT COUNT(*) FROM fills")[0][0], 0)   # not bot P&L
         self.assertEqual(self.rows("SELECT COUNT(*) FROM realized_events")[0][0], 0)
         await self.writer.close()
