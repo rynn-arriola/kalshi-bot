@@ -231,8 +231,13 @@ class MarketSelector:
             ctx.prec = 40
             for row in ranked:
                 blocked = entry_blockers(row)
+                fee = self._fees.get((row.ticker, row.program_id))
+                if not blocked and fee is None:
+                    # 2026-10-02: a row can outlive its fee reserve (invalidated or
+                    # replaced mid-update); a missing reserve blocks, never crashes.
+                    blocked = ('entry_fee_reserve_missing',)
                 if not blocked:
-                    cost = row.capital_usd + self._fees[(row.ticker, row.program_id)]
+                    cost = row.capital_usd + fee
                     blocked = admit_entry(config, window=window, ticker=row.ticker,
                         current_position=positions.get(row.ticker, Decimal(0)),
                         resting_entries=entries+1, candidate_loss=cost, exposure=exposure,

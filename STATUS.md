@@ -1,5 +1,12 @@
 # Current status
 
+## Bot stopped; D-171 built; one operator-held position — 2026-10-02
+
+Stopped at 01:55 UTC after two selection crashes and an ad-spend sweep
+(Finding 228). Held: KXAMUSEMENTADS-26NOV06-T155 long 50 @ 77¢ with our sell
+50 @ 78¢. D-171 (4 h cross, no crossing into empty bids, operator hold, no ad
+spend, crash fix) to deploy after the full test run.
+
 ## Project markets refresh first (built) — 2026-10-01
 
 D-170: 39 of 50 projects lacked fresh market terms; they now refresh ahead of

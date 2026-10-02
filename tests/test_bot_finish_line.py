@@ -198,6 +198,12 @@ class AvoidedTypeTests(unittest.TestCase):
                              ('KXCCSOMETHING-26-T1', None)):
             self.assertEqual(fl.avoided_type(ticker), kind, ticker)
 
+    def test_ad_spend_markets_are_avoided(self):
+        for ticker in ('KXAMUSEMENTADS-26NOV06-T155', 'KXBROADLINEADS-26NOV06-T129', 'KXCASINOADS-26OCT06-T84'):
+            self.assertEqual(fl.avoided_type(ticker), 'ad_spend', ticker)
+        for ticker in ('KXCOSTFT-26OCT08-T95', 'KXBOZPERMITS-27MAY31-T1400', 'KXADSPENDX-1'):
+            self.assertIsNone(fl.avoided_type(ticker), ticker)
+
     def test_avoided_contracts_are_blocked_and_dropped(self):
         f = FinishLine(meter(P='0.2', C='1.5'))
         self.assertEqual(f.plan(row('N', ticker='KXCARTAPP-X'), NOW), fl.AVOID)
@@ -248,6 +254,14 @@ class SelectorTests(unittest.TestCase):
         f.claim(project('PB', 'B'), NOW)
         with patch.object(fl, 'JUICY_RATE_USD', D(1000)):
             self.assertEqual([r.ticker for r in self.choose(finish=f).additions], ['B', 'A', 'C'])
+
+    def test_a_row_without_its_fee_reserve_is_blocked_not_a_crash(self):
+        # 2026-10-02 01:01 and 01:13: KeyError in selection crashed the bot.
+        self.s._fees.pop(('A', 'PA'))
+        result = self.choose(finish=FinishLine(meter()))
+        self.assertNotIn('A', [r.ticker for r in result.additions])
+        self.assertIn(('A', ('entry_fee_reserve_missing',)), result.exclusions)
+        self.assertEqual([r.ticker for r in result.additions], ['B', 'C'])
 
     def test_a_full_list_blocks_other_new_contracts(self):
         f = FinishLine(meter())

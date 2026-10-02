@@ -8,7 +8,7 @@ import unittest
 
 from kalshi_bot.adapters import PriceBand
 from kalshi_bot.books import Book, Ladder
-from kalshi_bot.exits import ExitTerms, ExitJournal, adjacent_tick, plan_exit, ioc_payload
+from kalshi_bot.exits import EXIT_CROSS_SECONDS, ExitTerms, ExitJournal, adjacent_tick, plan_exit, ioc_payload
 from kalshi_bot.execution import validate_request
 from kalshi_bot.orders import OrderReceipt, OrderUpdate
 from kalshi_bot.ledger import Ledger, Fill
@@ -40,7 +40,7 @@ class ExitTests(unittest.TestCase):
             orders=(),book=book(),terms=terms(),journal=ExitJournal(),now=NOW,complete_scope=True)
         return plan_exit(**(defaults|kw))
 
-    def due(self,**kw): return self.plan(**({'first_seen_at':NOW-timedelta(seconds=1800)}|kw))
+    def due(self,**kw): return self.plan(**({'first_seen_at':NOW-timedelta(seconds=EXIT_CROSS_SECONDS)}|kw))
 
     def test_profitable_long_steps_one_tick(self):
         p=self.plan(); self.assertEqual((p.mode,p.limit_price,p.passive.reduce_quantity),('passive',D('.59'),10))
@@ -87,9 +87,10 @@ class ExitTests(unittest.TestCase):
         self.assertEqual(adjacent_tick(D('.5'),'bid',bands),D('.505'))
 
     def test_no_ioc_before_the_patient_cross_age(self):
-        # Patient exit: crossing starts at 30 minutes (was 15, D-160).
-        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=1799)).mode,'passive')
-        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=1800)).mode,'ioc')
+        # D-171: crossing starts at 4 hours (was 30 minutes; 15 under D-160).
+        self.assertEqual(EXIT_CROSS_SECONDS, 14400)
+        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=EXIT_CROSS_SECONDS-1)).mode,'passive')
+        self.assertEqual(self.plan(first_seen_at=NOW-timedelta(seconds=EXIT_CROSS_SECONDS)).mode,'ioc')
 
     def test_first_15_minutes_rest_at_our_best_price_then_at_the_middle(self):
         wide=book(bids=(('.2','40'),),asks=(('.6','40'),))
@@ -98,7 +99,7 @@ class ExitTests(unittest.TestCase):
         self.assertEqual(early.next_at,NOW+timedelta(seconds=1))               # wakes at the switch
         mid=self.plan(basis=D('.5'),book=wide,first_seen_at=NOW-timedelta(seconds=900))
         self.assertEqual((mid.mode,mid.limit_price),('passive',D('.4')))          # middle of .2/.6
-        self.assertEqual(mid.next_at,NOW+timedelta(seconds=900))               # then the cross age
+        self.assertEqual(mid.next_at,min(NOW+timedelta(seconds=EXIT_CROSS_SECONDS-900),terms().deadline))  # cross age or deadline
         short=self.plan(position=D(-10),basis=D('.5'),book=wide,first_seen_at=NOW-timedelta(seconds=900))
         self.assertEqual(short.limit_price,D('.4'))
         odd=book(bids=(('.2','40'),),asks=(('.61','40'),))                     # middle .405
@@ -148,6 +149,36 @@ class ExitTests(unittest.TestCase):
         self.assertEqual(middle_price(b,D(10),BANDS,(gone,)),D('.45'))
         self.assertEqual(middle_price(b,D(10),BANDS,(receipt('e',side='bid',p='.3',qty='5',owned=False),)),D('.45'))
 
+    def test_never_cross_into_a_near_empty_side(self):
+        # D-171, 2026-10-02: long 50 at .77, bid .08 against asks at .76.
+        thin = book(bids=(('.08','91'),), asks=(('.76','3'),))
+        p = self.due(basis=D('.77'), book=thin)
+        self.assertEqual((p.mode, p.blockers), ('passive_deferred', ('ordinary_exit_depth_or_loss',)))
+        self.assertTrue(p.passive_allowed)                            # keeps resting
+        ok = book(bids=(('.40','40'),), asks=(('.60','40'),))         # bid .40 >= mid/2
+        self.assertEqual(self.due(book=ok).mode, 'ioc')
+        # The cutoff is half the middle: .20 against .60 (mid .40) crosses, .19 waits.
+        self.assertEqual(self.due(book=book(bids=(('.20','40'),), asks=(('.60','40'),))).mode, 'ioc')
+        self.assertEqual(self.due(book=book(bids=(('.19','40'),), asks=(('.61','40'),))).mode, 'passive_deferred')
+        # Short: buying back at .92 against bids at .10 is the same giveaway.
+        self.assertEqual(self.due(position=D(-10), basis=D('.30'),
+                                  book=book(bids=(('.10','40'),), asks=(('.92','40'),))).mode, 'passive_deferred')
+        self.assertEqual(self.due(position=D(-10), basis=D('.50'),
+                                  book=book(bids=(('.45','40'),), asks=(('.55','40'),))).mode, 'ioc')
+        # Forced (deadline) exits still cross.
+        forced = self.plan(basis=D('.77'), book=thin, first_seen_at=NOW-timedelta(seconds=EXIT_CROSS_SECONDS),
+                           terms=terms(event_risk_at=NOW))
+        self.assertNotEqual(forced.mode, 'passive_deferred')
+
+    def test_operator_hold_places_moves_and_cancels_nothing(self):
+        resting = (receipt(p='.78'),)
+        for age in (0, 900, EXIT_CROSS_SECONDS):
+            p = self.plan(orders=resting, hold=True, first_seen_at=NOW-timedelta(seconds=age))
+            self.assertEqual((p.mode, p.blockers, p.passive.cancel_ids, p.passive.reduce_quantity),
+                             ('hold', ('operator_hold',), (), 0))
+            self.assertFalse(p.passive_allowed)
+        self.assertEqual(self.plan(position=D(0), hold=True).mode, 'flat')
+
     def test_ordinary_exact_quantity_capped_ioc(self):
         p=self.due(); self.assertEqual((p.mode,p.limit_price,p.quantity),('ioc',D('.4'),10))
         self.assertEqual(p.projected_pnl,D('-1.2')); self.assertFalse(p.authorized)
@@ -174,7 +205,7 @@ class ExitTests(unittest.TestCase):
         p = self.due(position=D(-30), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.95','60'),)))
         self.assertEqual(p.mode, 'passive_deferred')
         # A partial position gets a proportionally smaller allowance.
-        p = self.due(position=D(-5), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.88','60'),)))
+        p = self.due(position=D(-5), basis=D('.10'), book=book(bids=(('.80','16'),), asks=(('.88','60'),)))
         self.assertEqual((p.mode, p.projected_pnl), ('ioc', D('-4.00')))  # exactly 0.80 each
         p = self.due(position=D(-5), basis=D('.10'), book=book(bids=(('.37','16'),), asks=(('.89','60'),)))
         self.assertEqual((p.mode, p.projected_pnl), ('passive_deferred', D('-4.05')))

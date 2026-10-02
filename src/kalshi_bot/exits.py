@@ -14,7 +14,10 @@ from .values import InvalidData, count, decimal, identity, integer, price, utc
 # widest, and it refills. So the exit rests at our best price for 15 minutes,
 # then at the middle of the book, and only crosses from 30 minutes on.
 EXIT_MIDDLE_SECONDS = 900
-EXIT_CROSS_SECONDS = 1800
+# D-171 (operator 2026-10-02): cross only after 4 hours. Replaying 40 entry
+# fills on Kalshi candlesticks, crossing at 30 min/1 h/3 h/6 h lost $149/$142/
+# $145/$139: no worse to wait, and the middle-price reducer keeps working.
+EXIT_CROSS_SECONDS = 14400
 # D-160: after the cross age an ordinary exit crosses unless the projected loss is worse
 # than this per contract: the Polymarket reference ($8 at size 10). A flat $8
 # held 30-contract positions after a 27-cent move (Finding 222).
@@ -126,6 +129,32 @@ def passive_price(book, position, basis, bands):
     return touch
 
 
+def others_best(book, orders=()):
+    """Best bid and ask of other traders (our working orders left out)."""
+    ours = {}
+    for r in orders:
+        if r.owned and not r.order.terminal:
+            key = (r.order.side, r.order.yes_price)
+            ours[key] = ours.get(key, Decimal(0))+r.order.remaining
+
+    def best(ladder, name):
+        prices = ladder.prices if name == "ask" else reversed(ladder.prices)
+        return next((p for p in prices if ladder.levels[p] > ours.get((name, p), 0)), None)
+
+    return best(book.bids, "bid"), best(book.asks, "ask")
+
+
+def exit_side_thin(book, position, orders=()):
+    """D-171: the side an exit would cross into is under half the middle of
+    other traders' quotes, in our outcome's price (2026-10-02: bid 8c against
+    asks at 76c). Crossing there gives most of the stake away."""
+    bid, ask = others_best(book, orders)
+    if bid is None or ask is None:
+        return False   # no middle to compare with: the loss cap decides
+    mid = (bid+ask)/2
+    return bid < mid/2 if position > 0 else (1-ask) < (1-mid)/2
+
+
 def middle_price(book, position, bands, orders=()):
     """Patient exit: the valid tick nearest the middle of the book on our side
     (never past the middle against us) that does not cross. Our own working
@@ -133,17 +162,7 @@ def middle_price(book, position, bands, orders=()):
     middle and walk our exit to one tick from the other side within a minute.
     None unless other traders quote both sides."""
     side = "ask" if position > 0 else "bid"
-    ours = {}
-    for r in orders:
-        if r.owned and not r.order.terminal:
-            key = (r.order.side, r.order.yes_price)
-            ours[key] = ours.get(key, Decimal(0))+r.order.remaining
-
-    def others_best(ladder, name):
-        prices = ladder.prices if name == "ask" else reversed(ladder.prices)
-        return next((p for p in prices if ladder.levels[p] > ours.get((name, p), 0)), None)
-
-    bid, ask = others_best(book.bids, "bid"), others_best(book.asks, "ask")
+    bid, ask = others_best(book, orders)
     if bid is None or ask is None:
         return None
     mid = (bid+ask)/2
@@ -181,7 +200,7 @@ def cross(book, position, basis, bands, fee_bound, haircut, *, excluded=()):
 
 
 def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
-              journal, now, complete_scope):
+              journal, now, complete_scope, hold=False):
     """Caller must bind account/book/terms/writer revisions; result stays advisory."""
     now, position = utc(now), decimal(position)
     count(abs(position), zero=True)
@@ -196,6 +215,10 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
             if future: kwargs['next_at'] = min(future)
         return ExitPlan(passive, mode, blockers=tuple(blockers), **kwargs)
     if not position: return result("flat")
+    if hold:
+        # D-171 operator hold: the operator keeps this position; the bot places,
+        # moves and cancels nothing for it (its resting orders stay as they are).
+        return ExitPlan(InventoryPlan((), None, None, Decimal(0), ()), "hold", blockers=("operator_hold",))
     # Pending mutation attention timers must run even while reconciliation is
     # incomplete. These branches cannot propose a new mutation.
     if journal is not None and journal.unresolved_ioc:
@@ -245,7 +268,9 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     complete, worst, pnl = cross(book, position, basis, terms.bands, terms.taker_fee_per_contract_bound, Decimal('.5'))
     if forced and not complete:
         complete, worst, pnl = cross(book, position, basis, terms.bands, terms.taker_fee_per_contract_bound, Decimal(1))
-    if not forced and (not complete or pnl < -ORDINARY_EXIT_LOSS_PER_CONTRACT*abs(position)):
+    # D-171: a near-empty side counts as missing depth; keep resting instead.
+    if not forced and (not complete or pnl < -ORDINARY_EXIT_LOSS_PER_CONTRACT*abs(position)
+                       or exit_side_thin(book, position, orders)):
         return result("passive_deferred", "ordinary_exit_depth_or_loss", limit_price=preferred, projected_pnl=pnl,
                       next_at=min(terms.deadline, terms.valid_until))
     working = [r for r in orders if r.owned and not r.order.terminal]

@@ -10,6 +10,31 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-171 — 4-hour cross, never cross a near-empty side, operator hold, no ad spend
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.
+  Operator: "lets wait 3 hours to force exit" → "actually make it 4 hours" →
+  "Go 1-4"; on the swept position: "I'll say leave that open".
+- **Evidence:** 01:37:54 UTC one seller swept 865 contracts at 77¢ in
+  KXAMUSEMENTADS-26NOV06-T155, filling our 50 bid; the next bid was 8¢
+  against asks at 76¢. The patient exit would have crossed at 30 min into
+  that 8¢ bid (−$35, inside the $0.80/contract cap). Replay of 40 entry fills
+  on Kalshi 1-minute candlesticks (cross at the bid/ask): 15 min −$151.62,
+  30 min −$149.01, 1 h −$141.75, 3 h −$144.75, 6 h −$138.75.
+- **What:** (1) `EXIT_CROSS_SECONDS` 1800 → 14400 (middle-price reducer from
+  15 min unchanged; the event/close deadline still forces). (2) A non-forced
+  cross is deferred when the side it would cross into is under half the
+  middle of other traders' quotes (one-sided books leave it to the loss cap).
+  (3) Operator hold: `data/trader/holds.json` {"tickers": [...]}; the bot
+  places, moves and cancels nothing for a held position (its orders stay),
+  an explicit emergency flatten still overrides, and held positions/orders/
+  exposure do not block a verified-flat stop; a malformed file stops launch.
+  (4) Ad-spend series (`ADS$`, Carbon Arc) join the avoided types.
+  Also: a selection row without its fee reserve is blocked
+  (`entry_fee_reserve_missing`) instead of crashing (01:01 and 01:13 KeyError).
+- **Held now:** KXAMUSEMENTADS-26NOV06-T155, long 50 @ 77¢, our sell 50 @ 78¢
+  resting; settles on Carbon Arc's October value (~Nov 5–13).
+
 ### D-170 — Project markets get priority for fresh market terms; keep 50 contracts
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-01.

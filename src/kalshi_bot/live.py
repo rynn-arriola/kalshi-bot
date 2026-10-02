@@ -8,6 +8,7 @@ import asyncio
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import json
+from decimal import Decimal
 import math
 import os
 from pathlib import Path
@@ -294,6 +295,7 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         from .finish_line import FinishLine
         runtime.finish_line = FinishLine(runtime.lip_meter,
                                          Path(writer.path).with_name('projects.json')).load()
+        runtime.holds = load_holds(Path(writer.path).with_name('holds.json'))
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
@@ -334,7 +336,10 @@ async def local_status(runtime):
     return dict(observed_at=runtime.now().isoformat(), pid=os.getpid(),
         entries_paused=runtime.entry_pause_active,
         entry_allowed=runtime.entry_allowed, resting_entries=view.entry_count,
-        positions={ticker: str(value) for ticker, value in view.positions if value},
+        positions={ticker: str(value) for ticker, value in view.positions
+                   if value and ticker not in runtime.holds},
+        held_positions={ticker: str(value) for ticker, value in view.positions
+                        if value and ticker in runtime.holds},
         exposure_usd=str(view.total), risk_blockers=list(view.blockers),
         account_current=report is not None,
         accounting_blockers=list(release.blockers) if release is not None else ['accounting_not_released'],
@@ -344,6 +349,23 @@ async def local_status(runtime):
                           cap=window.cap, held=window.held, observed_at=window.observed_at.isoformat())
                      if window is not None else None),
         recovery_restrictions=restrictions, runtime=runtime.status())
+
+
+def load_holds(path):
+    """D-171: operator-held tickers from ``holds.json`` ({"tickers": [...]}).
+    Missing means none; a malformed file stops the launch, because ignoring it
+    would let the bot exit a position the operator chose to keep."""
+    if not path.exists():
+        return frozenset()
+    try:
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        tickers = raw['tickers']
+        if type(tickers) is not list or len(tickers) > 32 or any(
+                type(t) is not str or not t or len(t) > 128 for t in tickers):
+            raise ValueError
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise InvalidData('operator holds file is malformed') from exc
+    return frozenset(tickers)
 
 
 async def verified_flat(runtime):
@@ -356,7 +378,9 @@ async def verified_flat(runtime):
     revision = runtime.writer.revision
     if report is None or runtime.last_reports is None or not report.audit.consistent:
         return False
-    if report.snapshot.orders or any(p.quantity for p in report.snapshot.positions):
+    held = runtime.holds   # D-171: operator-held positions do not block a flat stop
+    if (any(o.ticker not in held for o in report.snapshot.orders)
+            or any(p.quantity and p.ticker not in held for p in report.snapshot.positions)):
         return False
     inventory = await runtime.writer.inventory()
     # The current audit already checks every owned order (including terminal
@@ -365,8 +389,10 @@ async def verified_flat(runtime):
     view = await runtime.risk_view()
     return (runtime.writer.revision == revision
             and runtime.account.current_report(runtime.now()) is report
-            and not inventory.unresolved_intents and not any(q for _,q in inventory.positions)
-            and not view.blockers and not view.entry_count and not view.total)
+            and not inventory.unresolved_intents
+            and not any(q for t, q in inventory.positions if t not in held)
+            and not view.blockers and not view.entry_count
+            and not sum((v for t, v in view.exposure if t not in held), Decimal(0)))
 
 
 async def supervise(runtime, *, stop, publish, interval=1, flatten=None):

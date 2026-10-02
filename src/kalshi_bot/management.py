@@ -231,7 +231,9 @@ class InventoryManager:
                                  touch=touch, complete_scope=complete)
         exit_plan = plan_exit(ticker=ticker, position=inventory.position, basis=inventory.yes_basis,
             first_seen_at=inventory.first_seen_at, orders=inventory.orders, book=new_book,
-            terms=terms, journal=inventory.exit_journal, now=now, complete_scope=complete)
+            terms=terms, journal=inventory.exit_journal, now=now, complete_scope=complete,
+            # D-171: an operator hold yields to an explicit emergency flatten.
+            hold=ticker in getattr(runtime, 'holds', frozenset()) and self.flatten_at is None)
         if inventory.position:
             exit_plan = self._settle_reprice(ticker, inventory, exit_plan, runtime.clock())
         else:

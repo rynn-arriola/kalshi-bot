@@ -577,7 +577,7 @@ class RuntimeSelection:
             for row in result.additions:
                 if row not in priority and row.program_id not in committed:
                     finish.unclaim(row.program_id)
-        capital = sum((row.capital_usd+self.selector._fees[(row.ticker,row.program_id)]
+        capital = sum((row.capital_usd+self.selector._fees.get((row.ticker,row.program_id), decimal(0))
                        for row in priority), decimal(0))
         return replace(result, additions=priority,
                        exclusions=result.exclusions+deferred,

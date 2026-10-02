@@ -1,5 +1,17 @@
 # Findings — kalshi-bot
 
+## 228. A sweep left an 8¢ bid under our 77¢ fill; two selection crashes — 2026-10-02
+
+**VERIFIED (Kalshi trade tape, ledger, child logs).** (1) Runtime crashed at
+01:01 and 01:13 UTC with KeyError in selection (`_fees` lookup for a row whose
+fee reserve was gone); exposed by D-170's faster project refresh. Fixed:
+blocked, not a crash. (2) 01:37:54: one seller hit every bid at 77¢ (865
+contracts) in an ad-spend market (Carbon Arc index; a data-driven sweep like
+card spend); our 50 were filled; best bid then 8¢. The patient exit would have
+crossed at 30 min for −$35. The stop then hit `shutdown_timeout`; per the
+operator's "A" and "leave that open" the exact child (PID 47864, gen 247) was
+terminated under D-112, leaving the position and our 78¢ sell. Fixed by D-171.
+
 ## 227. Starts after the operator's combo: four blockers, found one start at a time — 2026-10-01
 
 **VERIFIED (logs, ledger copy, venue reads).** After D-165 recorded the combo,

@@ -587,6 +587,44 @@ class LiveEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.calls)
 
 
+class OperatorHoldTests(unittest.IsolatedAsyncioTestCase):
+    """D-171: an operator-held position is left alone and does not block a flat stop."""
+    def test_holds_file(self):
+        from kalshi_bot.live import load_holds
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'holds.json'
+            self.assertEqual(load_holds(path), frozenset())
+            path.write_text(json.dumps(dict(tickers=['A', 'B'])), encoding='utf-8')
+            self.assertEqual(load_holds(path), frozenset({'A', 'B'}))
+            for bad in ('{', '[]', '{"tickers": "A"}', '{"tickers": [1]}', '{"tickers": [""]}'):
+                path.write_text(bad, encoding='utf-8')
+                with self.assertRaises(InvalidData, msg=bad):
+                    load_holds(path)
+
+    async def test_flat_stop_ignores_only_held_positions(self):
+        from kalshi_bot.live import verified_flat
+        def runtime(holds, *, orders=(), positions=(), exposure=(), ledger=None):
+            report = SimpleNamespace(audit=SimpleNamespace(consistent=True),
+                snapshot=SimpleNamespace(orders=tuple(SimpleNamespace(ticker=t) for t in orders),
+                                         positions=tuple(SimpleNamespace(ticker=t, quantity=D(q)) for t, q in positions)))
+            writer = SimpleNamespace(revision=1, inventory=AsyncMock(return_value=SimpleNamespace(
+                unresolved_intents=(), positions=tuple((t, D(q)) for t, q in (ledger or positions)))))
+            return SimpleNamespace(holds=frozenset(holds), recovery_lock=asyncio.Lock(),
+                recovery_requested=asyncio.Event(), last_reports=object(), writer=writer,
+                now=lambda: None, account=SimpleNamespace(current_report=lambda now: report),
+                risk_view=AsyncMock(return_value=SimpleNamespace(blockers=(), entry_count=0,
+                    exposure=tuple((t, D(v)) for t, v in exposure))))
+        held = dict(orders=('H',), positions=(('H', '50'),), exposure=(('H', '38.5'),))
+        self.assertTrue(await verified_flat(runtime({'H'}, **held)))
+        self.assertFalse(await verified_flat(runtime((), **held)))
+        self.assertFalse(await verified_flat(runtime({'H'}, orders=('H', 'X'), positions=(('H', '50'),),
+                                                     exposure=(('H', '38.5'),))))
+        self.assertFalse(await verified_flat(runtime({'H'}, positions=(('H', '50'), ('X', '1')),
+                                                     exposure=(('H', '38.5'), ('X', '.5')))))
+        # Our ledger still holds an unheld position the venue no longer shows.
+        self.assertFalse(await verified_flat(runtime({'H'}, **held, ledger=(('H', '50'), ('X', '1')))))
+
+
 class LossHoldSuperviseTests(unittest.IsolatedAsyncioTestCase):
     """D-162: a flat loss hold keeps the run alive; an operator stop ends it."""
     async def test_flat_loss_hold_keeps_running_until_an_operator_stop(self):

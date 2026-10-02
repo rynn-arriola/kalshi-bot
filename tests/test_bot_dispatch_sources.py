@@ -142,9 +142,10 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.dispatcher.submit('A', priority))
         return await self.dispatcher.run_one()
 
-    async def due(self):
-        self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
-        self.mono += EXIT_CROSS_SECONDS
+    async def due(self, seconds=EXIT_CROSS_SECONDS):
+        self.now += timedelta(seconds=seconds)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
+        self.mono += seconds
         await self.books()
         await self.report()
 
@@ -233,11 +234,16 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
     async def metadata_during_exit(self, *, due=False, changed=False):
         await self.ready()
         if due:
-            await self.due()
+            # The fixture market closes 2 h after NOW; the cross age is shortened
+            # here so the timing proof under test stays inside its terms.
+            import kalshi_bot.exits as exits_module
+            self.addCleanup(setattr, exits_module, 'EXIT_CROSS_SECONDS', exits_module.EXIT_CROSS_SECONDS)
+            exits_module.EXIT_CROSS_SECONDS = 1800
+            await self.due(1800)
         reads = Reads(('A',))
         service = ExitInputService(reads, ('A',), now=lambda:self.now,
             clock=lambda:self.mono, ttl=30, timing_reviews=(review(reads.markets['A']),),
-            fee_profile=FeeProfile(D('.0001'), 'fixture', NOW+timedelta(hours=1)))
+            fee_profile=FeeProfile(D('.0001'), 'fixture', self.now+timedelta(hours=1)))
         service.bind(self.runtime.management.set_terms, self.runtime.management.revoke_terms)
         scheduler = MetadataScheduler(service, defer=lambda:True)
         service.begin(1)
@@ -277,6 +283,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_deferred_early_exit_still_places_exact_passive_reducer(self):
         await self.ready(filled='4')
         self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
         self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('4')
@@ -294,6 +301,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_deferred_early_exit_still_cancels_building_partial_fill(self):
         order = await self.ready(filled='4', remaining='6')
         self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
         self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('4', (order,))
@@ -345,6 +353,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(receipt.reducing)
         self.runtime.account._store_order(receipt)
         self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
         self.mono += EXIT_CROSS_SECONDS
         await self.books()
         await self.report('10', (reducer,))
@@ -399,6 +408,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_due_missing_fee_cannot_fall_back_to_old_passive_subplan(self):
         await self.ready(filled='4', remaining='6')
         self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
         await self.books()
         await self.report('4', ((await self.writer.orders())[0].order,))
         self.terms(taker_fee_per_contract_bound=None)
@@ -408,6 +418,7 @@ class DispatchSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_due_working_order_cancels_before_ioc(self):
         order = await self.ready(filled='4', remaining='6')
         self.now += timedelta(seconds=EXIT_CROSS_SECONDS)
+        self.terms()   # D-171: 4 h outlives the fixture's 1 h terms
         await self.books()
         await self.report('4', (order,))
         self.assertIsNone(await self.source.refresh('A', DUE_IOC))

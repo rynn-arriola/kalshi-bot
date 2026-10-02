@@ -72,7 +72,10 @@ AVOID = 'sweep_prone_market_type'
 # Matched on the series (ticker before the first '-').
 AVOID_TYPES = (('app_rank', re.compile(r'APP$')), ('card_spend', re.compile(r'CC$')),
                ('port_teu', re.compile(r'PORT.*TEU|TEU$')), ('diesel', re.compile(r'DIESEL')),
-               ('mortgage', re.compile(r'MORT')))
+               ('mortgage', re.compile(r'MORT')),
+               # D-171 (2026-10-02): Carbon Arc sector ad spend, like card spend;
+               # one seller swept 865 contracts at 77c, leaving an 8c bid.
+               ('ad_spend', re.compile(r'ADS$')))
 
 
 def avoided_type(ticker):

@@ -381,6 +381,17 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             generation=shard.generation)
         self.assertIsNone(self.runtime.management.current("A"))
 
+    async def test_operator_hold_reaches_the_exit_plan_unless_flatten(self):
+        await self.position()
+        self.runtime.holds = frozenset({"A"})
+        plan = await self.runtime.management.refresh("A")
+        self.assertEqual(self.runtime.management.current("A").exit.mode, "hold")
+        from types import SimpleNamespace
+        self.runtime.live_session = SimpleNamespace(entries_paused=True)
+        self.runtime.management.request_flatten(self.now)
+        await self.runtime.management.refresh("A")
+        self.assertNotEqual(self.runtime.management.current("A").exit.mode, "hold")
+
     async def test_inventory_age_timer_fires_without_market_updates(self):
         await self.position()
         await self.runtime.management.refresh("A")
@@ -390,9 +401,10 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
         await self.runtime.engine.step()
         self.assertIn("A", self.deadlines)
         self.assertNotIn("exit_terms_missing", self.runtime.management.current("A").blockers)
-        self.assertEqual(self.runtime.engine.deadlines.due_for("A"), 1900)   # patient cross age
-        self.now += timedelta(seconds=900)
-        self.monotonic += 900
+        from kalshi_bot.exits import EXIT_CROSS_SECONDS
+        self.assertEqual(self.runtime.engine.deadlines.due_for("A"), 100+EXIT_CROSS_SECONDS)  # cross age
+        self.now += timedelta(seconds=EXIT_CROSS_SECONDS-900)
+        self.monotonic += EXIT_CROSS_SECONDS-900
         await self.runtime.engine.step()
         self.assertIn("exit_terms_missing", self.runtime.management.current("A").blockers)
         self.assertIsNone(self.runtime.engine.deadlines.due_for("A"))
