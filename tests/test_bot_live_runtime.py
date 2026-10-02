@@ -969,7 +969,11 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
     async def test_discovered_unsupported_fee_model_never_dispatches(self):
         await self.run_graph(discover=True, unsupported=True)
 
-    async def run_graph(self, *, discover=False, unsupported=False):
+    async def test_operator_holds_load_in_recovery_only_composition(self):
+        # D-171: a recovery-only run after an unexpected stop moved a held exit.
+        await self.run_graph(paused=True)
+
+    async def run_graph(self, *, discover=False, unsupported=False, paused=False):
         import test_bot_market_inputs as metadata
         from test_bot_incentive_discovery import row as base_row
         def reward_row(*args, **changes):
@@ -1045,6 +1049,8 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                     for r in requests]}
         with TemporaryDirectory() as directory:
             session = LiveSession(run_id='composed-synthetic', tickers=('A','B') if discover else ('A',))
+            session.entries_paused = paused
+            (Path(directory)/'holds.json').write_text(json.dumps(dict(tickers=['H'])), encoding='utf-8')
             writer = await LedgerWriter(Path(directory)/'account.db', live_session=session).start()
             reads = RestReads(TokenBudget(rate=10000,capacity=10000,default_cost=10,
                 clock=time.monotonic), Signer(), wire=wire)
@@ -1061,6 +1067,10 @@ class CompositionTests(unittest.IsolatedAsyncioTestCase):
                 runtime = await compose(writer, reads, Reader, Wire(), inputs=inputs,
                     boundary=base-timedelta(seconds=1), now=now, clock=time.monotonic,
                     diagnostics=NO_LOG, quota=quota, initialize=True)
+                self.assertEqual(runtime.holds, frozenset({'H'}))
+                if paused:
+                    runtime.research.close()   # never started: close what compose opened
+                    return
                 self.assertEqual(len(guard.listeners), 5)
                 self.assertFalse(runtime.observation_only)
                 self.assertFalse(runtime.dispatch_supervisor.dispatcher.offline_fixture)

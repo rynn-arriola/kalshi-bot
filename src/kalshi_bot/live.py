@@ -295,7 +295,9 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
         from .finish_line import FinishLine
         runtime.finish_line = FinishLine(runtime.lip_meter,
                                          Path(writer.path).with_name('projects.json')).load()
-        runtime.holds = load_holds(Path(writer.path).with_name('holds.json'))
+    # D-171: operator holds apply in every mode, recovery-only included (a
+    # recovery-only run after an unexpected stop moved a held exit order).
+    runtime.holds = load_holds(Path(writer.path).with_name('holds.json'))
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
