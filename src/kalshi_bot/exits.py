@@ -200,7 +200,7 @@ def cross(book, position, basis, bands, fee_bound, haircut, *, excluded=()):
 
 
 def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
-              journal, now, complete_scope, hold=False):
+              journal, now, complete_scope, hold=False, hold_price=None):
     """Caller must bind account/book/terms/writer revisions; result stays advisory."""
     now, position = utc(now), decimal(position)
     count(abs(position), zero=True)
@@ -215,7 +215,7 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
             if future: kwargs['next_at'] = min(future)
         return ExitPlan(passive, mode, blockers=tuple(blockers), **kwargs)
     if not position: return result("flat")
-    if hold:
+    if hold and hold_price is None:
         # D-171 operator hold: the operator keeps this position; the bot places,
         # moves and cancels nothing for it (its resting orders stay as they are).
         return ExitPlan(InventoryPlan((), None, None, Decimal(0), ()), "hold", blockers=("operator_hold",))
@@ -243,6 +243,14 @@ def plan_exit(*, ticker, position, basis, first_seen_at, orders, book, terms,
     if book is None or not book.valid: return result("blocked", "exit_book_unavailable")
     if journal is None: return result("blocked", "exit_journal_unknown")
     integer(journal.attempts, 0, 4096)
+    if hold:
+        # D-172 hold at a price: one resting reducer for the whole position at
+        # the operator's price; never moved to the middle, never crossed.
+        target = validate_tick(price(hold_price), terms.bands)
+        held = inventory_plan(position, orders, ticker=ticker, touch=target, complete_scope=complete_scope)
+        return ExitPlan(held, "passive", limit_price=target, blockers=held.blockers,
+                        next_at=min(t for t in (terms.deadline, terms.valid_until) if t > now)
+                        if any(t > now for t in (terms.deadline, terms.valid_until)) else None)
     preferred = passive_price(book, position, basis, terms.bands)
     middle = middle_price(book, position, terms.bands, orders) if now >= middle_at else None
     if middle is not None:

@@ -435,6 +435,13 @@ class LedgerWriter:
         """Read-only (D-154): own fills executed at or after ``since_us``, oldest first."""
         return await self._wait(self._submit('recent_fills', integer(since_us, 0, 2**63-1)))
 
+    async def unresolved_outside(self, tickers):
+        """Read-only (D-172): unresolved intents outside held markets' resting orders."""
+        tickers = tuple(sorted(tickers))
+        if len(tickers) > 32 or any(not isinstance(t, str) or not t or len(t) > 128 for t in tickers):
+            raise InvalidData('bounded held tickers required')
+        return await self._wait(self._submit('unresolved_outside', tickers))
+
     async def recent_results(self, since_us):
         """Read-only (D-161): realized trading result of each own fill executed at
         or after ``since_us``, as (ticker, pnl, executed_us), oldest first."""
@@ -761,6 +768,8 @@ class LedgerWriter:
                     snapshot.subaccount, now))
                 return audit_snapshot(ledger, snapshot, epoch=self.epoch, revision=self._revision,
                                       capacity=self.market_capacity)
+        if command == 'unresolved_outside':
+            return ledger.unresolved_outside(args[0])
         if command == 'recent_results':
             rows = ledger.connection.execute(
                 "SELECT f.payload, r.pnl, f.executed_us FROM realized_events r "
@@ -1097,7 +1106,7 @@ class LedgerWriter:
                                  'next_entry_cancel_evidence', 'reduction_evidence',
                                  'command_capacity', 'accounting_status', 'reaudit',
                                  'refined_fills', 'unknown_creates', 'recent_fills',
-                                 'recent_results'}
+                                 'recent_results', 'unresolved_outside'}
                     post_revision = {'reserve_entry', 'reserve_entry_pair',
                                      'prepare_cancel', 'prepare_reduction',
                                      'begin_send', 'begin_batch_send',

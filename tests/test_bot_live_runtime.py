@@ -601,6 +601,57 @@ class OperatorHoldTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(InvalidData, msg=bad):
                     load_holds(path)
 
+    def test_ledger_counts_unresolved_outside_held_resting_orders(self):
+        from kalshi_bot.ledger import Ledger
+        from test_bot_engine import NOW, request
+        with TemporaryDirectory() as temp:
+            ledger = Ledger(Path(temp)/'l.db')
+            try:
+                for client, ticker, state in (('h-rest', 'H', 'ACKNOWLEDGED'), ('h-send', 'H', 'SENDING'),
+                                              ('x-rest', 'X', 'ACKNOWLEDGED')):
+                    ledger.reserve_intent(client, request(client) | dict(ticker=ticker), NOW)
+                    ledger.transition_intent(client, 'SENDING')
+                    if state == 'ACKNOWLEDGED':
+                        ledger.transition_intent(client, 'ACKNOWLEDGED')
+                self.assertEqual(ledger.unresolved_intents(), 3)
+                self.assertEqual(ledger.unresolved_outside(('H',)), 2)      # held resting order only
+                self.assertEqual(ledger.unresolved_outside(()), 3)
+                self.assertEqual(ledger.unresolved_outside(('H', 'X')), 1)  # SENDING always counts
+            finally:
+                ledger.close()
+
+    def test_hold_prices_file(self):
+        from kalshi_bot.live import load_hold_prices
+        with TemporaryDirectory() as temp:
+            path = Path(temp)/'holds.json'
+            self.assertEqual(load_hold_prices(path, frozenset({'A'})), {})
+            path.write_text(json.dumps(dict(tickers=['A'])), encoding='utf-8')
+            self.assertEqual(load_hold_prices(path, frozenset({'A'})), {})
+            path.write_text(json.dumps(dict(tickers=['A'], exit_prices={'A': '0.78'})), encoding='utf-8')
+            self.assertEqual(load_hold_prices(path, frozenset({'A'})), {'A': D('0.78')})
+            for bad in ({'B': '0.78'}, {'A': '1.2'}, {'A': '0'}, {'A': 0.78}, {'A': 'x'}, ['A']):
+                path.write_text(json.dumps(dict(tickers=['A'], exit_prices=bad)), encoding='utf-8')
+                with self.assertRaises(InvalidData, msg=str(bad)):
+                    load_hold_prices(path, frozenset({'A'}))
+
+    async def test_a_held_resting_order_does_not_block_a_flat_stop(self):
+        # D-172: one acknowledged reducer in a held market kept recovery-only running.
+        from kalshi_bot.live import verified_flat
+        for outside, expected in ((0, True), (1, False)):
+            report = SimpleNamespace(audit=SimpleNamespace(consistent=True),
+                snapshot=SimpleNamespace(orders=(SimpleNamespace(ticker='H'),),
+                                         positions=(SimpleNamespace(ticker='H', quantity=D(50)),)))
+            writer = SimpleNamespace(revision=1, unresolved_outside=AsyncMock(return_value=outside),
+                inventory=AsyncMock(return_value=SimpleNamespace(unresolved_intents=1,
+                                                                 positions=(('H', D(50)),))))
+            runtime = SimpleNamespace(holds=frozenset({'H'}), recovery_lock=asyncio.Lock(),
+                recovery_requested=asyncio.Event(), last_reports=object(), writer=writer, now=lambda: None,
+                account=SimpleNamespace(current_report=lambda now: report),
+                risk_view=AsyncMock(return_value=SimpleNamespace(blockers=(), entry_count=0,
+                                                                 exposure=(('H', D('64.5')),))))
+            self.assertEqual(await verified_flat(runtime), expected)
+            writer.unresolved_outside.assert_awaited_with(frozenset({'H'}))
+
     async def test_flat_stop_ignores_only_held_positions(self):
         from kalshi_bot.live import verified_flat
         def runtime(holds, *, orders=(), positions=(), exposure=(), ledger=None):

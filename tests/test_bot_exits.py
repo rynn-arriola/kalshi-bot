@@ -179,6 +179,21 @@ class ExitTests(unittest.TestCase):
             self.assertFalse(p.passive_allowed)
         self.assertEqual(self.plan(position=D(0), hold=True).mode, 'flat')
 
+    def test_hold_at_a_price_keeps_one_reducer_there_and_never_crosses(self):
+        # D-172: held long 10, operator price .78; the bot's .48 reducer is replaced.
+        for age in (0, 900, EXIT_CROSS_SECONDS):
+            first = NOW-timedelta(seconds=age)
+            p = self.plan(hold=True, hold_price=D('.78'), first_seen_at=first)
+            self.assertEqual((p.mode, p.limit_price, p.passive.reduce_quantity, p.blockers),
+                             ('passive', D('.78'), 10, ()))
+            self.assertTrue(p.passive_allowed)
+            moved = self.plan(hold=True, hold_price=D('.78'), first_seen_at=first, orders=(receipt(p='.48'),))
+            self.assertEqual((moved.passive.cancel_ids, moved.limit_price), (('r',), D('.78')))
+            kept = self.plan(hold=True, hold_price=D('.78'), first_seen_at=first, orders=(receipt(p='.78'),))
+            self.assertEqual((kept.passive.keep_id, kept.passive.cancel_ids), ('r', ()))
+        with self.assertRaises(InvalidData):
+            self.plan(hold=True, hold_price=D('.785'))                 # off the tick grid
+
     def test_ordinary_exact_quantity_capped_ioc(self):
         p=self.due(); self.assertEqual((p.mode,p.limit_price,p.quantity),('ioc',D('.4'),10))
         self.assertEqual(p.projected_pnl,D('-1.2')); self.assertFalse(p.authorized)

@@ -10,6 +10,24 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-172 — Hold at a price; held resting orders do not block a flat stop
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.
+  Operator: "Lets build number 2 and 3".
+- **Cause found:** the 10-02 recovery-only run could not finish because the
+  ledger counts every ACKNOWLEDGED (resting) intent as unresolved; the held
+  market's own 48¢ reducer alone made "verified flat" impossible (not a
+  refresh race). It finished within a minute once that order was cancelled.
+- **What:** (1) `verified_flat` asks `unresolved_outside(holds)`: resting
+  orders in held markets are excluded; RESERVED/SENDING/UNKNOWN there still
+  count. (2) `holds.json` may add `"exit_prices": {ticker: "0.78"}` for held
+  tickers; the bot then keeps exactly one reducer for the whole held position
+  at that price (replacing any other), never moves it to the middle and never
+  crosses; an emergency flatten still overrides. Malformed prices stop launch.
+- **Meter:** ended programs are already kept 14 days (`KEEP_DAYS`); the 10-02
+  $1.43 credit predates the meter (started 09-29), so it is matched via the
+  Kalshi Rewards page instead.
+
 ### D-171 — 4-hour cross, never cross a near-empty side, operator hold, no ad spend
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.

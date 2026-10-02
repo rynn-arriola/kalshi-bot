@@ -417,6 +417,15 @@ class Ledger:
                 raise InvalidData("illegal intent transition; terminal venue proof is required")
             self.connection.execute("UPDATE intents SET state=? WHERE client_id=?", (target, client_id))
 
+    def unresolved_outside(self, tickers) -> int:
+        """D-172: unresolved intents, except acknowledged (resting) orders in
+        operator-held markets. Uncertain ones there still count."""
+        held = json.dumps(sorted(tickers))
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM intents WHERE state IN ('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED') "
+            "AND NOT (state='ACKNOWLEDGED' AND json_extract(payload,'$.ticker') IN "
+            "(SELECT value FROM json_each(?)))", (held,)).fetchone()[0]
+
     def unresolved_intents(self) -> int:
         return self.connection.execute(
             "SELECT COUNT(*) FROM intents WHERE state IN ('RESERVED','SENDING','UNKNOWN','ACKNOWLEDGED')"

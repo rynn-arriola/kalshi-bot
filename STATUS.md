@@ -1,5 +1,11 @@
 # Current status
 
+## Hold at a price + flat-check fix (built) — 2026-10-02
+
+D-172; needs the full test run and an operator restart. Bot running healthy
+(43 orders); Costco 95 $1.14 and 96.5 $1.06 are the first markets past $1;
+a $1.43 reward credit arrived 10:30 UTC.
+
 ## Bot stopped; D-171 built; one operator-held position — 2026-10-02
 
 Stopped at 01:55 UTC after two selection crashes and an ad-spend sweep

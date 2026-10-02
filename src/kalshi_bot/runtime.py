@@ -84,6 +84,7 @@ class RecoveryRuntime(AccountProofMixin):
     lip_meter = None  # D-161 real-time LIP meter per contract; never authority.
     finish_line = None  # D-161 phase 3: $1-per-contract entry priority (ordering only).
     holds = frozenset()  # D-171: operator-held position tickers the bot leaves alone.
+    hold_prices = {}  # D-172: optional held exit price per held ticker.
     research_failures = 0
     research_failure_sites = None  # D-152: 'site:ExceptionType' -> count.
     research_last_failure = None

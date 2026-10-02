@@ -298,6 +298,7 @@ async def compose(writer, reads, reader_factory, transport, *, inputs, boundary,
     # D-171: operator holds apply in every mode, recovery-only included (a
     # recovery-only run after an unexpected stop moved a held exit order).
     runtime.holds = load_holds(Path(writer.path).with_name('holds.json'))
+    runtime.hold_prices = load_hold_prices(Path(writer.path).with_name('holds.json'), runtime.holds)
     producer = InventoryDispatchSource(runtime)
     dispatcher = producer.dispatcher(source.budget, invoke=transport, clock_pair=source.clock_pair)
     runtime.attach_dispatch(producer, dispatcher)
@@ -370,6 +371,24 @@ def load_holds(path):
     return frozenset(tickers)
 
 
+def load_hold_prices(path, holds):
+    """D-172: optional {"exit_prices": {ticker: "0.78"}} for held tickers: the
+    bot keeps one resting reducer for the whole held position at that price."""
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding='utf-8')).get('exit_prices', {})
+        if type(raw) is not dict:
+            raise ValueError
+        prices = {t: Decimal(v) for t, v in raw.items()}
+        if any(t not in holds or type(raw[t]) is not str or not Decimal('0.01') <= v <= Decimal('0.99')
+               for t, v in prices.items()):
+            raise ValueError
+    except (OSError, ValueError, KeyError, TypeError, ArithmeticError) as exc:
+        raise InvalidData('operator hold prices are malformed') from exc
+    return prices
+
+
 async def verified_flat(runtime):
     # A current flat snapshot is not terminal while reconciliation owns or has
     # queued more account work. Stopping there can cancel the opening/release
@@ -391,7 +410,10 @@ async def verified_flat(runtime):
     view = await runtime.risk_view()
     return (runtime.writer.revision == revision
             and runtime.account.current_report(runtime.now()) is report
-            and not inventory.unresolved_intents
+            # D-172: a held market's resting order is not an unresolved intent
+            # (it alone kept a recovery-only run from finishing on 10-02).
+            and not (inventory.unresolved_intents and await runtime.writer.unresolved_outside(held))
+            and runtime.writer.revision == revision
             and not any(q for t, q in inventory.positions if t not in held)
             and not view.blockers and not view.entry_count
             and not sum((v for t, v in view.exposure if t not in held), Decimal(0)))
