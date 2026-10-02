@@ -45,6 +45,7 @@ class LipMeter:
         self.last_mono = None
         self.samples = self.unknown = self.unscored = self.errors = 0
         self.gaps = self.save_failures = 0
+        self.payouts = []       # D-173: credits matched to just-ended programs
 
     def sample(self, mono, now, markets):
         """One observation. ``markets`` lists (ticker, book, bands, programs,
@@ -104,6 +105,40 @@ class LipMeter:
             del self.programs[pid]
             self.rates.pop(pid, None)
 
+    PAYOUTS_KEPT = 50
+    MATCH_HOURS = 36            # credits so far arrived 6-18 h after a program ended
+    MATCH_FLOOR = Decimal('0.75')   # estimates may sit a little under the paid $1
+
+    def ending_soon(self, now, *, hours=96, minimum=Decimal('0.05')):
+        """D-173: programs ending within ``hours`` with at least ``minimum``
+        earned, soonest first: what will pay, and what will end under $1."""
+        now = utc(now)
+        rows = [row for row in self.programs.values()
+                if now < row['end'] <= now+timedelta(hours=hours) and row['earned'] >= minimum]
+        return [dict(ticker=row['ticker'], ends=row['end'].isoformat(),
+                     hours_left=round(float(seconds(row['end']-now))/3600, 1),
+                     earned_usd=str(round(row['earned'], 4)),
+                     pays=row['earned'] >= MINIMUM_PAYOUT)
+                for row in sorted(rows, key=lambda r: (r['end'], -r['earned']))]
+
+    def match_credit(self, amount, now):
+        """D-173: name the just-ended program a reward credit most likely paid
+        (closest estimate among programs ended in the last MATCH_HOURS with at
+        least MATCH_FLOOR earned). An estimate, never accounting."""
+        now, amount = utc(now), Decimal(amount)
+        ended = [(pid, row) for pid, row in self.programs.items()
+                 if now-timedelta(hours=self.MATCH_HOURS) <= row['end'] <= now
+                 and row['earned'] >= self.MATCH_FLOOR]
+        ended.sort(key=lambda item: (abs(item[1]['earned']-amount), item[1]['end']))
+        match = dict(at=now.isoformat(), amount=str(amount),
+                     best=(dict(ticker=ended[0][1]['ticker'], estimated_usd=str(round(ended[0][1]['earned'], 4)),
+                                ended=ended[0][1]['end'].isoformat()) if ended else None),
+                     candidates=[dict(ticker=row['ticker'], estimated_usd=str(round(row['earned'], 4)))
+                                 for _, row in ended[:5]])
+        self.payouts.append(match)
+        del self.payouts[:-self.PAYOUTS_KEPT]
+        return match
+
     def save(self, now):
         if self.path is None:
             return
@@ -112,7 +147,7 @@ class LipMeter:
         temp.write_text(json.dumps(dict(programs={pid: dict(
             ticker=row['ticker'], end=row['end'].isoformat(), first_at=row['first_at'].isoformat(),
             earned=str(row['earned']), seconds=str(row['seconds']))
-            for pid, row in self.programs.items()})), encoding='utf-8')
+            for pid, row in self.programs.items()}, payouts=self.payouts)), encoding='utf-8')
         os.replace(temp, self.path)
 
     def load(self):
@@ -122,7 +157,11 @@ class LipMeter:
                 return self
             if self.path.stat().st_size > self.BYTES_LIMIT:
                 raise ValueError('LIP meter history exceeds size limit')
-            raw = json.loads(self.path.read_text(encoding='utf-8'))['programs']
+            document = json.loads(self.path.read_text(encoding='utf-8'))
+            raw = document['programs']
+            payouts = document.get('payouts', [])
+            if type(payouts) is not list:
+                raise ValueError('invalid payout matches')
             programs = {}
             for pid, row in raw.items():
                 earned, spent = Decimal(row['earned']), Decimal(row['seconds'])
@@ -134,6 +173,7 @@ class LipMeter:
                                      first_at=utc(datetime.fromisoformat(row['first_at'])),
                                      earned=earned, seconds=spent)
             self.programs = dict(list(programs.items())[:self.CAPACITY])
+            self.payouts = payouts[-self.PAYOUTS_KEPT:]
         except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidOperation, InvalidData):
             self.programs = {}
         return self
@@ -151,4 +191,5 @@ class LipMeter:
             top=[dict(ticker=r['ticker'], earned_usd=str(round(r['earned'], 4)),
                       hours_left=round(seconds(r['end']-now)/3600, 1),
                       cleared=r['earned'] >= MINIMUM_PAYOUT) for _, r in top],
+            ending_soon=self.ending_soon(now)[:40], payouts=self.payouts[-10:],
             estimate_only=True, authorized=False)

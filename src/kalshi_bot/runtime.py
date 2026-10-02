@@ -790,6 +790,16 @@ class RecoveryRuntime(AccountProofMixin):
             if diagnostics is not None:
                 diagnostics.emit('cash_adjusted', cash_kind=item.kind,
                                  amount_cents=int(item.amount*100))
+            if item.kind == 'unattributed_credit' and self.lip_meter is not None:
+                # D-173: name the just-ended program this credit most likely paid.
+                try:
+                    match = self.lip_meter.match_credit(item.amount, self.now())
+                    self.lip_meter.save(self.now())
+                    if diagnostics is not None and match['best'] is not None:
+                        diagnostics.emit('reward_credit_matched', market=match['best']['ticker'],
+                                         amount_cents=int(item.amount*100))
+                except (OSError, ValueError, InvalidData, ArithmeticError):
+                    pass
             if self.research is not None:
                 # D-151 #3: reward payouts arrive as unattributed credits.
                 self._research_safely(lambda item=item: self.research.record(

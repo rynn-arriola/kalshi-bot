@@ -54,6 +54,10 @@ CLOSED_KEPT = 200                 # recently finished or dropped projects, for r
 # shrink of MAX_LIST had discarded the saved list and dropped a $0.40 market).
 ADOPT_EARNED = Decimal('0.25')
 TRIMMED = 'list_limit_trimmed'
+# D-173 (2026-10-02): a project still under $1 whose program ends within this
+# many hours, and that can still reach $1 in time, gets the next slot first.
+# (Bozeman $0.78 and Case-Shiller $0.75 ended 42 h out ranked like any other.)
+URGENT_HOURS = 48
 SANITY_LIST = 1000                # more saved projects than this is corruption
 
 # Priority tiers, best first (operator 2026-09-30): projects still working
@@ -165,8 +169,14 @@ class FinishLine:
             self.planned += 1
             with localcontext() as ctx:
                 ctx.prec = 40
-                return PROJECT, (max(Decimal(0), TARGET_USD-earned)/rate if rate and rate > 0
-                                 else Decimal(10**9))
+                needed = (max(Decimal(0), TARGET_USD-earned)/rate if rate and rate > 0
+                          else Decimal(10**9))
+                # D-173: under $1 with its program ending soon, but still able to
+                # reach $1 in time: such projects go first, soonest deadline first.
+                left = Decimal(str(seconds(until-utc(now))))/3600
+                urgent = (earned < MINIMUM_PAYOUT and rate is not None and rate > 0
+                          and 0 < left <= URGENT_HOURS and (MINIMUM_PAYOUT-earned)/rate <= left)
+                return PROJECT, ((0, left) if urgent else (1, needed))
         if earned >= MINIMUM_PAYOUT:
             self.planned += 1
             if rate is not None and rate >= JUICY_RATE_USD:

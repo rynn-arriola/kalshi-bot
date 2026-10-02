@@ -38,6 +38,7 @@ EVENTS = {
     'command_reclaim_failed': ('WARNING', 'writer'),
     'history_scope_high': ('WARNING', 'recovery'),
     'cash_adjusted': ('WARNING', 'accounting'),
+    'reward_credit_matched': ('INFO', 'accounting'),  # D-173
     'unknown_create_resolved': ('WARNING', 'recovery'),
     'entry_screen_shadow': ('INFO', 'selection'),
     'venue_paused': ('WARNING', 'runtime'),

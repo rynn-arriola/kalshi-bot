@@ -39,7 +39,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(f.plan(row('A'), NOW), (RANKED, 0))
         self.assertTrue(f.claim(row('A'), NOW))
         self.assertEqual(f.tickers(), ('TA',))
-        self.assertEqual(f.plan(row('A'), NOW), (PROJECT, TARGET_USD/D('0.10')))
+        self.assertEqual(f.plan(row('A', hours=100), NOW), (PROJECT, (1, TARGET_USD/D('0.10'))))
         with patch.object(fl, 'MAX_PROJECTS', 1):
             self.assertEqual(f.plan(row('B'), NOW), FULL)
             self.assertFalse(f.claim(row('B'), NOW))
@@ -61,11 +61,29 @@ class PlanTests(unittest.TestCase):
         f.claim(row(), NOW)
         # Needs 12 h for $1.50 with 12 h left: more than half, but $1 is still
         # reachable (0.30 + 1.20), so it stays a project.
-        self.assertEqual(f.plan(row(hours=12), NOW), (PROJECT, D('12')))
+        self.assertEqual(f.plan(row(hours=12), NOW), (PROJECT, (0, D('12'))))   # urgent: ends in 12 h
         # $1 needs 7 h at 0.10/h: with 6 h left it is hopeless and dropped.
         self.assertEqual(f.plan(row(hours=6), NOW), CANNOT)
         self.assertEqual(f.projects, {})
         self.assertEqual(f.closed[-1]['reason'], CANNOT)
+
+    def test_projects_near_a_dollar_with_a_close_deadline_go_first(self):
+        # D-173: Bozeman $0.78 / Case-Shiller $0.75 ended 42 h out ranked like any other.
+        f = FinishLine(meter(U='0.78', S='0.50', F='0.78', P='1.20', N='0.10'))
+        for pid in 'USFN':
+            f.claim(row(pid, hours=100), NOW)
+        f.projects['P'] = dict(ticker='TP', until=NOW+timedelta(hours=100), added_at=NOW)  # joined under $1
+        urgent = f.plan(row('U', rate='0.07', hours=42), NOW)             # $0.22 in ~3 h, 42 h left
+        self.assertEqual(urgent, (PROJECT, (0, D(42))))
+        sooner = f.plan(row('S', rate='0.20', hours=10), NOW)             # $0.50 in 2.5 h, 10 h left
+        self.assertEqual(sooner, (PROJECT, (0, D(10))))
+        self.assertLess(sooner[1], urgent[1])                              # soonest deadline first
+        self.assertEqual(f.plan(row('F', rate='0.07', hours=48.5), NOW)[1][0], 1)  # deadline past 48 h
+        self.assertEqual(f.plan(row('P', rate='0.07', hours=10), NOW)[1][0], 1)    # already past $1
+        # $0.90 more at 0.02/h needs 45 h: urgent with 46 h left, dropped with 40 h.
+        self.assertEqual(f.plan(row('N', rate='0.02', hours=46), NOW), (PROJECT, (0, D(46))))
+        self.assertEqual(f.plan(row('N', rate='0.02', hours=40), NOW), CANNOT)
+        self.assertLess(urgent[1], f.plan(row('F', rate='0.50', hours=100), NOW)[1])  # urgent beats fastest
 
     def test_contracts_past_a_dollar_pass_without_taking_a_project_slot(self):
         f = FinishLine(meter(C='1.00'))

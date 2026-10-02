@@ -1,5 +1,10 @@
 # Current status
 
+## Ending-soon list, payout matcher, deadline rush (built) — 2026-10-02
+
+D-173; deploy before 10-04 04:31 UTC (Bozeman $0.78, Case-Shiller $0.75
+programs end). D-172 running since 11:21 UTC.
+
 ## Hold at a price + flat-check fix (built) — 2026-10-02
 
 D-172; needs the full test run and an operator restart. Bot running healthy

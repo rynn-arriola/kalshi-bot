@@ -118,6 +118,40 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(set(back.programs), {'P'})
             self.assertEqual(back.programs['P'], m.programs['P'])
 
+    def rows(self, **specs):
+        m = LipMeter()
+        for pid, (earned, hours) in specs.items():
+            m.programs[pid] = dict(ticker='T'+pid, end=NOW+timedelta(hours=hours), first_at=NOW,
+                                   earned=D(earned), seconds=D(3600))
+        return m
+
+    def test_ending_soon_lists_what_will_and_will_not_pay(self):
+        # D-173: programs end before markets do; show the deadline, soonest first.
+        m = self.rows(A=('1.19', 90), B=('0.78', 42), C=('0.04', 10), D=('0.30', 200), E=('0.50', -1))
+        soon = m.ending_soon(NOW)
+        self.assertEqual([r['ticker'] for r in soon], ['TB', 'TA'])          # C too small, D too far, E ended
+        self.assertEqual((soon[0]['pays'], soon[1]['pays']), (False, True))
+        self.assertEqual((soon[0]['hours_left'], soon[0]['earned_usd']), (42.0, '0.7800'))
+        self.assertEqual(m.status(NOW)['ending_soon'], soon)
+
+    def test_a_credit_is_matched_to_the_closest_just_ended_program(self):
+        # D-173: the 10-02 $1.43 credit could not be traced to a market.
+        m = self.rows(G=('1.40', -6), M=('2.10', -20), Y=('1.45', -40), Z=('0.50', -3), L=('1.44', 5))
+        match = m.match_credit(D('1.43'), NOW)
+        self.assertEqual(match['best']['ticker'], 'TG')                       # Y ended too long ago, L live
+        self.assertEqual([c['ticker'] for c in match['candidates']], ['TG', 'TM'])
+        self.assertIsNone(self.rows().match_credit(D('1'), NOW)['best'])
+        for i in range(60):
+            m.match_credit(D('1'), NOW)
+        self.assertEqual(len(m.payouts), m.PAYOUTS_KEPT)
+        with TemporaryDirectory() as temp:
+            m.path = Path(temp)/'lip_meter.json'
+            m.save(NOW)
+            back = LipMeter(m.path).load()
+            self.assertEqual(back.payouts, m.payouts)
+            m.path.write_text(json.dumps(dict(programs={}, payouts='bad')), encoding='utf-8')
+            self.assertEqual(LipMeter(m.path).load().payouts, [])
+
     def test_missing_corrupt_or_oversized_files_start_empty(self):
         with TemporaryDirectory() as temp:
             path = Path(temp)/'lip_meter.json'

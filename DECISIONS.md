@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-173 — Ending-soon list, payout matcher, rush projects near $1 before their deadline
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.
+  Operator: "Cant we track markets that gonna end" → "So how come we did not
+  track it" → "Ok do recommendation".
+- **Evidence (11:27 UTC):** 73 programs ending within 5 days had ≥ $0.05
+  metered; only Costco 95 ($1.19) and 96.5 ($1.11) would pay; Bozeman $0.78
+  and Case-Shiller $0.75 end 10-04 04:31 and ranked like any other project.
+  Reward programs run 1–2 weeks and end days before their markets. The 10-02
+  $1.43 credit is most likely KXGEMINIAPP-26OCT08-T70 (ended 04:11, credit
+  10:30; most qualifying time), not provable from the meter (started 09-29).
+- **What:** (1) status `lip_meter.ending_soon`: programs ending within 96 h
+  with ≥ $0.05, soonest first, `pays` flag. (2) Each unattributed credit is
+  matched to the closest estimate among programs that ended in the last 36 h
+  with ≥ $0.75 (`lip_meter.payouts`, kept 50; event `reward_credit_matched`);
+  an estimate, never accounting. (3) Project order: a project under $1 whose
+  program ends within 48 h and can still reach $1 in time ranks first,
+  soonest deadline first; others keep closest-to-target order.
+
 ### D-172 — Hold at a price; held resting orders do not block a flat stop
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.

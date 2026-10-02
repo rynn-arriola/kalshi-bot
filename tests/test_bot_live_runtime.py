@@ -816,6 +816,20 @@ class RuntimeExitHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.f.dispatcher.run_one()).state, 'ACK')
         self.assertEqual(len(self.f.calls), 1)
 
+    async def test_a_reward_credit_is_matched_to_a_just_ended_program(self):
+        # D-173: credits are named by the meter as they arrive.
+        from kalshi_bot.cash_attribution import CashAdjustment
+        from kalshi_bot.lip_meter import LipMeter
+        runtime = self.f.runtime
+        runtime.lip_meter = LipMeter()
+        runtime.lip_meter.programs['g'] = dict(ticker='G', end=runtime.now()-timedelta(hours=6),
+            first_at=runtime.now(), earned=D('1.40'), seconds=D(3600))
+        runtime.accounting_result = SimpleNamespace(released=True, window=None, cash_adjustments=(
+            CashAdjustment('credit:0:x', 0, D('1.43'), 'unattributed_credit'),
+            CashAdjustment('deposit:x', 0, D('100'), 'deposit')))
+        self.assertEqual(len(runtime.lip_meter.payouts), 1)               # the deposit is not a reward
+        self.assertEqual(runtime.lip_meter.payouts[0]['best']['ticker'], 'G')
+
     async def test_hard_loss_hold_queues_flat_entry_cancel(self):
         await self.f.ready(filled='0', remaining='10')
         held = WindowState(*window_bounds(self.f.now), D(-25), 0, True, self.f.now)
