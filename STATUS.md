@@ -1,5 +1,10 @@
 # Current status
 
+## Endgame Trader dry run (built) — 2026-10-03
+
+D-175: Kalshi port of the Polymarket late-favourite trader, paper trades only
+(90-99c, all sports, no position cap). Liquidity farmer stopped and latched.
+
 ## Faster contracts can replace slow projects (built) — 2026-10-03
 
 D-174 built and tested; deploy after the 10-04 04:31 UTC program ends.

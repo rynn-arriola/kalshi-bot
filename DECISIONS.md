@@ -10,6 +10,46 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-175 — Endgame Trader on Kalshi (dry run for data); liquidity farmer switched off
+
+- **Status:** ACCEPTED for a dry run (paper trades only), 2026-10-03. Live
+  orders are NOT authorized and this build has no order code.
+  Operator: "build something i did on polymarket like the endgame trader,
+  switch off this current liquidity farmer", "Still on same account and also
+  doing all sport", "use polymarket as reference like how they enter trade",
+  99c cap kept ("Then its ok"), "lets start testing this", "open as much
+  position we can handle to get all data", "Or we doing it just for data? Then
+  90-99c", "We can decide anyways what is measure for live".
+- **Farmer:** stopped, disarmed and latched 2026-10-03 (no auto-restart).
+  D-174 is committed but not deployed. Before re-enabling the farmer on the
+  same account, endgame positions (once live) must be settled and recorded
+  (D-165 style) or they read as unknown positions.
+- **Entry (Polymarket late-favourite parity):** game almost over by sport
+  (below); clock sports not tied; two-sided book with spread <= 10c; middle
+  price >= 95c (esports 97c) — the market's view, not a model (Polymarket has
+  no separate "real value" calculation); ask <= 99c; a win clears the taker
+  fee; cheapest qualifying favourite; YES on the favourite's own winner market
+  only (never Tie, never NO). Size $10 on the 99c cap = 10 contracts; the full
+  size must be on the book at <= 99c (filled at the walked average); one trade
+  per event; hold to settlement. 99c nets +$0.09 per 10 after the $0.01 fee
+  (break-even 99.1% wins).
+- **Per sport (Kalshi live data):** soccer 90'+ on the same-game score;
+  basketball last quarter/2nd half or OT <= 2:00; football Q4/OT <= 2:00;
+  hockey P3/OT <= 2:00; tennis best-of-3 leader a set up with >= 5 games and
+  ahead in the current set; table tennis one game away with a 6+ point lead;
+  esports one map away (97c). Experimental (paper only even when live):
+  baseball 9th+ with 2 outs, rugby 2nd half <= 2:00 with an 8+ lead,
+  volleyball one set away with >= 20 points and a 5+ lead. Cricket and boxing
+  excluded.
+- **Dry-run data:** no open-position cap; one 'rule' trade (95-99c) and one
+  'data' trade (middle 90c up to the rule) per event; the $50 daily stop is
+  reported as "would stop" only. `scripts/endgame_trader.py status` reports
+  win rate and result by band, sport and price cent.
+- **Next:** after 2-3 days of data the operator picks the live rules per sport
+  and price; then live order code (signed IOC buy, uncertain-order block,
+  account position cap, farmer-running refusal) is built and tested before any
+  live order.
+
 ### D-174 — A full project list replaces its slowest project with a 2x faster one
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-03.

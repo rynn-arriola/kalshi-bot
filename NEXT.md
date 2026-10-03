@@ -4,6 +4,11 @@
 
 **Dated follow-ups — do not drop:**
 
+- **D-175 Endgame Trader dry run from 2026-10-03:** after 2-3 days, report
+  win rate by sport and price (`scripts/endgame_trader.py status`); operator
+  picks live rules; then build and test live order code. Farmer stays off;
+  D-174 undeployed until the farmer is re-enabled.
+
 - **D-174 deployed 2026-10-03 (operator: restart now; deadline projects are
   protected at $0.50+).** Then B: NFL pregame pilot + scheduled-release early-close
   review, and live watch-list refresh (admission) once D-174 is proven.

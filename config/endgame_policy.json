@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "live_orders": false,
+  "risk_per_trade_usd": 10,
+  "max_open_positions": 50,
+  "daily_loss_stop_usd": 50,
+  "min_price": "0.95",
+  "data_min_price": "0.90",
+  "max_price": "0.99",
+  "poll_seconds": 10,
+  "max_spread": "0.10",
+  "rules": {
+    "soccer": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 90},
+    "basketball": {"kind": "clock", "types": ["basketball_game"], "max_clock_minutes": 2},
+    "football": {"kind": "clock", "types": ["football_game"], "max_clock_minutes": 2},
+    "hockey": {"kind": "clock", "types": ["hockey_tournament", "hockey_game"], "max_clock_minutes": 2},
+    "tennis": {"kind": "tennis", "types": ["tennis_tournament_singles", "tennis_tournament_doubles"], "units_to_win": 2, "min_current": 5},
+    "table-tennis": {"kind": "table_tennis", "types": ["table_tennis_match"], "min_current": 0, "min_lead": 6},
+    "esports": {"kind": "maps", "types": ["esports_match"], "units_to_win": 2, "min_price": "0.97"},
+    "baseball": {"kind": "baseball", "types": ["baseball_game"], "experimental": true},
+    "rugby": {"kind": "clock", "types": ["rugby_match"], "max_clock_minutes": 2, "min_lead": 8, "experimental": true},
+    "volleyball": {"kind": "volleyball", "types": ["volleyball_match"], "min_current": 20, "min_lead": 5, "experimental": true}
+  }
+}
