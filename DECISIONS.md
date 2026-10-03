@@ -10,6 +10,30 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-174 — A full project list replaces its slowest project with a 2x faster one
+
+- **Status:** ACCEPTED, implemented and verified offline, 2026-10-03.
+  Operator: "Look more into this and lets make a decision" → "Do
+  recommendation" (C: this now, NFL pregame pilot later) → "Ok do 1".
+- **Evidence (10-03):** the 30-minute scan ranks the big pools (NFL props
+  score 30 vs Costco 7.7) but 83% of the top 150 unworked markets are blocked
+  by design: 63 `early_close_unreviewed` (gas, "Trump says") and 62
+  `milestone_missing` (NFL props: the game milestone lists them only as
+  related events). 25 are eligible and score 2–5x our median working market
+  (2.68), yet the list was full of slow projects. Live NFL prop share at 50
+  contracts: 0.66% of ~$200/day ≈ $1.32/day per market (Costco ≈ $1.50) at
+  ~$46 per pair; deep queues (5–9k contracts ahead) make sweeps unlikely.
+- **What:** when the list is full, a new contract that would reach $1.50 at
+  least 2x faster than the slowest project replaces it (`displaced_by_faster_
+  contract`). Protected: projects with $0.50+ earned and D-173 urgent ones.
+  Unknown-rate projects count as slowest only after the first 10 minutes of
+  planning (rates are learned after a restart); at most one replacement per 10
+  minutes. Resting orders are not cancelled; the new contract ranks ahead.
+- **Next (B, next week):** NFL props pregame pilot (link props to the game
+  milestone's related events; pull before kickoff) and a review rule for
+  scheduled-data early closes; live watch-list refresh (existing admission)
+  after this is proven.
+
 ### D-173 — Ending-soon list, payout matcher, rush projects near $1 before their deadline
 
 - **Status:** ACCEPTED, implemented and verified offline, 2026-10-02.

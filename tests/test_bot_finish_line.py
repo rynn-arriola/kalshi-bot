@@ -85,6 +85,45 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(f.plan(row('N', rate='0.02', hours=40), NOW), CANNOT)
         self.assertLess(urgent[1], f.plan(row('F', rate='0.50', hours=100), NOW)[1])  # urgent beats fastest
 
+    def test_a_full_list_replaces_its_slowest_unprotected_project(self):
+        # D-174: 25 eligible markets scored 2-5x our median but the list was full.
+        f = FinishLine(meter(SLOW='0.10', MID='0.10', RICH='0.60', URG='0.40'))
+        for pid in ('SLOW', 'MID', 'RICH', 'URG'):
+            f.claim(row(pid, hours=30 if pid == 'URG' else 100), NOW)
+        for pid, rate, hours in (('SLOW', '0.02', 100), ('MID', '0.05', 100), ('RICH', '0.01', 100),
+                                 ('URG', '0.03', 30)):   # URG: $0.60 more in 20 h, 30 h left
+            f.plan(row(pid, rate=rate, hours=hours), NOW)               # records each rate
+        with patch.object(fl, 'MAX_LIST', 4):
+            # SLOW needs 70 h; a new contract needing 30 h (0.05/h) is >= 2x faster.
+            self.assertEqual(f.plan(row('NEW', rate='0.05', hours=100), NOW), (RANKED, 0))
+            self.assertNotIn('SLOW', f.projects)
+            self.assertEqual(f.closed[-1]['reason'], fl.DISPLACED)
+            self.assertTrue(f.claim(row('NEW', hours=100), NOW))
+            # Once per 10 minutes: the next candidate waits.
+            self.assertEqual(f.plan(row('NEXT', rate='1', hours=100), NOW), FULL)
+            later = NOW+timedelta(seconds=fl.DISPLACE_EVERY_SECONDS)
+            # MID needs 28 h; a candidate needing 15 h is not 2x faster.
+            self.assertEqual(f.plan(row('NEXT', rate='0.10', hours=100), later), FULL)
+            self.assertEqual(f.plan(row('NEXT', rate='0.20', hours=100), later), (RANKED, 0))
+            self.assertNotIn('MID', f.projects)
+            # RICH ($0.60) and URG (deadline in 30 h; it needs 37 h for the target,
+            # slower than MID) are never displaced.
+            self.assertEqual(set(f.projects) & {'RICH', 'URG'}, {'RICH', 'URG'})
+        self.assertEqual(f.status(NOW)['displaced'], 2)
+
+    def test_an_unknown_rate_project_is_the_first_to_go(self):
+        f = FinishLine(meter(A='0.1', B='0.1'))
+        f.projects = {p: dict(ticker='T'+p, until=NOW+timedelta(hours=100), added_at=NOW) for p in 'AB'}
+        f.plan(row('B', rate='0.50', hours=100), NOW)                     # A (loaded) never seen with a rate
+        later = NOW+timedelta(seconds=fl.DISPLACE_EVERY_SECONDS)
+        with patch.object(fl, 'MAX_LIST', 2):
+            self.assertEqual(f.plan(row('C', rate='0.01', hours=1000), NOW), FULL)   # rates still being learned
+            self.assertEqual(f.plan(row('C', rate='0.01', hours=1000), later), (RANKED, 0))
+        self.assertEqual(set(f.projects), {'B'})
+        g = FinishLine(meter())
+        g.claim(row('N', hours=100), NOW)                                   # a new project keeps its rate
+        self.assertEqual(g.project_rates['N'], D('0.10'))
+
     def test_contracts_past_a_dollar_pass_without_taking_a_project_slot(self):
         f = FinishLine(meter(C='1.00'))
         self.assertEqual(f.plan(row('C', rate='0.30'), NOW), (JUICY, D('-0.30')))

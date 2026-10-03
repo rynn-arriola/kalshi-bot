@@ -1,5 +1,9 @@
 # Current status
 
+## Faster contracts can replace slow projects (built) — 2026-10-03
+
+D-174 built and tested; deploy after the 10-04 04:31 UTC program ends.
+
 ## Ending-soon list, payout matcher, deadline rush (built) — 2026-10-02
 
 D-173; deploy before 10-04 04:31 UTC (Bozeman $0.78, Case-Shiller $0.75

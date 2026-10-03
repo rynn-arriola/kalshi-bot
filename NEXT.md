@@ -4,6 +4,10 @@
 
 **Dated follow-ups — do not drop:**
 
+- **D-174 deployed 2026-10-03 (operator: restart now; deadline projects are
+  protected at $0.50+).** Then B: NFL pregame pilot + scheduled-release early-close
+  review, and live watch-list refresh (admission) once D-174 is proven.
+
 - **D-165 combo record (`data/reconcile_D165_operator_combo.py --apply`) before the next start.** No manual trades on this account (operator, 10-01).
 - **D-162 + D-163 + D-164 + Finding 226 fixes deploy at the next start:** rolling 24-hour $60 loss limit
   replaces the six-hour windows (Finding 225 resolved); patient exit (15 min

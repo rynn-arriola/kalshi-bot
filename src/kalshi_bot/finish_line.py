@@ -58,6 +58,15 @@ TRIMMED = 'list_limit_trimmed'
 # many hours, and that can still reach $1 in time, gets the next slot first.
 # (Bozeman $0.78 and Case-Shiller $0.75 ended 42 h out ranked like any other.)
 URGENT_HOURS = 48
+# D-174 (2026-10-03): a full list may replace its weakest project with a new
+# contract that would reach the target at least DISPLACE_FACTOR times faster.
+# Of the top 150 scored markets we were not working, 25 were eligible and
+# scored 2-5x our median working market, but the list was full of slow ones.
+# Protected: projects with DISPLACE_MAX_EARNED or more, and urgent ones (D-173).
+DISPLACE_FACTOR = 2
+DISPLACE_MAX_EARNED = Decimal('0.50')
+DISPLACE_EVERY_SECONDS = 600
+DISPLACED = 'displaced_by_faster_contract'
 SANITY_LIST = 1000                # more saved projects than this is corruption
 
 # Priority tiers, best first (operator 2026-09-30): projects still working
@@ -94,6 +103,10 @@ class FinishLine:
         self.working = frozenset()   # tickers with our working orders (observe_working)
         self.closed = []        # dict(program_id, ticker, until, added_at, closed_at, reason, earned)
         self.planned = self.blocked = self.save_failures = 0
+        self.project_rates = {}      # D-174: latest reward rate seen per project
+        self.first_plan_at = None    # D-174: rates are learned during the first plans
+        self.last_displaced_at = None
+        self.displaced = 0
 
     def earned(self, program_id):
         row = self.meter.programs.get(program_id) if self.meter is not None else None
@@ -154,6 +167,8 @@ class FinishLine:
         blocker code when the row must not be entered."""
         pid, earned, rate = row.program_id, self.earned(row.program_id), row.gross_hourly_usd
         until = row.earning_until or row.program_end
+        if self.first_plan_at is None:
+            self.first_plan_at = utc(now)
         if avoided_type(row.ticker):
             if pid in self.projects:
                 self._close(pid, AVOID, now)
@@ -167,6 +182,7 @@ class FinishLine:
                 self.blocked += 1
                 return CANNOT
             self.planned += 1
+            self.project_rates[pid] = rate
             with localcontext() as ctx:
                 ctx.prec = 40
                 needed = (max(Decimal(0), TARGET_USD-earned)/rate if rate and rate > 0
@@ -186,7 +202,7 @@ class FinishLine:
         if needed is None:
             self.blocked += 1
             return CANNOT
-        if not self.room():
+        if not self.room() and not self._displace_for(needed, now):
             self.blocked += 1
             return FULL
         self.planned += 1
@@ -204,6 +220,7 @@ class FinishLine:
             return False
         self.projects[pid] = dict(ticker=row.ticker, until=row.earning_until or row.program_end,
                                   added_at=utc(now))
+        self.project_rates[pid] = getattr(row, 'gross_hourly_usd', None)
         self.working = self.working | {row.ticker}   # its orders are about to be placed
         self.save()
         return True
@@ -297,6 +314,48 @@ class FinishLine:
             self.save()
         return added
 
+    def _needed_hours(self, pid):
+        """Resting hours a project still needs for the target at its latest
+        rate; unknown or zero rate counts as never (the weakest)."""
+        rate = self.project_rates.get(pid)
+        if not rate or rate <= 0:
+            return None
+        with localcontext() as ctx:
+            ctx.prec = 40
+            return max(Decimal(0), TARGET_USD-self.earned(pid))/rate
+
+    def _urgent(self, pid, now):
+        project, rate, earned = self.projects[pid], self.project_rates.get(pid), self.earned(pid)
+        left = Decimal(str(seconds(project['until']-utc(now))))/3600
+        return (earned < MINIMUM_PAYOUT and rate is not None and rate > 0
+                and 0 < left <= URGENT_HOURS and (MINIMUM_PAYOUT-earned)/rate <= left)
+
+    def _displace_for(self, needed, now):
+        """D-174: make room for a contract needing ``needed`` hours by closing
+        the slowest unprotected project, if it needs DISPLACE_FACTOR times as
+        long (or has no known rate). At most one every DISPLACE_EVERY_SECONDS."""
+        now = utc(now)
+        if (self.last_displaced_at is not None
+                and seconds(now-self.last_displaced_at) < DISPLACE_EVERY_SECONDS):
+            return False
+        # Right after a restart no rate is known yet: wait one interval first.
+        learned = (self.first_plan_at is not None
+                   and seconds(now-self.first_plan_at) >= DISPLACE_EVERY_SECONDS)
+        open_ = [(self._needed_hours(pid), pid) for pid in self.projects
+                 if self.earned(pid) < DISPLACE_MAX_EARNED and not self._urgent(pid, now)
+                 and (pid in self.project_rates or learned)]
+        if not open_:
+            return False
+        never = Decimal('Infinity')   # unknown rate: never reaches the target
+        weakest_hours, weakest = max(open_, key=lambda item: (never if item[0] is None else item[0], item[1]))
+        if weakest_hours is not None and weakest_hours < needed*DISPLACE_FACTOR:
+            return False
+        self._close(weakest, DISPLACED, now)
+        self.project_rates.pop(weakest, None)
+        self.last_displaced_at, self.displaced = now, self.displaced+1
+        self.save()
+        return True
+
     def unclaim(self, program_id):
         """Undo a claim made in this selection whose entry was then deferred,
         so a project that never rested does not hold a place on the list."""
@@ -308,7 +367,7 @@ class FinishLine:
         rows = sorted(((pid, p) for pid, p in self.projects.items()),
                       key=lambda item: -self.earned(item[0]))
         return dict(target_usd=str(TARGET_USD), max_projects=MAX_PROJECTS, max_list=MAX_LIST,
-            active=len(self.projects), working=self.working_projects(),
+            active=len(self.projects), working=self.working_projects(), displaced=self.displaced,
             planned=self.planned, blocked=self.blocked,
             save_failures=self.save_failures,
             cleared_total=sum(1 for c in self.closed if c['reason'] in ('cleared', 'ended_paid')),
