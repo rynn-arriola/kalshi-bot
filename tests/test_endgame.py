@@ -94,12 +94,27 @@ class AlmostOverTest(unittest.TestCase):
                     away_same_game_score=1, home_aggregate_score=3, away_aggregate_score=1)
         self.assertFalse(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg', game))
 
+    def test_soccer_polymarket_rule_80_minutes_two_goals(self):
+        # Polymarket 10-03 ("soccer back - 2+ goal lead from 80'"): our four
+        # soccer losses were all 1-0 / 2-1 leads equalised in stoppage time.
+        r = rule('soccer-3way')
+        game = dict(status='live', widget_status='live', time="80'", home_same_game_score=2, away_same_game_score=0)
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', game))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="90+5'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="79'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, away_same_game_score=1)))
+        racing = dict(game, time="90+4'", home_same_game_score=1, away_same_game_score=0)
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', racing))
+
     def test_soccer_advance_normal_time_extra_time_penalties(self):
         r = rule('soccer')
-        game = dict(status='live', widget_status='live', time="90+3'", home_same_game_score=1,
-                    away_same_game_score=0, home_aggregate_score=1, away_aggregate_score=0)
+        game = dict(status='live', widget_status='live', time="90+3'", home_same_game_score=2,
+                    away_same_game_score=0, home_aggregate_score=2, away_aggregate_score=0)
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', game))
-        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="89'")))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="80'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="79'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg',
+                                       dict(game, home_aggregate_score=1, away_aggregate_score=0)))
         # Extra time: 91'-119' has up to half an hour left; 120'+ counts.
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="105'")))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="119'")))
@@ -107,15 +122,17 @@ class AlmostOverTest(unittest.TestCase):
         # Penalties never.
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, show_penalties=True)))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, match_status='penalties')))
-        # Two legs: the aggregate decides. 1-0 tonight but 1-2 on aggregate is still a lead (for the away side).
-        two_leg = dict(game, home_aggregate_score=1, away_aggregate_score=2)
+        # Two legs: the aggregate decides. 2-0 tonight but 2-4 on aggregate is a lead for the away side.
+        two_leg = dict(game, home_aggregate_score=2, away_aggregate_score=4)
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', two_leg))
-        level = dict(game, home_aggregate_score=2, away_aggregate_score=2)
+        level = dict(game, home_aggregate_score=3, away_aggregate_score=3)
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', level))
         # No aggregate: the same-game score.
         single = {k: v for k, v in game.items() if 'aggregate' not in k}
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', single))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(single, away_same_game_score=1)))
+        # Extra time 2-0 is a lead only from 120'.
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(single, time="100'")))
 
     def test_advance_market_must_settle_soon(self):
         r = rule('soccer')

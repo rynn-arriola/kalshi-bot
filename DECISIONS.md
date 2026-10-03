@@ -44,6 +44,11 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (Team/Tie/Team; buy "team wins" YES only) is tracked on paper only as
   'soccer-3way'. Both are new to Kalshi (Polymarket had no advance rule), so
   both are marked experimental.
+  Operator 10-03 "Ok do that then restart": both soccer rules now copy
+  Polymarket's soccer rule (from 80', 2+ goal lead; aggregate for advances).
+  All four soccer losses that evening (Racing Louisville, Ospitaletto,
+  Floresta 1-0 and Hamilton 2-1, equalised in stoppage time) were 1-goal
+  leads; all 31 soccer paper trades so far had 1-goal leads.
 - **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT
   <= 2:00 (NHL is milestone type 'hockey_match', added 10-03 after it was
   found unwatched; the status line now lists any live sport type without a

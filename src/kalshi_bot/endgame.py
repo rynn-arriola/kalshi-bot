@@ -221,16 +221,17 @@ def almost_over(rule, milestone_type, details):
         return minute is not None and minute >= rule.min_minute and _lead_ok(score, rule.min_lead)
     if kind == 'advance':
         # Soccer cup tie (operator: "Advances"): extra time and penalties count,
-        # and two-leg ties go on the aggregate. Almost over = 90'+ stoppage of
-        # normal time, or 120'+ of extra time, with a lead on the aggregate
-        # (same-game score if no aggregate). Never during penalties; 91'-119'
-        # is extra time with up to half an hour left.
+        # and two-leg ties go on the aggregate. Almost over = from min_minute
+        # (80') to the end of normal time, or 120'+ of extra time, with a lead
+        # of min_lead (2, Polymarket 10-03 after four stoppage-time equalisers)
+        # on the aggregate (same-game score if no aggregate). Never during
+        # penalties; 91'-119' is extra time with up to half an hour left.
         if details.get('show_penalties') is True or 'penalt' in str(details.get('match_status') or '').lower():
             return False
         minute = match_minute(details.get('time'))
         score = (_points(details, 'home_aggregate_score', 'away_aggregate_score')
                  or _points(details, 'home_same_game_score', 'away_same_game_score'))
-        return (minute is not None and (minute == rule.min_minute or minute >= 120)
+        return (minute is not None and (rule.min_minute <= minute <= 90 or minute >= 120)
                 and _lead_ok(score, rule.min_lead))
     if kind == 'clock':                      # basketball, football, hockey, rugby
         last, left = _last_period(details, milestone_type)
