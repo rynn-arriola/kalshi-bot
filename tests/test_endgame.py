@@ -4,7 +4,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -447,19 +447,62 @@ class WatchTest(unittest.TestCase):
     def setUp(self):
         self.W = load_watch()
 
-    def test_alerts_only_on_change(self):
-        decide = self.W.decide
-        self.assertEqual(decide(None, 5, False), ('up', None))            # first run: silent
-        self.assertEqual(decide('up', 30, False), ('up', None))
-        state, (kind, text) = decide('up', 300, False)
-        self.assertEqual((state, kind), ('down', 'stopped'))
-        self.assertIn('5 min ago', text)
-        self.assertEqual(decide('down', 900, False), ('down', None))
-        self.assertEqual(decide('down', 3, False)[1][0], 'started')
-        self.assertIn('STOP file', decide('up', None, True)[1][1])
-        self.assertEqual(decide('up', None, False)[0], 'down')
-        self.assertEqual(decide('up', 119, False), ('up', None))
-        self.assertEqual(decide('up', 120, False)[0], 'down')
+    def test_alerts_and_recovery(self):
+        plan = self.W.plan
+        t0 = datetime(2026, 10, 3, 19, tzinfo=timezone.utc)
+        mins = lambda m: t0+timedelta(minutes=m)
+        # First run ever: silent, no action.
+        state, msgs, restart = plan(None, 5, False, t0)
+        self.assertEqual((state['state'], msgs, restart), ('up', [], False))
+        state, msgs, restart = plan(state, 30, False, mins(1))
+        self.assertEqual((msgs, restart), ([], False))
+        # Stops: one alert and an immediate restart.
+        state, msgs, restart = plan(state, 300, False, mins(2))
+        self.assertEqual(([k for k, _ in msgs], restart, state['state']), (['stopped'], True, 'down'))
+        self.assertIn('Restarting automatically', msgs[0][1])
+        # Still down a minute later: no new alert, no restart inside the gap.
+        state, msgs, restart = plan(state, 360, False, mins(3))
+        self.assertEqual((msgs, restart), ([], False))
+        # After the gap: another restart, quietly.
+        state, msgs, restart = plan(state, 420, False, mins(5))
+        self.assertEqual((msgs, restart, len(state['restarts'])), ([], True, 2))
+        # Back up: one 'started' alert naming the restarts.
+        state, msgs, restart = plan(state, 4, False, mins(6))
+        self.assertEqual(([k for k, _ in msgs], restart), (['started'], False))
+        self.assertIn('2 automatic restarts', msgs[0][1])
+        state, msgs, restart = plan(state, 4, False, mins(7))
+        self.assertEqual((msgs, restart), ([], False))
+
+    def test_restart_limit_alerts_once(self):
+        plan = self.W.plan
+        t0 = datetime(2026, 10, 3, 19, tzinfo=timezone.utc)
+        state = dict(state='down', restarts=[(t0+timedelta(minutes=m)).isoformat() for m in (0, 4, 8, 12, 16)])
+        state, msgs, restart = plan(state, None, False, t0+timedelta(minutes=20))
+        self.assertEqual(([k for k, _ in msgs], restart), (['stuck'], False))
+        state, msgs, restart = plan(state, None, False, t0+timedelta(minutes=21))
+        self.assertEqual((msgs, restart), ([], False))
+        # An hour after the first try the oldest restart drops out: trying again.
+        state, msgs, restart = plan(state, None, False, t0+timedelta(minutes=61))
+        self.assertTrue(restart)
+
+    def test_stop_file_means_no_restart(self):
+        plan = self.W.plan
+        t0 = datetime(2026, 10, 3, 19, tzinfo=timezone.utc)
+        state, msgs, restart = plan(dict(state='up'), None, True, t0)
+        self.assertEqual(([k for k, _ in msgs], restart), (['stopped'], False))
+        self.assertIn('STOP file', msgs[0][1])
+        state, msgs, restart = plan(state, None, True, t0+timedelta(minutes=5))
+        self.assertEqual((msgs, restart), ([], False))
+        self.assertEqual(plan(dict(state='up'), 119, False, t0)[0]['state'], 'up')
+        self.assertEqual(plan(dict(state='up'), 120, False, t0)[0]['state'], 'down')
+        # First run while down: record only, act next minute.
+        self.assertEqual(plan(None, None, False, t0)[1:], ([], False))
+
+    def test_restart_targets_only_the_trader(self):
+        self.assertEqual(self.W.TRADER_MARK, 'scripts' + chr(92) + 'endgame_trader.py run')
+        source = (ROOT/'scripts'/'endgame_watch.py').read_text(encoding='utf-8')
+        self.assertNotIn('supervised_live', source)
+        self.assertNotIn('kalshi_bot', source)
 
     def test_heartbeat_age(self):
         with tempfile.TemporaryDirectory() as tmp:

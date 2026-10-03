@@ -55,6 +55,14 @@ and explicitly withdraws the proposed fixed 60-market pool.
   'data' trade (middle 90c up to the rule) per event; the $90 daily stop is
   reported as "would stop" only. `scripts/endgame_trader.py status` reports
   win rate and result by band, sport and price cent.
+- **Alerts and recovery (operator 10-03: "update me if bot stop or
+  started", "Pc wont ever restart so what i want this should recover when bot
+  stopped"):** the trader writes a heartbeat every poll; Windows task
+  `KalshiEndgameWatch` runs `scripts/endgame_watch.py` every minute: down
+  (no poll for 2 min) → ntfy alert and automatic restart (stuck process ended
+  by exact command line), at most 5 restarts per hour 3 min apart, then one
+  urgent alert and a pause; never while data/endgame/STOP exists; "started"
+  alert when back. Topic URL in data/endgame/ntfy_url.txt (not committed).
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,
   account position cap, farmer-running refusal) is built and tested before any
