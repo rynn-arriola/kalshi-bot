@@ -13,9 +13,9 @@ get all data", "Then 90-99c", "We can decide anyways what is measure for live".
 
 - Paper trades have no open-position cap; one 'rule' trade (middle >= 95c,
   esports 97c) and one 'data' trade (middle 90c up to the rule) per event.
-- A paper fill needs the whole size (10 contracts at $10 on the 99c cap, as
-  Polymarket) on the book at <= 99c; it fills at the walked average price.
-- The daily stop ($50, settled 'rule' trades per New York day) is reported as
+- A paper fill needs the whole size (30 contracts at $30 on the 99c cap) on
+  the book at <= 99c; it fills at the walked average price.
+- The daily stop ($90, settled 'rule' trades per New York day) is reported as
   "would stop" and does not end the data run.
 - Kill switch: create data/endgame/STOP. One instance only (file lock).
 - Public market data only; no credentials are read.
@@ -49,6 +49,7 @@ OUT = ROOT/'data'/'endgame'
 DB = OUT/'endgame.db'
 STOP_FILE = OUT/'STOP'
 LOCK_FILE = OUT/'endgame.lock'
+HEARTBEAT = OUT/'heartbeat'      # UTC time of the last finished poll (read by endgame_watch.py)
 ET = ZoneInfo('America/New_York')
 LOOKBACK_HOURS = 14
 MILESTONE_REFRESH = 300
@@ -286,6 +287,10 @@ class Trader:
             except Exception as exc:
                 self.counts['errors'] += 1
                 log(f'error {type(exc).__name__}: {str(exc)[:200]}')
+            try:
+                HEARTBEAT.write_text(iso(now_utc()), encoding='utf-8')
+            except OSError:
+                pass
             if now_utc() >= next_status:
                 next_status = now_utc()+timedelta(minutes=15)
                 today = realized_today(self.db, self.mode)

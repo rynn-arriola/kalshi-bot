@@ -46,6 +46,9 @@ class PolicyTest(unittest.TestCase):
         self.assertFalse(POLICY.live_orders)
         self.assertEqual((POLICY.data_min_price, POLICY.min_price, POLICY.max_price),
                          (D('0.90'), D('0.95'), D('0.99')))
+        # Operator 10-03: "change the risk to 30 usd and stop loss to 90 usd a day".
+        self.assertEqual((POLICY.risk_per_trade_usd, POLICY.daily_loss_stop_usd), (D(30), D(90)))
+        self.assertEqual(E.contracts_for(POLICY.risk_per_trade_usd, POLICY.max_price), 30)
         self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'basketball', 'football', 'hockey', 'tennis',
                                              'table-tennis', 'esports', 'baseball', 'rugby', 'volleyball'})
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
@@ -285,8 +288,8 @@ class MoneyTest(unittest.TestCase):
         self.assertEqual(E.fill_from_book([['0.005', '50']], 10, D('0.99')), (0, None))   # 99.5c over the cap
 
     def test_daily_stop_and_bucket(self):
-        self.assertTrue(E.daily_stop_hit(D('-50'), POLICY))
-        self.assertFalse(E.daily_stop_hit(D('-49.99'), POLICY))
+        self.assertTrue(E.daily_stop_hit(D('-90'), POLICY))
+        self.assertFalse(E.daily_stop_hit(D('-89.99'), POLICY))
         self.assertEqual(E.price_bucket('0.9590'), '95c')
 
 
@@ -305,7 +308,7 @@ class TraderTest(unittest.TestCase):
         self.T.OUT, self.T.DB, self.T.STOP_FILE = out, out/'endgame.db', out/'STOP'
         self.calls = []
         self.state = dict(details=live(quarter=4, clock='1:00', home_points=20, away_points=10),
-                          bid='0.95', ask='0.97', book=[['0.03', '20']], result='')
+                          bid='0.95', ask='0.97', book=[['0.03', '50']], result='')
 
     def tearDown(self):
         if hasattr(self, 'db'):
@@ -346,13 +349,13 @@ class TraderTest(unittest.TestCase):
         rows = self.rows()
         self.assertEqual(len(rows), 1)
         self.assertEqual((rows[0]['ticker'], rows[0]['band'], rows[0]['qty'], rows[0]['price'], rows[0]['fee']),
-                         ('KXNFLGAME-X-A', 'rule', 10, '0.9700', '0.03'))
+                         ('KXNFLGAME-X-A', 'rule', 30, '0.9700', '0.07'))
         self.assertNotIn('/events/KXNFLSPREAD-X', self.calls)
         self.assertEqual(self.calls.count('/events/KXNFLGAME-X'), 1)   # traded at the rule: not refetched
         self.state['result'] = 'yes'
         t.cycle(now.replace(minute=10))
         row = self.rows()[0]
-        self.assertEqual((row['outcome'], D(row['result'])), ('yes', D('0.27')))
+        self.assertEqual((row['outcome'], D(row['result'])), ('yes', D('0.83')))
 
     def test_data_band_then_rule(self):
         self.state.update(bid='0.91', ask='0.93')
@@ -365,7 +368,7 @@ class TraderTest(unittest.TestCase):
         self.assertEqual([r['band'] for r in self.rows()], ['data', 'rule'])
 
     def test_thin_book_skips_and_waits(self):
-        self.state['book'] = [['0.03', '9']]
+        self.state['book'] = [['0.03', '29']]
         t = self.trader()
         now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
         t.cycle(now)
@@ -430,6 +433,48 @@ class TraderTest(unittest.TestCase):
         source = (ROOT/'scripts'/'endgame_trader.py').read_text(encoding='utf-8')
         for word in ('portfolio', 'load_signer', 'MutationSigner', "'POST'", 'kalshi-bot.txt'):
             self.assertNotIn(word, source)
+
+
+
+def load_watch():
+    spec = importlib.util.spec_from_file_location('endgame_watch', ROOT/'scripts'/'endgame_watch.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class WatchTest(unittest.TestCase):
+    def setUp(self):
+        self.W = load_watch()
+
+    def test_alerts_only_on_change(self):
+        decide = self.W.decide
+        self.assertEqual(decide(None, 5, False), ('up', None))            # first run: silent
+        self.assertEqual(decide('up', 30, False), ('up', None))
+        state, (kind, text) = decide('up', 300, False)
+        self.assertEqual((state, kind), ('down', 'stopped'))
+        self.assertIn('5 min ago', text)
+        self.assertEqual(decide('down', 900, False), ('down', None))
+        self.assertEqual(decide('down', 3, False)[1][0], 'started')
+        self.assertIn('STOP file', decide('up', None, True)[1][1])
+        self.assertEqual(decide('up', None, False)[0], 'down')
+        self.assertEqual(decide('up', 119, False), ('up', None))
+        self.assertEqual(decide('up', 120, False)[0], 'down')
+
+    def test_heartbeat_age(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'heartbeat'
+            now = datetime(2026, 10, 3, 19, tzinfo=timezone.utc)
+            self.assertIsNone(self.W.heartbeat_age(now, path))
+            path.write_text('2026-10-03T18:59:30Z', encoding='utf-8')
+            self.assertEqual(self.W.heartbeat_age(now, path), 30)
+            path.write_text('garbage', encoding='utf-8')
+            self.assertIsNone(self.W.heartbeat_age(now, path))
+
+    def test_trader_writes_heartbeat_each_poll(self):
+        source = (ROOT/'scripts'/'endgame_trader.py').read_text(encoding='utf-8')
+        self.assertIn("HEARTBEAT.write_text(iso(now_utc())", source)
+        self.assertEqual(load_trader().HEARTBEAT.name, self.W.HEARTBEAT.name)
 
 
 if __name__ == '__main__':

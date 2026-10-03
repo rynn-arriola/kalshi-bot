@@ -29,7 +29,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   price >= 95c (esports 97c) — the market's view, not a model (Polymarket has
   no separate "real value" calculation); ask <= 99c; a win clears the taker
   fee; cheapest qualifying favourite; YES on the favourite's own winner market
-  only (never Tie, never NO). Size $10 on the 99c cap = 10 contracts; the full
+  only (never Tie, never NO). Size $30 on the 99c cap = 30 contracts (operator
+  10-03: "change the risk to 30 usd and stop loss to 90 usd a day"; Polymarket
+  uses $10/$50; paper trades before this change are $10); the full
   size must be on the book at <= 99c (filled at the walked average); one trade
   per event; hold to settlement. 99c nets +$0.09 per 10 after the $0.01 fee
   (break-even 99.1% wins).
@@ -50,7 +52,7 @@ and explicitly withdraws the proposed fixed 60-market pool.
   volleyball one set away with >= 20 points and a 5+ lead. Cricket and boxing
   excluded.
 - **Dry-run data:** no open-position cap; one 'rule' trade (95-99c) and one
-  'data' trade (middle 90c up to the rule) per event; the $50 daily stop is
+  'data' trade (middle 90c up to the rule) per event; the $90 daily stop is
   reported as "would stop" only. `scripts/endgame_trader.py status` reports
   win rate and result by band, sport and price cent.
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
