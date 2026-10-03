@@ -22,6 +22,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
 
@@ -30,7 +31,8 @@ ONE = Decimal(1)
 LIVE_STATUSES = frozenset({'inprogress', 'live', 'started'})
 WINNER_SERIES_ENDINGS = ('GAME', 'MATCH', 'DOUBLES')
 NOT_WINNER_WORDS = ('SPREAD', 'TOTAL', 'BTTS', 'EXTRAS', 'DELAY', '1H', '2H', 'HALF')
-KINDS = frozenset({'minute', 'clock', 'tennis', 'table_tennis', 'maps', 'baseball', 'volleyball'})
+KINDS = frozenset({'minute', 'clock', 'tennis', 'table_tennis', 'maps', 'baseball', 'volleyball', 'advance'})
+EVENT_KINDS = frozenset({'winner', 'advance'})
 
 
 @dataclass(frozen=True)
@@ -44,10 +46,12 @@ class SportRule:
     units_to_win: int | None = None        # tennis/esports best-of (None: read from live data)
     min_price: Decimal | None = None       # per-sport floor on the middle price
     experimental: bool = False             # never real orders, paper only
+    events: str = 'winner'                 # 'winner' (GAME/MATCH) or 'advance' (soccer cup ties)
+    max_expiry_hours: float | None = None  # market must be due to settle within this (advance: not a first leg)
 
     def __post_init__(self):
-        if self.kind not in KINDS or not self.types:
-            raise ValueError(f'unknown endgame rule kind {self.kind!r}')
+        if self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS:
+            raise ValueError(f'unknown endgame rule kind {self.kind!r}/{self.events!r}')
 
 
 @dataclass(frozen=True)
@@ -83,11 +87,10 @@ class Policy:
         if not self.data_min_price <= self.min_price <= self.max_price:
             raise ValueError('need data_min_price <= min_price <= max_price')
 
-    def rule_for(self, milestone_type):
-        for name, rule in self.rules.items():
-            if milestone_type in rule.types:
-                return name, rule
-        return None, None
+    def rules_for(self, milestone_type):
+        """Every (sport, rule) reading this milestone type: soccer has the
+        90-minute winner rule and the cup 'advances' rule."""
+        return [(name, rule) for name, rule in self.rules.items() if milestone_type in rule.types]
 
 
 def _dec(value, name):
@@ -100,7 +103,7 @@ def load_policy(path: Path) -> Policy:
     raw = json.loads(path.read_text(encoding='utf-8'))
     rules = {}
     allowed = {'kind', 'types', 'min_minute', 'max_clock_minutes', 'min_lead', 'min_current',
-               'units_to_win', 'min_price', 'experimental'}
+               'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -109,7 +112,8 @@ def load_policy(path: Path) -> Policy:
             max_clock_minutes=r.get('max_clock_minutes'), min_lead=r.get('min_lead', 1),
             min_current=r.get('min_current', 0), units_to_win=r.get('units_to_win'),
             min_price=_dec(r['min_price'], 'min_price') if 'min_price' in r else None,
-            experimental=bool(r.get('experimental', False)))
+            experimental=bool(r.get('experimental', False)), events=r.get('events', 'winner'),
+            max_expiry_hours=r.get('max_expiry_hours'))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
              'max_price', 'max_spread'}
     if set(raw) - set(Policy.__dataclass_fields__):
@@ -213,6 +217,19 @@ def almost_over(rule, milestone_type, details):
         minute = match_minute(details.get('time'))
         score = _points(details, 'home_same_game_score', 'away_same_game_score')
         return minute is not None and minute >= rule.min_minute and _lead_ok(score, rule.min_lead)
+    if kind == 'advance':
+        # Soccer cup tie (operator: "Advances"): extra time and penalties count,
+        # and two-leg ties go on the aggregate. Almost over = 90'+ stoppage of
+        # normal time, or 120'+ of extra time, with a lead on the aggregate
+        # (same-game score if no aggregate). Never during penalties; 91'-119'
+        # is extra time with up to half an hour left.
+        if details.get('show_penalties') is True or 'penalt' in str(details.get('match_status') or '').lower():
+            return False
+        minute = match_minute(details.get('time'))
+        score = (_points(details, 'home_aggregate_score', 'away_aggregate_score')
+                 or _points(details, 'home_same_game_score', 'away_same_game_score'))
+        return (minute is not None and (minute == rule.min_minute or minute >= 120)
+                and _lead_ok(score, rule.min_lead))
     if kind == 'clock':                      # basketball, football, hockey, rugby
         last, left = _last_period(details, milestone_type)
         score = _points(details, 'home_points', 'away_points')
@@ -267,6 +284,13 @@ def game_text(milestone_type, details):
 
 # ---- markets ----------------------------------------------------------------
 
+def rule_events(rule, event_tickers):
+    """The events a rule trades: winner events, or soccer 'advances' events."""
+    if rule.events == 'advance':
+        return [t for t in event_tickers or () if str(t).split('-')[0].upper().endswith('ADVANCE')]
+    return winner_events(event_tickers)
+
+
 def winner_events(event_tickers):
     """The milestone's winner (moneyline) events: series ending GAME/MATCH/DOUBLES,
     never spreads, totals, both-teams-to-score, first half, extras or delays."""
@@ -303,7 +327,14 @@ def _quote(value):
     return x if x.is_finite() and Decimal(0) < x < ONE else None
 
 
-def pick_entry(event_ticker, markets, policy, rule, *, data_band):
+def _when(text):
+    try:
+        return datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
     """The one favourite to buy in this winner event now, or None.
 
     ``data_band`` (dry run only) lowers the middle-price floor to
@@ -317,6 +348,11 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band):
         ticker, team = str(m.get('ticker') or ''), str(m.get('yes_sub_title') or '')
         if not ticker or ticker.upper().endswith('-TIE') or team.strip().lower() in ('tie', 'draw'):
             continue                         # soccer: winners only, never the draw
+        if rule.max_expiry_hours is not None:
+            # A first leg's 'advances' market settles after the second leg.
+            due = _when(m.get('expected_expiration_time'))
+            if due is None or now is None or (due-now).total_seconds() > rule.max_expiry_hours*3600:
+                continue
         bid, ask = _quote(m.get('yes_bid_dollars')), _quote(m.get('yes_ask_dollars'))
         if bid is None or ask is None or ask < bid or ask-bid > policy.max_spread:
             continue                         # one-sided or wide book: the price is not reliable

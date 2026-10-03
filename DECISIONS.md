@@ -33,8 +33,16 @@ and explicitly withdraws the proposed fixed 60-market pool.
   size must be on the book at <= 99c (filled at the walked average); one trade
   per event; hold to settlement. 99c nets +$0.09 per 10 after the $0.01 fee
   (break-even 99.1% wins).
-- **Per sport (Kalshi live data):** soccer 90'+ on the same-game score;
-  basketball last quarter/2nd half or OT <= 2:00; football Q4/OT <= 2:00;
+- **Soccer (operator, 10-03: "Advances", "I dont want the one with 3
+  options", "Lets track that for now add it for paper"):** trades the
+  2-option cup 'advances' markets (extra time and penalties count; two-leg ties
+  on the aggregate): almost over at 90'+ stoppage or 120'+ of extra time with
+  an aggregate lead, never during penalties, and only when the market is due
+  to settle within 3 h (not a first leg). The 3-option 90-minute game market
+  (Team/Tie/Team; buy "team wins" YES only) is tracked on paper only as
+  'soccer-3way'. Both are new to Kalshi (Polymarket had no advance rule), so
+  both are marked experimental.
+- **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT <= 2:00; football Q4/OT <= 2:00;
   hockey P3/OT <= 2:00; tennis best-of-3 leader a set up with >= 5 games and
   ahead in the current set; table tennis one game away with a 6+ point lead;
   esports one map away (97c). Experimental (paper only even when live):

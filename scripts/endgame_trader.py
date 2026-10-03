@@ -41,7 +41,7 @@ sys.path.insert(0, str(ROOT/'src'))
 
 from kalshi_bot.endgame import (  # noqa: E402
     almost_over, contracts_for, daily_stop_hit, fill_from_book, game_text, load_policy,
-    pick_entry, price_bucket, realized_result, taker_fee, winner_events)
+    pick_entry, price_bucket, realized_result, rule_events, taker_fee)
 
 BASE = 'https://external-api.kalshi.com/trade-api/v2'
 POLICY = ROOT/'config'/'endgame_policy.json'
@@ -185,18 +185,20 @@ class Trader:
                                                (self.mode, event_ticker))}
 
     def consider(self, milestone, details, now):
-        sport, rule = self.policy.rule_for(milestone.get('type'))
-        if rule is None or not almost_over(rule, milestone['type'], details):
-            return
-        self.counts['almost_over'] += 1
-        for event_ticker in winner_events(milestone.get('primary_event_tickers')):
+        for sport, rule in self.policy.rules_for(milestone.get('type')):
+            if almost_over(rule, milestone['type'], details):
+                self.counts['almost_over'] += 1
+                self.consider_rule(sport, rule, milestone, details, now)
+
+    def consider_rule(self, sport, rule, milestone, details, now):
+        for event_ticker in rule_events(rule, milestone.get('primary_event_tickers')):
             if 'rule' in self.recorded_bands(event_ticker):
                 continue                     # traded at the rule: nothing more to learn here
             if self.thin_until.get(event_ticker, now) > now:
                 continue
             event = self.get(f'/events/{event_ticker}', {'with_nested_markets': 'true'})
             markets = (event.get('event') or {}).get('markets') or event.get('markets') or []
-            cand = pick_entry(event_ticker, markets, self.policy, rule, data_band=self.mode == 'dry')
+            cand = pick_entry(event_ticker, markets, self.policy, rule, data_band=self.mode == 'dry', now=now)
             if cand is None or cand.band in self.recorded_bands(event_ticker):
                 continue
             self.counts['candidates'] += 1

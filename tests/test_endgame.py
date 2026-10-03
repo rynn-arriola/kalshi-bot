@@ -20,6 +20,11 @@ def rule(sport):
     return POLICY.rules[sport]
 
 
+# Soccer trades only the 2-option cup 'advances' markets (operator: "Advances",
+# "I dont want the one with 3 options"); the 90-minute rule stays testable.
+SOCCER_90 = E.SportRule(kind='minute', types=('soccer_tournament_multi_leg',), min_minute=90)
+
+
 def live(**kw):
     return dict(status='inprogress', widget_status='live', **kw)
 
@@ -41,12 +46,22 @@ class PolicyTest(unittest.TestCase):
         self.assertFalse(POLICY.live_orders)
         self.assertEqual((POLICY.data_min_price, POLICY.min_price, POLICY.max_price),
                          (D('0.90'), D('0.95'), D('0.99')))
-        self.assertEqual(set(POLICY.rules), {'soccer', 'basketball', 'football', 'hockey', 'tennis',
+        self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'basketball', 'football', 'hockey', 'tennis',
                                              'table-tennis', 'esports', 'baseball', 'rugby', 'volleyball'})
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'baseball', 'rugby', 'volleyball'})
-        self.assertEqual(POLICY.rule_for('basketball_game')[0], 'basketball')
-        self.assertEqual(POLICY.rule_for('cricket_match'), (None, None))
+                         {'baseball', 'rugby', 'volleyball', 'soccer', 'soccer-3way'})
+        self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
+        self.assertEqual(POLICY.rules_for('cricket_match'), [])
+        # Soccer: the 2-option cup 'advances' markets; the 3-option 90-minute game
+        # market is tracked on paper only, as its own sport (operator: "add it for paper").
+        rules = dict(POLICY.rules_for('soccer_tournament_multi_leg'))
+        soccer, three = rules['soccer'], rules['soccer-3way']
+        self.assertEqual(set(rules), {'soccer', 'soccer-3way'})
+        self.assertEqual((soccer.kind, soccer.events), ('advance', 'advance'))
+        self.assertEqual((three.kind, three.events, three.experimental), ('minute', 'winner', True))
+        self.assertEqual(E.rule_events(soccer, ['KXCOPADELREYADVANCE-26OCT03BAZATL', 'KXCOPADELREYGAME-26OCT03BAZATL',
+                                                'KXCOPADELREYSPREAD-26OCT03BAZATL']),
+                         ['KXCOPADELREYADVANCE-26OCT03BAZATL'])
 
     def test_bad_policy_rejected(self):
         with self.assertRaises(ValueError):
@@ -61,15 +76,49 @@ class AlmostOverTest(unittest.TestCase):
     def test_soccer_minute_and_tie(self):
         game = dict(status='live', widget_status='live', time="90+6'",
                     home_same_game_score=2, away_same_game_score=5)
-        self.assertTrue(E.almost_over(rule('soccer'), 'soccer_tournament_multi_leg', game))
-        self.assertFalse(E.almost_over(rule('soccer'), 'soccer_tournament_multi_leg', dict(game, time="89'")))
-        self.assertFalse(E.almost_over(rule('soccer'), 'soccer_tournament_multi_leg',
+        self.assertTrue(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg', game))
+        self.assertFalse(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg', dict(game, time="89'")))
+        self.assertFalse(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg',
                                        dict(game, home_same_game_score=5)))
 
     def test_soccer_same_game_score_not_aggregate(self):
         game = dict(status='live', widget_status='live', time="91'", home_same_game_score=1,
                     away_same_game_score=1, home_aggregate_score=3, away_aggregate_score=1)
-        self.assertFalse(E.almost_over(rule('soccer'), 'soccer_tournament_multi_leg', game))
+        self.assertFalse(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg', game))
+
+    def test_soccer_advance_normal_time_extra_time_penalties(self):
+        r = rule('soccer')
+        game = dict(status='live', widget_status='live', time="90+3'", home_same_game_score=1,
+                    away_same_game_score=0, home_aggregate_score=1, away_aggregate_score=0)
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', game))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="89'")))
+        # Extra time: 91'-119' has up to half an hour left; 120'+ counts.
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="105'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="119'")))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="120+1'")))
+        # Penalties never.
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, show_penalties=True)))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, match_status='penalties')))
+        # Two legs: the aggregate decides. 1-0 tonight but 1-2 on aggregate is still a lead (for the away side).
+        two_leg = dict(game, home_aggregate_score=1, away_aggregate_score=2)
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', two_leg))
+        level = dict(game, home_aggregate_score=2, away_aggregate_score=2)
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', level))
+        # No aggregate: the same-game score.
+        single = {k: v for k, v in game.items() if 'aggregate' not in k}
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', single))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(single, away_same_game_score=1)))
+
+    def test_advance_market_must_settle_soon(self):
+        r = rule('soccer')
+        now = datetime(2026, 10, 3, 17, 30, tzinfo=timezone.utc)
+        soon = dict(market('EV-BAZ', 'CD Baztan advances', '0.96', '0.97'), expected_expiration_time='2026-10-03T18:30:00Z')
+        later = dict(soon, expected_expiration_time='2026-10-10T18:30:00Z')     # a first leg
+        self.assertEqual(E.pick_entry('EV', [soon], POLICY, r, data_band=False, now=now).ticker, 'EV-BAZ')
+        self.assertIsNone(E.pick_entry('EV', [later], POLICY, r, data_band=False, now=now))
+        self.assertIsNone(E.pick_entry('EV', [dict(soon, expected_expiration_time=None)], POLICY, r,
+                                       data_band=False, now=now))
+        self.assertIsNone(E.pick_entry('EV', [soon], POLICY, r, data_band=False, now=None))
 
     def test_basketball_quarters_halves_and_halftime(self):
         game = live(period=4, period_type='quarter', period_remaining_time='01:59',
@@ -206,7 +255,7 @@ class EntryTest(unittest.TestCase):
                                       data_band=False).band, 'rule')
 
     def test_never_tie_and_cheapest(self):
-        r = rule('soccer')
+        r = SOCCER_90
         self.assertIsNone(E.pick_entry('EV', [market('EV-TIE', 'Tie', '0.96', '0.97')], POLICY, r, data_band=True))
         self.assertIsNone(E.pick_entry('EV', [market('EV-X', 'Draw', '0.96', '0.97')], POLICY, r, data_band=True))
         self.assertIsNone(E.pick_entry('EV', [market('EV-TIE', 'No winner', '0.96', '0.97')], POLICY, r, data_band=True))
@@ -342,6 +391,40 @@ class TraderTest(unittest.TestCase):
         text = self.T.report(self.db)
         self.assertIn('rule/football', text)
         self.assertIn('rule/97c', text)
+
+    def test_soccer_opens_only_the_advances_market(self):
+        game = dict(status='live', widget_status='live', time="90+2'", home_same_game_score=2,
+                    away_same_game_score=0, home_aggregate_score=2, away_aggregate_score=0)
+        calls = []
+
+        def fetch(path, params=None):
+            calls.append(path)
+            if path == '/milestones':
+                return dict(milestones=[dict(id='s1', type='soccer_tournament_multi_leg', start_date='2026-10-03T16:00:00Z',
+                                             primary_event_tickers=['KXCOPADELREYADVANCE-26OCT03BAZATL',
+                                                                    'KXCOPADELREYGAME-26OCT03BAZATL'])])
+            if path == '/live_data/batch':
+                return dict(live_datas=[dict(milestone_id='s1', details=game)])
+            if path == '/events/KXCOPADELREYADVANCE-26OCT03BAZATL':
+                return dict(event=dict(markets=[
+                    dict(market('KXCOPADELREYADVANCE-26OCT03BAZATL-BAZ', 'CD Baztan advances', '0.96', '0.97'),
+                         expected_expiration_time='2026-10-03T18:30:00Z'),
+                    dict(market('KXCOPADELREYADVANCE-26OCT03BAZATL-ATL', 'Atletico Calatayud advances', '0.03', '0.04'),
+                         expected_expiration_time='2026-10-03T18:30:00Z')]))
+            if path == '/events/KXCOPADELREYGAME-26OCT03BAZATL':
+                return dict(event=dict(markets=[market('KXCOPADELREYGAME-26OCT03BAZATL-BAZ', 'CD Baztan', '0.96', '0.97'),
+                                                market('KXCOPADELREYGAME-26OCT03BAZATL-TIE', 'Tie', '0.02', '0.03')]))
+            if path in ('/markets/KXCOPADELREYADVANCE-26OCT03BAZATL-BAZ/orderbook',
+                        '/markets/KXCOPADELREYGAME-26OCT03BAZATL-BAZ/orderbook'):
+                return dict(orderbook_fp=dict(no_dollars=[['0.03', '50']]))
+            if path in ('/series/KXCOPADELREYADVANCE', '/series/KXCOPADELREYGAME'):
+                return dict(series=dict(fee_multiplier=1))
+            raise AssertionError(path)
+        self.db = self.T.open_db(self.T.DB)
+        self.T.Trader(self.db, fetch=fetch).cycle(datetime(2026, 10, 3, 17, 45, tzinfo=timezone.utc))
+        self.assertEqual(sorted((r['sport'], r['ticker']) for r in self.rows()),
+                         [('soccer', 'KXCOPADELREYADVANCE-26OCT03BAZATL-BAZ'),
+                          ('soccer-3way', 'KXCOPADELREYGAME-26OCT03BAZATL-BAZ')])
 
     def test_never_any_order_code(self):
         source = (ROOT/'scripts'/'endgame_trader.py').read_text(encoding='utf-8')

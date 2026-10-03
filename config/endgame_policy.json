@@ -10,7 +10,8 @@
   "poll_seconds": 10,
   "max_spread": "0.10",
   "rules": {
-    "soccer": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 90},
+    "soccer-3way": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 90, "experimental": true},
+    "soccer": {"kind": "advance", "events": "advance", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 90, "max_expiry_hours": 3, "experimental": true},
     "basketball": {"kind": "clock", "types": ["basketball_game"], "max_clock_minutes": 2},
     "football": {"kind": "clock", "types": ["football_game"], "max_clock_minutes": 2},
     "hockey": {"kind": "clock", "types": ["hockey_tournament", "hockey_game"], "max_clock_minutes": 2},
