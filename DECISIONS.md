@@ -66,7 +66,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   urgent alert and a pause; never while data/endgame/STOP exists; "started"
   alert when back; "running but failing" alert when no poll has read Kalshi
   for 10 min (alert only) and "recovered" when it reads again. Live-game
-  lookback 24 h (Polymarket). Topic URL in data/endgame/ntfy_url.txt (not
+  lookback 24 h (Polymarket). Every restart, even a quick one, sends a
+  "restarted" alert (the trader records its start time; operator: "How come i
+  dont get notif on ntfy whenever u restart"). Topic URL in data/endgame/ntfy_url.txt (not
   committed).
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,

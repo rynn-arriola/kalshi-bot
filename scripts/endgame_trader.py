@@ -50,7 +50,8 @@ DB = OUT/'endgame.db'
 STOP_FILE = OUT/'STOP'
 LOCK_FILE = OUT/'endgame.lock'
 HEARTBEAT = OUT/'heartbeat'      # UTC time of the last finished poll (read by endgame_watch.py)
-LAST_OK = OUT/'last_ok'          # UTC time of the last poll that read Kalshi without an error
+LAST_OK = OUT/'last_ok'
+STARTED = OUT/'started_at'       # UTC start time of this process (a change = a restart, for the watcher)          # UTC time of the last poll that read Kalshi without an error
 ET = ZoneInfo('America/New_York')
 LOOKBACK_HOURS = 24                # Polymarket 10-03: long games and extra innings
 MILESTONE_REFRESH = 300
@@ -278,6 +279,10 @@ class Trader:
     def run(self, minutes=None):
         stop_at = now_utc()+timedelta(minutes=minutes) if minutes else None
         next_status = now_utc()
+        try:
+            STARTED.write_text(iso(now_utc()), encoding='utf-8')
+        except OSError:
+            pass
         log(f'start mode={self.mode} band={self.policy.data_min_price}/{self.policy.min_price}-{self.policy.max_price} '
             f'risk=${self.policy.risk_per_trade_usd} rules={sorted(self.policy.rules)}')
         while stop_at is None or now_utc() < stop_at:

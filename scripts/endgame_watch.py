@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT/'data'/'endgame'
 HEARTBEAT = OUT/'heartbeat'
 LAST_OK = OUT/'last_ok'
+STARTED = OUT/'started_at'
 STATE = OUT/'watch_state.json'
 URL_FILE = OUT/'ntfy_url.txt'
 STOP_FILE = OUT/'STOP'
@@ -50,17 +51,21 @@ def heartbeat_age(now, path=HEARTBEAT):
     return (now-beat).total_seconds()
 
 
-def plan(previous, age, stop_file, now, ok_age=0):
+def plan(previous, age, stop_file, now, ok_age=0, started_at=None):
     """(new state, messages [(kind, text)], restart?) from the saved state.
 
     The first run ever records the state silently and acts from the next.
-    ``ok_age``: seconds since a poll last read Kalshi without an error."""
+    ``ok_age``: seconds since a poll last read Kalshi without an error.
+    ``started_at``: the trader process's start time; a new value while it was
+    up is a quick restart (operator: "How come i dont get notif on ntfy
+    whenever u restart")."""
     previous = previous or {}
     up = age is not None and age < STALE_SECONDS
     restarts = [t for t in previous.get('restarts', [])
                 if now-datetime.fromisoformat(t) < timedelta(hours=1)]
     state = dict(state='up' if up else 'down', at=now.isoformat(timespec='seconds'),
-                 restarts=restarts, gave_up=bool(previous.get('gave_up')) and not up)
+                 restarts=restarts, gave_up=bool(previous.get('gave_up')) and not up,
+                 started_at=started_at or previous.get('started_at'))
     was = previous.get('state')
     messages = []
     if up:
@@ -68,6 +73,9 @@ def plan(previous, age, stop_file, now, ok_age=0):
             again = (f' (after {len(restarts)} automatic restart{"s" * (len(restarts) != 1)})'
                      if restarts else '')
             messages.append(('started', f'Kalshi Endgame Trader STARTED{again}. Paper mode, watching live games.'))
+        elif was == 'up' and started_at and previous.get('started_at') and started_at != previous['started_at']:
+            messages.append(('restarted', f'Kalshi Endgame Trader RESTARTED at {started_at[11:16]} UTC '
+                                          '(back within 2 min). Paper mode, watching live games.'))
         # Running but failing (operator: "Add it"): every poll erroring, e.g.
         # Kalshi unreachable. A restart rarely helps, so alert only.
         failing = ok_age is None or ok_age >= FAILING_SECONDS
@@ -131,7 +139,8 @@ def send(url, title, message, priority='default', tags=''):
 
 
 STYLE = {'started': ('default', 'green_circle'), 'stopped': ('high', 'rotating_light'),
-         'stuck': ('urgent', 'sos'), 'failing': ('high', 'warning'), 'recovered': ('default', 'green_circle')}
+         'stuck': ('urgent', 'sos'), 'failing': ('high', 'warning'), 'recovered': ('default', 'green_circle'),
+         'restarted': ('default', 'arrows_counterclockwise')}
 
 
 def main(argv=None):
@@ -153,8 +162,12 @@ def main(argv=None):
         previous = json.loads(STATE.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         previous = None
+    try:
+        started_at = STARTED.read_text(encoding='utf-8').strip() or None
+    except OSError:
+        started_at = None
     state, messages, restart = plan(previous, heartbeat_age(now), STOP_FILE.exists(), now,
-                                    ok_age=heartbeat_age(now, LAST_OK))
+                                    ok_age=heartbeat_age(now, LAST_OK), started_at=started_at)
     STATE.write_text(json.dumps(state), encoding='utf-8')
     if restart:
         restart_trader()                       # recovery never waits on the alert

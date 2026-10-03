@@ -520,12 +520,35 @@ class WatchTest(unittest.TestCase):
         self.assertEqual([k for k, _ in msgs], ['recovered'])
         self.assertEqual(plan(dict(state='up'), 5, False, t0, ok_age=None)[1][0][0], 'failing')
         self.assertEqual(plan(None, 5, False, t0, ok_age=None)[1], [])     # first run: silent
-        self.assertEqual(set(self.W.STYLE), {'started', 'stopped', 'stuck', 'failing', 'recovered'})
+        self.assertEqual(set(self.W.STYLE), {'started', 'stopped', 'stuck', 'failing', 'recovered', 'restarted'})
+
+    def test_quick_restart_alerts_once(self):
+        plan = self.W.plan
+        t0 = datetime(2026, 10, 3, 21, tzinfo=timezone.utc)
+        state, msgs, _ = plan(dict(state='up'), 5, False, t0, started_at='2026-10-03T20:00:00Z')
+        self.assertEqual(msgs, [])                        # first sight of a start time: silent
+        state, msgs, _ = plan(state, 5, False, t0, started_at='2026-10-03T20:00:00Z')
+        self.assertEqual(msgs, [])
+        state, msgs, restart = plan(state, 5, False, t0, started_at='2026-10-03T20:58:10Z')
+        self.assertEqual(([k for k, _ in msgs], restart), (['restarted'], False))
+        self.assertIn('20:58 UTC', msgs[0][1])
+        state, msgs, _ = plan(state, 5, False, t0, started_at='2026-10-03T20:58:10Z')
+        self.assertEqual(msgs, [])
+        # A missing start file keeps the last known time (no false alert).
+        state, msgs, _ = plan(state, 5, False, t0, started_at=None)
+        self.assertEqual((msgs, state['started_at']), ([], '2026-10-03T20:58:10Z'))
+        # Down then up: one 'started' alert, not also 'restarted'.
+        down, _, _ = plan(state, 300, False, t0)
+        up, msgs, _ = plan(down, 5, False, t0, started_at='2026-10-03T21:03:00Z')
+        self.assertEqual([k for k, _ in msgs], ['started'])
+        self.assertEqual(up['started_at'], '2026-10-03T21:03:00Z')
 
     def test_trader_marks_successful_polls(self):
         source = (ROOT/'scripts'/'endgame_trader.py').read_text(encoding='utf-8')
         self.assertIn("LAST_OK.write_text(iso(now_utc())", source)
         self.assertEqual(load_trader().LAST_OK.name, self.W.LAST_OK.name)
+        self.assertEqual(load_trader().STARTED.name, self.W.STARTED.name)
+        self.assertIn("STARTED.write_text(iso(now_utc())", source)
         self.assertEqual(load_trader().LOOKBACK_HOURS, 24)
 
     def test_restart_targets_only_the_trader(self):
