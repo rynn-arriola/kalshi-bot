@@ -44,13 +44,15 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (Team/Tie/Team; buy "team wins" YES only) is tracked on paper only as
   'soccer-3way'. Both are new to Kalshi (Polymarket had no advance rule), so
   both are marked experimental.
-- **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT <= 2:00; football Q4/OT <= 2:00;
-  hockey P3/OT <= 2:00; tennis best-of-3 leader a set up with >= 5 games and
-  ahead in the current set; table tennis one game away with a 6+ point lead;
-  esports one map away (97c). Experimental (paper only even when live):
-  baseball 9th+ with 2 outs, rugby 2nd half <= 2:00 with an 8+ lead,
-  volleyball one set away with >= 20 points and a 5+ lead. Cricket and boxing
-  excluded.
+- **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT
+  <= 2:00; football Q4/OT <= 4:00 with a 9+ point lead (Polymarket 10-03,
+  after Villanova 35-31 lost to a late touchdown); hockey P3/OT <= 2:00;
+  baseball 9th inning+ with a 2+ run lead (Polymarket rule); tennis best-of-3
+  leader a set up with >= 5 games and ahead in the current set; table tennis
+  one game away with a 6+ point lead; esports one map away (97c).
+  Experimental (paper only even when live): rugby 2nd half <= 2:00 with an 8+
+  lead, volleyball one set away with >= 20 points and a 5+ lead. Cricket and
+  boxing excluded.
 - **Dry-run data:** no open-position cap; one 'rule' trade (95-99c) and one
   'data' trade (middle 90c up to the rule) per event; the $90 daily stop is
   reported as "would stop" only. `scripts/endgame_trader.py status` reports
@@ -62,7 +64,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (no poll for 2 min) → ntfy alert and automatic restart (stuck process ended
   by exact command line), at most 5 restarts per hour 3 min apart, then one
   urgent alert and a pause; never while data/endgame/STOP exists; "started"
-  alert when back. Topic URL in data/endgame/ntfy_url.txt (not committed).
+  alert when back; "running but failing" alert when no poll has read Kalshi
+  for 10 min (alert only) and "recovered" when it reads again. Live-game
+  lookback 24 h (Polymarket). Topic URL in data/endgame/ntfy_url.txt (not
+  committed).
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,
   account position cap, farmer-running refusal) is built and tested before any
