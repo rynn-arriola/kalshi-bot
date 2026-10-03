@@ -52,7 +52,7 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'basketball', 'football', 'hockey', 'tennis',
                                              'table-tennis', 'esports', 'baseball', 'rugby', 'volleyball'})
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'baseball', 'rugby', 'volleyball', 'soccer', 'soccer-3way'})
+                         {'rugby', 'volleyball', 'soccer', 'soccer-3way'})
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
         self.assertEqual(POLICY.rules_for('cricket_match'), [])
         # Soccer: the 2-option cup 'advances' markets; the 3-option 90-minute game
@@ -138,8 +138,13 @@ class AlmostOverTest(unittest.TestCase):
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(college, period=1)))
 
     def test_football_and_hockey(self):
-        game = live(quarter=4, clock='1:30', home_points=24, away_points=17)
+        # Polymarket 10-03 (after Villanova 35-31 lost to a late touchdown):
+        # last 4 minutes of Q4/OT with a 9+ point lead.
+        game = live(quarter=4, clock='3:59', home_points=26, away_points=17)
         self.assertTrue(E.almost_over(rule('football'), 'football_game', game))
+        self.assertTrue(E.almost_over(rule('football'), 'football_game', dict(game, clock='4:00')))
+        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, clock='4:01')))
+        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, home_points=25)))
         self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, quarter=3)))
         self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, clock='13:12')))
         puck = live(period=3, period_remaining_time='00:45', home_points=3, away_points=1)
@@ -152,11 +157,13 @@ class AlmostOverTest(unittest.TestCase):
         self.assertTrue(E.almost_over(rule('rugby'), 'rugby_match', game))
         self.assertFalse(E.almost_over(rule('rugby'), 'rugby_match', dict(game, home_points=19)))
 
-    def test_baseball_ninth_two_outs(self):
-        game = live(inning=9, inning_half=1, outs=2, home_points=5, away_points=2)
+    def test_baseball_ninth_two_run_lead(self):
+        # Polymarket rule: 9th inning or later, 2+ run lead, any half, any outs.
+        game = live(inning=9, inning_half=1, outs=0, home_points=5, away_points=3)
         self.assertTrue(E.almost_over(rule('baseball'), 'baseball_game', game))
-        self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, outs=1)))
+        self.assertTrue(E.almost_over(rule('baseball'), 'baseball_game', dict(game, inning=11)))
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, inning=8)))
+        self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=4)))
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=5)))
 
     def test_tennis_current_set(self):
@@ -210,7 +217,7 @@ class AlmostOverTest(unittest.TestCase):
         self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2)))
 
     def test_finished_or_not_started_never(self):
-        game = live(quarter=4, clock='0:10', home_points=24, away_points=17)
+        game = live(quarter=4, clock='0:10', home_points=27, away_points=17)
         for status, widget in (('closed', 'finished'), ('not_started', 'pre'), ('inprogress', 'pre')):
             self.assertFalse(E.almost_over(rule('football'), 'football_game',
                                            dict(game, status=status, widget_status=widget)))
@@ -307,7 +314,7 @@ class TraderTest(unittest.TestCase):
         out = Path(self.tmp.name)
         self.T.OUT, self.T.DB, self.T.STOP_FILE = out, out/'endgame.db', out/'STOP'
         self.calls = []
-        self.state = dict(details=live(quarter=4, clock='1:00', home_points=20, away_points=10),
+        self.state = dict(details=live(quarter=4, clock='1:00', home_points=30, away_points=10),
                           bid='0.95', ask='0.97', book=[['0.03', '50']], result='')
 
     def tearDown(self):
@@ -497,6 +504,29 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(plan(dict(state='up'), 120, False, t0)[0]['state'], 'down')
         # First run while down: record only, act next minute.
         self.assertEqual(plan(None, None, False, t0)[1:], ([], False))
+
+    def test_running_but_failing_alerts_once_then_recovered(self):
+        plan = self.W.plan
+        t0 = datetime(2026, 10, 3, 19, tzinfo=timezone.utc)
+        state = dict(state='up', failing=False)
+        state, msgs, restart = plan(state, 5, False, t0, ok_age=599)
+        self.assertEqual((msgs, restart, state['failing']), ([], False, False))
+        state, msgs, restart = plan(state, 5, False, t0, ok_age=600)
+        self.assertEqual(([k for k, _ in msgs], restart), (['failing'], False))
+        self.assertIn('10 min', msgs[0][1])
+        state, msgs, _ = plan(state, 5, False, t0, ok_age=900)
+        self.assertEqual(msgs, [])
+        state, msgs, _ = plan(state, 5, False, t0, ok_age=4)
+        self.assertEqual([k for k, _ in msgs], ['recovered'])
+        self.assertEqual(plan(dict(state='up'), 5, False, t0, ok_age=None)[1][0][0], 'failing')
+        self.assertEqual(plan(None, 5, False, t0, ok_age=None)[1], [])     # first run: silent
+        self.assertEqual(set(self.W.STYLE), {'started', 'stopped', 'stuck', 'failing', 'recovered'})
+
+    def test_trader_marks_successful_polls(self):
+        source = (ROOT/'scripts'/'endgame_trader.py').read_text(encoding='utf-8')
+        self.assertIn("LAST_OK.write_text(iso(now_utc())", source)
+        self.assertEqual(load_trader().LAST_OK.name, self.W.LAST_OK.name)
+        self.assertEqual(load_trader().LOOKBACK_HOURS, 24)
 
     def test_restart_targets_only_the_trader(self):
         self.assertEqual(self.W.TRADER_MARK, 'scripts' + chr(92) + 'endgame_trader.py run')

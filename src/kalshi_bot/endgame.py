@@ -40,6 +40,7 @@ class SportRule:
     kind: str
     types: tuple[str, ...]                 # Kalshi milestone types this rule reads
     min_minute: int | None = None          # minute: soccer 90'+
+    min_inning: int | None = None          # baseball: this inning or later
     max_clock_minutes: float | None = None  # clock: last N minutes of the last period
     min_lead: int = 1                      # lead needed (clock sports: 1 = not tied)
     min_current: int = 0                   # sets: games/points the leader has in the current unit
@@ -103,13 +104,14 @@ def load_policy(path: Path) -> Policy:
     raw = json.loads(path.read_text(encoding='utf-8'))
     rules = {}
     allowed = {'kind', 'types', 'min_minute', 'max_clock_minutes', 'min_lead', 'min_current',
-               'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours'}
+               'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
         rules[sport] = SportRule(
             kind=r['kind'], types=tuple(r['types']), min_minute=r.get('min_minute'),
             max_clock_minutes=r.get('max_clock_minutes'), min_lead=r.get('min_lead', 1),
+            min_inning=r.get('min_inning'),
             min_current=r.get('min_current', 0), units_to_win=r.get('units_to_win'),
             min_price=_dec(r['min_price'], 'min_price') if 'min_price' in r else None,
             experimental=bool(r.get('experimental', False)), events=r.get('events', 'winner'),
@@ -235,10 +237,12 @@ def almost_over(rule, milestone_type, details):
         score = _points(details, 'home_points', 'away_points')
         return (last and left is not None and left <= rule.max_clock_minutes
                 and _lead_ok(score, rule.min_lead))
-    if kind == 'baseball':                   # 9th inning or later, two outs, someone ahead
-        inning, outs = _int(details.get('inning')), _int(details.get('outs'))
+    if kind == 'baseball':
+        # Polymarket rule (operator 10-03, "yes add basesball"): 9th inning or
+        # later with a lead of min_lead runs (2), any half, any outs.
+        inning = _int(details.get('inning'))
         score = _points(details, 'home_points', 'away_points')
-        return (inning is not None and inning >= 9 and outs == 2
+        return (inning is not None and inning >= (rule.min_inning or 9)
                 and _lead_ok(score, rule.min_lead))
     if kind == 'tennis':                     # best of 3: the leader needs only the current set
         one = _sets_from_rounds(details.get('competitor1_round_scores'))

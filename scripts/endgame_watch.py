@@ -29,11 +29,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT/'data'/'endgame'
 HEARTBEAT = OUT/'heartbeat'
+LAST_OK = OUT/'last_ok'
 STATE = OUT/'watch_state.json'
 URL_FILE = OUT/'ntfy_url.txt'
 STOP_FILE = OUT/'STOP'
 LOG = OUT/'endgame.log'
 STALE_SECONDS = 120
+FAILING_SECONDS = 600            # running, but no poll has read Kalshi for 10 min
 RESTART_GAP = timedelta(minutes=3)
 MAX_RESTARTS = 5                 # per rolling hour
 TRADER_MARK = 'scripts\\endgame_trader.py run'
@@ -48,10 +50,11 @@ def heartbeat_age(now, path=HEARTBEAT):
     return (now-beat).total_seconds()
 
 
-def plan(previous, age, stop_file, now):
+def plan(previous, age, stop_file, now, ok_age=0):
     """(new state, messages [(kind, text)], restart?) from the saved state.
 
-    The first run ever records the state silently and acts from the next."""
+    The first run ever records the state silently and acts from the next.
+    ``ok_age``: seconds since a poll last read Kalshi without an error."""
     previous = previous or {}
     up = age is not None and age < STALE_SECONDS
     restarts = [t for t in previous.get('restarts', [])
@@ -65,6 +68,16 @@ def plan(previous, age, stop_file, now):
             again = (f' (after {len(restarts)} automatic restart{"s" * (len(restarts) != 1)})'
                      if restarts else '')
             messages.append(('started', f'Kalshi Endgame Trader STARTED{again}. Paper mode, watching live games.'))
+        # Running but failing (operator: "Add it"): every poll erroring, e.g.
+        # Kalshi unreachable. A restart rarely helps, so alert only.
+        failing = ok_age is None or ok_age >= FAILING_SECONDS
+        state['failing'] = failing
+        if failing and not previous.get('failing') and was is not None:
+            minutes = 'never' if ok_age is None else f'{int(ok_age//60)} min'
+            messages.append(('failing', f'Kalshi Endgame Trader is RUNNING BUT FAILING: no successful poll '
+                                        f'for {minutes}. Kalshi data may be unreachable.'))
+        elif previous.get('failing') and not failing:
+            messages.append(('recovered', 'Kalshi Endgame Trader recovered: polls are reading Kalshi again.'))
         return state, messages, False
     if was is None:
         return state, messages, False
@@ -118,7 +131,7 @@ def send(url, title, message, priority='default', tags=''):
 
 
 STYLE = {'started': ('default', 'green_circle'), 'stopped': ('high', 'rotating_light'),
-         'stuck': ('urgent', 'sos')}
+         'stuck': ('urgent', 'sos'), 'failing': ('high', 'warning'), 'recovered': ('default', 'green_circle')}
 
 
 def main(argv=None):
@@ -140,7 +153,8 @@ def main(argv=None):
         previous = json.loads(STATE.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         previous = None
-    state, messages, restart = plan(previous, heartbeat_age(now), STOP_FILE.exists(), now)
+    state, messages, restart = plan(previous, heartbeat_age(now), STOP_FILE.exists(), now,
+                                    ok_age=heartbeat_age(now, LAST_OK))
     STATE.write_text(json.dumps(state), encoding='utf-8')
     if restart:
         restart_trader()                       # recovery never waits on the alert

@@ -50,8 +50,9 @@ DB = OUT/'endgame.db'
 STOP_FILE = OUT/'STOP'
 LOCK_FILE = OUT/'endgame.lock'
 HEARTBEAT = OUT/'heartbeat'      # UTC time of the last finished poll (read by endgame_watch.py)
+LAST_OK = OUT/'last_ok'          # UTC time of the last poll that read Kalshi without an error
 ET = ZoneInfo('America/New_York')
-LOOKBACK_HOURS = 14
+LOOKBACK_HOURS = 24                # Polymarket 10-03: long games and extra innings
 MILESTONE_REFRESH = 300
 THIN_RECHECK_SECONDS = 60
 SETTLE_RETRY_MINUTES = 5
@@ -284,6 +285,10 @@ class Trader:
             idle = None
             try:
                 idle = self.cycle(now_utc())
+                try:
+                    LAST_OK.write_text(iso(now_utc()), encoding='utf-8')
+                except OSError:
+                    pass
             except Exception as exc:
                 self.counts['errors'] += 1
                 log(f'error {type(exc).__name__}: {str(exc)[:200]}')
