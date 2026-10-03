@@ -45,7 +45,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   'soccer-3way'. Both are new to Kalshi (Polymarket had no advance rule), so
   both are marked experimental.
 - **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT
-  <= 2:00; football Q4/OT <= 4:00 with a 9+ point lead (Polymarket 10-03,
+  <= 2:00 (NHL is milestone type 'hockey_match', added 10-03 after it was
+  found unwatched; the status line now lists any live sport type without a
+  rule; darts has no live score and stays out); football Q4/OT <= 4:00 with a
+  9+ point lead (Polymarket 10-03,
   after Villanova 35-31 lost to a late touchdown); hockey P3/OT <= 2:00;
   baseball 9th inning+ with a 2+ run lead (Polymarket rule); tennis best-of-3
   leader a set up with >= 5 games and ahead in the current set; table tennis

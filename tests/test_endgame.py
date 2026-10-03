@@ -54,6 +54,11 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
                          {'rugby', 'volleyball', 'soccer', 'soccer-3way'})
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
+        # NHL games are 'hockey_match' on Kalshi (missed until 10-03).
+        self.assertEqual([s for s, _ in POLICY.rules_for('hockey_match')], ['hockey'])
+        self.assertEqual(E.winner_events(['KXNHLGAME-26OCT01PHINJ', 'KXNHL1P-26OCT01PHINJ', 'KXNHLOT-26OCT01PHINJ',
+                                          'KXNHL3PSPREAD-26OCT01PHINJ', 'KXNHLF10G-26OCT01PHINJ']),
+                         ['KXNHLGAME-26OCT01PHINJ'])
         self.assertEqual(POLICY.rules_for('cricket_match'), [])
         # Soccer: the 2-option cup 'advances' markets; the 3-option 90-minute game
         # market is tracked on paper only, as its own sport (operator: "add it for paper").
@@ -394,6 +399,24 @@ class TraderTest(unittest.TestCase):
         self.calls.clear()
         self.assertEqual(t.cycle(now), 'stop_file')
         self.assertEqual(self.calls, [])
+
+    def test_uncovered_sports_are_counted(self):
+        t = self.trader()
+        real = self.fetch
+
+        def fetch(path, params=None):
+            if path == '/milestones':
+                page = real(path, params)
+                page['milestones'] += [dict(id='d1', type='darts_match', category='Sports',
+                                            start_date='2026-10-03T17:00:00Z', primary_event_tickers=[]),
+                                       dict(id='w1', type='one_off_milestone', category='Economics',
+                                            start_date='2026-10-03T17:00:00Z', primary_event_tickers=[])]
+                return page
+            return real(path, params)
+        t.get = fetch
+        t.cycle(datetime(2026, 10, 3, 18, tzinfo=timezone.utc))
+        self.assertEqual(t.uncovered, {'darts_match': 1})
+        self.assertEqual(set(t.milestones), {'m1'})
 
     def test_report_groups(self):
         t = self.trader()

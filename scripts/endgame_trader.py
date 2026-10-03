@@ -140,6 +140,7 @@ class Trader:
         self.milestones = {}               # id -> milestone (sports we have rules for)
         self.finished = set()
         self.milestones_at = None
+        self.uncovered = {}                # started milestone types with no rule (status log)
         self.thin_until = {}
         self.fee_multipliers = {}
         self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0)
@@ -147,21 +148,26 @@ class Trader:
     # -- discovery --
     def refresh_milestones(self, now):
         types = {t for rule in self.policy.rules.values() for t in rule.types}
-        found, cursor = {}, None
+        found, cursor, uncovered = {}, None, {}
         for _ in range(40):
             params = {'minimum_start_date': iso(now-timedelta(hours=LOOKBACK_HOURS)), 'limit': 500}
             if cursor:
                 params['cursor'] = cursor
             page = self.get('/milestones', params)
             for m in page.get('milestones') or []:
-                if (isinstance(m, dict) and m.get('type') in types and m.get('id')
-                        and str(m.get('start_date') or '9') <= iso(now+timedelta(minutes=2))):
+                if not isinstance(m, dict) or str(m.get('start_date') or '9') > iso(now+timedelta(minutes=2)):
+                    continue
+                if m.get('type') in types and m.get('id'):
                     found[m['id']] = m
+                elif m.get('category') in ('Sports', 'Esports'):
+                    # Shown in the status line so a sport Kalshi names differently
+                    # (NHL is 'hockey_match') cannot be missed silently.
+                    uncovered[m.get('type')] = uncovered.get(m.get('type'), 0)+1
             cursor = page.get('cursor')
             if not cursor:
                 break
         self.milestones = {k: v for k, v in found.items() if k not in self.finished}
-        self.milestones_at = now
+        self.milestones_at, self.uncovered = now, uncovered
 
     def live_details(self):
         ids, out = list(self.milestones), {}
@@ -308,7 +314,7 @@ class Trader:
                 open_rows = self.db.execute('SELECT COUNT(*) FROM trades WHERE mode=? AND settled_at IS NULL',
                                             (self.mode,)).fetchone()[0]
                 log(f'status idle={idle} watching={len(self.milestones)} open={open_rows} '
-                    f'rule_today=${today:+.2f}{stop} counts={self.counts}')
+                    f'rule_today=${today:+.2f}{stop} counts={self.counts} not_covered={self.uncovered}')
             time.sleep(max(1.0, self.policy.poll_seconds-(time.monotonic()-started)))
         return 0
 
