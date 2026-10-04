@@ -146,14 +146,17 @@ class AlmostOverTest(unittest.TestCase):
         self.assertIsNone(E.pick_entry('EV', [soon], POLICY, r, data_band=False, now=None))
 
     def test_basketball_quarters_halves_and_halftime(self):
+        # 14-day study 10-03: late 95-96c favourites lost ~2-3% (close games);
+        # operator chose a 7+ point lead over a 97c floor.
         game = live(period=4, period_type='quarter', period_remaining_time='01:59',
-                    home_points=80, away_points=77)
+                    home_points=84, away_points=77)
         self.assertTrue(E.almost_over(rule('basketball'), 'basketball_game', game))
         self.assertTrue(E.almost_over(rule('basketball'), 'basketball_game', dict(game, period=5)))
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(game, period=3)))
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game',
                                        dict(game, period_remaining_time='02:01')))
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(game, home_points=77)))
+        self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(game, home_points=83)))
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(game, status='halftime')))
         college = dict(game, period=2, period_type='half')
         self.assertTrue(E.almost_over(rule('basketball'), 'basketball_game', college))

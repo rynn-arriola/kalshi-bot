@@ -12,7 +12,7 @@
   "rules": {
     "soccer-3way": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 80, "min_lead": 2, "experimental": true},
     "soccer": {"kind": "advance", "events": "advance", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 80, "min_lead": 2, "max_expiry_hours": 3, "experimental": true},
-    "basketball": {"kind": "clock", "types": ["basketball_game"], "max_clock_minutes": 2},
+    "basketball": {"kind": "clock", "types": ["basketball_game"], "max_clock_minutes": 2, "min_lead": 7},
     "football": {"kind": "clock", "types": ["football_game"], "max_clock_minutes": 4, "min_lead": 9},
     "hockey": {"kind": "clock", "types": ["hockey_tournament", "hockey_match", "hockey_game"], "max_clock_minutes": 2},
     "tennis": {"kind": "tennis", "types": ["tennis_tournament_singles", "tennis_tournament_doubles"], "units_to_win": 2, "min_current": 5},
