@@ -51,11 +51,15 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual((POLICY.risk_per_trade_usd, POLICY.daily_loss_stop_usd), (D(30), D(90)))
         self.assertEqual(E.contracts_for(POLICY.risk_per_trade_usd, POLICY.max_price), 30)
         self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'soccer-no-trailer', 'basketball', 'football',
-                                             'hockey', 'tennis', 'table-tennis', 'esports', 'esports-other',
+                                             'hockey', 'tennis', 'table-tennis', 'esports', 'esports-dota2',
+                                             'esports-valorant', 'esports-lol', 'esports-r6', 'esports-overwatch',
                                              'baseball', 'rugby', 'volleyball'})
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'rugby', 'volleyball', 'soccer', 'soccer-3way', 'soccer-no-trailer', 'esports-other'})
-        self.assertEqual([s for s, _ in POLICY.rules_for('esports_match')], ['esports', 'esports-other'])
+                         {'rugby', 'volleyball', 'soccer', 'soccer-3way', 'soccer-no-trailer', 'esports-r6',
+                          'esports-overwatch'})
+        # D-177 (Polymarket feed guards): every rule holds 20 s, esports 30 s.
+        self.assertEqual({s: r.hold_seconds for s, r in POLICY.rules.items() if r.hold_seconds not in (20, 30)}, {})
+        self.assertEqual({r.hold_seconds for r in POLICY.rules.values() if r.kind == 'maps'}, {30})
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
         # NHL games are 'hockey_match' on Kalshi (missed until 10-03).
         self.assertEqual([s for s, _ in POLICY.rules_for('hockey_match')], ['hockey'])
@@ -263,22 +267,36 @@ class AlmostOverTest(unittest.TestCase):
         early = dict(game, period_scores=game['period_scores'][:2]+[dict(number=3, home_score=10, away_score=16)])
         self.assertFalse(E.almost_over(rule('volleyball'), 'volleyball_match', early))
 
-    def test_esports_cs2_with_known_format(self):
-        # D-176: CS2 only (Kalshi 60 days: CS2 0.83% lost vs LoL 3.7%, Valorant 2.5%),
-        # best-of from the total-maps market; unknown format = skip.
+    def test_esports_rules_per_title(self):
+        # D-176/177: per-title rules (Polymarket, Kalshi 60-day replay per title);
+        # best of 3/5 from the total-maps market, unknown format = skip.
         game = dict(status='live', widget_status='live', home_score=1, away_score=0)
-        cs2 = dict(game='CS2')
-        self.assertTrue(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=2))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=None))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=dict(game='LoL'), units_to_win=2))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=0), meta=cs2, units_to_win=2))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2), meta=cs2, units_to_win=2))
-        # Best of 5: one map from 3.
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=3))
-        self.assertTrue(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2), meta=cs2, units_to_win=3))
-        # Other titles: paper only, same map rule.
-        self.assertTrue(E.almost_over(rule('esports-other'), 'esports_match', game, meta=dict(game='LoL'), units_to_win=2))
-        self.assertFalse(E.almost_over(rule('esports-other'), 'esports_match', game, meta=cs2, units_to_win=2))
+        ok = lambda name, g, title, units: E.almost_over(rule(name), 'esports_match', g, meta=dict(game=title),
+                                                          units_to_win=units)
+        # CS2: 1-0 or 1-1 in a best of 3; one map from 3 in a best of 5.
+        self.assertTrue(ok('esports', game, 'CS2', 2))
+        self.assertTrue(ok('esports', dict(game, away_score=1), 'CS2', 2))
+        self.assertFalse(ok('esports', game, 'CS2', None))
+        self.assertFalse(ok('esports', game, 'Dota 2', 2))
+        self.assertFalse(ok('esports', dict(game, home_score=0), 'CS2', 2))
+        self.assertFalse(ok('esports', dict(game, home_score=2), 'CS2', 2))
+        self.assertFalse(ok('esports', game, 'CS2', 3))
+        self.assertTrue(ok('esports', dict(game, home_score=2), 'CS2', 3))
+        # Dota 2 and Valorant: best of 3, deciding map (1-1) only.
+        for name, title in (('esports-dota2', 'Dota 2'), ('esports-valorant', 'Valorant')):
+            self.assertFalse(ok(name, game, title, 2))
+            self.assertTrue(ok(name, dict(game, away_score=1), title, 2))
+            self.assertFalse(ok(name, dict(game, home_score=2, away_score=2), title, 3))   # no best of 5
+        # LoL: best of 3 at 1-0 only; best of 5 at 2-1 / 2-2, never 2-0.
+        self.assertTrue(ok('esports-lol', game, 'League of Legends', 2))
+        self.assertFalse(ok('esports-lol', dict(game, away_score=1), 'League of Legends', 2))
+        self.assertFalse(ok('esports-lol', dict(game, home_score=2), 'League of Legends', 3))
+        self.assertTrue(ok('esports-lol', dict(game, home_score=2, away_score=1), 'League of Legends', 3))
+        self.assertTrue(ok('esports-lol', dict(game, home_score=2, away_score=2), 'League of Legends', 3))
+        # Overwatch (no total-maps market): forced first to 3, 2-1 / 2-2 only.
+        self.assertTrue(ok('esports-overwatch', dict(game, home_score=2, away_score=1), 'Overwatch', None))
+        self.assertFalse(ok('esports-overwatch', dict(game, home_score=2), 'Overwatch', None))
+        self.assertFalse(ok('esports-overwatch', game, 'Overwatch', None))
         self.assertEqual(E.maps_to_win([dict(floor_strike=2.5)]), 2)
         self.assertEqual(E.maps_to_win([dict(floor_strike=3.5), dict(floor_strike=4.5)]), 3)
         self.assertIsNone(E.maps_to_win([]))
@@ -441,6 +459,11 @@ class TraderTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         out = Path(self.tmp.name)
         self.T.OUT, self.T.DB, self.T.STOP_FILE = out, out/'endgame.db', out/'STOP'
+        # Single-poll tests: no 20/30 s hold (test_hold_seconds_waits_for_a_steady_entry covers it).
+        from dataclasses import replace
+        real_load = self.T.load_policy
+        self.T.load_policy = lambda path: (lambda pol: replace(pol, rules={k: replace(r, hold_seconds=0)
+                                                                    for k, r in pol.rules.items()}))(real_load(path))
         self.calls = []
         self.state = dict(details=live(quarter=4, clock='1:00', home_points=30, away_points=10),
                           bid='0.95', ask='0.97', depth='50', result='')
@@ -552,6 +575,21 @@ class TraderTest(unittest.TestCase):
         self.assertEqual(t.maps_format(m), 2)
         self.assertEqual(calls, ['/events/KXCS2TOTALMAPS-X'])            # cached
         self.assertIsNone(t.maps_format(dict(id='e2', related_event_tickers=['KXOWGAME-Y'])))
+
+    def test_stale_feed_blocks_buys(self):
+        # D-177: live data unchanged for 15 minutes = stuck feed: no buy.
+        t = self.trader()
+        now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
+        self.state.update(bid='0.80', ask='0.82')                         # not buyable yet
+        t.cycle(now)
+        t.cycle(now+timedelta(minutes=16))                                 # same data 16 min later
+        self.state.update(bid='0.95', ask='0.97')
+        t.cycle(now+timedelta(minutes=17))
+        self.assertEqual(self.rows(), [])
+        self.assertGreaterEqual(t.counts['stale_feed'], 1)
+        self.state['details'] = dict(self.state['details'], clock='0:50')   # the feed moves again
+        t.cycle(now+timedelta(minutes=18))
+        self.assertEqual(len(self.rows()), 1)
 
     def test_hold_seconds_waits_for_a_steady_entry(self):
         t = self.trader()

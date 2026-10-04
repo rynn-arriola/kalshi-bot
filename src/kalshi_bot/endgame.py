@@ -66,6 +66,11 @@ class SportRule:
     max_price: Decimal | None = None
     hold_seconds: int = 0                  # the entry must qualify on every poll this long
     side: str = 'yes'                      # 'yes' (favourite wins) or 'no_trailer' (NO on the trailing team)
+    # D-177 esports per title (Polymarket 2026-10-04, Kalshi 60-day replay per title):
+    formats: tuple[int, ...] = ()          # allowed best-of (3, 5); empty = any
+    bo3_states: tuple[str, ...] = ()       # allowed map scores "high-low" ('1-1' = deciding map)
+    bo5_states: tuple[str, ...] = ()
+    force_best_of: int | None = None       # titles with no total-maps market (Overwatch: first to 3)
 
     def __post_init__(self):
         if (self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS
@@ -124,7 +129,8 @@ def load_policy(path: Path) -> Policy:
     allowed = {'kind', 'types', 'min_minute', 'max_clock_minutes', 'min_lead', 'min_current',
                'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning',
                'test_price', 'big_lead', 'big_lead_minute', 'big_lead_clock', 'leader_ball', 'games',
-               'skip_games', 'require_format', 'max_spread', 'max_price', 'hold_seconds', 'side'}
+               'skip_games', 'require_format', 'max_spread', 'max_price', 'hold_seconds', 'side',
+               'formats', 'bo3_states', 'bo5_states', 'force_best_of'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -142,7 +148,9 @@ def load_policy(path: Path) -> Policy:
             skip_games=tuple(r.get('skip_games', ())), require_format=bool(r.get('require_format', False)),
             max_spread=_dec(r['max_spread'], 'max_spread') if 'max_spread' in r else None,
             max_price=_dec(r['max_price'], 'max_price') if 'max_price' in r else None,
-            hold_seconds=r.get('hold_seconds', 0), side=r.get('side', 'yes'))
+            hold_seconds=r.get('hold_seconds', 0), side=r.get('side', 'yes'),
+            formats=tuple(r.get('formats', ())), bo3_states=tuple(r.get('bo3_states', ())),
+            bo5_states=tuple(r.get('bo5_states', ())), force_best_of=r.get('force_best_of'))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
              'max_price', 'max_spread'}
     if set(raw) - set(Policy.__dataclass_fields__):
@@ -336,11 +344,19 @@ def almost_over(rule, milestone_type, details, meta=None, units_to_win=None):
         game = str(meta.get('game') or '').upper()
         if (rule.games and game not in {g.upper() for g in rule.games}) or game in {g.upper() for g in rule.skip_games}:
             return False
+        if rule.force_best_of:
+            units_to_win = rule.force_best_of//2+1
         if rule.require_format and units_to_win is None:
-            return False                     # best-of unknown (Overwatch first-to-3, best of 1): skip
-        score = _points(details, 'home_score', 'away_score')
+            return False                     # best-of unknown (best of 1, no format market): skip
         need = units_to_win or rule.units_to_win or 2
-        return score is not None and max(score) == need-1
+        best_of = 2*need-1
+        if rule.formats and best_of not in rule.formats:
+            return False
+        score = _points(details, 'home_score', 'away_score')
+        if score is None or max(score) != need-1:
+            return False
+        allowed = rule.bo5_states if best_of == 5 else rule.bo3_states
+        return not allowed or f'{max(score)}-{min(score)}' in allowed
     return False
 
 

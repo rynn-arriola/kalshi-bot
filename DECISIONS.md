@@ -10,6 +10,25 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-177 — Esports per title, stale-feed skip, 20 s hold (from Polymarket)
+
+- **Status:** ACCEPTED for the paper run, 2026-10-04. Operator: "I changed
+  esport rule again on polymarket check it if can be applied on kalshi".
+  Source: liquidity-bot BC-2026-10-03-B (~18:45Z and ~19:00Z entries) and
+  ENDGAME_RULE_RESEARCH_2026-10-04.md (Kalshi 60-day replay per title, fit on
+  the first half, checked on the second).
+- **Esports per title** (milestone details 'game'; best of 3/5 from Kalshi's
+  total-maps market): CS2 1-0 or 1-1 (Bo3/Bo5), 97c, ask <= 98c (842 trades,
+  0.83% lost); Dota 2 Bo3 at 1-1 only, 97c, ask <= 99c (77/0); Valorant Bo3 at
+  1-1 only, 95c, ask <= 98c (68/1); League of Legends Bo3 at 1-0 or Bo5 at
+  2-1/2-2, 98c, ask <= 99c (low confidence); all with a 3c gap and a 30 s
+  hold. Paper only: Rainbow Six (no total-maps market on Kalshi, so it waits
+  for one) and Overwatch (forced first-to-3 at 2-1/2-2).
+- **Feed guards:** no buy when a game's live data has not changed for 15
+  minutes (Kalshi has no per-game update time, so the trader watches the data
+  itself; esports excluded, its state changes only between maps); every rule
+  waits 20 s of continuous qualification before buying (esports 30 s).
+
 ### D-176 — Endgame rules from the Polymarket rule research, plus Kalshi-only data
 
 - **Status:** ACCEPTED for the paper run, 2026-10-04. Operator: "Check what we

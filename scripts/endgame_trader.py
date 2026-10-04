@@ -79,6 +79,10 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_game ON snapshots(milestone_id, at);
 # game, so lead rules (basketball 7+, soccer 2 goals) can be tested against
 # Kalshi's minute price history later. Prices are not recorded here.
 SNAPSHOT_SECONDS = 60
+# D-177 stale feed (Polymarket 2026-10-04: events stuck "live" for hours): no buy
+# when a game's live data has not changed for STALE_MINUTES (esports excluded:
+# its state only changes between maps).
+STALE_MINUTES = 15
 SNAPSHOT_KEEP_DAYS = 21
 CLOCK_KEYS = ('time', 'clock', 'period_remaining_time')
 
@@ -159,6 +163,7 @@ class Trader:
         self.fee_multipliers = {}
         self.formats = {}                  # milestone id -> esports maps to win (None = unknown)
         self.qualified = {}                # (sport, event) -> first time the entry qualified (hold_seconds)
+        self.state_seen = {}               # milestone id -> (full live state, first time seen unchanged)
         self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0,
                            snapshots=0)
         self.snapped = {}                  # milestone id -> (time, score key) of its last snapshot
@@ -225,9 +230,22 @@ class Trader:
             self.formats[mid] = units
         return self.formats[mid]
 
+    def stale(self, milestone, details, now):
+        """True when this game's live data has not changed for STALE_MINUTES."""
+        text = json.dumps(details, sort_keys=True, default=str)
+        seen = self.state_seen.get(milestone['id'])
+        if seen is None or seen[0] != text:
+            self.state_seen[milestone['id']] = (text, now)
+            return False
+        return (now-seen[1]).total_seconds() >= STALE_MINUTES*60
+
     def consider(self, milestone, details, now):
         meta = milestone.get('details') if isinstance(milestone.get('details'), dict) else {}
+        stale = self.stale(milestone, details, now)
         for sport, rule in self.policy.rules_for(milestone.get('type')):
+            if stale and rule.kind != 'maps':
+                self.counts['stale_feed'] = self.counts.get('stale_feed', 0)+1
+                continue
             units = self.maps_format(milestone) if rule.require_format else None
             if almost_over(rule, milestone['type'], details, meta=meta, units_to_win=units):
                 self.counts['almost_over'] += 1
