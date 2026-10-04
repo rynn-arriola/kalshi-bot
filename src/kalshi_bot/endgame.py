@@ -46,6 +46,9 @@ class SportRule:
     min_current: int = 0                   # sets: games/points the leader has in the current unit
     units_to_win: int | None = None        # tennis/esports best-of (None: read from live data)
     min_price: Decimal | None = None       # per-sport floor on the middle price
+    # Paper-only 'test' floor below the rule (operator 10-03 "Ok apply it",
+    # from the 14-day replay: late tennis/table tennis at 92c, esports at 95c).
+    test_price: Decimal | None = None
     experimental: bool = False             # never real orders, paper only
     events: str = 'winner'                 # 'winner' (GAME/MATCH) or 'advance' (soccer cup ties)
     max_expiry_hours: float | None = None  # market must be due to settle within this (advance: not a first leg)
@@ -104,7 +107,8 @@ def load_policy(path: Path) -> Policy:
     raw = json.loads(path.read_text(encoding='utf-8'))
     rules = {}
     allowed = {'kind', 'types', 'min_minute', 'max_clock_minutes', 'min_lead', 'min_current',
-               'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning'}
+               'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning',
+               'test_price'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -114,6 +118,7 @@ def load_policy(path: Path) -> Policy:
             min_inning=r.get('min_inning'),
             min_current=r.get('min_current', 0), units_to_win=r.get('units_to_win'),
             min_price=_dec(r['min_price'], 'min_price') if 'min_price' in r else None,
+            test_price=_dec(r['test_price'], 'test_price') if 'test_price' in r else None,
             experimental=bool(r.get('experimental', False)), events=r.get('events', 'winner'),
             max_expiry_hours=r.get('max_expiry_hours'))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
@@ -321,7 +326,7 @@ class Candidate:
     bid: Decimal
     ask: Decimal
     mid: Decimal
-    band: str                               # 'rule' (>= min_price) or 'data' (dry-run data band)
+    band: str                               # 'rule' (>= floor), 'test' (>= test_price) or 'data' (dry run)
 
 
 def _quote(value):
@@ -343,8 +348,10 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
     """The one favourite to buy in this winner event now, or None.
 
     ``data_band`` (dry run only) lowers the middle-price floor to
-    data_min_price; such entries are tagged 'data', never traded live."""
+    data_min_price; such entries are tagged 'test' (at or above the rule's
+    test_price) or 'data', never traded live."""
     floor = max(policy.min_price, rule.min_price or Decimal(0))
+    test = rule.test_price                   # a test floor at or above the rule never applies
     lowest = min(floor, policy.data_min_price) if data_band else floor
     best = None
     for m in markets or ():
@@ -367,7 +374,8 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
         # A win must still clear the taker fee (one contract, unrounded per contract).
         if (ONE-ask)-Decimal('0.07')*ask*(ONE-ask) <= 0:
             continue
-        cand = Candidate(event_ticker, ticker, team, bid, ask, mid, 'rule' if mid >= floor else 'data')
+        band = 'rule' if mid >= floor else 'test' if test is not None and mid >= test else 'data'
+        cand = Candidate(event_ticker, ticker, team, bid, ask, mid, band)
         if best is None or ask < best.ask:   # the cheapest favourite pays most
             best = cand
     return best

@@ -1,6 +1,7 @@
 """D-175 Endgame Trader: per-sport rules on real Kalshi live-data shapes,
 entry choice, fees, paper fills and the dry-run process (no network)."""
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -281,11 +282,26 @@ class EntryTest(unittest.TestCase):
         self.assertIsNone(E.pick_entry('EV', [market('EV-A', 'A', '0.82', '0.99')], POLICY, r, data_band=True))
         self.assertIsNotNone(E.pick_entry('EV', [market('EV-A', 'A', '0.89', '0.99')], POLICY, r, data_band=True))
 
+    def test_test_band_between_data_and_rule(self):
+        # Paper-only test floors from the 14-day replay: tennis/table tennis 92c, esports 95c.
+        self.assertEqual((rule('tennis').test_price, rule('table-tennis').test_price, rule('esports').test_price),
+                         (D('0.92'), D('0.92'), D('0.95')))
+        self.assertIsNone(rule('basketball').test_price)
+        pick = lambda r, bid, ask, data=True: E.pick_entry('EV', [market('EV-A', 'A', bid, ask)], POLICY, r,
+                                                           data_band=data)
+        self.assertEqual(pick(rule('tennis'), '0.91', '0.93').band, 'test')     # 92c middle
+        self.assertEqual(pick(rule('tennis'), '0.90', '0.92').band, 'data')     # 91c middle
+        self.assertEqual(pick(rule('tennis'), '0.95', '0.96').band, 'rule')
+        self.assertEqual(pick(rule('esports'), '0.95', '0.96').band, 'test')    # 95.5c: under the 97c rule
+        self.assertEqual(pick(rule('esports'), '0.93', '0.94').band, 'data')
+        self.assertEqual(pick(rule('basketball'), '0.91', '0.93').band, 'data')  # no test floor
+        self.assertIsNone(pick(rule('tennis'), '0.91', '0.93', data=False))      # live: rule only
+
     def test_esports_floor_97(self):
         r = rule('esports')
         ms = [market('EV-A', 'A', '0.95', '0.96')]
         self.assertIsNone(E.pick_entry('EV', ms, POLICY, r, data_band=False))
-        self.assertEqual(E.pick_entry('EV', ms, POLICY, r, data_band=True).band, 'data')
+        self.assertEqual(E.pick_entry('EV', ms, POLICY, r, data_band=True).band, 'test')   # paper test floor 95c
         self.assertEqual(E.pick_entry('EV', [market('EV-A', 'A', '0.97', '0.98')], POLICY, r,
                                       data_band=False).band, 'rule')
 
@@ -437,6 +453,32 @@ class TraderTest(unittest.TestCase):
         t.cycle(datetime(2026, 10, 3, 18, tzinfo=timezone.utc))
         self.assertEqual(t.uncovered, {'darts_match': 1})
         self.assertEqual(set(t.milestones), {'m1'})
+
+    def test_recorder_once_a_minute_and_on_score_change(self):
+        t = self.trader()
+        now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
+        t.cycle(now)
+        t.cycle(now.replace(second=10))                                   # same score, clock moved
+        self.state['details'] = dict(self.state['details'], clock='0:50')
+        t.cycle(now.replace(second=20))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0], 1)
+        self.state['details'] = dict(self.state['details'], home_points=33)  # score change
+        t.cycle(now.replace(second=30))
+        t.cycle(now.replace(minute=1, second=31))                          # a minute later
+        snaps = [json.loads(r[0]) for r in self.db.execute('SELECT state FROM snapshots ORDER BY rowid')]
+        self.assertEqual([s['home_points'] for s in snaps], [30, 33, 33])
+        # A game that is not live (here: not started yet) is not recorded.
+        self.state['details'] = dict(self.state['details'], status='not_started', widget_status='pre', home_points=40)
+        t.cycle(now.replace(minute=3))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0], 3)
+        game = self.db.execute('SELECT * FROM games').fetchone()
+        self.assertEqual((game['milestone_id'], game['type']), ('m1', 'football_game'))
+        self.assertEqual(json.loads(game['event_tickers']), ['KXNFLGAME-X', 'KXNFLSPREAD-X'])
+        # Pruned after SNAPSHOT_KEEP_DAYS.
+        t.pruned_at = None
+        t.cycle(now+timedelta(days=self.T.SNAPSHOT_KEEP_DAYS, hours=1))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots WHERE at<?',
+                                         ('2026-10-04',)).fetchone()[0], 0)
 
     def test_report_groups(self):
         t = self.trader()

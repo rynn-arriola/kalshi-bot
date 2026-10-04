@@ -85,6 +85,13 @@ and explicitly withdraws the proposed fixed 60-market pool.
   (+$0.55/trade, n=1,549), esports 0.9% (+$0.47), table tennis 0/114, hockey
   0/68, baseball 2.2% (+$0.21), football 1.9% (+$0.20); 3-option soccer 2.9%
   (-$0.05) even late, so it stays paper only. Early buys lose in every sport.
+- **Paper test floors and recorder (operator 10-03 "Ok apply it"):** a
+  'test' band below the rule, paper only: tennis and table tennis from 92c,
+  esports from 95c (14-day replay, late: tennis 92c 1.7% lost +$0.92/trade,
+  table tennis 92c +$0.47, esports 95c +$0.47 vs +$0.21 at 97c). The trader
+  also records every live game's score/clock (tables games, snapshots) once a
+  minute and on each score change, kept 21 days, so lead rules can be tested
+  against Kalshi's minute price history.
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,
   account position cap, farmer-running refusal) is built and tested before any

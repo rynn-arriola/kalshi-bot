@@ -69,7 +69,18 @@ CREATE TABLE IF NOT EXISTS trades(
   qty INTEGER NOT NULL, fee TEXT NOT NULL, created_at TEXT NOT NULL, game_state TEXT,
   outcome TEXT, settled_at TEXT, result TEXT, next_settle_at TEXT,
   UNIQUE(mode, event_ticker, band));
+CREATE TABLE IF NOT EXISTS games(
+  milestone_id TEXT PRIMARY KEY, type TEXT, title TEXT, start_date TEXT, event_tickers TEXT);
+CREATE TABLE IF NOT EXISTS snapshots(
+  milestone_id TEXT NOT NULL, at TEXT NOT NULL, state TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_snapshots_game ON snapshots(milestone_id, at);
 """
+# Recorder (operator 10-03 "Ok apply it"): score/clock history of every live
+# game, so lead rules (basketball 7+, soccer 2 goals) can be tested against
+# Kalshi's minute price history later. Prices are not recorded here.
+SNAPSHOT_SECONDS = 60
+SNAPSHOT_KEEP_DAYS = 21
+CLOCK_KEYS = ('time', 'clock', 'period_remaining_time')
 
 
 def now_utc():
@@ -143,7 +154,10 @@ class Trader:
         self.uncovered = {}                # started milestone types with no rule (status log)
         self.thin_until = {}
         self.fee_multipliers = {}
-        self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0)
+        self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0,
+                           snapshots=0)
+        self.snapped = {}                  # milestone id -> (time, score key) of its last snapshot
+        self.pruned_at = None
 
     # -- discovery --
     def refresh_milestones(self, now):
@@ -254,6 +268,32 @@ class Trader:
             log(f'SETTLED {r["ticker"]} band={r["band"]} sport={r["sport"]} price={r["price"]} '
                 f'outcome={outcome} result={result:+.2f}')
 
+    def record(self, details, now):
+        """One snapshot per live game per SNAPSHOT_SECONDS, plus one whenever
+        its score changes; old snapshots are pruned once an hour."""
+        rows, games = [], []
+        for mid, d in details.items():
+            milestone = self.milestones.get(mid)
+            if milestone is None or d.get('widget_status') != 'live':
+                continue
+            state = json.loads(game_text(milestone['type'], d))
+            key = json.dumps({k: v for k, v in state.items() if k not in CLOCK_KEYS}, sort_keys=True)
+            last = self.snapped.get(mid)
+            if last is not None and last[1] == key and (now-last[0]).total_seconds() < SNAPSHOT_SECONDS:
+                continue
+            if last is None:
+                games.append((mid, milestone['type'], milestone.get('title'), milestone.get('start_date'),
+                              json.dumps(milestone.get('primary_event_tickers') or [])))
+            rows.append((mid, iso(now), json.dumps(state, separators=(',', ':'))))
+            self.snapped[mid] = (now, key)
+        with self.db:
+            self.db.executemany('INSERT OR IGNORE INTO games VALUES(?,?,?,?,?)', games)
+            self.db.executemany('INSERT INTO snapshots VALUES(?,?,?)', rows)
+            if self.pruned_at is None or (now-self.pruned_at).total_seconds() >= 3600:
+                self.db.execute('DELETE FROM snapshots WHERE at<?', (iso(now-timedelta(days=SNAPSHOT_KEEP_DAYS)),))
+                self.pruned_at = now
+        self.counts['snapshots'] += len(rows)
+
     def cycle(self, now):
         fresh = load_policy(POLICY)
         if fresh != self.policy:
@@ -271,6 +311,10 @@ class Trader:
             if d.get('status') in FINISHED:
                 self.finished.add(mid)
                 self.milestones.pop(mid, None)
+        try:
+            self.record(details, now)
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            log(f'recorder error {type(exc).__name__}: {str(exc)[:160]}')
         self.settle(now)
         for mid, d in details.items():
             milestone = self.milestones.get(mid)
