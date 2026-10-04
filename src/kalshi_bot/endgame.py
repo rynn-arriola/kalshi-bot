@@ -31,6 +31,8 @@ ONE = Decimal(1)
 LIVE_STATUSES = frozenset({'inprogress', 'live', 'started'})
 WINNER_SERIES_ENDINGS = ('GAME', 'MATCH', 'DOUBLES')
 NOT_WINNER_WORDS = ('SPREAD', 'TOTAL', 'BTTS', 'EXTRAS', 'DELAY', '1H', '2H', 'HALF')
+MATCH_TIEBREAK_POINTS = 9
+MATCH_TIEBREAK_LEAD = 3
 KINDS = frozenset({'minute', 'clock', 'tennis', 'table_tennis', 'maps', 'baseball', 'volleyball', 'advance'})
 EVENT_KINDS = frozenset({'winner', 'advance'})
 
@@ -52,10 +54,23 @@ class SportRule:
     experimental: bool = False             # never real orders, paper only
     events: str = 'winner'                 # 'winner' (GAME/MATCH) or 'advance' (soccer cup ties)
     max_expiry_hours: float | None = None  # market must be due to settle within this (advance: not a first leg)
+    # D-176 (Polymarket rule research 2026-10-04, ported to Kalshi):
+    big_lead: int | None = None            # soccer: this lead from big_lead_minute; football: within big_lead_clock
+    big_lead_minute: int | None = None
+    big_lead_clock: float | None = None
+    leader_ball: bool = False              # football: the leader must have the ball (unknown = skip)
+    games: tuple[str, ...] = ()            # esports titles to trade (milestone details 'game'), empty = all
+    skip_games: tuple[str, ...] = ()
+    require_format: bool = False           # esports: best-of known from the total-maps market
+    max_spread: Decimal | None = None      # per-sport overrides of the policy spread / price cap
+    max_price: Decimal | None = None
+    hold_seconds: int = 0                  # the entry must qualify on every poll this long
+    side: str = 'yes'                      # 'yes' (favourite wins) or 'no_trailer' (NO on the trailing team)
 
     def __post_init__(self):
-        if self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS:
-            raise ValueError(f'unknown endgame rule kind {self.kind!r}/{self.events!r}')
+        if (self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS
+                or self.side not in ('yes', 'no_trailer') or not 0 <= self.hold_seconds <= 600):
+            raise ValueError(f'unknown endgame rule kind {self.kind!r}/{self.events!r}/{self.side!r}')
 
 
 @dataclass(frozen=True)
@@ -108,7 +123,8 @@ def load_policy(path: Path) -> Policy:
     rules = {}
     allowed = {'kind', 'types', 'min_minute', 'max_clock_minutes', 'min_lead', 'min_current',
                'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning',
-               'test_price'}
+               'test_price', 'big_lead', 'big_lead_minute', 'big_lead_clock', 'leader_ball', 'games',
+               'skip_games', 'require_format', 'max_spread', 'max_price', 'hold_seconds', 'side'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -120,7 +136,13 @@ def load_policy(path: Path) -> Policy:
             min_price=_dec(r['min_price'], 'min_price') if 'min_price' in r else None,
             test_price=_dec(r['test_price'], 'test_price') if 'test_price' in r else None,
             experimental=bool(r.get('experimental', False)), events=r.get('events', 'winner'),
-            max_expiry_hours=r.get('max_expiry_hours'))
+            max_expiry_hours=r.get('max_expiry_hours'), big_lead=r.get('big_lead'),
+            big_lead_minute=r.get('big_lead_minute'), big_lead_clock=r.get('big_lead_clock'),
+            leader_ball=bool(r.get('leader_ball', False)), games=tuple(r.get('games', ())),
+            skip_games=tuple(r.get('skip_games', ())), require_format=bool(r.get('require_format', False)),
+            max_spread=_dec(r['max_spread'], 'max_spread') if 'max_spread' in r else None,
+            max_price=_dec(r['max_price'], 'max_price') if 'max_price' in r else None,
+            hold_seconds=r.get('hold_seconds', 0), side=r.get('side', 'yes'))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
              'max_price', 'max_spread'}
     if set(raw) - set(Policy.__dataclass_fields__):
@@ -167,7 +189,9 @@ def _last_period(details, milestone_type):
         return False, left
     if milestone_type == 'basketball_game':
         last = 2 if details.get('period_type') == 'half' else 4
-    elif milestone_type == 'hockey_tournament':
+    elif milestone_type.startswith('hockey'):
+        # D-176: NHL is 'hockey_match'; it used to fall into the rugby branch,
+        # so the 2nd period counted as the last (found by the Polymarket research).
         last = 3
     else:                                   # rugby: two halves
         last = 2
@@ -213,17 +237,34 @@ def _units_almost_over(units, units_to_win, min_current, min_lead):
                and (a, b)[i]-(a, b)[1-i] >= max(1, min_lead) for i in (0, 1))
 
 
-def almost_over(rule, milestone_type, details):
-    """True when this game is in its last moments by the sport's rule."""
+def _soccer_window(rule, minute, score, *, normal_time_end=None):
+    """Polymarket soccer rule (research 2026-10-04): min_lead from min_minute,
+    or big_lead from big_lead_minute (2 goals from 88', 3+ from 80')."""
+    if minute is None or score is None:
+        return False
+    lead = abs(score[0]-score[1])
+    end = normal_time_end if normal_time_end is not None else 10**6
+    windows = [(rule.min_minute, rule.min_lead)]
+    if rule.big_lead is not None and rule.big_lead_minute is not None:
+        windows.append((rule.big_lead_minute, rule.big_lead))
+    return any(start <= minute <= end and lead >= max(1, need) for start, need in windows)
+
+
+def almost_over(rule, milestone_type, details, meta=None, units_to_win=None):
+    """True when this game is in its last moments by the sport's rule.
+
+    ``meta``: the milestone's own details (team ids, esports game title).
+    ``units_to_win``: esports maps needed, from the total-maps market."""
     if rule is None or not isinstance(details, dict):
         return False
     if details.get('status') not in LIVE_STATUSES or details.get('widget_status') != 'live':
         return False                         # halftime, delayed, finished, not started
+    meta = meta if isinstance(meta, dict) else {}
     kind = rule.kind
-    if kind == 'minute':                     # soccer: 90'+ and not tied (same-game score)
+    if kind == 'minute':                     # soccer 3-option market: same-game score
         minute = match_minute(details.get('time'))
         score = _points(details, 'home_same_game_score', 'away_same_game_score')
-        return minute is not None and minute >= rule.min_minute and _lead_ok(score, rule.min_lead)
+        return _soccer_window(rule, minute, score)
     if kind == 'advance':
         # Soccer cup tie (operator: "Advances"): extra time and penalties count,
         # and two-leg ties go on the aggregate. Almost over = from min_minute
@@ -236,13 +277,28 @@ def almost_over(rule, milestone_type, details):
         minute = match_minute(details.get('time'))
         score = (_points(details, 'home_aggregate_score', 'away_aggregate_score')
                  or _points(details, 'home_same_game_score', 'away_same_game_score'))
-        return (minute is not None and (rule.min_minute <= minute <= 90 or minute >= 120)
-                and _lead_ok(score, rule.min_lead))
+        if minute is not None and minute >= 120:
+            return _lead_ok(score, rule.min_lead)
+        return _soccer_window(rule, minute, score, normal_time_end=90)
     if kind == 'clock':                      # basketball, football, hockey, rugby
         last, left = _last_period(details, milestone_type)
         score = _points(details, 'home_points', 'away_points')
-        return (last and left is not None and left <= rule.max_clock_minutes
-                and _lead_ok(score, rule.min_lead))
+        if not last or left is None or score is None:
+            return False
+        lead = abs(score[0]-score[1])
+        # Football (Polymarket research, 402 games): 17+ in the last 2:00 ...
+        if (rule.big_lead is not None and rule.big_lead_clock is not None
+                and left <= rule.big_lead_clock and lead >= rule.big_lead):
+            return True
+        if left > rule.max_clock_minutes or not _lead_ok(score, rule.min_lead):
+            return False
+        if rule.leader_ball:
+            # ... or 9+ in the last 3:00 only while the leader has the ball
+            # (Kalshi situation.possession_team_id vs the milestone's team ids).
+            ball = (details.get('situation') or {}).get('possession_team_id')
+            leader = meta.get('home_team_id') if score[0] > score[1] else meta.get('away_team_id')
+            return bool(ball) and ball == leader
+        return True
     if kind == 'baseball':
         # Polymarket rule (operator 10-03, "yes add basesball"): 9th inning or
         # later with a lead of min_lead runs (2), any half, any outs.
@@ -258,7 +314,13 @@ def almost_over(rule, milestone_type, details):
         units_to_win = rule.units_to_win or 2
         if max(one[0], two[0]) >= units_to_win:
             return False
-        return any(w == units_to_win-1 and cur >= rule.min_current and cur-other >= max(1, rule.min_lead)
+        need, lead = rule.min_current, max(1, rule.min_lead)
+        if (details.get('last_set_scoring_type') == 'MatchTiebreak'
+                and one[0] == two[0] == units_to_win-1):
+            # Deciding match tiebreak (first to 10 points): the score is points,
+            # not games. Polymarket research: 9+ points and a 3-point lead.
+            need, lead = MATCH_TIEBREAK_POINTS, MATCH_TIEBREAK_LEAD
+        return any(w == units_to_win-1 and cur >= need and cur-other >= lead
                    for (w, cur), other in ((one, two[1]), (two, one[1])))
     if kind == 'table_tennis':
         best = _int(details.get('best_of_sets'))
@@ -271,18 +333,33 @@ def almost_over(rule, milestone_type, details):
         return (best is not None and best % 2 == 1 and units is not None
                 and _units_almost_over(units, best//2+1, rule.min_current, rule.min_lead))
     if kind == 'maps':                       # esports: a team is one map from winning
+        game = str(meta.get('game') or '').upper()
+        if (rule.games and game not in {g.upper() for g in rule.games}) or game in {g.upper() for g in rule.skip_games}:
+            return False
+        if rule.require_format and units_to_win is None:
+            return False                     # best-of unknown (Overwatch first-to-3, best of 1): skip
         score = _points(details, 'home_score', 'away_score')
-        units_to_win = rule.units_to_win or 2
-        return score is not None and max(score) == units_to_win-1
+        need = units_to_win or rule.units_to_win or 2
+        return score is not None and max(score) == need-1
     return False
 
 
-def game_text(milestone_type, details):
-    """Short game state for the trade record."""
+def game_text(milestone_type, details, meta=None):
+    """Short game state for the trade record and the score recorder."""
     keep = ('time', 'half', 'quarter', 'clock', 'period', 'period_type', 'period_remaining_time',
             'inning', 'inning_half', 'outs', 'home_points', 'away_points', 'home_score', 'away_score',
-            'home_same_game_score', 'away_same_game_score', 'best_of_sets', 'best_of', 'completed_rounds')
+            'home_same_game_score', 'away_same_game_score', 'home_aggregate_score', 'away_aggregate_score',
+            'best_of_sets', 'best_of', 'completed_rounds', 'last_set_scoring_type')
     state = {k: details.get(k) for k in keep if details.get(k) is not None}
+    meta = meta if isinstance(meta, dict) else {}
+    ball = (details.get('situation') or {}).get('possession_team_id') if isinstance(details.get('situation'), dict) else None
+    if ball:
+        state['ball'] = ('home' if ball == meta.get('home_team_id') else
+                         'away' if ball == meta.get('away_team_id') else '?')
+    for side in ('home', 'away'):                # esports: rounds in the maps played (CS2 in-map score)
+        periods = details.get(f'{side}_periods')
+        if isinstance(periods, dict) and periods:
+            state[f'{side}_rounds'] = [periods[k] for k in sorted(periods)]
     for k in ('competitor1_round_scores', 'competitor2_round_scores'):
         if isinstance(details.get(k), list):
             state[k[:11]] = [r.get('score') for r in details[k] if isinstance(r, dict)]
@@ -312,6 +389,20 @@ def winner_events(event_tickers):
     return out
 
 
+def maps_to_win(total_maps_markets):
+    """Esports maps needed to win, from the total-maps lines: 'Over 2.5' only
+    = best of 3 (2); a 3.5 or 4.5 line = best of 5 (3); none = unknown."""
+    strikes = []
+    for m in total_maps_markets or ():
+        try:
+            strikes.append(float(m.get('floor_strike')))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    if not strikes:
+        return None
+    return 3 if max(strikes) > 3 else 2
+
+
 def taker_fee(count, price, multiplier=ONE):
     """Kalshi quadratic taker fee for one order, rounded up to the cent."""
     raw = Decimal('0.07')*multiplier*count*price*(ONE-price)
@@ -327,6 +418,7 @@ class Candidate:
     ask: Decimal
     mid: Decimal
     band: str                               # 'rule' (>= floor), 'test' (>= test_price) or 'data' (dry run)
+    side: str = 'yes'                       # 'yes' or 'no' (prices above are then the NO prices)
 
 
 def _quote(value):
@@ -353,6 +445,10 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
     floor = max(policy.min_price, rule.min_price or Decimal(0))
     test = rule.test_price                   # a test floor at or above the rule never applies
     lowest = min(floor, policy.data_min_price) if data_band else floor
+    spread_cap = rule.max_spread if rule.max_spread is not None else policy.max_spread
+    price_cap = min(policy.max_price, rule.max_price) if rule.max_price is not None else policy.max_price
+    if rule.side == 'no_trailer':
+        return _pick_no_trailer(event_ticker, markets, rule, floor, test, lowest, spread_cap, price_cap)
     best = None
     for m in markets or ():
         if not isinstance(m, dict) or m.get('status') != 'active':
@@ -366,10 +462,10 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
             if due is None or now is None or (due-now).total_seconds() > rule.max_expiry_hours*3600:
                 continue
         bid, ask = _quote(m.get('yes_bid_dollars')), _quote(m.get('yes_ask_dollars'))
-        if bid is None or ask is None or ask < bid or ask-bid > policy.max_spread:
+        if bid is None or ask is None or ask < bid or ask-bid > spread_cap:
             continue                         # one-sided or wide book: the price is not reliable
         mid = (bid+ask)/2
-        if mid < lowest or ask > policy.max_price:
+        if mid < lowest or ask > price_cap:
             continue
         # A win must still clear the taker fee (one contract, unrounded per contract).
         if (ONE-ask)-Decimal('0.07')*ask*(ONE-ask) <= 0:
@@ -379,6 +475,54 @@ def pick_entry(event_ticker, markets, policy, rule, *, data_band, now=None):
         if best is None or ask < best.ask:   # the cheapest favourite pays most
             best = cand
     return best
+
+
+def _pick_no_trailer(event_ticker, markets, rule, floor, test, lowest, spread_cap, price_cap):
+    """Kalshi lets us buy NO: on a 3-option soccer game with a 1-goal lead late,
+    NO on the trailing team wins on a draw too (Polymarket research: Kalshi
+    goal timelines, 1 loss in 286 from 88'). The trailer = the cheapest team."""
+    teams = []
+    for m in markets or ():
+        if not isinstance(m, dict) or m.get('status') != 'active':
+            continue
+        ticker, team = str(m.get('ticker') or ''), str(m.get('yes_sub_title') or '')
+        if not ticker or ticker.upper().endswith('-TIE') or team.strip().lower() in ('tie', 'draw'):
+            continue
+        bid, ask = _quote(m.get('yes_bid_dollars')), _quote(m.get('yes_ask_dollars'))
+        if bid is None or ask is None or ask < bid:
+            continue
+        teams.append((bid+ask, ticker, team, bid, ask))
+    if len(teams) < 2:
+        return None
+    _, ticker, team, bid, ask = min(teams)
+    no_bid, no_ask = ONE-ask, ONE-bid
+    mid = (no_bid+no_ask)/2
+    if no_ask-no_bid > spread_cap or mid < lowest or no_ask > price_cap:
+        return None
+    if (ONE-no_ask)-Decimal('0.07')*no_ask*(ONE-no_ask) <= 0:
+        return None
+    band = 'rule' if mid >= floor else 'test' if test is not None and mid >= test else 'data'
+    return Candidate(event_ticker, ticker, team, no_bid, no_ask, mid, band, 'no')
+
+
+def book_market(ticker, team, book, *, expected_expiration_time=None):
+    """A market dict from the live order book (best YES bid; YES ask = 1 - best
+    NO bid), so the trigger is re-checked on the book we would fill from."""
+    def best(levels):
+        prices = []
+        for level in levels or ():
+            try:
+                price, size = Decimal(str(level[0])), Decimal(str(level[1]))
+            except (ArithmeticError, ValueError, TypeError, IndexError):
+                continue
+            if price.is_finite() and size.is_finite() and size > 0:
+                prices.append(price)
+        return max(prices) if prices else None
+    yes_bid, no_bid = best(book.get('yes_dollars')), best(book.get('no_dollars'))
+    return dict(ticker=ticker, yes_sub_title=team, status='active',
+                yes_bid_dollars=str(yes_bid) if yes_bid is not None else None,
+                yes_ask_dollars=str(ONE-no_bid) if no_bid is not None else None,
+                expected_expiration_time=expected_expiration_time)
 
 
 def contracts_for(risk_usd, worst_price):

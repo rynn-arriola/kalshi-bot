@@ -40,8 +40,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 
 from kalshi_bot.endgame import (  # noqa: E402
-    almost_over, contracts_for, daily_stop_hit, fill_from_book, game_text, load_policy,
-    pick_entry, price_bucket, realized_result, rule_events, taker_fee)
+    almost_over, book_market, contracts_for, daily_stop_hit, fill_from_book, game_text, load_policy,
+    maps_to_win, pick_entry, price_bucket, realized_result, rule_events, taker_fee)
 
 BASE = 'https://external-api.kalshi.com/trade-api/v2'
 POLICY = ROOT/'config'/'endgame_policy.json'
@@ -116,6 +116,9 @@ def open_db(path=DB):
     db.row_factory = sqlite3.Row
     db.execute('PRAGMA journal_mode=WAL')
     db.executescript(SCHEMA)
+    # D-176: NO-side paper trades (soccer NO on the trailer).
+    if 'side' not in {r[1] for r in db.execute('PRAGMA table_info(trades)')}:
+        db.execute("ALTER TABLE trades ADD COLUMN side TEXT NOT NULL DEFAULT 'yes'")
     return db
 
 
@@ -154,6 +157,8 @@ class Trader:
         self.uncovered = {}                # started milestone types with no rule (status log)
         self.thin_until = {}
         self.fee_multipliers = {}
+        self.formats = {}                  # milestone id -> esports maps to win (None = unknown)
+        self.qualified = {}                # (sport, event) -> first time the entry qualified (hold_seconds)
         self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0,
                            snapshots=0)
         self.snapped = {}                  # milestone id -> (time, score key) of its last snapshot
@@ -207,13 +212,32 @@ class Trader:
         return {r[0] for r in self.db.execute('SELECT band FROM trades WHERE mode=? AND event_ticker=?',
                                                (self.mode, event_ticker))}
 
+    def maps_format(self, milestone):
+        """Esports maps to win from the milestone's total-maps market (cached)."""
+        mid = milestone['id']
+        if mid not in self.formats:
+            units = None
+            for ticker in milestone.get('related_event_tickers') or milestone.get('primary_event_tickers') or ():
+                if 'TOTALMAPS' in str(ticker).upper():
+                    event = self.get(f'/events/{ticker}', {'with_nested_markets': 'true'})
+                    units = maps_to_win((event.get('event') or {}).get('markets') or event.get('markets'))
+                    break
+            self.formats[mid] = units
+        return self.formats[mid]
+
     def consider(self, milestone, details, now):
+        meta = milestone.get('details') if isinstance(milestone.get('details'), dict) else {}
         for sport, rule in self.policy.rules_for(milestone.get('type')):
-            if almost_over(rule, milestone['type'], details):
+            units = self.maps_format(milestone) if rule.require_format else None
+            if almost_over(rule, milestone['type'], details, meta=meta, units_to_win=units):
                 self.counts['almost_over'] += 1
                 self.consider_rule(sport, rule, milestone, details, now)
+            else:
+                for key in [k for k in self.qualified if k[0] == sport and k[2] == milestone['id']]:
+                    self.qualified.pop(key, None)
 
     def consider_rule(self, sport, rule, milestone, details, now):
+        meta = milestone.get('details') if isinstance(milestone.get('details'), dict) else {}
         for event_ticker in rule_events(rule, milestone.get('primary_event_tickers')):
             if 'rule' in self.recorded_bands(event_ticker):
                 continue                     # traded at the rule: nothing more to learn here
@@ -222,12 +246,37 @@ class Trader:
             event = self.get(f'/events/{event_ticker}', {'with_nested_markets': 'true'})
             markets = (event.get('event') or {}).get('markets') or event.get('markets') or []
             cand = pick_entry(event_ticker, markets, self.policy, rule, data_band=self.mode == 'dry', now=now)
-            if cand is None or cand.band in self.recorded_bands(event_ticker):
+            key = (sport, event_ticker, milestone['id'])
+            if cand is None:
+                self.qualified.pop(key, None)
                 continue
+            if cand.band in self.recorded_bands(event_ticker):
+                continue
+            if rule.hold_seconds:
+                # Polymarket strict esports rule: the entry must qualify on every
+                # poll for hold_seconds (a ~30 s 95/99c spike bought FORZE at 99c).
+                first = self.qualified.setdefault(key, now)
+                if (now-first).total_seconds() < rule.hold_seconds:
+                    continue
             self.counts['candidates'] += 1
             qty = contracts_for(self.policy.risk_per_trade_usd, self.policy.max_price)
             book = self.get(f'/markets/{cand.ticker}/orderbook').get('orderbook_fp') or {}
-            filled, avg = fill_from_book(book.get('no_dollars'), qty, self.policy.max_price)
+            # D-176: re-check the trigger on the live book we fill from (the event
+            # listing lagged: two 'rule' trades filled at 87c and 94c).
+            source = next((m for m in markets if isinstance(m, dict) and m.get('ticker') == cand.ticker), {})
+            live = pick_entry(event_ticker, [book_market(cand.ticker, cand.team, book,
+                                                         expected_expiration_time=source.get('expected_expiration_time'))]
+                              + ([m for m in markets if isinstance(m, dict) and m.get('ticker') != cand.ticker]
+                                 if rule.side == 'no_trailer' else []),
+                              self.policy, rule, data_band=self.mode == 'dry', now=now)
+            if live is None or live.ticker != cand.ticker or live.band in self.recorded_bands(event_ticker):
+                self.counts['stale'] = self.counts.get('stale', 0)+1
+                log(f'skip stale quote {cand.ticker} band={cand.band} listing mid={cand.mid} book={live and live.mid}')
+                continue
+            cand = live
+            # YES fills walk the YES asks (1 - NO bids); NO fills walk the NO asks (1 - YES bids).
+            levels = book.get('no_dollars') if cand.side == 'yes' else book.get('yes_dollars')
+            filled, avg = fill_from_book(levels, qty, self.policy.max_price)
             if not filled:
                 self.counts['thin'] += 1
                 self.thin_until[event_ticker] = now+timedelta(seconds=THIN_RECHECK_SECONDS)
@@ -237,13 +286,15 @@ class Trader:
             with self.db:
                 self.db.execute(
                     'INSERT OR IGNORE INTO trades(mode,band,sport,experimental,milestone_id,event_ticker,ticker,'
-                    'team,bid,ask,mid,price,qty,fee,created_at,game_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    'team,bid,ask,mid,price,qty,fee,created_at,game_state,side) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     (self.mode, cand.band, sport, int(rule.experimental), milestone['id'], event_ticker,
                      cand.ticker, cand.team, str(cand.bid), str(cand.ask), str(cand.mid),
-                     str(round(avg, 4)), filled, str(fee), iso(now), game_text(milestone['type'], details)))
+                     str(round(avg, 4)), filled, str(fee), iso(now), game_text(milestone['type'], details, meta),
+                     cand.side))
+            self.qualified.pop(key, None)
             self.counts['trades'] += 1
-            log(f'PAPER BUY {cand.ticker} ({cand.team}) sport={sport} band={cand.band} mid={cand.mid} '
-                f'ask={cand.ask} fill={round(avg, 4)} qty={filled} fee={fee} game={game_text(milestone["type"], details)}')
+            log(f'PAPER BUY {cand.side.upper()} {cand.ticker} ({cand.team}) sport={sport} band={cand.band} mid={cand.mid} '
+                f'ask={cand.ask} fill={round(avg, 4)} qty={filled} fee={fee} game={game_text(milestone["type"], details, meta)}')
 
     def settle(self, now):
         rows = self.db.execute(
@@ -260,7 +311,7 @@ class Trader:
                     self.db.execute('UPDATE trades SET next_settle_at=? WHERE id=?',
                                     (iso(now+timedelta(minutes=SETTLE_RETRY_MINUTES)), r['id']))
                 continue
-            result = realized_result(outcome == 'yes', r['qty'], Decimal(r['price']), Decimal(r['fee']))
+            result = realized_result(outcome == (r['side'] or 'yes'), r['qty'], Decimal(r['price']), Decimal(r['fee']))
             with self.db:
                 self.db.execute('UPDATE trades SET outcome=?, settled_at=?, result=? WHERE id=?',
                                 (outcome, iso(now), str(result), r['id']))
@@ -276,7 +327,7 @@ class Trader:
             milestone = self.milestones.get(mid)
             if milestone is None or d.get('widget_status') != 'live':
                 continue
-            state = json.loads(game_text(milestone['type'], d))
+            state = json.loads(game_text(milestone['type'], d, milestone.get('details')))
             key = json.dumps({k: v for k, v in state.items() if k not in CLOCK_KEYS}, sort_keys=True)
             last = self.snapped.get(mid)
             if last is not None and last[1] == key and (now-last[0]).total_seconds() < SNAPSHOT_SECONDS:
@@ -363,9 +414,10 @@ class Trader:
         return 0
 
 
-def report(db, mode='dry'):
-    rows = db.execute('SELECT * FROM trades WHERE mode=? ORDER BY id', (mode,)).fetchall()
-    lines = [f'{mode}: trades={len(rows)} open={sum(r["settled_at"] is None for r in rows)}'
+def report(db, mode='dry', since=None):
+    rows = db.execute('SELECT * FROM trades WHERE mode=? AND created_at>=? ORDER BY id',
+                      (mode, since or '')).fetchall()
+    lines = [f'{mode}{" since "+since if since else ""}: trades={len(rows)} open={sum(r["settled_at"] is None for r in rows)}'
              f' rule_today=${realized_today(db, mode):+.2f}']
 
     def table(title, key):
@@ -396,9 +448,10 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('command', choices=('run', 'status'))
     p.add_argument('--minutes', type=float, default=None)
+    p.add_argument('--since', default=None, help='status: only trades created at/after this UTC time')
     a = p.parse_args(argv)
     if a.command == 'status':
-        print(report(open_db()))
+        print(report(open_db(), since=a.since))
         return 0
     handle = lock_single_instance()
     try:

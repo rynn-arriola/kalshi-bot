@@ -50,10 +50,12 @@ class PolicyTest(unittest.TestCase):
         # Operator 10-03: "change the risk to 30 usd and stop loss to 90 usd a day".
         self.assertEqual((POLICY.risk_per_trade_usd, POLICY.daily_loss_stop_usd), (D(30), D(90)))
         self.assertEqual(E.contracts_for(POLICY.risk_per_trade_usd, POLICY.max_price), 30)
-        self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'basketball', 'football', 'hockey', 'tennis',
-                                             'table-tennis', 'esports', 'baseball', 'rugby', 'volleyball'})
+        self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'soccer-no-trailer', 'basketball', 'football',
+                                             'hockey', 'tennis', 'table-tennis', 'esports', 'esports-other',
+                                             'baseball', 'rugby', 'volleyball'})
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'rugby', 'volleyball', 'soccer', 'soccer-3way'})
+                         {'rugby', 'volleyball', 'soccer', 'soccer-3way', 'soccer-no-trailer', 'esports-other'})
+        self.assertEqual([s for s, _ in POLICY.rules_for('esports_match')], ['esports', 'esports-other'])
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
         # NHL games are 'hockey_match' on Kalshi (missed until 10-03).
         self.assertEqual([s for s, _ in POLICY.rules_for('hockey_match')], ['hockey'])
@@ -65,7 +67,8 @@ class PolicyTest(unittest.TestCase):
         # market is tracked on paper only, as its own sport (operator: "add it for paper").
         rules = dict(POLICY.rules_for('soccer_tournament_multi_leg'))
         soccer, three = rules['soccer'], rules['soccer-3way']
-        self.assertEqual(set(rules), {'soccer', 'soccer-3way'})
+        self.assertEqual(set(rules), {'soccer', 'soccer-3way', 'soccer-no-trailer'})
+        self.assertEqual(rules['soccer-no-trailer'].side, 'no_trailer')
         self.assertEqual((soccer.kind, soccer.events), ('advance', 'advance'))
         self.assertEqual((three.kind, three.events, three.experimental), ('minute', 'winner', True))
         self.assertEqual(E.rule_events(soccer, ['KXCOPADELREYADVANCE-26OCT03BAZATL', 'KXCOPADELREYGAME-26OCT03BAZATL',
@@ -95,30 +98,39 @@ class AlmostOverTest(unittest.TestCase):
                     away_same_game_score=1, home_aggregate_score=3, away_aggregate_score=1)
         self.assertFalse(E.almost_over(SOCCER_90, 'soccer_tournament_multi_leg', game))
 
-    def test_soccer_polymarket_rule_80_minutes_two_goals(self):
-        # Polymarket 10-03 ("soccer back - 2+ goal lead from 80'"): our four
-        # soccer losses were all 1-0 / 2-1 leads equalised in stoppage time.
+    def test_soccer_polymarket_research_88_two_goals_80_three(self):
+        # D-176 (Polymarket research, 4,294 Kalshi goal timelines): 2 goals from
+        # 88' (85' was break-even), 3+ goals from 80'; never 1 goal.
         r = rule('soccer-3way')
-        game = dict(status='live', widget_status='live', time="80'", home_same_game_score=2, away_same_game_score=0)
+        game = dict(status='live', widget_status='live', time="88'", home_same_game_score=2, away_same_game_score=0)
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', game))
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="90+5'")))
-        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="79'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="87'")))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="80'", home_same_game_score=3)))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="79'", home_same_game_score=3)))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, away_same_game_score=1)))
         racing = dict(game, time="90+4'", home_same_game_score=1, away_same_game_score=0)
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', racing))
+        # The NO-on-the-trailer paper rule takes 1-goal leads from 88'.
+        nt = rule('soccer-no-trailer')
+        self.assertTrue(E.almost_over(nt, 'soccer_tournament_multi_leg', racing))
+        self.assertFalse(E.almost_over(nt, 'soccer_tournament_multi_leg', dict(racing, time="87'")))
+        self.assertFalse(E.almost_over(nt, 'soccer_tournament_multi_leg', dict(racing, away_same_game_score=1)))
 
     def test_soccer_advance_normal_time_extra_time_penalties(self):
         r = rule('soccer')
         game = dict(status='live', widget_status='live', time="90+3'", home_same_game_score=2,
                     away_same_game_score=0, home_aggregate_score=2, away_aggregate_score=0)
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', game))
-        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="80'")))
-        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="79'")))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="88'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="87'")))
+        self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg',
+                                      dict(game, time="80'", home_aggregate_score=3)))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg',
                                        dict(game, home_aggregate_score=1, away_aggregate_score=0)))
-        # Extra time: 91'-119' has up to half an hour left; 120'+ counts.
+        # Extra time: 91'-119' has up to half an hour left; 120'+ counts (2+ lead).
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="105'")))
-        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="119'")))
+        self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="119'", home_aggregate_score=4)))
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, time="120+1'")))
         # Penalties never.
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(game, show_penalties=True)))
@@ -132,7 +144,6 @@ class AlmostOverTest(unittest.TestCase):
         single = {k: v for k, v in game.items() if 'aggregate' not in k}
         self.assertTrue(E.almost_over(r, 'soccer_tournament_multi_leg', single))
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(single, away_same_game_score=1)))
-        # Extra time 2-0 is a lead only from 120'.
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', dict(single, time="100'")))
 
     def test_advance_market_must_settle_soon(self):
@@ -163,34 +174,50 @@ class AlmostOverTest(unittest.TestCase):
         self.assertTrue(E.almost_over(rule('basketball'), 'basketball_game', college))
         self.assertFalse(E.almost_over(rule('basketball'), 'basketball_game', dict(college, period=1)))
 
-    def test_football_and_hockey(self):
-        # Polymarket 10-03 (after Villanova 35-31 lost to a late touchdown):
-        # last 4 minutes of Q4/OT with a 9+ point lead.
-        game = live(quarter=4, clock='3:59', home_points=26, away_points=17)
-        self.assertTrue(E.almost_over(rule('football'), 'football_game', game))
-        self.assertTrue(E.almost_over(rule('football'), 'football_game', dict(game, clock='4:00')))
-        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, clock='4:01')))
-        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, home_points=25)))
-        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, quarter=3)))
-        self.assertFalse(E.almost_over(rule('football'), 'football_game', dict(game, clock='13:12')))
+    def test_football_possession_rule(self):
+        # D-176 (Polymarket research, 402 NFL/FBS games): last 3:00 with a 9+ lead
+        # only while the leader has the ball, or 17+ in the last 2:00.
+        meta = dict(home_team_id='H', away_team_id='A')
+        game = live(quarter=4, clock='2:59', home_points=30, away_points=21,
+                    situation=dict(possession_team_id='H'))
+        fb = lambda g: E.almost_over(rule('football'), 'football_game', g, meta=meta)
+        self.assertTrue(fb(game))
+        self.assertFalse(fb(dict(game, situation=dict(possession_team_id='A'))))   # NC A&T: Bryant driving
+        self.assertFalse(fb(dict(game, situation={})))                             # unknown: skip
+        self.assertFalse(E.almost_over(rule('football'), 'football_game', game))    # no team ids: skip
+        self.assertFalse(fb(dict(game, clock='3:01')))
+        self.assertFalse(fb(dict(game, home_points=29)))
+        self.assertFalse(fb(dict(game, quarter=3)))
+        away = live(quarter=4, clock='1:00', home_points=21, away_points=30, situation=dict(possession_team_id='A'))
+        self.assertTrue(fb(away))
+        big = live(quarter=4, clock='2:00', home_points=10, away_points=27, situation=dict(possession_team_id='H'))
+        self.assertTrue(fb(big))                                                   # 17+ in the last 2:00
+        self.assertFalse(fb(dict(big, clock='2:30')))
+        self.assertFalse(fb(dict(big, away_points=26)))
+
+    def test_hockey_two_goals_and_nhl_periods(self):
+        # D-176: 2+ goal lead in the last 2:00 (NHL 4,192 games: 0.23% lost); 1-goal
+        # leads lose 8% at 2:00. NHL 'hockey_match' used to count P2 as the last period.
         puck = live(period=3, period_remaining_time='00:45', home_points=3, away_points=1)
-        self.assertTrue(E.almost_over(rule('hockey'), 'hockey_tournament', puck))
-        self.assertFalse(E.almost_over(rule('hockey'), 'hockey_tournament', dict(puck, period=2)))
-        self.assertFalse(E.almost_over(rule('hockey'), 'hockey_tournament', dict(puck, home_points=1)))
+        for kind in ('hockey_tournament', 'hockey_match'):
+            self.assertTrue(E.almost_over(rule('hockey'), kind, puck))
+            self.assertFalse(E.almost_over(rule('hockey'), kind, dict(puck, period=2)))
+            self.assertFalse(E.almost_over(rule('hockey'), kind, dict(puck, home_points=2)))
+            self.assertTrue(E.almost_over(rule('hockey'), kind, dict(puck, period=4)))
 
     def test_rugby_needs_eight(self):
         game = live(period=2, period_remaining_time='01:00', home_points=14, away_points=26)
         self.assertTrue(E.almost_over(rule('rugby'), 'rugby_match', game))
         self.assertFalse(E.almost_over(rule('rugby'), 'rugby_match', dict(game, home_points=19)))
 
-    def test_baseball_ninth_two_run_lead(self):
-        # Polymarket rule: 9th inning or later, 2+ run lead, any half, any outs.
-        game = live(inning=9, inning_half=1, outs=0, home_points=5, away_points=3)
+    def test_baseball_ninth_three_run_lead(self):
+        # D-176 (Kalshi MLB prices x play-by-play, 329 games): 3+ runs 0 lost; 2 runs 1.7%.
+        game = live(inning=9, inning_half=1, outs=0, home_points=6, away_points=3)
         self.assertTrue(E.almost_over(rule('baseball'), 'baseball_game', game))
         self.assertTrue(E.almost_over(rule('baseball'), 'baseball_game', dict(game, inning=11)))
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, inning=8)))
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=4)))
-        self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=5)))
+        self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=6)))
 
     def test_tennis_current_set(self):
         r = rule('tennis')
@@ -236,18 +263,49 @@ class AlmostOverTest(unittest.TestCase):
         early = dict(game, period_scores=game['period_scores'][:2]+[dict(number=3, home_score=10, away_score=16)])
         self.assertFalse(E.almost_over(rule('volleyball'), 'volleyball_match', early))
 
-    def test_esports_map_point(self):
+    def test_esports_cs2_with_known_format(self):
+        # D-176: CS2 only (Kalshi 60 days: CS2 0.83% lost vs LoL 3.7%, Valorant 2.5%),
+        # best-of from the total-maps market; unknown format = skip.
         game = dict(status='live', widget_status='live', home_score=1, away_score=0)
-        self.assertTrue(E.almost_over(rule('esports'), 'esports_match', game))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=0)))
-        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2)))
+        cs2 = dict(game='CS2')
+        self.assertTrue(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=2))
+        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=None))
+        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=dict(game='LoL'), units_to_win=2))
+        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=0), meta=cs2, units_to_win=2))
+        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2), meta=cs2, units_to_win=2))
+        # Best of 5: one map from 3.
+        self.assertFalse(E.almost_over(rule('esports'), 'esports_match', game, meta=cs2, units_to_win=3))
+        self.assertTrue(E.almost_over(rule('esports'), 'esports_match', dict(game, home_score=2), meta=cs2, units_to_win=3))
+        # Other titles: paper only, same map rule.
+        self.assertTrue(E.almost_over(rule('esports-other'), 'esports_match', game, meta=dict(game='LoL'), units_to_win=2))
+        self.assertFalse(E.almost_over(rule('esports-other'), 'esports_match', game, meta=cs2, units_to_win=2))
+        self.assertEqual(E.maps_to_win([dict(floor_strike=2.5)]), 2)
+        self.assertEqual(E.maps_to_win([dict(floor_strike=3.5), dict(floor_strike=4.5)]), 3)
+        self.assertIsNone(E.maps_to_win([]))
+        self.assertIsNone(E.maps_to_win([dict(floor_strike=None)]))
+
+    def test_tennis_match_tiebreak_needs_nine_points_and_three(self):
+        r = rule('tennis')
+        mt = lambda a, b: dict(tennis([('winner', 6), ('loser', 3), ('ongoing', a)],
+                                      [('loser', 4), ('winner', 6), ('ongoing', b)]),
+                               last_set_scoring_type='MatchTiebreak')
+        self.assertFalse(E.almost_over(r, 'tennis_tournament_doubles', mt(5, 4)))   # points, not games
+        self.assertFalse(E.almost_over(r, 'tennis_tournament_doubles', mt(9, 7)))
+        self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', mt(9, 6)))
+        self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', mt(3, 9)))     # the other side 9-3
+        self.assertFalse(E.almost_over(r, 'tennis_tournament_doubles', mt(8, 2)))   # 8 points: not yet
+        # Not the deciding set: the normal games rule.
+        early = dict(tennis([('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 3)]),
+                     last_set_scoring_type='MatchTiebreak')
+        self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', early))
 
     def test_finished_or_not_started_never(self):
-        game = live(quarter=4, clock='0:10', home_points=27, away_points=17)
+        game = live(period=3, period_remaining_time='00:10', home_points=4, away_points=1)
+        self.assertTrue(E.almost_over(rule('hockey'), 'hockey_match', game))
         for status, widget in (('closed', 'finished'), ('not_started', 'pre'), ('inprogress', 'pre')):
-            self.assertFalse(E.almost_over(rule('football'), 'football_game',
+            self.assertFalse(E.almost_over(rule('hockey'), 'hockey_match',
                                            dict(game, status=status, widget_status=widget)))
-        self.assertFalse(E.almost_over(None, 'football_game', game))
+        self.assertFalse(E.almost_over(None, 'hockey_match', game))
 
 
 class EntryTest(unittest.TestCase):
@@ -261,7 +319,7 @@ class EntryTest(unittest.TestCase):
              'KXT20MATCH-26OCT031330TLYRGSREDXI'])
 
     def test_middle_price_trigger_and_cap(self):
-        r = rule('basketball')
+        r = rule('hockey')
         pick = lambda ms, data=False: E.pick_entry('EV', ms, POLICY, r, data_band=data)
         self.assertEqual(pick([market('EV-A', 'A', '0.95', '0.97'), market('EV-B', 'B', '0.02', '0.04')]).ticker, 'EV-A')
         self.assertIsNone(pick([market('EV-A', 'A', '0.89', '0.99')]))        # 94c middle
@@ -299,6 +357,32 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(pick(rule('basketball'), '0.91', '0.93').band, 'test')
         self.assertEqual(pick(rule('basketball'), '0.90', '0.92').band, 'data')
         self.assertIsNone(pick(rule('tennis'), '0.91', '0.93', data=False))      # live: rule only
+
+    def test_per_sport_spread_price_caps_and_no_trailer(self):
+        # CS2: gap <= 3c and ask <= 98c (Polymarket strict esports rule).
+        cs2 = rule('esports')
+        pick = lambda r, ms, data=False: E.pick_entry('EV', ms, POLICY, r, data_band=data)
+        self.assertEqual(pick(cs2, [market('EV-A', 'A', '0.97', '0.98')]).band, 'rule')
+        self.assertIsNone(pick(cs2, [market('EV-A', 'A', '0.98', '0.99')]))      # ask over 98c
+        self.assertIsNone(pick(cs2, [market('EV-A', 'A', '0.94', '0.98')]))      # 4c gap
+        self.assertIsNone(pick(cs2, [market('EV-A', 'A', '0.92', '0.98')], True))  # test band: 6c gap
+        self.assertEqual(pick(cs2, [market('EV-A', 'A', '0.95', '0.98')], True).band, 'test')
+        # NO on the trailer: the cheapest team, priced from 1 - its YES quotes.
+        nt = rule('soccer-no-trailer')
+        ms = [market('EV-LEAD', 'Leader', '0.80', '0.82'), market('EV-TRAIL', 'Trailer', '0.02', '0.03'),
+              market('EV-TIE', 'Tie', '0.15', '0.17')]
+        cand = pick(nt, ms)
+        self.assertEqual((cand.ticker, cand.side, cand.bid, cand.ask, cand.mid, cand.band),
+                         ('EV-TRAIL', 'no', D('0.97'), D('0.98'), D('0.975'), 'rule'))
+        self.assertIsNone(pick(nt, ms[:1]+ms[2:]))                               # one team only
+        self.assertIsNone(pick(nt, ms[1:]))                                      # trailer alone: no leader seen
+        self.assertIsNone(pick(nt, [ms[0], market('EV-TRAIL', 'Trailer', '0.06', '0.08'), ms[2]]))  # 93c NO
+        self.assertEqual(pick(nt, [ms[0], market('EV-TRAIL', 'Trailer', '0.06', '0.08'), ms[2]], True).band, 'test')
+        # The live book: best YES bid and 1 - best NO bid.
+        book = dict(yes_dollars=[['0.95', '10'], ['0.96', '5'], ['0.97', '0']], no_dollars=[['0.02', '9'], ['0.03', '4']])
+        m = E.book_market('T', 'Team', book)
+        self.assertEqual((m['yes_bid_dollars'], m['yes_ask_dollars']), ('0.96', '0.97'))
+        self.assertIsNone(E.book_market('T', 'Team', dict(yes_dollars=[], no_dollars=[]))['yes_ask_dollars'])
 
     def test_esports_floor_97(self):
         r = rule('esports')
@@ -359,7 +443,7 @@ class TraderTest(unittest.TestCase):
         self.T.OUT, self.T.DB, self.T.STOP_FILE = out, out/'endgame.db', out/'STOP'
         self.calls = []
         self.state = dict(details=live(quarter=4, clock='1:00', home_points=30, away_points=10),
-                          bid='0.95', ask='0.97', book=[['0.03', '50']], result='')
+                          bid='0.95', ask='0.97', depth='50', result='')
 
     def tearDown(self):
         if hasattr(self, 'db'):
@@ -378,7 +462,9 @@ class TraderTest(unittest.TestCase):
             return dict(event=dict(markets=[market('KXNFLGAME-X-A', 'A', s['bid'], s['ask']),
                                             market('KXNFLGAME-X-B', 'B', '0.02', '0.04')]))
         if path == '/markets/KXNFLGAME-X-A/orderbook':
-            return dict(orderbook_fp=dict(no_dollars=s['book'], yes_dollars=[]))
+            # The book matches the quote: YES bid = bid, YES ask = 1 - best NO bid.
+            return dict(orderbook_fp=dict(no_dollars=[[str(1-D(s['ask'])), s['depth']]],
+                                          yes_dollars=[[s['bid'], '50']]))
         if path == '/series/KXNFLGAME':
             return dict(series=dict(fee_multiplier=1))
         if path == '/markets/KXNFLGAME-X-A':
@@ -420,8 +506,74 @@ class TraderTest(unittest.TestCase):
         t.cycle(now)
         self.assertEqual([r['band'] for r in self.rows()], ['data', 'test', 'rule'])
 
+    def test_stale_listing_is_rechecked_on_the_book(self):
+        t = self.trader()
+        real = self.fetch
+
+        def fetch(path, params=None):
+            if path == '/markets/KXNFLGAME-X-A/orderbook':     # the book says 87c, not 96c
+                return dict(orderbook_fp=dict(no_dollars=[['0.12', '50']], yes_dollars=[['0.86', '50']]))
+            return real(path, params)
+        t.get = fetch
+        t.cycle(datetime(2026, 10, 3, 18, tzinfo=timezone.utc))
+        self.assertEqual(self.rows(), [])
+        self.assertEqual(t.counts['stale'], 1)
+
+    def test_book_band_wins_over_the_listing(self):
+        t = self.trader()
+        real = self.fetch
+        book = {'no': '0.07', 'yes': '0.92'}                                 # book: 92/93 -> 92.5c (test band)
+
+        def fetch(path, params=None):
+            if path == '/markets/KXNFLGAME-X-A/orderbook':
+                return dict(orderbook_fp=dict(no_dollars=[[book['no'], '50']], yes_dollars=[[book['yes'], '50']]))
+            return real(path, params)
+        t.get = fetch
+        now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
+        t.cycle(now)                                                       # listing says 96c (rule)
+        self.assertEqual([(r['band'], r['price']) for r in self.rows()], [('test', '0.9300')])
+        t.cycle(now)                                                       # the test band is already recorded
+        self.assertEqual((len(self.rows()), t.counts['trades'], t.counts['stale']), (1, 1, 1))
+
+    def test_maps_format_reads_the_total_maps_market(self):
+        calls = []
+
+        def fetch(path, params=None):
+            calls.append(path)
+            if path == '/events/KXCS2MAP-X-1':
+                return dict(event=dict(markets=[dict(ticker='KXCS2MAP-X-1-A', floor_strike=None)]))
+            if path == '/events/KXCS2TOTALMAPS-X':
+                return dict(event=dict(markets=[dict(ticker='KXCS2TOTALMAPS-X-2', floor_strike=2.5)]))
+            raise AssertionError(path)
+        self.db = self.T.open_db(self.T.DB)
+        t = self.T.Trader(self.db, fetch=fetch)
+        m = dict(id='e1', related_event_tickers=['KXCS2GAME-X', 'KXCS2MAP-X-1', 'KXCS2TOTALMAPS-X'])
+        self.assertEqual(t.maps_format(m), 2)
+        self.assertEqual(t.maps_format(m), 2)
+        self.assertEqual(calls, ['/events/KXCS2TOTALMAPS-X'])            # cached
+        self.assertIsNone(t.maps_format(dict(id='e2', related_event_tickers=['KXOWGAME-Y'])))
+
+    def test_hold_seconds_waits_for_a_steady_entry(self):
+        t = self.trader()
+        t.policy = E.Policy(**{**{k: getattr(t.policy, k) for k in E.Policy.__dataclass_fields__ if k != 'rules'},
+                               'rules': {'football': E.SportRule(kind='clock', types=('football_game',),
+                                                                 max_clock_minutes=3, min_lead=9, hold_seconds=30)}})
+        self.T.load_policy = lambda path: t.policy
+        now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
+        t.cycle(now)
+        t.cycle(now+timedelta(seconds=20))
+        self.assertEqual(self.rows(), [])
+        self.state.update(bid='0.80', ask='0.82')                         # drops out: the clock restarts
+        t.cycle(now+timedelta(seconds=25))
+        self.state.update(bid='0.95', ask='0.97')
+        t.cycle(now+timedelta(seconds=35))
+        t.cycle(now+timedelta(seconds=60))
+        self.assertEqual(self.rows(), [])
+        t.cycle(now+timedelta(seconds=66))
+        self.assertEqual(len(self.rows()), 1)
+
     def test_thin_book_skips_and_waits(self):
-        self.state['book'] = [['0.03', '29']]
+        self.state['depth'] = '29'
         t = self.trader()
         now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
         t.cycle(now)
@@ -488,9 +640,44 @@ class TraderTest(unittest.TestCase):
     def test_report_groups(self):
         t = self.trader()
         t.cycle(datetime(2026, 10, 3, 18, tzinfo=timezone.utc))
+        self.assertIn('trades=0', self.T.report(self.db, since='2026-10-03T18:00:01Z'))
         text = self.T.report(self.db)
         self.assertIn('rule/football', text)
         self.assertIn('rule/97c', text)
+
+    def test_no_on_the_trailer_fills_and_settles(self):
+        game = dict(status='live', widget_status='live', time="90+1'", home_same_game_score=1, away_same_game_score=0)
+
+        def fetch(path, params=None):
+            if path == '/milestones':
+                return dict(milestones=[dict(id='s1', type='soccer_tournament_multi_leg', start_date='2026-10-03T16:00:00Z',
+                                             primary_event_tickers=['KXNWSLGAME-26OCT03RACURO'])])
+            if path == '/live_data/batch':
+                return dict(live_datas=[dict(milestone_id='s1', details=game)])
+            if path == '/events/KXNWSLGAME-26OCT03RACURO':
+                return dict(event=dict(markets=[market('KXNWSLGAME-26OCT03RACURO-RAC', 'Racing', '0.80', '0.82'),
+                                                market('KXNWSLGAME-26OCT03RACURO-URO', 'Utah', '0.02', '0.03'),
+                                                market('KXNWSLGAME-26OCT03RACURO-TIE', 'Tie', '0.15', '0.17')]))
+            if path == '/markets/KXNWSLGAME-26OCT03RACURO-URO/orderbook':
+                # NO asks = 1 - YES bids: 98c x 40.
+                return dict(orderbook_fp=dict(yes_dollars=[['0.02', '40']], no_dollars=[['0.97', '50']]))
+            if path == '/series/KXNWSLGAME':
+                return dict(series=dict(fee_multiplier=1))
+            if path == '/markets/KXNWSLGAME-26OCT03RACURO-URO':
+                return dict(market=dict(result='no'))                     # a draw: NO on Utah wins
+            if path.startswith('/markets/'):
+                return dict(market=dict(result=''))
+            raise AssertionError(path)
+        self.db = self.T.open_db(self.T.DB)
+        t = self.T.Trader(self.db, fetch=fetch)
+        now = datetime(2026, 10, 3, 17, 45, tzinfo=timezone.utc)
+        t.cycle(now)
+        rows = [r for r in self.rows() if r['sport'] == 'soccer-no-trailer']
+        self.assertEqual([(r['ticker'], r['side'], r['price'], r['band']) for r in rows],
+                         [('KXNWSLGAME-26OCT03RACURO-URO', 'no', '0.9800', 'rule')])
+        t.cycle(now.replace(minute=55))
+        row = [r for r in self.rows() if r['sport'] == 'soccer-no-trailer'][0]
+        self.assertEqual((row['outcome'], D(row['result'])), ('no', D(30)*D('0.02')-D(row['fee'])))
 
     def test_soccer_opens_only_the_advances_market(self):
         game = dict(status='live', widget_status='live', time="90+2'", home_same_game_score=2,
@@ -516,7 +703,7 @@ class TraderTest(unittest.TestCase):
                                                 market('KXCOPADELREYGAME-26OCT03BAZATL-TIE', 'Tie', '0.02', '0.03')]))
             if path in ('/markets/KXCOPADELREYADVANCE-26OCT03BAZATL-BAZ/orderbook',
                         '/markets/KXCOPADELREYGAME-26OCT03BAZATL-BAZ/orderbook'):
-                return dict(orderbook_fp=dict(no_dollars=[['0.03', '50']]))
+                return dict(orderbook_fp=dict(no_dollars=[['0.03', '50']], yes_dollars=[['0.96', '50']]))
             if path in ('/series/KXCOPADELREYADVANCE', '/series/KXCOPADELREYGAME'):
                 return dict(series=dict(fee_multiplier=1))
             raise AssertionError(path)

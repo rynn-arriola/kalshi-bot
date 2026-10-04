@@ -1,5 +1,11 @@
 # Current status
 
+## Endgame rules from the Polymarket research (built) — 2026-10-04
+
+D-176: Polymarket's researched rules ported (soccer 88'/2 or 80'/3, hockey 2+,
+baseball 3+, football possession, CS2 only with known format), NHL period bug
+fixed, live-book trigger check, paper NO-on-the-trailer soccer rule. Paper only.
+
 ## Endgame Trader dry run (built) — 2026-10-03
 
 D-175: Kalshi port of the Polymarket late-favourite trader, paper trades only

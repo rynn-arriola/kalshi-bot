@@ -10,6 +10,40 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-176 — Endgame rules from the Polymarket rule research, plus Kalshi-only data
+
+- **Status:** ACCEPTED for the paper run, 2026-10-04. Operator: "Check what we
+  did on polymarket for end game trader and optimize it based on kalshi api or
+  what kalshi offers". Source: liquidity-bot
+  docs/history/ENDGAME_RULE_RESEARCH_2026-10-04.md and BC-2026-10-03-B (Kalshi
+  minute prices x play-by-play / goal timelines; NHL 2023-26; MLB 2025-26).
+  Polymarket live so far: 223 won, 6 lost (+$17.83).
+- **Bug fixed:** NHL milestones ('hockey_match') fell into the rugby branch, so
+  the 2nd period counted as the last (found by that research).
+- **Rules now (paper):** soccer 2 goals from 88' or 3+ from 80' (both soccer
+  markets; 85' was break-even, 88' +$0.31/trade, 1-goal leads draw 5.7% at
+  90+4); hockey 2+ goals in the last 2:00 (NHL: 0.23% lost; 1-goal 8%);
+  baseball 9th+ with 3+ runs (329 MLB games: 0 lost; 2 runs 1.7%); basketball
+  7+ in the last 2:00 at 97c (0 of 28 lost); football last 3:00 with 9+ only
+  while the leader has the ball (Kalshi situation.possession_team_id vs the
+  milestone's home/away team ids; unknown = skip) or 17+ in the last 2:00
+  (402 games: 0 of 39 lost; the old 4:00 window lost 4 of 72); esports CS2
+  only (60 days: CS2 0.83% lost vs LoL 3.7%, Valorant 2.5%), best of 3/5 read
+  from Kalshi's total-maps market (unknown = skip), 97c middle, ask <= 98c,
+  gap <= 3c, qualifying for 30 s before buying; other esports titles paper
+  only ('esports-other'); tennis deciding match tiebreak needs 9+ points and a
+  3-point lead.
+- **Kalshi-only additions:** every buy re-checks the trigger on the live order
+  book it fills from (the event listing lagged: two 'rule' fills at 87c and
+  94c); a paper 'soccer-no-trailer' rule buys NO on the trailing team with a
+  1-goal lead from 88' (wins on a draw too; Kalshi 1 loss in 286) — Kalshi
+  lets us buy NO, Polymarket's research could only paper it; the score
+  recorder also keeps football possession and CS2 in-map rounds for the next
+  study. `endgame_trader.py status --since <UTC time>` reports one rule set.
+- **Not done (next):** a freshness gate (Kalshi last_updated_ts looks like a
+  batch time, not per game), CS2 in-map round rules (needs recorded data),
+  tennis server/point score.
+
 ### D-175 — Endgame Trader on Kalshi (dry run for data); liquidity farmer switched off
 
 - **Status:** ACCEPTED for a dry run (paper trades only), 2026-10-03. Live
