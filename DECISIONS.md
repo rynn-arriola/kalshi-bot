@@ -50,17 +50,18 @@ and explicitly withdraws the proposed fixed 60-market pool.
   Floresta 1-0 and Hamilton 2-1, equalised in stoppage time) were 1-goal
   leads; all 31 soccer paper trades so far had 1-goal leads.
 - **Per sport (Kalshi live data):** basketball last quarter/2nd half or OT
-  <= 2:00 (NHL is milestone type 'hockey_match', added 10-03 after it was
-  found unwatched; the status line now lists any live sport type without a
-  rule; darts has no live score and stays out); football Q4/OT <= 4:00 with a
-  9+ point lead (Polymarket 10-03,
-  after Villanova 35-31 lost to a late touchdown); hockey P3/OT <= 2:00;
-  baseball 9th inning+ with a 2+ run lead (Polymarket rule); tennis best-of-3
-  leader a set up with >= 5 games and ahead in the current set; table tennis
-  one game away with a 6+ point lead; esports one map away (97c).
-  Experimental (paper only even when live): rugby 2nd half <= 2:00 with an 8+
-  lead, volleyball one set away with >= 20 points and a 5+ lead. Cricket and
-  boxing excluded.
+  <= 2:00 with a 7+ point lead (operator 10-03 "Ok do it", after the 14-day
+  replay: late basketball favourites at 95-96c lost ~2-3%, 0 of 113 at 97c+;
+  close games are the cause); football Q4/OT <= 4:00 with a 9+ point lead
+  (Polymarket 10-03, after Villanova 35-31 lost to a late touchdown); hockey
+  P3/OT <= 2:00 (NHL is milestone type 'hockey_match', added 10-03 after it
+  was found unwatched; the status line now lists any live sport type without
+  a rule; darts has no live score and stays out); baseball 9th inning+ with a
+  2+ run lead (Polymarket rule); tennis best-of-3 leader a set up with >= 5
+  games and ahead in the current set; table tennis one game away with a 6+
+  point lead; esports one map away (97c). Experimental (paper only even when
+  live): rugby 2nd half <= 2:00 with an 8+ lead, volleyball one set away with
+  >= 20 points and a 5+ lead. Cricket and boxing excluded.
 - **Dry-run data:** no open-position cap; one 'rule' trade (95-99c) and one
   'data' trade (middle 90c up to the rule) per event; the $90 daily stop is
   reported as "would stop" only. `scripts/endgame_trader.py status` reports
@@ -78,6 +79,12 @@ and explicitly withdraws the proposed fixed 60-market pool.
   "restarted" alert (the trader records its start time; operator: "How come i
   dont get notif on ntfy whenever u restart"). Topic URL in data/endgame/ntfy_url.txt (not
   committed).
+- **14-day replay (10-03, 7,697 team markets that reached 90c+):** price
+  alone has no edge (95c trigger, any time: 2.95% lost, -$0.03/trade); late in
+  the game (last 20% of its time) it does: at the 95c trigger tennis 0.9% lost
+  (+$0.55/trade, n=1,549), esports 0.9% (+$0.47), table tennis 0/114, hockey
+  0/68, baseball 2.2% (+$0.21), football 1.9% (+$0.20); 3-option soccer 2.9%
+  (-$0.05) even late, so it stays paper only. Early buys lose in every sport.
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,
   account position cap, farmer-running refusal) is built and tested before any
