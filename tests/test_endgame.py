@@ -274,7 +274,7 @@ class EntryTest(unittest.TestCase):
 
     def test_data_band_only_in_dry(self):
         r = rule('hockey')
-        ms = [market('EV-A', 'A', '0.91', '0.93')]
+        ms = [market('EV-A', 'A', '0.90', '0.91')]
         self.assertIsNone(E.pick_entry('EV', ms, POLICY, r, data_band=False))
         self.assertEqual(E.pick_entry('EV', ms, POLICY, r, data_band=True).band, 'data')
         self.assertIsNone(E.pick_entry('EV', [market('EV-A', 'A', '0.88', '0.91')], POLICY, r, data_band=True))
@@ -286,7 +286,9 @@ class EntryTest(unittest.TestCase):
         # Paper-only test floors from the 14-day replay: tennis/table tennis 92c, esports 95c.
         self.assertEqual((rule('tennis').test_price, rule('table-tennis').test_price, rule('esports').test_price),
                          (D('0.92'), D('0.92'), D('0.95')))
-        self.assertIsNone(rule('basketball').test_price)
+        # Operator 10-04 "All sports": every sport has a paper test floor (92c; esports 95c).
+        self.assertEqual({n for n, r in POLICY.rules.items() if r.test_price is None}, set())
+        self.assertEqual(rule('basketball').test_price, D('0.92'))
         pick = lambda r, bid, ask, data=True: E.pick_entry('EV', [market('EV-A', 'A', bid, ask)], POLICY, r,
                                                            data_band=data)
         self.assertEqual(pick(rule('tennis'), '0.91', '0.93').band, 'test')     # 92c middle
@@ -294,7 +296,8 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(pick(rule('tennis'), '0.95', '0.96').band, 'rule')
         self.assertEqual(pick(rule('esports'), '0.95', '0.96').band, 'test')    # 95.5c: under the 97c rule
         self.assertEqual(pick(rule('esports'), '0.93', '0.94').band, 'data')
-        self.assertEqual(pick(rule('basketball'), '0.91', '0.93').band, 'data')  # no test floor
+        self.assertEqual(pick(rule('basketball'), '0.91', '0.93').band, 'test')
+        self.assertEqual(pick(rule('basketball'), '0.90', '0.92').band, 'data')
         self.assertIsNone(pick(rule('tennis'), '0.91', '0.93', data=False))      # live: rule only
 
     def test_esports_floor_97(self):
@@ -405,15 +408,17 @@ class TraderTest(unittest.TestCase):
         row = self.rows()[0]
         self.assertEqual((row['outcome'], D(row['result'])), ('yes', D('0.83')))
 
-    def test_data_band_then_rule(self):
-        self.state.update(bid='0.91', ask='0.93')
+    def test_data_band_then_test_then_rule(self):
+        self.state.update(bid='0.90', ask='0.91')                         # 90.5c: data
         t = self.trader()
         now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
         t.cycle(now)
-        self.state.update(bid='0.96', ask='0.97')
+        self.state.update(bid='0.91', ask='0.93')                         # 92c: test
+        t.cycle(now)
+        self.state.update(bid='0.96', ask='0.97')                         # 96.5c: rule
         t.cycle(now)
         t.cycle(now)
-        self.assertEqual([r['band'] for r in self.rows()], ['data', 'rule'])
+        self.assertEqual([r['band'] for r in self.rows()], ['data', 'test', 'rule'])
 
     def test_thin_book_skips_and_waits(self):
         self.state['book'] = [['0.03', '29']]

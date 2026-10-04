@@ -91,7 +91,10 @@ and explicitly withdraws the proposed fixed 60-market pool.
   table tennis 92c +$0.47, esports 95c +$0.47 vs +$0.21 at 97c). The trader
   also records every live game's score/clock (tables games, snapshots) once a
   minute and on each score change, kept 21 days, so lead rules can be tested
-  against Kalshi's minute price history.
+  against Kalshi's minute price history. Operator 10-04 "All sports": the
+  92c test floor now applies to every sport (esports 95c). Paper so far
+  (10-04 16:00 UTC): test band 47/47 +$60.16 (tennis 32/32 +$48.46), rule
+  without soccer 159/162 +$8.16, tennis rule 98/100 -$0.04.
 - **Next:** after 2-3 days of data the operator picks the live rules per sport
   and price; then live order code (signed IOC buy, uncertain-order block,
   account position cap, farmer-running refusal) is built and tested before any
