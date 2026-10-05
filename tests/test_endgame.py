@@ -24,6 +24,10 @@ def rule(sport):
 # Soccer trades only the 2-option cup 'advances' markets (operator: "Advances",
 # "I dont want the one with 3 options"); the 90-minute rule stays testable.
 SOCCER_90 = E.SportRule(kind='minute', types=('soccer_tournament_multi_leg',), min_minute=90)
+# NO on the trailer: switched off 10-05 (operator "Switch it off" after Aruba's
+# comeback at 99c); the code stays, tested with this rule.
+NO_TRAILER = E.SportRule(kind='minute', types=('soccer_tournament_multi_leg',), min_minute=88, min_lead=1,
+                         side='no_trailer', experimental=True, test_price=D('0.92'))
 
 
 def live(**kw):
@@ -50,7 +54,7 @@ class PolicyTest(unittest.TestCase):
         # Operator 10-03: "change the risk to 30 usd and stop loss to 90 usd a day".
         self.assertEqual((POLICY.risk_per_trade_usd, POLICY.daily_loss_stop_usd), (D(30), D(90)))
         self.assertEqual(E.contracts_for(POLICY.risk_per_trade_usd, POLICY.max_price), 30)
-        self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'soccer-no-trailer', 'basketball', 'football',
+        self.assertEqual(set(POLICY.rules), {'soccer', 'soccer-3way', 'basketball', 'football',
                                              'hockey', 'tennis', 'table-tennis', 'esports', 'esports-dota2',
                                              'esports-valorant', 'esports-lol', 'esports-r6', 'esports-overwatch',
                                              'baseball', 'rugby', 'volleyball'})
@@ -58,7 +62,7 @@ class PolicyTest(unittest.TestCase):
         # is a main rule (Polymarket trades it live); no 20/30 s waits (Polymarket
         # removed them: they blocked most fills; the 3c gap cap covers esports spikes).
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'rugby', 'volleyball', 'soccer', 'soccer-no-trailer', 'esports-r6', 'esports-overwatch'})
+                         {'rugby', 'volleyball', 'soccer', 'esports-r6', 'esports-overwatch'})
         self.assertEqual({s: r.hold_seconds for s, r in POLICY.rules.items() if r.hold_seconds}, {})
         self.assertEqual(rule('esports-overwatch').max_price, D('0.98'))
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
@@ -72,8 +76,7 @@ class PolicyTest(unittest.TestCase):
         # market is tracked on paper only, as its own sport (operator: "add it for paper").
         rules = dict(POLICY.rules_for('soccer_tournament_multi_leg'))
         soccer, three = rules['soccer'], rules['soccer-3way']
-        self.assertEqual(set(rules), {'soccer', 'soccer-3way', 'soccer-no-trailer'})
-        self.assertEqual(rules['soccer-no-trailer'].side, 'no_trailer')
+        self.assertEqual(set(rules), {'soccer', 'soccer-3way'})
         self.assertEqual((soccer.kind, soccer.events), ('advance', 'advance'))
         self.assertEqual((three.kind, three.events, three.experimental), ('minute', 'winner', False))
         self.assertEqual(E.rule_events(soccer, ['KXCOPADELREYADVANCE-26OCT03BAZATL', 'KXCOPADELREYGAME-26OCT03BAZATL',
@@ -117,7 +120,7 @@ class AlmostOverTest(unittest.TestCase):
         racing = dict(game, time="90+4'", home_same_game_score=1, away_same_game_score=0)
         self.assertFalse(E.almost_over(r, 'soccer_tournament_multi_leg', racing))
         # The NO-on-the-trailer paper rule takes 1-goal leads from 88'.
-        nt = rule('soccer-no-trailer')
+        nt = NO_TRAILER
         self.assertTrue(E.almost_over(nt, 'soccer_tournament_multi_leg', racing))
         self.assertFalse(E.almost_over(nt, 'soccer_tournament_multi_leg', dict(racing, time="87'")))
         self.assertFalse(E.almost_over(nt, 'soccer_tournament_multi_leg', dict(racing, away_same_game_score=1)))
@@ -387,7 +390,7 @@ class EntryTest(unittest.TestCase):
         self.assertIsNone(pick(cs2, [market('EV-A', 'A', '0.92', '0.98')], True))  # test band: 6c gap
         self.assertEqual(pick(cs2, [market('EV-A', 'A', '0.95', '0.98')], True).band, 'test')
         # NO on the trailer: the cheapest team, priced from 1 - its YES quotes.
-        nt = rule('soccer-no-trailer')
+        nt = NO_TRAILER
         ms = [market('EV-LEAD', 'Leader', '0.80', '0.82'), market('EV-TRAIL', 'Trailer', '0.02', '0.03'),
               market('EV-TIE', 'Tie', '0.15', '0.17')]
         cand = pick(nt, ms)
@@ -713,6 +716,10 @@ class TraderTest(unittest.TestCase):
             if path.startswith('/markets/'):
                 return dict(market=dict(result=''))
             raise AssertionError(path)
+        from dataclasses import replace
+        base = self.T.load_policy
+        self.T.load_policy = lambda path: (lambda pol: replace(pol, rules={**pol.rules,
+                                                                       'soccer-no-trailer': NO_TRAILER}))(base(path))
         self.db = self.T.open_db(self.T.DB)
         t = self.T.Trader(self.db, fetch=fetch)
         now = datetime(2026, 10, 3, 17, 45, tzinfo=timezone.utc)

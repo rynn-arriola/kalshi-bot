@@ -12,7 +12,6 @@
   "rules": {
     "soccer-3way": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 88, "min_lead": 2, "big_lead": 3, "big_lead_minute": 80, "test_price": "0.92"},
     "soccer": {"kind": "advance", "events": "advance", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 88, "min_lead": 2, "big_lead": 3, "big_lead_minute": 80, "max_expiry_hours": 3, "experimental": true, "test_price": "0.92"},
-    "soccer-no-trailer": {"kind": "minute", "types": ["soccer_tournament_multi_leg", "soccer_match", "soccer_game"], "min_minute": 88, "min_lead": 1, "side": "no_trailer", "experimental": true, "test_price": "0.92"},
     "basketball": {"kind": "clock", "types": ["basketball_game"], "max_clock_minutes": 2, "min_lead": 7, "min_price": "0.97", "test_price": "0.92"},
     "football": {"kind": "clock", "types": ["football_game"], "max_clock_minutes": 3, "min_lead": 9, "leader_ball": true, "big_lead": 17, "big_lead_clock": 2, "test_price": "0.92"},
     "hockey": {"kind": "clock", "types": ["hockey_tournament", "hockey_match", "hockey_game"], "max_clock_minutes": 2, "min_lead": 2, "test_price": "0.92"},

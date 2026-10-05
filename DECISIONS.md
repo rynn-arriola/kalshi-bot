@@ -20,6 +20,9 @@ and explicitly withdraws the proposed fixed 60-market pool.
   80') becomes a main rule as on Polymarket (still paper on Kalshi). The
   stale-feed skip, live-book re-check, test band and Kalshi-only paper rules
   stay.
+- **NO on the trailer switched off (2026-10-05, operator "Switch it off"):**
+  6 won, 1 lost (-$27.83) — Aruba came back from 1-2 at 88' to win 3-2 after a
+  99c buy. The code stays (tested); the rule is out of the settings.
 
 ### D-177 — Esports per title, stale-feed skip, 20 s hold (from Polymarket)
 
