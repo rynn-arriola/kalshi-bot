@@ -49,8 +49,9 @@ class PolicyTest(unittest.TestCase):
     def test_config_loads_dry_with_all_sports(self):
         self.assertTrue(POLICY.enabled)
         self.assertFalse(POLICY.live_orders)
+        # D-179 (Polymarket 10-05 "97c for all": live 95-96c lost, 97-98c won).
         self.assertEqual((POLICY.data_min_price, POLICY.min_price, POLICY.max_price),
-                         (D('0.90'), D('0.95'), D('0.99')))
+                         (D('0.90'), D('0.97'), D('0.99')))
         # Operator 10-03: "change the risk to 30 usd and stop loss to 90 usd a day".
         self.assertEqual((POLICY.risk_per_trade_usd, POLICY.daily_loss_stop_usd), (D(30), D(90)))
         self.assertEqual(E.contracts_for(POLICY.risk_per_trade_usd, POLICY.max_price), 30)
@@ -157,7 +158,7 @@ class AlmostOverTest(unittest.TestCase):
     def test_advance_market_must_settle_soon(self):
         r = rule('soccer')
         now = datetime(2026, 10, 3, 17, 30, tzinfo=timezone.utc)
-        soon = dict(market('EV-BAZ', 'CD Baztan advances', '0.96', '0.97'), expected_expiration_time='2026-10-03T18:30:00Z')
+        soon = dict(market('EV-BAZ', 'CD Baztan advances', '0.97', '0.98'), expected_expiration_time='2026-10-03T18:30:00Z')
         later = dict(soon, expected_expiration_time='2026-10-10T18:30:00Z')     # a first leg
         self.assertEqual(E.pick_entry('EV', [soon], POLICY, r, data_band=False, now=now).ticker, 'EV-BAZ')
         self.assertIsNone(E.pick_entry('EV', [later], POLICY, r, data_band=False, now=now))
@@ -227,22 +228,41 @@ class AlmostOverTest(unittest.TestCase):
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=4)))
         self.assertFalse(E.almost_over(rule('baseball'), 'baseball_game', dict(game, away_points=6)))
 
-    def test_tennis_current_set(self):
+    def test_tennis_polymarket_rule_set_one_three_games_no_decider(self):
+        # D-179 (Polymarket 10-05, Sackmann 19k matches: 1.1% lost vs 2.5%): the
+        # leader won set 1 and leads the current set by 3+ with 5+ games; never
+        # a deciding set or match tiebreak; ask <= 98c.
         r = rule('tennis')
-        self.assertTrue(E.almost_over(r, 'tennis_tournament_singles', tennis(
-            [('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 3)])))
-        # Leader in sets but behind in the current set.
-        self.assertFalse(E.almost_over(r, 'tennis_tournament_singles', tennis(
-            [('winner', 6), ('ongoing', 3)], [('loser', 4), ('ongoing', 5)])))
-        # Not enough games yet.
-        self.assertFalse(E.almost_over(r, 'tennis_tournament_singles', tennis(
-            [('winner', 6), ('ongoing', 4)], [('loser', 4), ('ongoing', 1)])))
-        # One set all: both are a set away; the second player's 5-4 in the decider counts.
-        self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', tennis(
-            [('winner', 6), ('loser', 3), ('ongoing', 4)], [('loser', 4), ('winner', 6), ('ongoing', 5)])))
-        # Finished match (two sets won) is not "almost over".
-        self.assertFalse(E.almost_over(r, 'tennis_tournament_singles', tennis(
-            [('winner', 7), ('winner', 6)], [('loser', 5), ('loser', 2)])))
+        self.assertEqual((r.min_current, r.min_lead, r.max_price, r.leader_won_first_set, r.no_deciding_set),
+                         (5, 3, D('0.98'), True, True))
+        t = lambda one, two: E.almost_over(r, 'tennis_tournament_singles', tennis(one, two))
+        self.assertTrue(t([('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 2)]))     # 5-2
+        self.assertTrue(t([('loser', 4), ('ongoing', 0)], [('winner', 6), ('ongoing', 5)]))     # other side 5-0
+        self.assertFalse(t([('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 3)]))    # 5-3: 2 ahead
+        self.assertFalse(t([('winner', 6), ('ongoing', 4)], [('loser', 4), ('ongoing', 1)]))    # 4 games
+        self.assertFalse(t([('winner', 6), ('ongoing', 3)], [('loser', 4), ('ongoing', 5)]))    # behind
+        # Deciding set: never, even 5-0.
+        self.assertFalse(E.almost_over(r, 'tennis_tournament_doubles', tennis(
+            [('winner', 6), ('loser', 3), ('ongoing', 5)], [('loser', 4), ('winner', 6), ('ongoing', 0)])))
+        # Finished match is not "almost over".
+        self.assertFalse(t([('winner', 7), ('winner', 6)], [('loser', 5), ('loser', 2)]))
+        # Set 1 must be the leader's (best of 5 at 2-1 sets: the leader lost set 1).
+        bo5 = E.SportRule(kind='tennis', types=('tennis_tournament_singles',), units_to_win=3, min_current=5,
+                          min_lead=3, leader_won_first_set=True, no_deciding_set=True)
+        lost_first = tennis([('loser', 4), ('winner', 6), ('winner', 6), ('ongoing', 5)],
+                            [('winner', 6), ('loser', 3), ('loser', 2), ('ongoing', 1)])
+        self.assertFalse(E.almost_over(bo5, 'tennis_tournament_singles', lost_first))
+        won_first = tennis([('winner', 6), ('loser', 3), ('winner', 6), ('ongoing', 5)],
+                           [('loser', 4), ('winner', 6), ('loser', 2), ('ongoing', 1)])
+        self.assertTrue(E.almost_over(bo5, 'tennis_tournament_singles', won_first))
+        self.assertTrue(E.almost_over(E.SportRule(kind='tennis', types=('x',), units_to_win=3, min_current=5,
+                                                  min_lead=3, no_deciding_set=True),
+                                      'tennis_tournament_singles', lost_first))           # rule off: allowed
+
+    def test_tennis_score_progress(self):
+        self.assertEqual(E.tennis_progress(tennis([('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 2)])),
+                         (1, 7))
+        self.assertIsNone(E.tennis_progress(dict(status='live')))
 
     def test_table_tennis_best_of_and_lead(self):
         game = dict(status='live', widget_status='live', best_of_sets=5, period_scores=[
@@ -297,6 +317,10 @@ class AlmostOverTest(unittest.TestCase):
         self.assertFalse(ok('esports-lol', dict(game, home_score=2), 'League of Legends', 3))
         self.assertTrue(ok('esports-lol', dict(game, home_score=2, away_score=1), 'League of Legends', 3))
         self.assertTrue(ok('esports-lol', dict(game, home_score=2, away_score=2), 'League of Legends', 3))
+        # LoL needs a 98c middle (per-sport floor above the 97c policy floor).
+        lol = rule('esports-lol')
+        self.assertEqual(E.pick_entry('EV', [market('EV-A', 'A', '0.97', '0.98')], POLICY, lol, data_band=True).band, 'test')
+        self.assertEqual(E.pick_entry('EV', [market('EV-A', 'A', '0.98', '0.99')], POLICY, lol, data_band=True).band, 'rule')
         # Overwatch (no total-maps market): forced first to 3, 2-1 / 2-2 only.
         self.assertTrue(ok('esports-overwatch', dict(game, home_score=2, away_score=1), 'Overwatch', None))
         self.assertFalse(ok('esports-overwatch', dict(game, home_score=2), 'Overwatch', None))
@@ -307,7 +331,9 @@ class AlmostOverTest(unittest.TestCase):
         self.assertIsNone(E.maps_to_win([dict(floor_strike=None)]))
 
     def test_tennis_match_tiebreak_needs_nine_points_and_three(self):
-        r = rule('tennis')
+        # The live tennis rule never plays a deciding set (D-179); a rule that
+        # does still treats a match tiebreak as points (9+, 3 ahead).
+        r = E.SportRule(kind='tennis', types=('tennis_tournament_doubles',), units_to_win=2, min_current=5)
         mt = lambda a, b: dict(tennis([('winner', 6), ('loser', 3), ('ongoing', a)],
                                       [('loser', 4), ('winner', 6), ('ongoing', b)]),
                                last_set_scoring_type='MatchTiebreak')
@@ -316,6 +342,7 @@ class AlmostOverTest(unittest.TestCase):
         self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', mt(9, 6)))
         self.assertTrue(E.almost_over(r, 'tennis_tournament_doubles', mt(3, 9)))     # the other side 9-3
         self.assertFalse(E.almost_over(r, 'tennis_tournament_doubles', mt(8, 2)))   # 8 points: not yet
+        self.assertFalse(E.almost_over(rule('tennis'), 'tennis_tournament_doubles', mt(9, 2)))
         # Not the deciding set: the normal games rule.
         early = dict(tennis([('winner', 6), ('ongoing', 5)], [('loser', 4), ('ongoing', 3)]),
                      last_set_scoring_type='MatchTiebreak')
@@ -343,14 +370,16 @@ class EntryTest(unittest.TestCase):
     def test_middle_price_trigger_and_cap(self):
         r = rule('hockey')
         pick = lambda ms, data=False: E.pick_entry('EV', ms, POLICY, r, data_band=data)
-        self.assertEqual(pick([market('EV-A', 'A', '0.95', '0.97'), market('EV-B', 'B', '0.02', '0.04')]).ticker, 'EV-A')
+        self.assertEqual(pick([market('EV-A', 'A', '0.97', '0.98'), market('EV-B', 'B', '0.02', '0.03')]).ticker, 'EV-A')
+        self.assertIsNone(pick([market('EV-A', 'A', '0.95', '0.97')]))        # 96c middle: under the 97c rule
         self.assertIsNone(pick([market('EV-A', 'A', '0.89', '0.99')]))        # 94c middle
         self.assertIsNone(pick([market('EV-A', 'A', '0.98', '1.00')]))        # ask over the cap
         self.assertIsNone(pick([market('EV-A', 'A', '0.85', '0.99')]))        # wide and low
         self.assertIsNone(pick([market('EV-A', 'A', '0.96', '0.97', status='closed')]))
         self.assertIsNone(pick([market('EV-A', 'A', '0', '0.97')]))           # one-sided
-        cand = pick([market('EV-A', 'A', '0.95', '0.96')])
-        self.assertEqual((cand.mid, cand.ask, cand.band), (D('0.955'), D('0.96'), 'rule'))
+        cand = pick([market('EV-A', 'A', '0.97', '0.98')])
+        self.assertEqual((cand.mid, cand.ask, cand.band), (D('0.975'), D('0.98'), 'rule'))
+        self.assertEqual(pick([market('EV-A', 'A', '0.95', '0.96')], True).band, 'test')
 
     def test_data_band_only_in_dry(self):
         r = rule('hockey')
@@ -373,7 +402,9 @@ class EntryTest(unittest.TestCase):
                                                            data_band=data)
         self.assertEqual(pick(rule('tennis'), '0.91', '0.93').band, 'test')     # 92c middle
         self.assertEqual(pick(rule('tennis'), '0.90', '0.92').band, 'data')     # 91c middle
-        self.assertEqual(pick(rule('tennis'), '0.95', '0.96').band, 'rule')
+        self.assertEqual(pick(rule('tennis'), '0.95', '0.96').band, 'test')     # under the 97c rule
+        self.assertEqual(pick(rule('tennis'), '0.97', '0.98').band, 'rule')
+        self.assertIsNone(pick(rule('tennis'), '0.98', '0.99'))                   # tennis ask cap 98c
         self.assertEqual(pick(rule('esports'), '0.95', '0.96').band, 'test')    # 95.5c: under the 97c rule
         self.assertEqual(pick(rule('esports'), '0.93', '0.94').band, 'data')
         self.assertEqual(pick(rule('basketball'), '0.91', '0.93').band, 'test')
@@ -419,7 +450,7 @@ class EntryTest(unittest.TestCase):
         self.assertIsNone(E.pick_entry('EV', [market('EV-TIE', 'Tie', '0.96', '0.97')], POLICY, r, data_band=True))
         self.assertIsNone(E.pick_entry('EV', [market('EV-X', 'Draw', '0.96', '0.97')], POLICY, r, data_band=True))
         self.assertIsNone(E.pick_entry('EV', [market('EV-TIE', 'No winner', '0.96', '0.97')], POLICY, r, data_band=True))
-        two = [market('EV-A', 'A', '0.97', '0.99'), market('EV-B', 'B', '0.95', '0.96')]
+        two = [market('EV-A', 'A', '0.98', '0.99'), market('EV-B', 'B', '0.97', '0.98')]
         self.assertEqual(E.pick_entry('EV', two, POLICY, r, data_band=False).ticker, 'EV-B')
 
 
@@ -470,7 +501,7 @@ class TraderTest(unittest.TestCase):
                                                                     for k, r in pol.rules.items()}))(real_load(path))
         self.calls = []
         self.state = dict(details=live(quarter=4, clock='1:00', home_points=30, away_points=10),
-                          bid='0.95', ask='0.97', depth='50', result='')
+                          bid='0.97', ask='0.98', depth='50', result='')
 
     def tearDown(self):
         if hasattr(self, 'db'):
@@ -513,13 +544,13 @@ class TraderTest(unittest.TestCase):
         rows = self.rows()
         self.assertEqual(len(rows), 1)
         self.assertEqual((rows[0]['ticker'], rows[0]['band'], rows[0]['qty'], rows[0]['price'], rows[0]['fee']),
-                         ('KXNFLGAME-X-A', 'rule', 30, '0.9700', '0.07'))
+                         ('KXNFLGAME-X-A', 'rule', 30, '0.9800', '0.05'))
         self.assertNotIn('/events/KXNFLSPREAD-X', self.calls)
         self.assertEqual(self.calls.count('/events/KXNFLGAME-X'), 1)   # traded at the rule: not refetched
         self.state['result'] = 'yes'
         t.cycle(now.replace(minute=10))
         row = self.rows()[0]
-        self.assertEqual((row['outcome'], D(row['result'])), ('yes', D('0.83')))
+        self.assertEqual((row['outcome'], D(row['result'])), ('yes', D('0.55')))
 
     def test_data_band_then_test_then_rule(self):
         self.state.update(bid='0.90', ask='0.91')                         # 90.5c: data
@@ -528,7 +559,7 @@ class TraderTest(unittest.TestCase):
         t.cycle(now)
         self.state.update(bid='0.91', ask='0.93')                         # 92c: test
         t.cycle(now)
-        self.state.update(bid='0.96', ask='0.97')                         # 96.5c: rule
+        self.state.update(bid='0.97', ask='0.98')                         # 97.5c: rule
         t.cycle(now)
         t.cycle(now)
         self.assertEqual([r['band'] for r in self.rows()], ['data', 'test', 'rule'])
@@ -579,6 +610,36 @@ class TraderTest(unittest.TestCase):
         self.assertEqual(t.maps_format(m), 2)
         self.assertEqual(calls, ['/events/KXCS2TOTALMAPS-X'])            # cached
         self.assertIsNone(t.maps_format(dict(id='e2', related_event_tickers=['KXOWGAME-Y'])))
+
+    def test_tennis_score_reversal_is_never_traded(self):
+        calls = []
+        state = {'one': [('winner', 6), ('ongoing', 4)], 'two': [('loser', 4), ('ongoing', 1)]}
+
+        def fetch(path, params=None):
+            calls.append(path)
+            if path == '/milestones':
+                return dict(milestones=[dict(id='t1', type='tennis_tournament_singles', start_date='2026-10-03T16:00:00Z',
+                                             primary_event_tickers=['KXATPMATCH-X'])])
+            if path == '/live_data/batch':
+                return dict(live_datas=[dict(milestone_id='t1', details=tennis(state['one'], state['two']))])
+            if path == '/events/KXATPMATCH-X':
+                return dict(event=dict(markets=[market('KXATPMATCH-X-A', 'A', '0.97', '0.98')]))
+            if path == '/markets/KXATPMATCH-X-A/orderbook':
+                return dict(orderbook_fp=dict(no_dollars=[['0.02', '50']], yes_dollars=[['0.97', '50']]))
+            if path == '/series/KXATPMATCH':
+                return dict(series=dict(fee_multiplier=1))
+            raise AssertionError(path)
+        self.db = self.T.open_db(self.T.DB)
+        t = self.T.Trader(self.db, fetch=fetch)
+        now = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
+        t.cycle(now)                                                       # 4-1: not yet
+        state['two'] = [('loser', 4), ('ongoing', 0)]                      # 4-0: the score went backwards
+        t.cycle(now+timedelta(seconds=10))
+        state.update(one=[('winner', 6), ('ongoing', 5)], two=[('loser', 4), ('ongoing', 1)])   # 5-1
+        t.cycle(now+timedelta(seconds=20))
+        self.assertEqual(self.rows(), [])
+        self.assertNotIn('/events/KXATPMATCH-X', calls)
+        self.assertEqual(t.reversed, {'t1'})
 
     def test_stale_feed_blocks_buys(self):
         # D-177: live data unchanged for 15 minutes = stuck feed: no buy.
@@ -691,7 +752,7 @@ class TraderTest(unittest.TestCase):
         self.assertIn('trades=0', self.T.report(self.db, since='2026-10-03T18:00:01Z'))
         text = self.T.report(self.db)
         self.assertIn('rule/football', text)
-        self.assertIn('rule/97c', text)
+        self.assertIn('rule/98c', text)
 
     def test_no_on_the_trailer_fills_and_settles(self):
         game = dict(status='live', widget_status='live', time="90+1'", home_same_game_score=1, away_same_game_score=0)

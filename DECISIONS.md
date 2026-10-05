@@ -10,6 +10,22 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-179 — 97c floor for every sport; Polymarket's tennis rule (set 1, 3+ games, no decider)
+
+- **Status:** ACCEPTED for the paper run, 2026-10-05. Operator: "Check poly i
+  changed rule on tennis". Source: liquidity-bot BC-2026-10-03-B entries
+  ~12:40Z ("97c for all"), ~13:30Z (tennis research 2), ~18:00Z ("this should
+  be for all tennis").
+- **97c floor:** the rule band is 97-99c for every sport (Polymarket live by
+  price paid, 350 settled: 95-96c -$41, 97c +$16, 98c +$32, 99c -$8). The paper
+  test band (92c+, esports 95c) and data band (90c+) stay below it.
+- **Tennis:** the leader won set 1 and leads the current set by 3+ games with
+  5+ games (5-2, 5-1, 5-0); never a deciding set or match tiebreak; ask <=
+  98c (99c needs > 99.07% wins); a match whose score ever goes backwards (sets
+  played, then games) is never traded. Sackmann Challenger+ITF (19k matches):
+  1.1% lost vs 2.5% under the old rule; ~15-20 trades/day expected. Kalshi
+  paper agreed in direction (1-game leads 56W 3L -$46.61; 2+ 164W 3L +$6.32).
+
 ### D-178 — Follow Polymarket's current entry strategy (no waits)
 
 - **Status:** ACCEPTED for the paper run, 2026-10-05. Operator: "Follow

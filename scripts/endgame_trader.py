@@ -41,7 +41,7 @@ sys.path.insert(0, str(ROOT/'src'))
 
 from kalshi_bot.endgame import (  # noqa: E402
     almost_over, book_market, contracts_for, daily_stop_hit, fill_from_book, game_text, load_policy,
-    maps_to_win, pick_entry, price_bucket, realized_result, rule_events, taker_fee)
+    maps_to_win, pick_entry, price_bucket, realized_result, rule_events, taker_fee, tennis_progress)
 
 BASE = 'https://external-api.kalshi.com/trade-api/v2'
 POLICY = ROOT/'config'/'endgame_policy.json'
@@ -164,6 +164,8 @@ class Trader:
         self.formats = {}                  # milestone id -> esports maps to win (None = unknown)
         self.qualified = {}                # (sport, event) -> first time the entry qualified (hold_seconds)
         self.state_seen = {}               # milestone id -> (full live state, first time seen unchanged)
+        self.progress = {}                 # tennis milestone id -> last (sets played, current games)
+        self.reversed = set()              # tennis milestones whose score went backwards: never traded
         self.counts = dict(polls=0, almost_over=0, candidates=0, thin=0, trades=0, settled=0, errors=0,
                            snapshots=0)
         self.snapped = {}                  # milestone id -> (time, score key) of its last snapshot
@@ -239,8 +241,24 @@ class Trader:
             return False
         return (now-seen[1]).total_seconds() >= STALE_MINUTES*60
 
+    def score_reversed(self, milestone, details):
+        """D-179 (Polymarket tennis research 2): a tennis match whose score ever
+        goes backwards (a feed glitch, 2.3% of events) is never traded."""
+        if not str(milestone.get('type', '')).startswith('tennis'):
+            return False
+        mid, now_progress = milestone['id'], tennis_progress(details)
+        if now_progress is not None:
+            last = self.progress.get(mid)
+            if last is not None and now_progress < last and mid not in self.reversed:
+                self.reversed.add(mid)
+                log(f'score went backwards milestone={mid} {last} -> {now_progress}: not traded')
+            self.progress[mid] = now_progress
+        return mid in self.reversed
+
     def consider(self, milestone, details, now):
         meta = milestone.get('details') if isinstance(milestone.get('details'), dict) else {}
+        if self.score_reversed(milestone, details):
+            return
         stale = self.stale(milestone, details, now)
         for sport, rule in self.policy.rules_for(milestone.get('type')):
             if stale and rule.kind != 'maps':

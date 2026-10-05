@@ -73,6 +73,10 @@ class SportRule:
     bo3_states: tuple[str, ...] = ()       # allowed map scores "high-low" ('1-1' = deciding map)
     bo5_states: tuple[str, ...] = ()
     force_best_of: int | None = None       # titles with no total-maps market (Overwatch: first to 3)
+    # D-179 tennis (Polymarket 2026-10-05, Sackmann 19k matches): the leader won
+    # set 1, never a deciding set or match tiebreak.
+    leader_won_first_set: bool = False
+    no_deciding_set: bool = False
 
     def __post_init__(self):
         if (self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS
@@ -132,7 +136,8 @@ def load_policy(path: Path) -> Policy:
                'units_to_win', 'min_price', 'experimental', 'events', 'max_expiry_hours', 'min_inning',
                'test_price', 'big_lead', 'big_lead_minute', 'big_lead_clock', 'leader_ball', 'games',
                'skip_games', 'require_format', 'max_spread', 'max_price', 'hold_seconds', 'side',
-               'formats', 'bo3_states', 'bo5_states', 'force_best_of'}
+               'formats', 'bo3_states', 'bo5_states', 'force_best_of', 'leader_won_first_set',
+               'no_deciding_set'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -152,7 +157,9 @@ def load_policy(path: Path) -> Policy:
             max_price=_dec(r['max_price'], 'max_price') if 'max_price' in r else None,
             hold_seconds=r.get('hold_seconds', 0), side=r.get('side', 'yes'),
             formats=tuple(r.get('formats', ())), bo3_states=tuple(r.get('bo3_states', ())),
-            bo5_states=tuple(r.get('bo5_states', ())), force_best_of=r.get('force_best_of'))
+            bo5_states=tuple(r.get('bo5_states', ())), force_best_of=r.get('force_best_of'),
+            leader_won_first_set=bool(r.get('leader_won_first_set', False)),
+            no_deciding_set=bool(r.get('no_deciding_set', False)))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
              'max_price', 'max_spread'}
     if set(raw) - set(Policy.__dataclass_fields__):
@@ -221,6 +228,22 @@ def _sets_from_rounds(rounds):
         elif r.get('outcome') == 'ongoing':
             current = r['score']
     return won, current
+
+
+def _won_first_set(rounds):
+    return (isinstance(rounds, list) and bool(rounds) and isinstance(rounds[0], dict)
+            and rounds[0].get('outcome') == 'winner')
+
+
+def tennis_progress(details):
+    """(sets played, games in the current set) for the score-reversal guard;
+    None when unreadable. A real match never goes backwards on this."""
+    one = _sets_from_rounds(details.get('competitor1_round_scores'))
+    two = _sets_from_rounds(details.get('competitor2_round_scores'))
+    if one is None or two is None:
+        return None
+    done = sum(1 for r in details.get('competitor1_round_scores') or () if r.get('outcome') in ('winner', 'loser'))
+    return done, (one[1] or 0)+(two[1] or 0)
 
 
 def _unit_scores(details, a_key, b_key):
@@ -324,14 +347,19 @@ def almost_over(rule, milestone_type, details, meta=None, units_to_win=None):
         units_to_win = rule.units_to_win or 2
         if max(one[0], two[0]) >= units_to_win:
             return False
+        if rule.no_deciding_set and one[0] == two[0] == units_to_win-1:
+            return False                     # deciding set / match tiebreak: never (Polymarket 10-05)
         need, lead = rule.min_current, max(1, rule.min_lead)
         if (details.get('last_set_scoring_type') == 'MatchTiebreak'
                 and one[0] == two[0] == units_to_win-1):
             # Deciding match tiebreak (first to 10 points): the score is points,
             # not games. Polymarket research: 9+ points and a 3-point lead.
             need, lead = MATCH_TIEBREAK_POINTS, MATCH_TIEBREAK_LEAD
+        firsts = (_won_first_set(details.get('competitor1_round_scores')),
+                  _won_first_set(details.get('competitor2_round_scores')))
         return any(w == units_to_win-1 and cur >= need and cur-other >= lead
-                   for (w, cur), other in ((one, two[1]), (two, one[1])))
+                   and (not rule.leader_won_first_set or first)
+                   for (w, cur), other, first in ((one, two[1], firsts[0]), (two, one[1], firsts[1])))
     if kind == 'table_tennis':
         best = _int(details.get('best_of_sets'))
         units = _unit_scores(details, 'competitor1_score', 'competitor2_score')
