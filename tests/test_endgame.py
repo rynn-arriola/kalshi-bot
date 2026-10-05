@@ -54,12 +54,13 @@ class PolicyTest(unittest.TestCase):
                                              'hockey', 'tennis', 'table-tennis', 'esports', 'esports-dota2',
                                              'esports-valorant', 'esports-lol', 'esports-r6', 'esports-overwatch',
                                              'baseball', 'rugby', 'volleyball'})
+        # Operator 10-05 "Follow current polymarket entry strategy": 3-option soccer
+        # is a main rule (Polymarket trades it live); no 20/30 s waits (Polymarket
+        # removed them: they blocked most fills; the 3c gap cap covers esports spikes).
         self.assertEqual({s for s, r in POLICY.rules.items() if r.experimental},
-                         {'rugby', 'volleyball', 'soccer', 'soccer-3way', 'soccer-no-trailer', 'esports-r6',
-                          'esports-overwatch'})
-        # D-177 (Polymarket feed guards): every rule holds 20 s, esports 30 s.
-        self.assertEqual({s: r.hold_seconds for s, r in POLICY.rules.items() if r.hold_seconds not in (20, 30)}, {})
-        self.assertEqual({r.hold_seconds for r in POLICY.rules.values() if r.kind == 'maps'}, {30})
+                         {'rugby', 'volleyball', 'soccer', 'soccer-no-trailer', 'esports-r6', 'esports-overwatch'})
+        self.assertEqual({s: r.hold_seconds for s, r in POLICY.rules.items() if r.hold_seconds}, {})
+        self.assertEqual(rule('esports-overwatch').max_price, D('0.98'))
         self.assertEqual([s for s, _ in POLICY.rules_for('basketball_game')], ['basketball'])
         # NHL games are 'hockey_match' on Kalshi (missed until 10-03).
         self.assertEqual([s for s, _ in POLICY.rules_for('hockey_match')], ['hockey'])
@@ -74,7 +75,7 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(set(rules), {'soccer', 'soccer-3way', 'soccer-no-trailer'})
         self.assertEqual(rules['soccer-no-trailer'].side, 'no_trailer')
         self.assertEqual((soccer.kind, soccer.events), ('advance', 'advance'))
-        self.assertEqual((three.kind, three.events, three.experimental), ('minute', 'winner', True))
+        self.assertEqual((three.kind, three.events, three.experimental), ('minute', 'winner', False))
         self.assertEqual(E.rule_events(soccer, ['KXCOPADELREYADVANCE-26OCT03BAZATL', 'KXCOPADELREYGAME-26OCT03BAZATL',
                                                 'KXCOPADELREYSPREAD-26OCT03BAZATL']),
                          ['KXCOPADELREYADVANCE-26OCT03BAZATL'])

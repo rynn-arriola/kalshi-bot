@@ -10,6 +10,17 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-178 — Follow Polymarket's current entry strategy (no waits)
+
+- **Status:** ACCEPTED for the paper run, 2026-10-05. Operator: "Follow
+  current polymarket entry strategy". Polymarket removed the 20 s wait
+  ("it blocked most fills") and the esports 30 s wait ("the 3c book cap covers
+  spikes") after D-177; Kalshi drops both. Overwatch paper rule ask <= 98c as
+  Polymarket. 3-option soccer ("team wins" YES, 2 goals from 88' or 3+ from
+  80') becomes a main rule as on Polymarket (still paper on Kalshi). The
+  stale-feed skip, live-book re-check, test band and Kalshi-only paper rules
+  stay.
+
 ### D-177 — Esports per title, stale-feed skip, 20 s hold (from Polymarket)
 
 - **Status:** ACCEPTED for the paper run, 2026-10-04. Operator: "I changed
