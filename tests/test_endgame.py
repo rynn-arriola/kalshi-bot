@@ -587,6 +587,12 @@ class TraderTest(unittest.TestCase):
         t.cycle(now+timedelta(minutes=17))
         self.assertEqual(self.rows(), [])
         self.assertGreaterEqual(t.counts['stale_feed'], 1)
+        before = t.counts['stale_feed']
+        self.state['details'] = dict(self.state['details'], status='not_started', widget_status='pre')
+        t.cycle(now+timedelta(minutes=17, seconds=10))
+        t.cycle(now+timedelta(minutes=40))
+        self.assertEqual(t.counts['stale_feed'], before)                   # not-started games are not counted
+        self.state['details'] = dict(self.state['details'], status='inprogress', widget_status='live')
         self.state['details'] = dict(self.state['details'], clock='0:50')   # the feed moves again
         t.cycle(now+timedelta(minutes=18))
         self.assertEqual(len(self.rows()), 1)

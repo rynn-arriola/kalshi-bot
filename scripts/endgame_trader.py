@@ -244,7 +244,8 @@ class Trader:
         stale = self.stale(milestone, details, now)
         for sport, rule in self.policy.rules_for(milestone.get('type')):
             if stale and rule.kind != 'maps':
-                self.counts['stale_feed'] = self.counts.get('stale_feed', 0)+1
+                if details.get('widget_status') == 'live':   # count live games only
+                    self.counts['stale_feed'] = self.counts.get('stale_feed', 0)+1
                 continue
             units = self.maps_format(milestone) if rule.require_format else None
             if almost_over(rule, milestone['type'], details, meta=meta, units_to_win=units):
