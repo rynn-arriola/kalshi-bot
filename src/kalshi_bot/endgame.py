@@ -30,7 +30,9 @@ CENT = Decimal('0.01')
 ONE = Decimal(1)
 LIVE_STATUSES = frozenset({'inprogress', 'live', 'started'})
 WINNER_SERIES_ENDINGS = ('GAME', 'MATCH', 'DOUBLES')
-NOT_WINNER_WORDS = ('SPREAD', 'TOTAL', 'BTTS', 'EXTRAS', 'DELAY', '1H', '2H', 'HALF')
+# EXACT: tennis exact-score markets (KXATPEXACTMATCH 'wins 2-1') end in MATCH
+# too; 43 paper trades bought them as winners until 10-05.
+NOT_WINNER_WORDS = ('SPREAD', 'TOTAL', 'BTTS', 'EXTRAS', 'DELAY', '1H', '2H', 'HALF', 'EXACT')
 MATCH_TIEBREAK_POINTS = 9
 MATCH_TIEBREAK_LEAD = 3
 KINDS = frozenset({'minute', 'clock', 'tennis', 'table_tennis', 'maps', 'baseball', 'volleyball', 'advance'})
