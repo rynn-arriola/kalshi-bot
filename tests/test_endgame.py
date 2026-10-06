@@ -84,6 +84,27 @@ class PolicyTest(unittest.TestCase):
                                                 'KXCOPADELREYSPREAD-26OCT03BAZATL']),
                          ['KXCOPADELREYADVANCE-26OCT03BAZATL'])
 
+    def test_99c_tier_settings(self):
+        # D-180: paying 99c needs a bigger lead; esports never pays 99c; tennis is capped at 98c.
+        strict = {n: E.premium_rule(r) for n, r in POLICY.rules.items()}
+        self.assertEqual((strict['basketball'].min_lead, strict['basketball'].max_clock_minutes), (10, 1))
+        self.assertEqual((strict['football'].min_lead, strict['football'].max_clock_minutes,
+                          strict['football'].leader_ball), (17, 2, False))
+        self.assertEqual(strict['hockey'].min_lead, 3)
+        self.assertEqual((strict['soccer-3way'].min_minute, strict['soccer-3way'].min_lead), (80, 3))
+        self.assertEqual(strict['baseball'].min_lead, 4)
+        self.assertEqual(strict['table-tennis'].min_lead, 8)
+        self.assertEqual({n for n, r in POLICY.rules.items() if r.kind == 'maps' and strict[n] is not None}, set())
+        self.assertEqual(rule('tennis').max_price, D('0.98'))
+        self.assertEqual(strict['basketball'].premium, {})
+        # Basketball 8 points with 0:50 left: fine at 97-98c, not at 99c.
+        game = live(period=4, period_type='quarter', period_remaining_time='00:50', home_points=88, away_points=80)
+        self.assertTrue(E.almost_over(rule('basketball'), 'basketball_game', game))
+        self.assertFalse(E.almost_over(strict['basketball'], 'basketball_game', game))
+        self.assertTrue(E.almost_over(strict['basketball'], 'basketball_game', dict(game, home_points=90)))
+        with self.assertRaises(ValueError):
+            E._premium('x', {'max_price': '0.99'})
+
     def test_bad_policy_rejected(self):
         with self.assertRaises(ValueError):
             E.Policy(min_price=D('0.95'), data_min_price=D('0.96'))
@@ -660,6 +681,31 @@ class TraderTest(unittest.TestCase):
         self.state['details'] = dict(self.state['details'], status='inprogress', widget_status='live')
         self.state['details'] = dict(self.state['details'], clock='0:50')   # the feed moves again
         t.cycle(now+timedelta(minutes=18))
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_99c_needs_the_stricter_state(self):
+        t = self.trader()
+        base = E.SportRule(kind='clock', types=('football_game',), max_clock_minutes=3, min_lead=9,
+                           premium={'min_lead': 25})
+        t.policy = E.Policy(**{**{k: getattr(t.policy, k) for k in E.Policy.__dataclass_fields__ if k != 'rules'},
+                               'rules': {'football': base}})
+        self.T.load_policy = lambda path: t.policy
+        now = datetime(2026, 10, 3, 18, tzinfo=timezone.utc)
+        self.state.update(bid='0.98', ask='0.99')                         # 99c ask, lead 20 < 25
+        t.cycle(now)
+        self.assertEqual((self.rows(), t.counts['premium_skip']), ([], 1))
+        self.state['details'] = dict(self.state['details'], home_points=40)   # lead 30: the 99c tier passes
+        t.cycle(now)
+        self.assertEqual([(r['band'], r['price']) for r in self.rows()], [('rule', '0.9900')])
+
+    def test_98c_does_not_need_the_tier(self):
+        t = self.trader()
+        base = E.SportRule(kind='clock', types=('football_game',), max_clock_minutes=3, min_lead=9,
+                           premium={'never': True})
+        t.policy = E.Policy(**{**{k: getattr(t.policy, k) for k in E.Policy.__dataclass_fields__ if k != 'rules'},
+                               'rules': {'football': base}})
+        self.T.load_policy = lambda path: t.policy
+        t.cycle(datetime(2026, 10, 3, 18, tzinfo=timezone.utc))            # ask 98c
         self.assertEqual(len(self.rows()), 1)
 
     def test_hold_seconds_waits_for_a_steady_entry(self):

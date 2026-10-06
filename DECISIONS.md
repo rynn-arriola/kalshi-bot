@@ -10,6 +10,21 @@ It does not authorize live selection, price chasing, new risk limits or trading.
 D-070 extends it with Poly-style bounded discovery and estimated reward tracking,
 and explicitly withdraws the proposed fixed 60-market pool.
 
+### D-180 — Paying 99c needs a bigger lead (99c tier)
+
+- **Status:** ACCEPTED for the paper run, 2026-10-06. Operator: "99c is not
+  profitable on kalshi?" -> "How do we make sure our 99c only wins" -> "Ok do
+  it". Kalshi paper by price paid (Polymarket-based rules): 97c 46W 0L
+  +$37.29; 98c 95W 2L -$7.85; 99c 65W 2L -$41.91 (a 99c win pays ~$0.27 after
+  the $0.03 fee, a loss costs ~$29.73: break-even 99.1%). Polymarket live 99c:
+  99W 2L -$8.32.
+- **Rule:** when the best ask is 99c, the game must also pass a stricter
+  state: basketball 10+ in the last 1:00; football 17+ in the last 2:00 (no
+  possession needed); hockey 3+ goals; soccer 3+ goals from 80'; baseball 9th+
+  with 4+ runs; table tennis 8+ points; esports never pays 99c; tennis is
+  already capped at 98c. Below 99c the D-179 rules are unchanged. Kalshi-only
+  (Polymarket caps only tennis and CS2 at 98c).
+
 ### D-179 — 97c floor for every sport; Polymarket's tennis rule (set 1, 3+ games, no decider)
 
 - **Status:** ACCEPTED for the paper run, 2026-10-05. Operator: "Check poly i

@@ -40,8 +40,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 
 from kalshi_bot.endgame import (  # noqa: E402
-    almost_over, book_market, contracts_for, daily_stop_hit, fill_from_book, game_text, load_policy,
-    maps_to_win, pick_entry, price_bucket, realized_result, rule_events, taker_fee, tennis_progress)
+    PREMIUM_PRICE, almost_over, book_market, contracts_for, daily_stop_hit, fill_from_book, game_text,
+    load_policy, maps_to_win, pick_entry, premium_rule, price_bucket, realized_result, rule_events, taker_fee,
+    tennis_progress)
 
 BASE = 'https://external-api.kalshi.com/trade-api/v2'
 POLICY = ROOT/'config'/'endgame_policy.json'
@@ -311,6 +312,14 @@ class Trader:
                 log(f'skip stale quote {cand.ticker} band={cand.band} listing mid={cand.mid} book={live and live.mid}')
                 continue
             cand = live
+            if cand.ask >= PREMIUM_PRICE and rule.premium:
+                # D-180: paying 99c needs the stricter game state (one loss there
+                # costs ~110 wins); esports never pays 99c.
+                strict = premium_rule(rule)
+                units = self.maps_format(milestone) if rule.require_format else None
+                if strict is None or not almost_over(strict, milestone['type'], details, meta=meta, units_to_win=units):
+                    self.counts['premium_skip'] = self.counts.get('premium_skip', 0)+1
+                    continue
             # YES fills walk the YES asks (1 - NO bids); NO fills walk the NO asks (1 - YES bids).
             levels = book.get('no_dollars') if cand.side == 'yes' else book.get('yes_dollars')
             filled, avg = fill_from_book(levels, qty, self.policy.max_price)

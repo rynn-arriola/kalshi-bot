@@ -77,6 +77,10 @@ class SportRule:
     # set 1, never a deciding set or match tiebreak.
     leader_won_first_set: bool = False
     no_deciding_set: bool = False
+    # D-180 99c tier (operator 10-06 "How do we make sure our 99c only wins" ->
+    # "Ok do it"): paying PREMIUM_PRICE needs these stricter settings (a bigger
+    # lead / less time); {'never': True} = never pay 99c; empty = no tier.
+    premium: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if (self.kind not in KINDS or not self.types or self.events not in EVENT_KINDS
@@ -129,6 +133,25 @@ def _dec(value, name):
     return Decimal(str(value))
 
 
+PREMIUM_PRICE = Decimal('0.99')
+PREMIUM_KEYS = {'never', 'min_lead', 'max_clock_minutes', 'min_minute', 'min_inning', 'leader_ball',
+                'big_lead', 'big_lead_minute', 'big_lead_clock', 'min_current'}
+
+
+def _premium(sport, raw):
+    if not isinstance(raw, dict) or set(raw) - PREMIUM_KEYS:
+        raise ValueError(f'premium for {sport} must be a dict of {sorted(PREMIUM_KEYS)}')
+    return dict(raw)
+
+
+def premium_rule(rule):
+    """The stricter rule a 99c buy must also pass; None = never pay 99c."""
+    if rule.premium.get('never'):
+        return None
+    from dataclasses import replace
+    return replace(rule, premium={}, **{k: v for k, v in rule.premium.items() if k != 'never'})
+
+
 def load_policy(path: Path) -> Policy:
     raw = json.loads(path.read_text(encoding='utf-8'))
     rules = {}
@@ -137,7 +160,7 @@ def load_policy(path: Path) -> Policy:
                'test_price', 'big_lead', 'big_lead_minute', 'big_lead_clock', 'leader_ball', 'games',
                'skip_games', 'require_format', 'max_spread', 'max_price', 'hold_seconds', 'side',
                'formats', 'bo3_states', 'bo5_states', 'force_best_of', 'leader_won_first_set',
-               'no_deciding_set'}
+               'no_deciding_set', 'premium'}
     for sport, r in (raw.pop('rules', None) or {}).items():
         if set(r) - allowed:
             raise ValueError(f'unknown rule fields for {sport}: {sorted(set(r) - allowed)}')
@@ -159,7 +182,8 @@ def load_policy(path: Path) -> Policy:
             formats=tuple(r.get('formats', ())), bo3_states=tuple(r.get('bo3_states', ())),
             bo5_states=tuple(r.get('bo5_states', ())), force_best_of=r.get('force_best_of'),
             leader_won_first_set=bool(r.get('leader_won_first_set', False)),
-            no_deciding_set=bool(r.get('no_deciding_set', False)))
+            no_deciding_set=bool(r.get('no_deciding_set', False)),
+            premium=_premium(sport, r.get('premium') or {}))
     money = {'risk_per_trade_usd', 'daily_loss_stop_usd', 'min_price', 'data_min_price',
              'max_price', 'max_spread'}
     if set(raw) - set(Policy.__dataclass_fields__):
